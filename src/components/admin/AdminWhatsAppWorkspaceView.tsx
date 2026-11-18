@@ -45,6 +45,9 @@ import { leadService, mergeAndSortActivities, isPhoneMatch } from '../../service
 import { whatsappMediaService, MediaDownloadError, describeMediaFailure, resolveMediaMessageIds } from '../../services/whatsappMediaService';
 
 // Ids da UAZAPI de uma mensagem: o id pode estar em metadata (webhook) ou no campo principal da atividade (envio/SSE)
+// Valores de preenchimento que o sistema grava no campo de nome da homenageada: nao sao pessoas e nunca viram contato
+const PLACEHOLDER_PERSON_NAMES = new Set(['indicação externa', 'indicacao externa', 'whatsapp direto', 'sem indicação', 'sem indicacao', 'direto', 'lead sem nome', 'teste', 'protagonista']);
+
 const mediaIdsOf = (a: { metadata?: any; messageId?: string }) =>
   resolveMediaMessageIds({ ...(a.metadata || {}), messageId: a.metadata?.messageId || a.messageId });
 import { renderWhatsAppFormattedText } from '../../utils/whatsappFormatter';
@@ -2565,7 +2568,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
         isMain: false,
         avatarUrl: undefined,
       });
-    } else if (!debutantePhone && debName && debName.toLowerCase() !== cleanMainName.toLowerCase()) {
+    } else if (!debutantePhone && debName && !PLACEHOLDER_PERSON_NAMES.has(debName.trim().toLowerCase()) && debName.toLowerCase() !== cleanMainName.toLowerCase()) {
       // Homenageada sem telefone proprio: aparece apenas como informacao (chip desabilitado), sem canal de envio
       list.push({
         key: `protagonist-nophone-${debName}`,

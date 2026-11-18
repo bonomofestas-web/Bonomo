@@ -28,6 +28,7 @@ import { AdminTransferLeadVenueModal } from './AdminTransferLeadVenueModal';
 import { AdminDuplicateLeadModal } from './AdminDuplicateLeadModal';
 import { canChangeLeadVenue } from '../../utils/accessPermissions';
 import { lastSystemSentSourceId } from '../../utils/senderResolver';
+import { collectPhoneHolders, findPhoneConflict, duplicatePhoneMessage } from '../../utils/phoneDuplicates';
 import { validateLeadForWon, getMissingLeadFieldKeys } from '../../utils/leadValidation';
 import { useAdminState } from '../../context/AdminStateContext';
 import { maskPhoneInput, formatPhone } from '../../utils/phoneFormatter';
@@ -1574,9 +1575,16 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
     setIsAddingContact(false);
   };
 
+  // Numero repetido DENTRO do proprio lead (decisor, debutante, mae, pai, outros contatos): bloqueia, sem opcao de salvar
+  const newContactPhoneConflict = findPhoneConflict(newContactPhone, collectPhoneHolders(lead));
+
   const handleAddSubContact = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newContactName.trim()) return;
+    if (newContactPhoneConflict) {
+      toast.error(duplicatePhoneMessage(newContactPhoneConflict, 'lead'));
+      return;
+    }
 
     const trimmedPhone = newContactPhone.trim();
     if (trimmedPhone) {
@@ -4835,6 +4843,13 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                         const cleanDraft = draftPhone.replace(/\D/g, '');
                         const cleanLead = (lead.phone || '').replace(/\D/g, '');
                         if (cleanDraft !== cleanLead) {
+                          // O numero principal (decisor/contratante) nao pode repetir o de outra pessoa do mesmo lead
+                          const dup = findPhoneConflict(cleanDraft, collectPhoneHolders({ ...lead, phone: undefined, payerPhone: undefined }));
+                          if (dup) {
+                            toast.error(duplicatePhoneMessage(dup, 'lead'));
+                            setDraftPhone(lead.phone || '');
+                            return;
+                          }
                           handleUpdate({ phone: cleanDraft });
                         }
                       }}
@@ -5290,7 +5305,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                         width: '100%',
                         boxSizing: 'border-box',
                         background: 'var(--adm-bg-input)',
-                        border: '1px solid var(--adm-border)',
+                        border: newContactPhoneConflict ? '1px solid #EF4444' : '1px solid var(--adm-border)',
                         borderRadius: '7px',
                         padding: '7px 10px',
                         fontSize: '0.80rem',
@@ -5298,6 +5313,11 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                         outline: 'none',
                       }}
                     />
+                    {newContactPhoneConflict && (
+                      <div style={{ fontSize: '0.72rem', fontWeight: 600, color: '#EF4444', marginTop: '-2px' }}>
+                        {duplicatePhoneMessage(newContactPhoneConflict, 'lead')}
+                      </div>
+                    )}
 
                     {/* Se o papel for Aniversariante, exibir campos de data de Aniversário e Evento */}
                     {(newContactRole === 'debutante' || (newContactRole as any) === 'aniversariante') && (
@@ -5423,15 +5443,17 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                     </button>
                     <button
                       type="submit"
+                      disabled={Boolean(newContactPhoneConflict)}
+                      title={newContactPhoneConflict ? duplicatePhoneMessage(newContactPhoneConflict, 'lead') : undefined}
                       style={{
-                        background: 'var(--adm-accent)',
+                        background: newContactPhoneConflict ? 'var(--adm-border)' : 'var(--adm-accent)',
                         color: '#FFFFFF',
                         border: 'none',
                         borderRadius: '6px',
                         padding: '6px 14px',
                         fontSize: '0.74rem',
                         fontWeight: 700,
-                        cursor: 'pointer',
+                        cursor: newContactPhoneConflict ? 'not-allowed' : 'pointer',
                       }}
                     >
                       Salvar Contato

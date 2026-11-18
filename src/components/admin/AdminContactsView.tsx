@@ -11,6 +11,7 @@ import { formatPhone } from '../../utils/phoneFormatter';
 import { generateUuid } from '../../utils/uuid';
 import { toast } from 'sonner';
 import type { Contact, ContactDependent, Lead, Contract, AdminTabType } from '../../types/admin';
+import { findPhoneConflict, duplicatePhoneMessage } from '../../utils/phoneDuplicates';
 
 interface AdminContactsViewProps {
   onNavigateTab?: (tab: AdminTabType, params?: any) => void;
@@ -384,9 +385,24 @@ export const AdminContactsView: React.FC<AdminContactsViewProps> = ({
     }
   };
 
+  // Numero do dependente nao pode repetir o do titular nem o de outro dependente do mesmo contato
+  const dependentPhoneConflict = selectedContact
+    ? findPhoneConflict(dependentForm.phone, [
+        { label: `${selectedContact.name || 'Titular'} (titular)`, phone: selectedContact.primaryPhone },
+        ...(contactAssets.dependents || []).map(d => ({
+          label: `${(d as any).dependentContact?.name || 'Dependente'} (${d.kinship || 'dependente'})`,
+          phone: (d as any).dependentContact?.primaryPhone,
+        })),
+      ])
+    : undefined;
+
   // Adicionar dependente ao grupo familiar
   const handleAddDependent = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (dependentPhoneConflict) {
+      toast.error(duplicatePhoneMessage(dependentPhoneConflict, 'contato'));
+      return;
+    }
     if (!selectedContact?.id || !dependentForm.name.trim()) {
       toast.warning('Nome do dependente é obrigatório.');
       return;
@@ -2287,6 +2303,11 @@ export const AdminContactsView: React.FC<AdminContactsViewProps> = ({
                         outline: 'none',
                       }}
                     />
+                  {dependentPhoneConflict && (
+                    <div style={{ fontSize: '0.70rem', fontWeight: 600, color: '#EF4444', marginTop: '4px' }}>
+                      {duplicatePhoneMessage(dependentPhoneConflict, 'contato')}
+                    </div>
+                  )}
                   </div>
                 </div>
               </div>
@@ -2315,7 +2336,7 @@ export const AdminContactsView: React.FC<AdminContactsViewProps> = ({
                   Cancelar
                 </button>
                 <button
-                  type="submit"
+                  type="submit" disabled={Boolean(dependentPhoneConflict)}
                   style={{
                     padding: '7px 16px',
                     borderRadius: '6px',

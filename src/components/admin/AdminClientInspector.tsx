@@ -8,6 +8,7 @@ import {
 import { useAdminState } from '../../context/AdminStateContext';
 import { formatPhone } from '../../utils/phoneFormatter';
 import { funnelSenders } from '../../utils/senderResolver';
+import { collectPhoneHolders, findPhoneConflict, duplicatePhoneMessage } from '../../utils/phoneDuplicates';
 import { uazapiService } from '../../services/uazapiService';
 import { whatsappMediaService } from '../../services/whatsappMediaService';
 import { AdminConfirmModal } from './AdminConfirmModal';
@@ -502,9 +503,16 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
     linkClientDebutante(client.id, null);
   };
 
+  // Numero repetido DENTRO do proprio cliente/contrato (contratante, homenageada, outros contatos): bloqueia
+  const newContactPhoneConflict = findPhoneConflict(newContactPhone, collectPhoneHolders(client));
+
   const handleAddSubContact = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newContactName.trim() || !newContactPhone.trim()) return;
+    if (newContactPhoneConflict) {
+      toast.error(duplicatePhoneMessage(newContactPhoneConflict, 'cliente'));
+      return;
+    }
 
     const newContact: LeadContact = {
       id: `cnt_${Date.now()}`,
@@ -1689,6 +1697,11 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
                   style={seamlessInputStyle}
                   required
                 />
+                {newContactPhoneConflict && (
+                  <div style={{ fontSize: '0.70rem', fontWeight: 600, color: '#EF4444' }}>
+                    {duplicatePhoneMessage(newContactPhoneConflict, 'cliente')}
+                  </div>
+                )}
                 <select
                   value={newContactRole}
                   onChange={(e) => setNewContactRole(e.target.value as any)}
@@ -1710,7 +1723,7 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
                   <button type="button" onClick={() => setIsAddingSubContact(false)} style={{ background: 'transparent', border: 'none', color: 'var(--adm-text-muted)', fontSize: '0.72rem', cursor: 'pointer' }}>
                     Cancelar
                   </button>
-                  <button type="submit" style={{ background: 'var(--adm-accent)', border: 'none', color: '#FFF', borderRadius: '6px', padding: '4px 10px', fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer' }}>
+                  <button type="submit" disabled={Boolean(newContactPhoneConflict)} title={newContactPhoneConflict ? duplicatePhoneMessage(newContactPhoneConflict, 'cliente') : undefined} style={{ background: 'var(--adm-accent)', border: 'none', color: '#FFF', borderRadius: '6px', padding: '4px 10px', fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer' }}>
                     Salvar
                   </button>
                 </div>

@@ -13,6 +13,10 @@ export function relationshipLabel(role?: string | null, fallback = 'Responsável
     case 'copayer': case 'copagante': return 'Copagante';
     case 'dependent': case 'dependente': return 'Dependente';
     case 'payer': case 'contractor': case 'contratante': case 'pagante': return 'Contratante';
+    case 'tio': return 'Tio(a)';
+    case 'noivo': return 'Noivo(a)';
+    case 'debutante': return 'Debutante';
+    case 'aniversariante': return 'Aniversariante';
     case 'other': case 'outro': return 'Contato';
     case '': return fallback;
     default: return role as string;

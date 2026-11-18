@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { X, CheckCircle2, DollarSign, Package, FileText, UserCheck, User, ChevronDown, ChevronUp } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import type { Lead } from '../../types/admin';
+import { samePhone } from '../../utils/phoneDuplicates';
 
 interface CloseDealValueModalProps {
   isOpen: boolean;
@@ -263,6 +264,12 @@ export const CloseDealValueModal: React.FC<CloseDealValueModalProps> = ({
 
     if (!closerNotes.trim()) {
       setError('Por favor, preencha o Relatório do Closer (passagem de bastão para o Pós-Venda).');
+      return;
+    }
+
+    // Cada pessoa precisa de um numero proprio: contratante e debutante nao podem repetir o telefone
+    if (samePhone(payerPhone, birthdayPersonPhone)) {
+      setError('O telefone do contratante e o da debutante são iguais. Cada pessoa precisa de um número próprio.');
       return;
     }
 
@@ -827,8 +834,13 @@ export const CloseDealValueModal: React.FC<CloseDealValueModalProps> = ({
                       value={birthdayPersonPhone}
                       onChange={(e) => setBirthdayPersonPhone(e.target.value)}
                       placeholder="(21) 99999-9999"
-                      style={inputStyle}
+                      style={{ ...inputStyle, ...(samePhone(payerPhone, birthdayPersonPhone) ? { borderColor: '#EF4444' } : {}) }}
                     />
+                    {samePhone(payerPhone, birthdayPersonPhone) && (
+                      <div style={{ fontSize: '0.70rem', fontWeight: 600, color: '#EF4444', marginTop: '4px' }}>
+                        Este número é igual ao do contratante. Cada pessoa precisa de um número próprio.
+                      </div>
+                    )}
                   </div>
                   <div>
                     <label style={labelStyle}>Data de Nasc. Debutante</label>
@@ -1033,7 +1045,7 @@ export const CloseDealValueModal: React.FC<CloseDealValueModalProps> = ({
             </button>
 
             <button
-              type="submit"
+              type="submit" disabled={samePhone(payerPhone, birthdayPersonPhone)}
               className="adm-btn-primary"
               style={{
                 flex: 2,

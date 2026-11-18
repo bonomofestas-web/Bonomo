@@ -13,6 +13,7 @@ import { useAdminState } from '../../context/AdminStateContext';
 import { maskPhoneInput, formatPhone } from '../../utils/phoneFormatter';
 import { renderFunnelOrStageIcon } from '../../utils/funnelIconLibrary';
 import { relationshipLabel, eventTypeLabels } from '../../utils/roleLabels';
+import { collectPhoneHolders, findPhoneConflict, duplicatePhoneMessage } from '../../utils/phoneDuplicates';
 import { WhatsAppBrandIcon } from './WhatsAppBrandIcon';
 import { AdminLeadReadOnlyModal } from './AdminLeadReadOnlyModal';
 import { ClientVenueEventsCard } from './ClientVenueEventsCard';
@@ -376,9 +377,16 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
     window.open(url, '_blank');
   };
 
+  // Numero repetido DENTRO do proprio cliente/contrato (contratante, homenageada, outros contatos): bloqueia
+  const newContactPhoneConflict = findPhoneConflict(newContactPhone, collectPhoneHolders(client));
+
   const handleAddSubContact = (e: React.FormEvent) => {
     e.preventDefault();
     if (!client || !newContactName.trim() || !newContactPhone.trim()) return;
+    if (newContactPhoneConflict) {
+      toast.error(duplicatePhoneMessage(newContactPhoneConflict, 'cliente'));
+      return;
+    }
 
     const newContact: LeadContact = {
       id: `cnt_${Date.now()}`,
@@ -1808,7 +1816,13 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
                       disabled={readOnly}
                       value={maskPhoneInput(client?.birthdayPersonPhone || '')}
                       placeholder="(00) 00000-0000"
-                      onChange={(e) => client && updateClient(client.id, { birthdayPersonPhone: e.target.value })}
+                      onChange={(e) => {
+                        if (!client) return;
+                        const others = collectPhoneHolders({ ...client, birthdayPersonPhone: undefined, debutantePhone: undefined });
+                        const dup = findPhoneConflict(e.target.value, others);
+                        if (dup) { toast.error(duplicatePhoneMessage(dup, 'cliente'), { id: 'dup-phone' }); return; }
+                        updateClient(client.id, { birthdayPersonPhone: e.target.value });
+                      }}
                       style={seamlessInputStyle}
                       onFocus={(e) => { e.currentTarget.style.borderBottomColor = 'var(--adm-accent)'; }}
                       onBlur={(e) => { e.currentTarget.style.borderBottomColor = 'transparent'; }}
@@ -1910,6 +1924,11 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
                       color: 'var(--adm-text-title)',
                     }}
                   />
+                {newContactPhoneConflict && (
+                  <div style={{ fontSize: '0.70rem', fontWeight: 600, color: '#EF4444' }}>
+                    {duplicatePhoneMessage(newContactPhoneConflict, 'cliente')}
+                  </div>
+                )}
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -1935,7 +1954,7 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
                     Cancelar
                   </button>
                   <button
-                    type="submit"
+                    type="submit" disabled={Boolean(newContactPhoneConflict)} title={newContactPhoneConflict ? duplicatePhoneMessage(newContactPhoneConflict, 'cliente') : undefined}
                     style={{ padding: '3px 8px', borderRadius: '4px', border: 'none', background: 'var(--adm-accent, #06B6D4)', color: '#FFF', fontSize: '0.68rem', fontWeight: 800, cursor: 'pointer' }}
                   >
                     Salvar
