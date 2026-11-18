@@ -55,6 +55,8 @@ export const AdminSourceEditorView: React.FC<AdminSourceEditorViewProps> = ({
   const [venueId, setVenueId] = useState('');
   const [type, setType] = useState<SourceType>('whatsapp_api');
   const [funnelId, setFunnelId] = useState('');
+  // Funis (esteiras) alem do de origem que podem responder o cliente por este numero
+  const [senderFunnelIds, setSenderFunnelIds] = useState<string[]>([]);
   const [status, setStatus] = useState<'active' | 'inactive'>('active');
 
   // Custom Dropdowns States & Refs (Modern UX without unnecessary modals)
@@ -137,6 +139,7 @@ export const AdminSourceEditorView: React.FC<AdminSourceEditorViewProps> = ({
       } else {
         setFunnelId(initialFunnelId);
       }
+      setSenderFunnelIds(Array.isArray((sourceToEdit.configuration as any)?.senderFunnelIds) ? (sourceToEdit.configuration as any).senderFunnelIds : []);
 
       setWhatsappInstanceId(sourceToEdit.whatsappInstanceId || '');
       setSlug(sourceToEdit.slug || '');
@@ -371,7 +374,9 @@ export const AdminSourceEditorView: React.FC<AdminSourceEditorViewProps> = ({
           connectedPhone,
           connectedProfileName,
           connectedAvatar,
-          subSources
+          subSources,
+          // O funil de origem sempre pode enviar; aqui ficam so os OUTROS funis autorizados
+          senderFunnelIds: senderFunnelIds.filter(id => id !== funnelId),
         } : {}),
         ...(type === 'form' ? { title: formTitle, description: formDescription, fields: formFields, successMessage, buttonText } : {}),
       };
@@ -1270,6 +1275,42 @@ export const AdminSourceEditorView: React.FC<AdminSourceEditorViewProps> = ({
               );
             })()}
           </div>
+
+          {/* Funis que tambem podem enviar mensagens por este numero (esteira dividida em varios funis com o mesmo WhatsApp) */}
+          {type === 'whatsapp_api' && (
+            <div>
+              <label style={{ display: 'block', fontSize: '0.76rem', fontWeight: 800, color: 'var(--adm-text-title)', marginBottom: '6px' }}>
+                Funis que também podem enviar mensagens por este número
+              </label>
+              <div style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)', marginBottom: '8px' }}>
+                O funil de origem acima sempre pode enviar. Marque os outros funis (etapas do atendimento) que vão responder o cliente por este mesmo número. Dentro de cada funil dá para desabilitar o envio deste número.
+              </div>
+              {availableVenueFunnels.filter(f => f.id !== funnelId).length === 0 ? (
+                <div style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)' }}>Nenhum outro funil disponível para esta casa.</div>
+              ) : (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                  {availableVenueFunnels.filter(f => f.id !== funnelId).map(f => {
+                    const checked = senderFunnelIds.includes(f.id);
+                    return (
+                      <button
+                        key={f.id}
+                        type="button"
+                        onClick={() => setSenderFunnelIds(prev => (prev.includes(f.id) ? prev.filter(id => id !== f.id) : [...prev, f.id]))}
+                        style={{
+                          padding: '6px 12px', borderRadius: '999px', cursor: 'pointer', fontSize: '0.76rem', fontWeight: 700,
+                          border: checked ? '1.5px solid #10B981' : '1px solid var(--adm-border)',
+                          background: checked ? 'rgba(16, 185, 129, 0.15)' : 'var(--adm-bg-input)',
+                          color: checked ? '#10B981' : 'var(--adm-text-muted)',
+                        }}
+                      >
+                        {checked ? '✓ ' : ''}{f.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Status (Apenas na edição de uma origem já cadastrada) */}
           {currentSourceId && (

@@ -980,6 +980,7 @@ export interface CommercialFunnel {
   assignedSdrIds?: string[]; // IDs dos SDRs que participam da distribuição automática deste funil
   teamMemberIds?: string[]; // Colaboradores que atuam assiduamente neste funil (SDRs e Closers visíveis no funil)
   closerIds?: string[]; // Closers habilitados para receber agendamentos/fechamentos neste funil
+  sendDisabledSourceIds?: string[]; // Instancias WhatsApp desabilitadas para ENVIO neste funil (continuam recebendo)
   roundRobinNextIndex?: number; // Índice do próximo SDR na roleta
   defaultWhatsAppSourceId?: string; // ID da origem WhatsApp padrão legada
   priorityWhatsappPerVenue?: Record<string, string>; // Mapeamento: venueId -> sourceId de WhatsApp prioritário por unidade

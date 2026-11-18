@@ -2953,10 +2953,10 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       return true;
     });
 
-    // Lead sem funil (funil e opcional): vale a regra por casa, respeitando apenas o check de envio
-    if (!senderFunnelId) return byVenue.filter(s => s.sendEnabled !== false);
-    return funnelSenders(byVenue, senderFunnelId, () => true);
-  }, [sources, selectedLead?.venueId, senderFunnelId, activeVenueId, getSourceInstanceToken]);
+    // Lead sem funil (funil e opcional): vale a regra por casa
+    if (!senderFunnelId) return byVenue;
+    return funnelSenders(byVenue, funnels.find(f => f.id === senderFunnelId) || { id: senderFunnelId }, () => true);
+  }, [sources, funnels, selectedLead?.venueId, senderFunnelId, activeVenueId, getSourceInstanceToken]);
 
   const [selectedSenderSourceId, setSelectedSenderSourceId] = useState<string>('');
   const manuallySelectedSenderLeadIdRef = useRef<string | null>(null);

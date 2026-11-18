@@ -11,6 +11,7 @@ import {
 import { useAdminState } from '../../context/AdminStateContext';
 import { ICP_SITUATION_CONFIG } from '../../types/admin';
 import { AdminFunnelDeleteModal } from './AdminFunnelDeleteModal';
+import { getSendDisabledIds, canSourceServeFunnel } from '../../utils/senderResolver';
 import { SafeAvatar } from './SafeAvatar';
 import { formatPhone } from '../../utils/phoneFormatter';
 import { 
@@ -254,8 +255,8 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
   const [defaultWhatsAppSourceId, setDefaultWhatsAppSourceId] = useState<string>('');
   const [priorityWhatsappPerVenue, setPriorityWhatsappPerVenue] = useState<Record<string, string>>({});
   const [enabledWhatsAppSourceIds, setEnabledWhatsAppSourceIds] = useState<string[]>([]);
-  // Check "enviar mensagens" por instancia: desmarcado = so recebe (continua entrando no funil, nao aparece para responder)
-  const [sendEnabledBySource, setSendEnabledBySource] = useState<Record<string, boolean>>({});
+  // Instancias desabilitadas para ENVIO neste funil (continuam recebendo). O vinculo da instancia ao funil e feito na Origem.
+  const [sendDisabledSourceIds, setSendDisabledSourceIds] = useState<string[]>([]);
   
   // Custom Funnel Data: Packages, Payments, Tags & Custom Fields
   const [packageOptions, setPackageOptions] = useState<string[]>([]);
@@ -403,6 +404,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
       return !src || !src.funnelId || src.funnelId === activeFunnel.id;
     });
     setEnabledWhatsAppSourceIds(strictEnabledWa);
+    setSendDisabledSourceIds(getSendDisabledIds(activeFunnel));
 
     if (activeFunnel.stages && activeFunnel.stages.length > 0) {
       let loadedStages = [...activeFunnel.stages];
@@ -531,6 +533,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
         duplicateRuleConfig: {
           ...duplicateRuleConfig,
           _enabledWhatsAppSourceIds: enabledWhatsAppSourceIds,
+          _sendDisabledSourceIds: sendDisabledSourceIds,
           _disabledVenueIds: disabledVenueIds,
           _enableInboxStage: isEntryStageActive,
           _isEntryStageActive: isEntryStageActive,
@@ -540,6 +543,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
           ['_hiddenFieldKeys' as any]: hiddenFieldKeys,
         },
         enabledWhatsAppSourceIds,
+        sendDisabledSourceIds,
         stages: finalStages,
         stagesCount: finalStages.length,
         packageOptions,
@@ -551,33 +555,6 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
         priorityWhatsappPerVenue,
       } as any);
 
-      // Persistência de fontes WhatsApp habilitadas/desabilitadas para este funil no banco de dados
-      const targetVenues = (!activeFunnel || activeFunnel.venueId === 'all' || !activeFunnel.venueId)
-        ? venues.filter(v => v.active !== false)
-        : venues.filter(v => v.id === activeFunnel.venueId);
-      const targetVenueIds = new Set(targetVenues.map(v => v.id));
-
-      (sources || []).forEach(src => {
-        if (src.type === 'whatsapp_api' && (src.venueId && targetVenueIds.has(src.venueId))) {
-          // REGRA ARQUITETURAL 1:N: Se a origem já estiver vinculada a outro funil comercial, não pode ser capturada
-          if (src.funnelId && activeFunnel?.id && src.funnelId !== activeFunnel.id) {
-            return;
-          }
-          const isChecked = enabledWhatsAppSourceIds.includes(src.id);
-          const patch: Record<string, any> = {};
-          if (isChecked && src.funnelId !== activeFunnel.id) {
-            patch.funnelId = activeFunnel.id;
-            patch.status = 'active';
-          } else if (!isChecked && src.funnelId === activeFunnel.id) {
-            patch.funnelId = '';
-          }
-          const wantsSend = sendEnabledBySource[src.id];
-          if (isChecked && wantsSend !== undefined && wantsSend !== (src.sendEnabled !== false)) {
-            patch.sendEnabled = wantsSend;
-          }
-          if (Object.keys(patch).length > 0) updateSource(src.id, patch);
-        }
-      });
 
       setSaveSuccessMessage(true);
       if (onSaved) onSaved();
@@ -1581,7 +1558,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                         s => s.venueId === venue.id && (s.funnelId === activeFunnel.id || enabledWhatsAppSourceIds.includes(s.id))
                       );
                       const venueWhatsappSources = (sources || []).filter(
-                        s => s.venueId === venue.id && (s.type === 'whatsapp_api' || (s as any).channelType === 'whatsapp' || s.name.toLowerCase().includes('whatsapp'))
+                        s => s.venueId === venue.id && s.type === 'whatsapp_api' && Boolean(activeFunnel?.id) && canSourceServeFunnel(s, activeFunnel!.id)
                       );
                       const venueLeadsCount = (leads || []).filter(
                         l => (l.funnelId === activeFunnel.id || l.funnelId === activeFunnel.name) && l.venueId === venue.id
@@ -1742,7 +1719,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                                 WhatsApps Vinculados ao Funil
                               </span>
                               <span style={{ fontSize: '0.60rem', color: 'var(--adm-text-muted)' }}>
-                                Marque para vincular. "Envia mensagens" liga/desliga o envio.
+                                Só liga/desliga o envio. O vínculo é feito em Origens.
                               </span>
                             </div>
 
@@ -1751,10 +1728,9 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                                 {(() => {
                                   return venueWhatsappSources.map(src => {
                                     const isOnline = isSourceOnline(src);
-                                    const isClaimedByOtherFunnel = Boolean(src.funnelId && activeFunnel?.id && src.funnelId !== activeFunnel.id);
-                                    const otherFunnel = isClaimedByOtherFunnel ? funnels.find(f => f.id === src.funnelId) : null;
-                                    const isEnabled = !isClaimedByOtherFunnel && (enabledWhatsAppSourceIds.includes(src.id) || (src.funnelId === activeFunnel.id));
-                                    const canSend = sendEnabledBySource[src.id] ?? (src.sendEnabled !== false);
+                                    const isOrigin = src.funnelId === activeFunnel?.id; // origem = onde as mensagens entram; as demais so enviam
+                                    const isEnabled = true; // listada = atende este funil
+                                    const canSend = !sendDisabledSourceIds.includes(src.id);
                                     const rawPhone = src.whatsappInstanceId || (src.configuration && (src.configuration.connectedPhone || src.configuration.targetPhone)) || '';
                                     const phoneDisplay = rawPhone ? formatPhone(rawPhone) : null;
 
@@ -1782,32 +1758,6 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                                         }}
                                       >
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
-                                          {/* Checkbox de ativação no funil com trava 1:N */}
-                                          <input
-                                            type="checkbox"
-                                            checked={isEnabled}
-                                            disabled={isClaimedByOtherFunnel}
-                                            onChange={(e) => {
-                                              if (isClaimedByOtherFunnel) return;
-                                              const checked = e.target.checked;
-                                              setEnabledWhatsAppSourceIds(prev => {
-                                                if (checked) {
-                                                  return [...new Set([...prev, src.id])];
-                                                } else {
-                                                  return prev.filter(id => id !== src.id);
-                                                }
-                                              });
-                                            }}
-                                            title={isClaimedByOtherFunnel ? `Esta origem já está vinculada exclusivamente ao funil "${otherFunnel?.name || 'Outro Funil'}" (1:N)` : "Ativar/Desativar este WhatsApp neste funil"}
-                                            style={{
-                                              width: '15px',
-                                              height: '15px',
-                                              cursor: isClaimedByOtherFunnel ? 'not-allowed' : 'pointer',
-                                              accentColor: 'var(--adm-accent, #3B82F6)',
-                                              flexShrink: 0,
-                                            }}
-                                          />
-
                                           <SafeAvatar name={src.name || 'WhatsApp'} src={(src as any).avatarUrl || (src.configuration && src.configuration.connectedAvatar)} size={24} />
                                           <div style={{ minWidth: 0 }}>
                                             <div style={{ 
@@ -1825,11 +1775,9 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                                                 {phoneDisplay}
                                               </div>
                                             )}
-                                            {isClaimedByOtherFunnel && (
-                                              <div style={{ fontSize: '0.60rem', color: '#D4AF37', fontWeight: 600 }}>
-                                                Exclusivo: {otherFunnel?.name || 'Outro Funil'}
-                                              </div>
-                                            )}
+                                            <div style={{ fontSize: '0.60rem', color: isOrigin ? '#10B981' : '#D4AF37', fontWeight: 600 }}>
+                                              {isOrigin ? 'Origem deste funil (recebe e envia)' : 'Compartilhado (envia neste funil)'}
+                                            </div>
                                           </div>
                                         </div>
 
@@ -1841,13 +1789,13 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                                           )}
                                           {isEnabled ? (
                                             <label
-                                              title="Desmarque para este número apenas RECEBER mensagens (continuam entrando no funil, mas ele não aparece para responder o cliente)"
+                                              title="Desmarque para este número não responder clientes neste funil (as mensagens que ele recebe continuam entrando)"
                                               style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', cursor: 'pointer', fontSize: '0.58rem', fontWeight: 700, color: canSend ? '#10B981' : '#F59E0B' }}
                                             >
                                               <input
                                                 type="checkbox"
                                                 checked={canSend}
-                                                onChange={(e) => setSendEnabledBySource(prev => ({ ...prev, [src.id]: e.target.checked }))}
+                                                onChange={(e) => setSendDisabledSourceIds(prev => (e.target.checked ? prev.filter(id => id !== src.id) : [...new Set([...prev, src.id])]))}
                                                 style={{ width: '13px', height: '13px', accentColor: '#10B981', cursor: 'pointer' }}
                                               />
                                               {canSend ? 'Envia mensagens' : 'Só recebe'}
@@ -1865,7 +1813,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                               </div>
                             ) : (
                               <div style={{ fontSize: '0.65rem', color: 'var(--adm-text-muted)' }}>
-                                Sem instâncias WhatsApp vinculadas a esta unidade.
+                                Nenhum WhatsApp atende este funil nesta unidade. Em Origens, escolha este funil como origem ou como funil de envio.
                               </div>
                             )}
                           </div>

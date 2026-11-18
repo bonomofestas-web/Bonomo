@@ -1,18 +1,29 @@
 import type { LeadActivity } from '../types/admin';
 
 // Regras de escolha do WhatsApp (instancia) para responder um lead, contrato ou cliente.
-//  0. Uma instancia pertence a um unico funil; o check "enviar mensagens" (sendEnabled) liga/desliga o envio.
-//  1. Disponiveis = instancias WhatsApp do funil ATUAL do card, com envio habilitado.
+//  0. A instancia tem UM funil de origem (onde recebe) e, na Origem, pode ser autorizada a enviar em outros funis (esteiras).
+//     No funil so se liga/desliga o envio de cada numero.
+//  1. Disponiveis = instancias que atendem o funil ATUAL do card e estao habilitadas para envio nele.
 //  2. Recomendada: (a) escolha manual, (b) chip da ultima mensagem enviada pelo sistema, (c) origem do lead/contrato,
 //     (d) primeiro chip do funil com envio habilitado. Sempre entre as disponiveis.
 //  3. Chip desconectado nunca e trocado sozinho (a tela bloqueia e avisa).
 
-interface SenderLike { id: string; type?: string; funnelId?: string; sendEnabled?: boolean }
+interface SenderLike { id: string; type?: string; funnelId?: string; configuration?: any }
 
-/** Instancias WhatsApp do funil, com envio habilitado (ordem de cadastro preservada). */
-export function funnelSenders<T extends SenderLike>(sources: T[], funnelId: string | undefined, usable: (s: T) => boolean): T[] {
-  if (!funnelId) return [];
-  return sources.filter(s => s.type === 'whatsapp_api' && s.funnelId === funnelId && s.sendEnabled !== false && usable(s));
+/** Ids das instancias DESABILITADAS para envio dentro do funil (o funil so liga/desliga o envio de cada numero). */
+export const getSendDisabledIds = (funnel?: any): string[] =>
+  (funnel?.sendDisabledSourceIds || funnel?.duplicateRuleConfig?._sendDisabledSourceIds || []) as string[];
+
+/** A instancia atende o funil? Funil de origem (onde recebe) ou um dos funis marcados na Origem para tambem enviar. */
+export const canSourceServeFunnel = (s: SenderLike, funnelId: string): boolean =>
+  s.funnelId === funnelId ||
+  (Array.isArray(s.configuration?.senderFunnelIds) && (s.configuration.senderFunnelIds as string[]).includes(funnelId));
+
+/** Instancias WhatsApp que atendem o funil e estao habilitadas para envio nele (ordem de cadastro preservada). */
+export function funnelSenders<T extends SenderLike>(sources: T[], funnel: { id: string } | undefined, usable: (s: T) => boolean): T[] {
+  if (!funnel?.id) return [];
+  const disabled = getSendDisabledIds(funnel);
+  return sources.filter(s => s.type === 'whatsapp_api' && usable(s) && canSourceServeFunnel(s, funnel.id) && !disabled.includes(s.id));
 }
 
 const SENT_BY_PHONE = 'whatsapp_mobile';

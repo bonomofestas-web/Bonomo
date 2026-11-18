@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { ChevronDown, ChevronRight, ShieldCheck, AlertTriangle } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
+import { canSourceServeFunnel, getSendDisabledIds } from '../../utils/senderResolver';
 
 /**
  * Saude das origens (somente leitura, master/gerencia/dev): onde as instancias WhatsApp estao ligadas e o que foge da regra
@@ -18,7 +19,8 @@ export const SourcesHealthPanel: React.FC = () => {
     const tokenOf = (s: any) => String(s.whatsappInstanceId || s.configuration?.token || s.configuration?.instanceToken || s.configuration?.instanceKey || '').trim();
 
     const withoutFunnel = wa.filter(s => !s.funnelId);
-    const receiveOnly = wa.filter(s => s.funnelId && s.sendEnabled === false);
+    // "Somente recebe": instancia desabilitada para envio em pelo menos um funil que ela atende
+    const receiveOnly = wa.filter(s => funnels.some(f => canSourceServeFunnel(s, f.id) && getSendDisabledIds(f).includes(s.id)));
 
     const byToken = new Map<string, string[]>();
     wa.forEach(s => { const t = tokenOf(s); if (t) byToken.set(t, [...(byToken.get(t) || []), s.name]); });
@@ -26,8 +28,8 @@ export const SourcesHealthPanel: React.FC = () => {
 
     // Funis comerciais que recebem WhatsApp mas nenhum numero habilitado para responder
     const funnelsWithoutSender = funnels
-      .filter(f => !f.isPostSale && wa.some(s => s.funnelId === f.id))
-      .filter(f => !wa.some(s => s.funnelId === f.id && s.sendEnabled !== false));
+      .filter(f => !f.isPostSale && wa.some(s => canSourceServeFunnel(s, f.id)))
+      .filter(f => !wa.some(s => canSourceServeFunnel(s, f.id) && !getSendDisabledIds(f).includes(s.id)));
 
     const sourceIds = new Set((sources || []).map(s => s.id));
     const leadsWithoutSource = leads.filter(l => !l.isClient && !l.sourceId).length;
@@ -69,7 +71,7 @@ export const SourcesHealthPanel: React.FC = () => {
           {row('Instâncias sem funil (recebem sem destino)', report.withoutFunnel.length === 0 ? '0' : report.withoutFunnel.map(s => s.name).join(', '), report.withoutFunnel.length > 0)}
           {row('Mesma instância em mais de uma origem', report.duplicated.length === 0 ? '0' : report.duplicated.map(n => n.join(' + ')).join(' | '), report.duplicated.length > 0)}
           {row('Funis que recebem WhatsApp mas nenhum número envia', report.funnelsWithoutSender.length === 0 ? '0' : report.funnelsWithoutSender.map(f => f.name).join(', '), report.funnelsWithoutSender.length > 0)}
-          {row('Instâncias "somente recebe"', report.receiveOnly.length === 0 ? '0' : report.receiveOnly.map(s => `${s.name} (${report.funnelName(s.funnelId)})`).join(', '))}
+          {row('Instâncias desabilitadas para envio em algum funil', report.receiveOnly.length === 0 ? '0' : report.receiveOnly.map(s => s.name).join(', '))}
           {row('Leads sem origem', report.leadsWithoutSource)}
           {row('Leads apontando para origem que não existe mais', report.orphanSource, report.orphanSource > 0)}
         </div>

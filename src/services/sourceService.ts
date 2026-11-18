@@ -55,7 +55,6 @@ export const sourceService = {
           type: (isSystemReferral ? 'referral' : row.type) as Source['type'],
           funnelId: row.funnel_id,
           whatsappInstanceId: isSystemReferral ? undefined : (row.whatsapp_instance_id || undefined),
-          sendEnabled: row.send_enabled !== false,
           status: (row.status as 'active' | 'inactive') || 'active',
           slug: row.slug || undefined,
           configuration: isSystemReferral ? { ...(row.configuration || {}), systemManaged: true } : (row.configuration || {}),
@@ -146,8 +145,6 @@ export const sourceService = {
         slug: effectiveType === 'form' && source.slug ? source.slug.trim().toLowerCase() : null,
         configuration: effectiveConfig,
         updated_at: new Date().toISOString(),
-        // So envia a coluna quando definida (banco sem a migration send_enabled continua salvando origens)
-        ...(source.sendEnabled !== undefined ? { send_enabled: source.sendEnabled } : {}),
       };
 
       let { data, error } = await supabase

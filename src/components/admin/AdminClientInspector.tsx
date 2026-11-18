@@ -402,12 +402,12 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
   };
 
   // WhatsApp Sender Selection para Pós-Venda
-  // Regra: so instancias do FUNIL atual do cliente com envio habilitado (cliente sem funil: por casa, respeitando o check de envio)
+  // Regra: so instancias que atendem o FUNIL atual do cliente e estao habilitadas para envio nele (cliente sem funil: por casa)
   const connectedSenderSources = useMemo(() => {
     const base = (sources || []).filter(s => s.type === 'whatsapp_api' && s.status === 'active' && ((s.configuration as any)?.connectedPhone || s.whatsappInstanceId));
     const funnelId = (client as any)?.funnelId as string | undefined;
-    return funnelId ? funnelSenders(base, funnelId, () => true) : base.filter(s => s.sendEnabled !== false);
-  }, [sources, (client as any)?.funnelId]);
+    return funnelId ? funnelSenders(base, funnels.find(f => f.id === funnelId) || { id: funnelId }, () => true) : base;
+  }, [sources, funnels, (client as any)?.funnelId]);
 
   const [selectedSenderSourceId, setSelectedSenderSourceId] = useState<string>('');
 
