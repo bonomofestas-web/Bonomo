@@ -23,6 +23,8 @@ import { toast } from 'sonner';
 import type { Client, ClientStage, CommercialFunnel } from '../../types/admin';
 
 interface AdminPostSaleKanbanViewProps {
+  initialClientId?: string | null;
+  onClientOpened?: () => void;
   initialFunnelId?: string | null;
   onSelectFunnel?: (funnelId: string | null) => void;
   onOpenDebutanteApp?: (slug: string) => void;
@@ -274,6 +276,8 @@ const getClientMatchedColumnId = (
 
 export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = ({
   initialFunnelId = null,
+  initialClientId = null,
+  onClientOpened,
   onSelectFunnel,
   onOpenDebutanteApp,
 }) => {
@@ -859,7 +863,7 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
   // Filtragem completa e ordenação dos clientes
   const filteredClients = useMemo(() => {
     let list = allClients.filter(client => {
-      if ((client as any).isRemovedFromFunnel) return false;
+      if ((client as any).isRemovedFromFunnel || client.stage === 'archived') return false;
 
       // 0. Funil Vinculado e Unidades (Isolamento Estrito de Funis de Pós-Venda)
       if (currentFunnel) {
@@ -1061,6 +1065,14 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
       setInspectorClientId(null);
     }
   }, [inspectorClientId]);
+
+  // Abertura direta de um contrato/cliente (busca global, tela de Contratos)
+  useEffect(() => {
+    if (initialClientId) {
+      setInspectorClientId(initialClientId);
+      onClientOpened?.();
+    }
+  }, [initialClientId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (isSettingsOpen && (activeSettingsFunnelId || currentFunnel?.id || postSaleFunnels[0]?.id)) {
     return (

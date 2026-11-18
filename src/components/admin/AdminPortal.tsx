@@ -254,6 +254,10 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     });
   };
 
+  // Abertura direta de contrato (documento) e de contrato na esteira (cliente no funil de pos-venda)
+  const [openContractId, setOpenContractId] = useState<string | null>(null);
+  const [openClientId, setOpenClientId] = useState<string | null>(null);
+
   const handleSelectTab = (tab: AdminTabType, funnelId?: string | null) => {
     setActiveTab(tab);
     try {
@@ -780,10 +784,13 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               setCrmOpenLeadId(leadId);
               handleSelectTab('crm', funnelId);
             }}
-            onOpenContractKanban={(_contractId, funnelId) => {
+            onOpenContractKanban={(_contractId, funnelId, clientId) => {
               if (funnelId) setActiveFunnelId(funnelId);
+              if (clientId) setOpenClientId(clientId);
               handleSelectTab('post-sale-crm', funnelId);
             }}
+            initialContractId={openContractId}
+            onInitialContractOpened={() => setOpenContractId(null)}
           />
         );
       case 'followups':
@@ -816,6 +823,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       case 'post-sale-crm':
         return (
           <AdminPostSaleKanbanView
+            initialClientId={openClientId}
+            onClientOpened={() => setOpenClientId(null)}
             initialFunnelId={activeFunnelId}
             onSelectFunnel={(id) => {
               setActiveFunnelId(id);
@@ -1076,7 +1085,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               else if (activeTab === 'crm') { category = 'Comercial'; title = activeFunnel ? `Funil • ${activeFunnel.name}` : 'Funil Comercial'; }
               else if (activeTab === 'dashboard') { category = 'Comercial'; title = 'Dashboard'; }
               else if (activeTab === 'contracts') { category = 'Pós-Venda'; title = 'Central de Contratos'; }
-              else if (activeTab === 'whatsapp') { category = 'Ferramentas'; title = 'WhatsApp'; }
+              else if (activeTab === 'whatsapp') { category = 'Ferramentas'; title = 'Mensagens'; }
               else if (activeTab === 'quick-messages') { category = 'Ferramentas'; title = 'Mensagens Rápidas'; }
               else if (activeTab === 'followups') { category = 'Ferramentas'; title = 'Central de Tarefas'; }
               else if (activeTab === 'post-sale-crm') { category = 'Pós-Venda'; title = 'Funis de Pós-Venda'; }
@@ -1334,6 +1343,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               activeFunnelId={activeFunnelId}
               onNavigateTab={(tab, funnelId, params) => {
                 if (funnelId) setActiveFunnelId(funnelId);
+                if (params?.contractId) setOpenContractId(params.contractId);
+                if (params?.clientId) setOpenClientId(params.clientId);
                 handleSelectTab(tab, funnelId);
                 if (tab === 'whatsapp' && params?.phone) {
                   setActiveWhatsAppSearchQuery(params.phone);

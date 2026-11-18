@@ -314,6 +314,67 @@ export const contractService = {
         notes: params.notes || '',
       };
 
+      // Idempotencia por lead de origem: se ja existe contrato pendente/rejeitado do mesmo lead
+      // (ex.: criado no ganho e completado no fechamento com anexos), atualiza em vez de duplicar.
+      const originLead = payload.origin_lead_id as string | null;
+      if (originLead) {
+        const { data: existing } = await supabase
+          .from('contracts')
+          .select('*')
+          .eq('master_id', params.masterId)
+          .eq('origin_lead_id', originLead)
+          .in('approval_status', ['pending_approval', 'rejected'])
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (existing?.id) {
+          const update: Record<string, any> = { ...payload };
+          delete update.master_id;
+          delete update.contract_code;
+          // Nao sobrescreve com vazio o que ja foi preenchido
+          if (!params.handoverNotes) delete update.handover_notes;
+          if (!params.contractFileUrl) delete update.contract_file_url;
+          if (!params.paymentFileUrl) delete update.payment_file_url;
+          if (!params.attachments || params.attachments.length === 0) delete update.attachments;
+          if (!params.clientId) delete update.client_id;
+          if (!params.commercialFieldsSnapshot) delete update.commercial_fields_snapshot;
+          update.approval_status = 'pending_approval';
+          update.rejection_reason = null;
+          update.updated_at = new Date().toISOString();
+
+          const { data: updated, error: updErr } = await supabase
+            .from('contracts')
+            .update(update)
+            .eq('id', existing.id)
+            .eq('master_id', params.masterId)
+            .select(`*, contact:contacts(*), venue:venues(id, name)`)
+            .single();
+          if (updErr || !updated) {
+            throw new Error(updErr?.message || 'Falha ao atualizar contrato existente.');
+          }
+          // Reenvio apos negativa: encerra o modo "alteracao contratual" do lead
+          if (existing.approval_status === 'rejected') {
+            try {
+              const { data: ld } = await supabase
+                .from('leads')
+                .select('custom_field_values')
+                .eq('id', originLead)
+                .eq('master_id', params.masterId)
+                .maybeSingle();
+              const cfv = { ...(ld?.custom_field_values || {}) } as Record<string, any>;
+              if (cfv.contract_rejection) {
+                delete cfv.contract_rejection;
+                await supabase.from('leads').update({ custom_field_values: cfv }).eq('id', originLead).eq('master_id', params.masterId);
+              }
+            } catch (e) {
+              console.warn('[contractService.createContract] Aviso ao limpar alteracao contratual:', e);
+            }
+          }
+          return mapRowToContract(updated);
+        }
+      }
+
       const { data, error } = await supabase
         .from('contracts')
         .insert(payload)
@@ -529,10 +590,31 @@ export const contractService = {
           .map(f => f.id);
       }
 
+      // 3b. Congela a jornada do lead no contrato (snapshot imutavel: etapas e tempo em cada uma)
+      let frozenSnapshot: Record<string, any> = { ...(contractRow.commercial_fields_snapshot || {}) };
+      const journeyLeadId = contractRow.origin_lead_id || contractRow.lead_id;
+      if (journeyLeadId && !frozenSnapshot.journey) {
+        const { data: hist } = await supabase
+          .from('lead_stage_history')
+          .select('stage_id, stage_name, funnel_id, entered_at, left_at, moved_by_name')
+          .eq('lead_id', journeyLeadId)
+          .eq('master_id', params.masterId)
+          .order('entered_at', { ascending: true });
+        if (hist && hist.length > 0) {
+          frozenSnapshot = {
+            ...frozenSnapshot,
+            journey: hist,
+            journeyTotalMs: Date.now() - new Date(hist[0].entered_at as string).getTime(),
+            journeyFrozenAt: new Date().toISOString(),
+          };
+        }
+      }
+
       // 4. Atualiza o status do contrato para 'approved' com snapshot do aprovador
       const { data: updated, error: errUpdate } = await supabase
         .from('contracts')
         .update({
+          commercial_fields_snapshot: frozenSnapshot,
           approval_status: 'approved',
           approved_by: params.approverUser.id && isUuid(params.approverUser.id) ? params.approverUser.id : null,
           approved_by_name: params.approverUser.name,
@@ -583,6 +665,43 @@ export const contractService = {
             .from('contract_funnel_placements')
             .upsert(placementInserts, { onConflict: 'contract_id,funnel_id' });
         }
+
+        // 5b. Cada funil de pos-venda e um setor independente: garante um card (client) por funil,
+        // ligado ao mesmo lead de origem, na primeira etapa do respectivo funil.
+        try {
+          const clientId = contractRow.client_id as string | null;
+          const originLeadId = contractRow.origin_lead_id as string | null;
+          let baseClient: Record<string, any> | null = null;
+          if (clientId) {
+            const { data: c } = await supabase.from('clients').select('*').eq('id', clientId).eq('master_id', params.masterId).maybeSingle();
+            baseClient = c || null;
+          }
+          if (baseClient) {
+            const leadKey = originLeadId || baseClient.commercial_lead_id || null;
+            for (const funnel of funnels || []) {
+              if (baseClient.funnel_id === funnel.id) continue;
+              let existsQuery = supabase.from('clients').select('id').eq('master_id', params.masterId).eq('funnel_id', funnel.id);
+              existsQuery = leadKey ? existsQuery.eq('commercial_lead_id', leadKey) : existsQuery.eq('id', '00000000-0000-0000-0000-000000000000');
+              const { data: already } = await existsQuery.limit(1).maybeSingle();
+              if (already?.id) continue;
+              const firstStage = Array.isArray(funnel.stages) && funnel.stages.length > 0 ? funnel.stages[0].id : 'onboarding';
+              const copy: Record<string, any> = { ...baseClient };
+              delete copy.migrated_to_contract_id;
+              delete copy.migrated_to_contact_id;
+              delete copy.migrated_at;
+              copy.id = generateUuid();
+              copy.code = `${baseClient.code || 'CLI'}-${String(funnel.id).slice(0, 4).toUpperCase()}`;
+              copy.funnel_id = funnel.id;
+              copy.stage = firstStage;
+              copy.created_at = new Date().toISOString();
+              copy.updated_at = new Date().toISOString();
+              const { error: cErr } = await supabase.from('clients').insert(copy);
+              if (cErr) console.warn('[approveContract] Aviso ao criar card do funil setorial:', cErr.message);
+            }
+          }
+        } catch (siblingErr) {
+          console.warn('[approveContract] Aviso ao criar cards setoriais:', siblingErr);
+        }
       }
 
       return {
@@ -632,6 +751,53 @@ export const contractService = {
         return { success: false, message: error.message };
       }
 
+      // 1b. Devolve o lead para a etapa anterior ao ganho (tela de alteracao contratual) e arquiva o client pre-criado
+      if (contract?.origin_lead_id && isUuid(contract.origin_lead_id)) {
+        try {
+          const { data: lead } = await supabase
+            .from('leads')
+            .select('id, stage, funnel_id, custom_field_values')
+            .eq('id', contract.origin_lead_id)
+            .eq('master_id', params.masterId)
+            .maybeSingle();
+          if (lead) {
+            let targetStage: string | undefined;
+            if (lead.funnel_id) {
+              const { data: funnel } = await supabase
+                .from('commercial_funnels')
+                .select('stages')
+                .eq('id', lead.funnel_id)
+                .maybeSingle();
+              const stages: Array<{ id: string; isWon?: boolean; isLoss?: boolean }> = Array.isArray(funnel?.stages) ? funnel!.stages : [];
+              const wonIdx = stages.findIndex(s => s.isWon);
+              const before = (wonIdx > 0 ? stages.slice(0, wonIdx) : stages).filter(s => !s.isLoss && !s.isWon);
+              targetStage = before.length > 0 ? before[before.length - 1].id : undefined;
+            }
+            const rejection = {
+              contractId: params.contractId,
+              contractCode: contract.contract_code,
+              reason: params.rejectionReason.trim(),
+              rejectedBy: params.approverUser.name,
+              rejectedByRole: params.approverUser.role,
+              rejectedAt: new Date().toISOString(),
+              deadline: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+            };
+            const leadUpdate: Record<string, any> = {
+              custom_field_values: { ...(lead.custom_field_values || {}), contract_rejection: rejection },
+            };
+            if (targetStage) leadUpdate.stage = targetStage;
+            await supabase.from('leads').update(leadUpdate).eq('id', lead.id).eq('master_id', params.masterId);
+          }
+          await supabase
+            .from('clients')
+            .update({ stage: 'archived' })
+            .eq('commercial_lead_id', contract.origin_lead_id)
+            .eq('master_id', params.masterId);
+        } catch (leadErr) {
+          console.warn('[contractService.rejectContract] Aviso ao devolver lead ao funil comercial:', leadErr);
+        }
+      }
+
       // 2. Se o contrato existir, gera tarefa prioritária para o Closer via taskService blindado
       if (contract) {
         const dueDate = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0];
@@ -643,7 +809,7 @@ export const contractService = {
             leadId: contract.origin_lead_id && isUuid(contract.origin_lead_id) ? contract.origin_lead_id : undefined,
             masterId: params.masterId,
             title: `Ajustar Contrato ${contract.contract_code}: ${params.rejectionReason.trim().slice(0, 60)}`,
-            description: `A gerência solicitou revisão no contrato ${contract.contract_code} (${contract.event_title || ''}).\nMotivo do apontamento: ${params.rejectionReason.trim()}\nDevolvido por: ${params.approverUser.name}.`,
+            description: `A gerência negou o contrato ${contract.contract_code} (${contract.event_title || ''}).\nOrientações de quem negou: ${params.rejectionReason.trim()}\nDevolvido por: ${params.approverUser.name} (${params.approverUser.role}).\nPrazo: 24h. Ajuste os dados na tela de Alteração Contratual do lead e reenvie para aprovação.`,
             priority: 'urgent',
             status: 'todo',
             dueDate,
@@ -664,6 +830,113 @@ export const contractService = {
       return { success: true };
     } catch (err: any) {
       return { success: false, message: err.message };
+    }
+  },
+
+  /**
+   * Cancela 100% um contrato aprovado: sai de todos os funis vinculados (remove placements)
+   * e arquiva o client. O contrato e o snapshot permanecem (imutabilidade). Somente gerente/master.
+   */
+  async cancelContract(params: {
+    contractId: string;
+    masterId: string;
+    reason: string;
+    actor: { id: string; name: string; role: string; commercialRole?: string };
+  }): Promise<{ success: boolean; message?: string }> {
+    if (!isSupabaseConfigured || !params.contractId || !params.masterId) {
+      return { success: false, message: 'Parâmetros inválidos.' };
+    }
+    const roles = [params.actor.role, params.actor.commercialRole].map(r => (r || '').toLowerCase());
+    const allowed = roles.some(r => ['master', 'gerente_geral', 'gerente_comercial'].includes(r));
+    if (!allowed) {
+      return { success: false, message: 'Somente gerente ou master pode cancelar contratos.' };
+    }
+    if (!params.reason.trim()) {
+      return { success: false, message: 'Informe o motivo do cancelamento.' };
+    }
+    try {
+      const { data: contract } = await supabase
+        .from('contracts')
+        .select('id, client_id, origin_lead_id, notes')
+        .eq('id', params.contractId)
+        .eq('master_id', params.masterId)
+        .maybeSingle();
+      if (!contract) return { success: false, message: 'Contrato não encontrado.' };
+
+      const stamp = new Date().toLocaleString('pt-BR');
+      const note = `[Cancelado em ${stamp} por ${params.actor.name}] ${params.reason.trim()}`;
+      const { error } = await supabase
+        .from('contracts')
+        .update({
+          approval_status: 'canceled',
+          rejection_reason: params.reason.trim(),
+          notes: contract.notes ? `${contract.notes}\n${note}` : note,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', params.contractId)
+        .eq('master_id', params.masterId);
+      if (error) return { success: false, message: error.message };
+
+      // Sai de todos os funis vinculados
+      const { error: plErr } = await supabase
+        .from('contract_funnel_placements')
+        .delete()
+        .eq('contract_id', params.contractId)
+        .eq('master_id', params.masterId);
+      if (plErr) console.warn('[contractService.cancelContract] Aviso ao remover placements:', plErr);
+
+      if (contract.client_id) {
+        await supabase
+          .from('clients')
+          .update({ stage: 'archived' })
+          .eq('id', contract.client_id)
+          .eq('master_id', params.masterId);
+      }
+      // Tambem arquiva os cards irmaos (um por funil setorial) do mesmo lead de origem
+      if (contract.origin_lead_id) {
+        await supabase
+          .from('clients')
+          .update({ stage: 'archived' })
+          .eq('commercial_lead_id', contract.origin_lead_id)
+          .eq('master_id', params.masterId);
+      }
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, message: err.message };
+    }
+  },
+
+  /**
+   * Mantem a esteira (contract_funnel_placements) alinhada ao card movido no Kanban do funil:
+   * cada funil atualiza apenas a propria colocacao.
+   */
+  async syncPlacementFromClient(params: {
+    clientId: string;
+    commercialLeadId?: string | null;
+    funnelId?: string | null;
+    stageId: string;
+    masterId: string;
+  }): Promise<void> {
+    if (!isSupabaseConfigured || !params.masterId || !params.funnelId || !isUuid(params.funnelId)) return;
+    try {
+      let q = supabase.from('contracts').select('id').eq('master_id', params.masterId).neq('approval_status', 'canceled');
+      q = params.commercialLeadId && isUuid(params.commercialLeadId)
+        ? q.or(`client_id.eq.${params.clientId},origin_lead_id.eq.${params.commercialLeadId}`)
+        : q.eq('client_id', params.clientId);
+      const { data: ctrs } = await q;
+      const ids = (ctrs || []).map((c: any) => c.id as string);
+      if (ids.length === 0) return;
+      const { data: pls } = await supabase
+        .from('contract_funnel_placements')
+        .select('id')
+        .eq('master_id', params.masterId)
+        .eq('funnel_id', params.funnelId)
+        .in('contract_id', ids);
+      for (const p of pls || []) {
+        await contractService.updatePlacementStage(p.id as string, params.stageId, params.masterId);
+      }
+    } catch (err) {
+      console.warn('[syncPlacementFromClient] Aviso:', err);
     }
   },
 
@@ -857,6 +1130,38 @@ export const contractService = {
       }));
     } catch (err) {
       console.error('Exceção em getPlacementsByContract:', err);
+      return [];
+    }
+  },
+
+  /**
+   * Colocações (funis de pós-venda) do(s) contrato(s) ligados a um client legado.
+   * Sempre escopado por master_id.
+   */
+  async getPlacementsByClient(
+    clientId: string,
+    masterId: string
+  ): Promise<ContractFunnelPlacement[]> {
+    if (!isSupabaseConfigured || !clientId || !masterId) return [];
+    try {
+      // Cards irmaos (um por funil setorial) compartilham o lead de origem e o mesmo contrato
+      const { data: cli } = await supabase.from('clients').select('commercial_lead_id').eq('id', clientId).eq('master_id', masterId).maybeSingle();
+      const leadKey = cli?.commercial_lead_id as string | null | undefined;
+      let ctrQuery = supabase
+        .from('contracts')
+        .select('id')
+        .eq('master_id', masterId)
+        .neq('approval_status', 'canceled');
+      ctrQuery = leadKey && isUuid(leadKey)
+        ? ctrQuery.or(`client_id.eq.${clientId},origin_lead_id.eq.${leadKey}`)
+        : ctrQuery.eq('client_id', clientId);
+      const { data: ctrs } = await ctrQuery;
+      const ids = (ctrs || []).map((c: any) => c.id as string);
+      if (ids.length === 0) return [];
+      const lists = await Promise.all(ids.map(id => contractService.getPlacementsByContract(id, masterId)));
+      return lists.flat();
+    } catch (err) {
+      console.error('Exceção em getPlacementsByClient:', err);
       return [];
     }
   },

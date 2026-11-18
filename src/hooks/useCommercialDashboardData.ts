@@ -84,6 +84,8 @@ export interface CollaboratorRow {
   responseTarget: number | null; // meta individual, ou da unidade como fallback
   activeMinutes: number | null;  // soma (ultima - primeira atividade) por dia
   activeDays: number;
+  messages: number;      // mensagens enviadas na janela
+  conversations: number; // conversas distintas atendidas na janela
   deliveriesPrev: number;
   avgResponsePrev: number | null;
   goalDetail: string | null; // ex.: "R$ 12.000 de R$ 30.000"
@@ -237,6 +239,14 @@ export const useCommercialDashboardData = (selection: PeriodSelection): Commerci
   const goalYear = resolved.goalRange.start.getFullYear();
   const goalEndYear = resolved.goalRange.end.getFullYear();
 
+  // Tempo real: contrato criado/aprovado/cancelado (evento do AdminStateContext) refaz a busca das metas
+  const [realtimeTick, setRealtimeTick] = useState(0);
+  useEffect(() => {
+    const onChanged = () => setRealtimeTick(t => t + 1);
+    window.addEventListener('f5:contracts-changed', onChanged);
+    return () => window.removeEventListener('f5:contracts-changed', onChanged);
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     if (!masterId) {
@@ -252,10 +262,10 @@ export const useCommercialDashboardData = (selection: PeriodSelection): Commerci
       .catch(() => { if (!cancelled) setVenueGoals([]); })
       .finally(() => { if (!cancelled) setLoadingGoals(false); });
     return () => { cancelled = true; };
-  }, [masterId, goalYear, goalEndYear]);
+  }, [masterId, goalYear, goalEndYear, realtimeTick]);
 
   // Presenca: primeira e ultima atividade (lead_activities) de cada colaborador por dia, na janela atual.
-  const [presence, setPresence] = useState<Record<string, { minutes: number; days: number }>>({});
+  const [presence, setPresence] = useState<Record<string, { minutes: number; days: number; messages: number; conversations: number }>>({});
   const [loadingPresence, setLoadingPresence] = useState(true);
   const collabIdsKey = useMemo(
     () => collaborators.filter(c => c.active && (c.role === 'sdr' || c.role === 'closer')).map(c => c.id).sort().join(','),
@@ -687,6 +697,8 @@ export const useCommercialDashboardData = (selection: PeriodSelection): Commerci
         responseTarget: g?.responseTimeTargetMinutes || responseTarget,
         activeMinutes: presence[c.id]?.minutes ?? null,
         activeDays: presence[c.id]?.days ?? 0,
+        messages: presence[c.id]?.messages ?? 0,
+        conversations: presence[c.id]?.conversations ?? 0,
         deliveriesPrev,
         avgResponsePrev: mean(responsesPrev),
         goalDetail,

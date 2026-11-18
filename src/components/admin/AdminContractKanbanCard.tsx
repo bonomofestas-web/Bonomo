@@ -739,36 +739,6 @@ export const AdminContractKanbanCard: React.FC<AdminContractKanbanCardProps> = (
           </div>
         </div>
 
-        <button 
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onOpenWhatsApp && onOpenWhatsApp(client.id);
-          }} 
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            width: '26px',
-            height: '26px',
-            borderRadius: '6px',
-            background: 'rgba(16, 185, 129, 0.12)',
-            border: '1px solid rgba(16, 185, 129, 0.35)',
-            color: '#059669',
-            cursor: 'pointer',
-            transition: 'all 0.15s ease',
-            flexShrink: 0,
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = 'rgba(16, 185, 129, 0.22)';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = 'rgba(16, 185, 129, 0.12)';
-          }}
-          title="Abrir Atendimento no WhatsApp"
-        >
-          <MessageSquare size={13} color="#059669" />
-        </button>
       </div>
     </div>
   );

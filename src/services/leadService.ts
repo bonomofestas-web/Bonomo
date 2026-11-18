@@ -1112,6 +1112,65 @@ export const leadService = {
   },
 
   /**
+   * Jornada do lead: fecha a passagem aberta (left_at) e abre a nova etapa em lead_stage_history.
+   * Falhas (ex.: tabela ainda nao migrada) nunca bloqueiam a movimentacao do lead.
+   */
+  async recordStageChange(params: {
+    leadId: string;
+    masterId?: string;
+    funnelId?: string;
+    stageId: string;
+    stageName?: string;
+    movedById?: string;
+    movedByName?: string;
+  }): Promise<void> {
+    if (!isSupabaseConfigured || !isUuid(params.leadId) || !params.masterId || !isUuid(params.masterId)) return;
+    const nowIso = new Date().toISOString();
+    try {
+      await supabase
+        .from('lead_stage_history')
+        .update({ left_at: nowIso })
+        .eq('lead_id', params.leadId)
+        .eq('master_id', params.masterId)
+        .is('left_at', null);
+      await supabase.from('lead_stage_history').insert({
+        master_id: params.masterId,
+        lead_id: params.leadId,
+        funnel_id: params.funnelId && isUuid(params.funnelId) ? params.funnelId : null,
+        stage_id: params.stageId,
+        stage_name: params.stageName || null,
+        entered_at: nowIso,
+        moved_by_id: params.movedById && isUuid(params.movedById) ? params.movedById : null,
+        moved_by_name: params.movedByName || null,
+      });
+    } catch (err) {
+      console.warn('[leadService.recordStageChange] Aviso:', err);
+    }
+  },
+
+  /** Jornada do lead em ordem cronologica (escopada por master_id). */
+  async getStageHistory(leadId: string, masterId: string): Promise<Array<{
+    stageId: string; stageName?: string; funnelId?: string; enteredAt: string; leftAt?: string; movedByName?: string;
+  }>> {
+    if (!isSupabaseConfigured || !isUuid(leadId) || !masterId) return [];
+    const { data, error } = await supabase
+      .from('lead_stage_history')
+      .select('stage_id, stage_name, funnel_id, entered_at, left_at, moved_by_name')
+      .eq('lead_id', leadId)
+      .eq('master_id', masterId)
+      .order('entered_at', { ascending: true });
+    if (error || !data) return [];
+    return data.map((r: any) => ({
+      stageId: r.stage_id,
+      stageName: r.stage_name || undefined,
+      funnelId: r.funnel_id || undefined,
+      enteredAt: r.entered_at,
+      leftAt: r.left_at || undefined,
+      movedByName: r.moved_by_name || undefined,
+    }));
+  },
+
+  /**
    * Presenca por colaborador: soma, por dia, de (ultima - primeira) atividade em lead_activities.
    * `authorIds` ja vem escopado por Master (colaboradores do contexto). Paginado (1000/pagina, max. 60 paginas).
    */
@@ -1119,17 +1178,19 @@ export const leadService = {
     authorIds: string[],
     startISO: string,
     endISO: string
-  ): Promise<{ presence: Record<string, { minutes: number; days: number }>; truncated: boolean }> {
-    const presence: Record<string, { minutes: number; days: number }> = {};
+  ): Promise<{ presence: Record<string, { minutes: number; days: number; messages: number; conversations: number }>; truncated: boolean }> {
+    const presence: Record<string, { minutes: number; days: number; messages: number; conversations: number }> = {};
     if (!isSupabaseConfigured || authorIds.length === 0) return { presence, truncated: false };
     const PAGE = 1000;
     const MAX_PAGES = 60;
     const perDay = new Map<string, { first: number; last: number }>();
+    const msgCount = new Map<string, number>();
+    const convSets = new Map<string, Set<string>>();
     let truncated = false;
     for (let page = 0; page < MAX_PAGES; page++) {
       const { data, error } = await supabase
         .from('lead_activities')
-        .select('author_id,timestamp')
+        .select('author_id,timestamp,type,lead_id')
         .in('author_id', authorIds)
         .gte('timestamp', startISO)
         .lte('timestamp', endISO)
@@ -1144,16 +1205,29 @@ export const leadService = {
         const cur = perDay.get(key);
         if (!cur) perDay.set(key, { first: t, last: t });
         else { cur.first = Math.min(cur.first, t); cur.last = Math.max(cur.last, t); }
+        // Mensagens enviadas ao cliente (type 'contact') e conversas distintas atendidas
+        if (row.type === 'contact') {
+          msgCount.set(row.author_id as string, (msgCount.get(row.author_id as string) || 0) + 1);
+          if (row.lead_id) {
+            const set = convSets.get(row.author_id as string) || new Set<string>();
+            set.add(row.lead_id as string);
+            convSets.set(row.author_id as string, set);
+          }
+        }
       });
       if (rows.length < PAGE) break;
       if (page === MAX_PAGES - 1) truncated = true;
     }
     perDay.forEach((v, key) => {
       const id = key.split('|')[0];
-      const row = presence[id] || { minutes: 0, days: 0 };
+      const row = presence[id] || { minutes: 0, days: 0, messages: 0, conversations: 0 };
       row.minutes += (v.last - v.first) / 60000;
       row.days += 1;
       presence[id] = row;
+    });
+    Object.keys(presence).forEach(id => {
+      presence[id].messages = msgCount.get(id) || 0;
+      presence[id].conversations = convSets.get(id)?.size || 0;
     });
     return { presence, truncated };
   },

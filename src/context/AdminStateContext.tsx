@@ -505,6 +505,8 @@ export interface AdminContextType {
       payerAddress?: string;
       payerNeighborhood?: string;
       paymentTerms?: string;
+      promises?: string;
+      specialConditions?: { financeiro?: string; decoracao?: string; outros?: string };
     }
   ) => void;
   updateLeadData: (leadId: string, data: Partial<Lead>) => void;
@@ -728,6 +730,24 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   // Conjuntos de proteção anti-flicker para exclusões recentes
   const deletedDebutanteIdsRef = React.useRef<Set<string>>(new Set());
   const deletedLeadIdsRef = React.useRef<Set<string>>(new Set());
+  // Mudancas de etapa de cliente ainda em gravacao: o Realtime nao pode sobrescrever com o valor antigo (card "voltando")
+  const pendingClientStageRef = React.useRef<Map<string, string>>(new Map());
+  // Conversas de contrato (pos-venda) vivem em clients.activities: gravacao com debounce por cliente.
+  // Enquanto ha gravacao pendente, o Realtime nao pode substituir as atividades locais.
+  const clientChatPersistTimersRef = React.useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const persistClientChat = (clientId: string) => {
+    const timers = clientChatPersistTimersRef.current;
+    const prevTimer = timers.get(clientId);
+    if (prevTimer) clearTimeout(prevTimer);
+    timers.set(clientId, setTimeout(() => {
+      timers.delete(clientId);
+      const c = clientsRef.current.find(x => x.id === clientId);
+      if (!c) return;
+      const activeMaster = currentUserRef.current?.masterId || currentUserRef.current?.id;
+      clientService.upsert(c, c.masterId || activeMaster || undefined)
+        .catch(err => console.error('[persistClientChat] Falha ao gravar conversa do contrato:', err));
+    }, 700));
+  };
   const deletedTaskIdsRef = React.useRef<Set<string>>(new Set());
   const deletedCollabIdsRef = React.useRef<Set<string>>(new Set());
 
@@ -1979,11 +1999,33 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'clients' }, async () => {
         const activeMaster = currentUserRef.current?.masterId || currentUserRef.current?.id;
-        const updated = await clientService.getAll(activeMaster || undefined);
+        const fetched = await clientService.getAll(activeMaster || undefined);
+        // Preserva etapas ainda em gravacao (evita o card voltar para a entrada / animacao vai-e-volta)
+        const pending = pendingClientStageRef.current;
+        const chatPending = clientChatPersistTimersRef.current;
+        const localById = chatPending.size > 0 ? new Map(clientsRef.current.map(c => [c.id, c])) : null;
+        const updated = (pending.size === 0 && chatPending.size === 0)
+          ? fetched
+          : fetched.map(c => {
+              let next = c;
+              if (pending.has(c.id)) next = { ...next, stage: pending.get(c.id) as ClientStage };
+              // Conversa ainda nao gravada: mantem as atividades locais (evita a mensagem enviada sumir)
+              if (chatPending.has(c.id) && localById?.get(c.id)) {
+                next = { ...next, activities: (localById.get(c.id) as Client).activities };
+              }
+              return next;
+            });
         if (isMounted) {
           setClients(updated);
           safeLocalStorageSet(STORAGE_KEY_CLIENTS, JSON.stringify(updated));
         }
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'contracts' }, () => {
+        // Tempo real de contratos: telas (Contratos, Dashboard) refazem a busca silenciosamente
+        window.dispatchEvent(new CustomEvent('f5:contracts-changed'));
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'contract_funnel_placements' }, () => {
+        window.dispatchEvent(new CustomEvent('f5:contracts-changed'));
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'collaborators' }, async () => {
         const updated = await collaboratorService.getAll();
@@ -5190,7 +5232,31 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             activities: [newActivity, ...(c.activities || [])],
             updatedAt: new Date().toISOString().split('T')[0],
           };
-          clientService.upsert(mod);
+          if (pendingClientStageRef.current.get(id) !== stage) {
+            pendingClientStageRef.current.set(id, stage);
+            clientService.upsert(mod)
+              .then(() => {
+                // Alinha a esteira do contrato (somente a colocacao deste funil)
+                contractService.syncPlacementFromClient({
+                  clientId: id,
+                  commercialLeadId: c.commercialLeadId,
+                  funnelId: c.funnelId,
+                  stageId: stage,
+                  masterId: c.masterId || currentUserRef.current?.masterId || currentUserRef.current?.id || '',
+                });
+                // Mantem o valor otimista por um instante para o evento Realtime desta propria gravacao nao reverter
+                setTimeout(() => {
+                  if (pendingClientStageRef.current.get(id) === stage) pendingClientStageRef.current.delete(id);
+                }, 2500);
+              })
+              .catch(err => {
+                pendingClientStageRef.current.delete(id);
+                console.error('[updateClientStage] Falha ao gravar etapa:', err);
+                toast.error('Nao foi possivel salvar a mudanca de etapa. O card sera restaurado.');
+                const activeMaster = currentUserRef.current?.masterId || currentUserRef.current?.id;
+                clientService.getAll(activeMaster || undefined).then(fresh => setClients(fresh)).catch(() => {});
+              });
+          }
           return mod;
         }
         return c;
@@ -5789,6 +5855,19 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         console.error('❌ Erro ao atualizar etapa do lead no Supabase:', err);
       });
 
+      // Historico de etapas (jornada do lead): fecha a etapa anterior e abre a nova
+      if (finalStage !== targetLead?.stage || finalFunnelId !== targetLead?.funnelId) {
+        leadService.recordStageChange({
+          leadId,
+          masterId: targetLead?.masterId || scopedMasterId || undefined,
+          funnelId: finalFunnelId,
+          stageId: String(finalStage),
+          stageName: destStageConfig?.name,
+          movedById: authorId,
+          movedByName: author,
+        }).catch(() => {});
+      }
+
       leadService.addActivity(leadId, {
         leadId,
         timestamp: newActivity.timestamp,
@@ -5983,9 +6062,12 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             closerName: author,
             closerEmail: currentUser?.email || undefined,
             approvalStatus: 'pending_approval',
-            targetPosSaleFunnelIds: effectivePostSaleFunnelId ? [effectivePostSaleFunnelId] : [],
+            targetPosSaleFunnelIds: Array.from(new Set([...(effectivePostSaleFunnelId ? [effectivePostSaleFunnelId] : []), ...((destStageConfig?.triggers || []).filter(t => t.type === 'create_post_sale_client' && t.targetFunnelId).map(t => t.targetFunnelId as string))])),
             notes: targetLead.notes || '',
-          }).catch(cErr => console.error('❌ Erro ao criar contrato em moveLeadToStage:', cErr));
+          }).catch(cErr => {
+            console.error('❌ Erro ao criar contrato em moveLeadToStage:', cErr);
+            toast.error('Nao foi possivel registrar o contrato para aprovacao. Tente novamente ou avise o suporte.');
+          });
         }
       }
     }
@@ -6909,6 +6991,58 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           const isClient = Boolean(l.isClient || l.group === 'Pós-Venda' || (Array.isArray(l.tags) && l.tags.some(t => t.toLowerCase() === 'cliente')));
           return isSourcePostSale ? isClient : !isClient;
         });
+
+        // Conversa de CONTRATO (pos-venda): origem de pos-venda casa primeiro com o cliente pelo telefone
+        // (contratante ou pessoas vinculadas) e grava a mensagem em clients.activities.
+        if (isSourcePostSale) {
+          const matchedClient = clientsRef.current.find(c => {
+            if ((c as any).isRemovedFromFunnel || c.stage === 'archived') return false;
+            if (sourceMasterId && c.masterId && c.masterId !== sourceMasterId) return false;
+            if (tenantVenueIds.size > 0 && c.venueId && !tenantVenueIds.has(c.venueId)) return false;
+            if (c.payerPhone && isPhoneMatch(c.payerPhone, cleanPhone)) return true;
+            return Boolean((c.contacts || []).some((ct: any) => ct?.phone && isPhoneMatch(ct.phone, cleanPhone)));
+          });
+          if (matchedClient) {
+            const isAudioMsg = incoming.mediaType === 'audio' || incoming.text?.includes('🎵') || incoming.text?.toLowerCase().includes('voz');
+            const clientAct: LeadActivity = {
+              id: generateUuid(),
+              messageId: incoming.messageId,
+              quotedMessage: incoming.quotedMessage,
+              leadId: matchedClient.id,
+              timestamp: incoming.timestamp || new Date().toISOString(),
+              type: 'contact',
+              title: isFromMe
+                ? (isAudioMsg ? 'Mensagem de voz enviada (Celular/Web)' : 'Mensagem enviada via WhatsApp (Celular/Web)')
+                : (isAudioMsg ? 'Mensagem de voz recebida' : 'Mensagem recebida no WhatsApp'),
+              text: incoming.text,
+              mediaUrl: incoming.mediaUrl,
+              mediaType: incoming.mediaType,
+              authorName: isFromMe ? 'WhatsApp App / Web' : (effectiveSenderName || matchedClient.payerName || matchedClient.name || 'Cliente (WhatsApp)'),
+              authorId: isFromMe ? 'whatsapp_mobile' : 'lead',
+              authorAvatarUrl: isFromMe ? 'whatsapp_brand' : undefined,
+              status: isFromMe ? 'sent' : 'delivered',
+              metadata: {
+                messageId: incoming.messageId,
+                sourceId: matchedSource.id,
+                quotedMessage: incoming.quotedMessage,
+              },
+            } as LeadActivity;
+            const existingActs = ((matchedClient as any).activities || []) as LeadActivity[];
+            // Deduplica por messageId (mensagem enviada por nos ja foi registrada localmente)
+            const alreadyThere = incoming.messageId && existingActs.some(a => a.messageId === incoming.messageId);
+            if (!alreadyThere) {
+              updateLeadData(matchedClient.id, {
+                activities: mergeAndSortActivities(existingActs, [clientAct], matchedClient.id),
+                lastInteractionAt: clientAct.timestamp,
+                lastMessageDirection: isFromMe ? 'outgoing' : 'incoming',
+                lastMessageText: (clientAct.text || '').replace(/^\[media:[^\]]*\]\s*/i, '').trim().slice(0, 200),
+                lastMessageAt: clientAct.timestamp,
+                ...(!isFromMe ? { unreadCount: ((matchedClient as any).unreadCount || 0) + 1 } : {}),
+              } as Partial<Lead>);
+            }
+            return;
+          }
+        }
 
         // 1ª Prioridade: Buscar lead existente ESTRITAMENTE DENTRO DO FUNIL da origem receptora
         let matchedLead: Lead | null = null;
@@ -8377,6 +8511,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       payerAddress?: string;
       payerNeighborhood?: string;
       paymentTerms?: string;
+      promises?: string;
+      specialConditions?: { financeiro?: string; decoracao?: string; outros?: string };
     }
   ) => {
     const author = currentUser?.name || 'Administrador';
@@ -8882,7 +9018,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             contractFileUrl: finalContractFileUrl,
             paymentFileUrl: finalPaymentFileUrl,
             attachments: contractAttachments,
-            targetPosSaleFunnelIds: targetPostSaleFunnelId ? [targetPostSaleFunnelId] : [],
+            targetPosSaleFunnelIds: Array.from(new Set([...(targetPostSaleFunnelId ? [targetPostSaleFunnelId] : []), ...((wonStageInFunnel?.triggers || []).filter(t => t.type === 'create_post_sale_client' && t.targetFunnelId).map(t => t.targetFunnelId as string))])),
             sdrId: currentLead.sdrId || undefined,
             sdrName: currentLead.sdrName || 'Equipe Comercial',
             closerId: authorId || undefined,
@@ -8907,6 +9043,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
               profession: leadProfession,
               hasCreditCard: hasCard,
               closerNotes: closerNotes || '',
+              familyPromises: extraOptions?.promises || '',
+              specialConditions: extraOptions?.specialConditions || {},
               capturedAt: new Date().toISOString(),
             },
           }).then(createdContract => {
@@ -8915,6 +9053,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             }
           }).catch(err => {
             console.error('❌ Erro ao criar contrato oficial na venda:', err);
+            toast.error('Nao foi possivel registrar o contrato oficial. Verifique a conexao e tente novamente.');
           });
         }
       }
@@ -9446,6 +9585,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       });
       if (clientFound) {
         clientsRef.current = updated;
+        if (data.activities) persistClientChat(leadId);
       }
       return clientFound ? updated : prev;
     });
@@ -9515,6 +9655,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       });
       if (clientFound) {
         clientsRef.current = updated;
+        persistClientChat(leadId);
       }
       return clientFound ? updated : prev;
     });

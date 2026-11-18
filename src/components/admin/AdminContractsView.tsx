@@ -9,34 +9,53 @@ import {
 import { useAdminState } from '../../context/AdminStateContext';
 import { toast } from 'sonner';
 import { contractService } from '../../services/contractService';
+import { leadService } from '../../services/leadService';
 import { formatPhone } from '../../utils/phoneFormatter';
-import type { Contract, AdminTabType } from '../../types/admin';
+import { SafeAvatar } from './SafeAvatar';
+import type { Contract, AdminTabType, ContractFunnelPlacement } from '../../types/admin';
+
+// Cache em memoria por (master|aba|unidade|busca): evita lista vazia ao voltar para a tela
+const contractsListCache = new Map<string, Contract[]>();
 
 interface AdminContractsViewProps {
   onNavigateTab?: (tab: AdminTabType, params?: any) => void;
   onOpenLead?: (leadId: string, funnelId?: string) => void;
-  onOpenContractKanban?: (contractId: string, funnelId?: string) => void;
+  onOpenContractKanban?: (contractId: string, funnelId?: string, clientId?: string) => void;
+  initialContractId?: string | null;
+  onInitialContractOpened?: () => void;
 }
 
 export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
   onNavigateTab,
   onOpenLead,
-  onOpenContractKanban: _onOpenContractKanban,
+  onOpenContractKanban,
+  initialContractId,
+  onInitialContractOpened,
 }) => {
   const {
     currentUser,
     venues,
     funnels,
     theme,
+    collaborators,
   } = useAdminState();
 
   const isLight = theme === 'light';
 
+  // Foto do colaborador (SDR/Closer) pelo id; fallback por nome quando o contrato nao guarda o id
+  const collabAvatar = (id?: string | null, name?: string | null): string | undefined => {
+    const byId = id ? collaborators.find(c => c.id === id) : undefined;
+    const found = byId || (name ? collaborators.find(c => c.name === name) : undefined);
+    return found?.avatarUrl || undefined;
+  };
+
   const [activeTab, setActiveTab] = useState<'pending' | 'approved'>('pending');
-  const [contracts, setContracts] = useState<Contract[]>([]);
-  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedVenueFilter, setSelectedVenueFilter] = useState<string>('all');
+  const cacheKey = `${currentUser?.masterId || currentUser?.id || ''}|${activeTab}|${selectedVenueFilter}|${searchQuery.trim()}`;
+  // Lista inicial vem do cache (stale-while-revalidate): trocar de aba e voltar nao zera a tela
+  const [contracts, setContracts] = useState<Contract[]>(() => contractsListCache.get(cacheKey) || []);
+  const [loading, setLoading] = useState(() => !contractsListCache.has(cacheKey));
 
   // Drawer de Detalhes do Contrato
   const [selectedContract, setSelectedContract] = useState<Contract | null>(null);
@@ -53,7 +72,20 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
   const [rejectionReason, setRejectionReason] = useState('');
   const [isSubmittingRejection, setIsSubmittingRejection] = useState(false);
 
+  // Cancelamento 100% de contrato aprovado: somente gerente (geral/comercial) e master
+  const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
+  const [isSubmittingCancel, setIsSubmittingCancel] = useState(false);
+  const [contractPlacements, setContractPlacements] = useState<ContractFunnelPlacement[]>([]);
+
   const scopedMasterId = currentUser?.masterId || currentUser?.id || '00000000-0000-0000-0000-000000000001';
+
+  const canCancelContract = useMemo(() => {
+    if (!currentUser) return false;
+    const role = (currentUser.role || '').toLowerCase();
+    const commRole = ((currentUser as any).commercialRole || '').toLowerCase();
+    return ['master', 'gerente_geral', 'gerente_comercial'].some(r => r === role || r === commRole);
+  }, [currentUser]);
 
   // Permissão para homologar/rejeitar contratos (Gerência Comercial, Geral, Master ou Admin)
   const canApproveContract = useMemo(() => {
@@ -73,7 +105,9 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
   // Carrega contratos da aba atual
   const loadContracts = useCallback(async () => {
     if (!scopedMasterId) return;
-    setLoading(true);
+    const cached = contractsListCache.get(cacheKey);
+    if (cached) setContracts(cached);
+    else { setContracts([]); setLoading(true); }
     try {
       const venueIds = selectedVenueFilter === 'all'
         ? (currentUser?.role === 'master' ? undefined : currentUser?.venueIds)
@@ -87,17 +121,98 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
         limit: 100,
       });
 
+      contractsListCache.set(cacheKey, res);
       setContracts(res);
+      // Mantem o drawer aberto sincronizado com a versao mais recente
+      setSelectedContract(prev => (prev ? res.find(c => c.id === prev.id) || prev : prev));
     } catch (err) {
       console.error('[AdminContractsView] Erro ao carregar contratos:', err);
     } finally {
       setLoading(false);
     }
-  }, [scopedMasterId, activeTab, selectedVenueFilter, searchQuery, currentUser]);
+  }, [scopedMasterId, activeTab, selectedVenueFilter, searchQuery, currentUser, cacheKey]);
 
   useEffect(() => {
     loadContracts();
   }, [loadContracts]);
+
+  // Tempo real: o AdminStateContext dispara este evento quando contracts/placements mudam
+  useEffect(() => {
+    const onChanged = () => { loadContracts(); };
+    window.addEventListener('f5:contracts-changed', onChanged);
+    return () => window.removeEventListener('f5:contracts-changed', onChanged);
+  }, [loadContracts]);
+
+  // Funis vinculados do contrato aberto (atualiza em tempo real junto com a lista)
+  const selectedContractId = selectedContract?.id;
+  useEffect(() => {
+    if (!selectedContractId || !isDrawerOpen) { setContractPlacements([]); return; }
+    let cancelled = false;
+    const load = () => contractService.getPlacementsByContract(selectedContractId, scopedMasterId)
+      .then(rows => { if (!cancelled) setContractPlacements(rows); });
+    load();
+    window.addEventListener('f5:contracts-changed', load);
+    return () => { cancelled = true; window.removeEventListener('f5:contracts-changed', load); };
+  }, [selectedContractId, isDrawerOpen, scopedMasterId]);
+
+  const handleConfirmCancel = async () => {
+    if (!selectedContract || !canCancelContract) return;
+    if (!cancelReason.trim()) {
+      toast.warning('Informe o motivo do cancelamento.');
+      return;
+    }
+    setIsSubmittingCancel(true);
+    try {
+      const res = await contractService.cancelContract({
+        contractId: selectedContract.id,
+        masterId: scopedMasterId,
+        reason: cancelReason.trim(),
+        actor: {
+          id: currentUser?.id || '',
+          name: currentUser?.name || 'Gerência',
+          role: currentUser?.role || '',
+          commercialRole: (currentUser as any)?.commercialRole,
+        },
+      });
+      if (!res.success) throw new Error(res.message || 'Falha ao cancelar contrato.');
+      toast.success(`Contrato ${selectedContract.contractCode} cancelado e removido de todos os funis.`);
+      setIsCancelModalOpen(false);
+      setIsDrawerOpen(false);
+      setCancelReason('');
+      loadContracts();
+    } catch (err: any) {
+      toast.error(`Erro ao cancelar contrato: ${err.message || 'Falha de comunicação'}`);
+    } finally {
+      setIsSubmittingCancel(false);
+    }
+  };
+
+  // Jornada real do lead (lead_stage_history): etapas, entrada/saida e tempo em cada uma
+  const [journey, setJourney] = useState<Awaited<ReturnType<typeof leadService.getStageHistory>>>([]);
+  const journeyLeadId = selectedContract?.originLeadId || selectedContract?.leadId;
+  useEffect(() => {
+    if (!journeyLeadId || !isDrawerOpen) { setJourney([]); return; }
+    let cancelled = false;
+    leadService.getStageHistory(journeyLeadId, scopedMasterId).then(rows => { if (!cancelled) setJourney(rows); });
+    return () => { cancelled = true; };
+  }, [journeyLeadId, isDrawerOpen, scopedMasterId]);
+
+  // Abertura direta vinda da busca global: abre o drawer do contrato na aba correta
+  useEffect(() => {
+    if (!initialContractId || !scopedMasterId) return;
+    let cancelled = false;
+    contractService.getContractById(initialContractId, scopedMasterId).then(ctr => {
+      if (cancelled) return;
+      if (!ctr) {
+        toast.info('Contrato não encontrado.');
+      } else {
+        setActiveTab(ctr.approvalStatus === 'pending_approval' ? 'pending' : 'approved');
+        handleOpenContract(ctr);
+      }
+      onInitialContractOpened?.();
+    });
+    return () => { cancelled = true; };
+  }, [initialContractId, scopedMasterId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Abre drawer completo do contrato
   const handleOpenContract = (contract: Contract) => {
@@ -204,7 +319,7 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
       }
 
       toast.success(`Contrato ${selectedContract.contractCode} devolvido para ajuste!`, {
-        description: `Card retornado ao Funil Comercial e tarefa prioritária atribuída ao Closer ${selectedContract.closerName || 'responsável'}.`,
+        description: `O lead voltou ao funil comercial em modo de alteração contratual e uma tarefa urgente (24h) foi criada para o Closer ${selectedContract.closerName || 'responsável'}.`,
       });
       setIsRejectModalOpen(false);
       setIsDrawerOpen(false);
@@ -572,14 +687,16 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
                       {/* Equipe Comercial */}
                       <div style={{ display: 'flex', alignItems: 'center', gap: '10px', paddingTop: '2px' }}>
                         {ctr.sdrName && (
-                          <div style={{ fontSize: '0.72rem', padding: '2px 8px', borderRadius: '4px', backgroundColor: colors.bgCardSub, border: `1px solid ${colors.borderSub}` }}>
-                            <span style={{ color: colors.textMuted, textTransform: 'uppercase', fontSize: '0.66rem', fontWeight: 700, marginRight: '4px' }}>SDR:</span>
+                          <div style={{ fontSize: '0.72rem', padding: '2px 8px 2px 4px', borderRadius: '4px', backgroundColor: colors.bgCardSub, border: `1px solid ${colors.borderSub}`, display: 'flex', alignItems: 'center', gap: '5px' }}>
+                            <SafeAvatar src={collabAvatar(ctr.sdrId, ctr.sdrName)} name={ctr.sdrName} size={20} />
+                            <span style={{ color: colors.textMuted, textTransform: 'uppercase', fontSize: '0.66rem', fontWeight: 700 }}>SDR:</span>
                             <span style={{ fontWeight: 600, color: colors.textTitle }}>{ctr.sdrName}</span>
                           </div>
                         )}
                         {ctr.closerName && (
-                          <div style={{ fontSize: '0.72rem', padding: '2px 8px', borderRadius: '4px', backgroundColor: colors.bgCardSub, border: `1px solid ${colors.borderSub}` }}>
-                            <span style={{ color: colors.textMuted, textTransform: 'uppercase', fontSize: '0.66rem', fontWeight: 700, marginRight: '4px' }}>Closer:</span>
+                          <div style={{ fontSize: '0.72rem', padding: '2px 8px 2px 4px', borderRadius: '4px', backgroundColor: colors.bgCardSub, border: `1px solid ${colors.borderSub}`, display: 'flex', alignItems: 'center', gap: '5px' }}>
+                            <SafeAvatar src={collabAvatar(ctr.closerId, ctr.closerName)} name={ctr.closerName} size={20} />
+                            <span style={{ color: colors.textMuted, textTransform: 'uppercase', fontSize: '0.66rem', fontWeight: 700 }}>Closer:</span>
                             <span style={{ fontWeight: 700, color: colors.primary }}>{ctr.closerName}</span>
                           </div>
                         )}
@@ -723,9 +840,17 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
                       </td>
 
                       <td style={{ padding: '12px 16px' }}>
-                        <div style={{ fontSize: '0.74rem' }}>
-                          <div>Closer: <strong style={{ color: colors.textTitle }}>{ctr.closerName}</strong></div>
-                          {ctr.sdrName && <div style={{ color: colors.textMuted }}>SDR: {ctr.sdrName}</div>}
+                        <div style={{ fontSize: '0.74rem', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <SafeAvatar src={collabAvatar(ctr.closerId, ctr.closerName)} name={ctr.closerName} size={20} />
+                            <span>Closer: <strong style={{ color: colors.textTitle }}>{ctr.closerName}</strong></span>
+                          </div>
+                          {ctr.sdrName && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: colors.textMuted }}>
+                              <SafeAvatar src={collabAvatar(ctr.sdrId, ctr.sdrName)} name={ctr.sdrName} size={20} />
+                              <span>SDR: {ctr.sdrName}</span>
+                            </div>
+                          )}
                         </div>
                       </td>
 
@@ -1066,11 +1191,11 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
                       <span style={{ fontSize: '0.70rem', color: colors.textMuted }}>Documento formal assinado</span>
                       {selectedContract.contractFileUrl ? (
                         <a href={selectedContract.contractFileUrl} target="_blank" rel="noreferrer" style={{ fontSize: '0.72rem', color: colors.primary, fontWeight: 700, display: 'block', marginTop: '2px' }}>
-                          Visualizar Documento PDF
+                          Abrir / baixar contrato
                         </a>
                       ) : (
                         <span style={{ fontSize: '0.70rem', color: colors.textMuted, display: 'block', marginTop: '2px' }}>
-                          Arquivo pronto para download
+                          Sem arquivo anexado
                         </span>
                       )}
                     </div>
@@ -1090,7 +1215,7 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
                       </span>
                       {selectedContract.paymentFileUrl ? (
                         <a href={selectedContract.paymentFileUrl} target="_blank" rel="noreferrer" style={{ fontSize: '0.72rem', color: colors.success, fontWeight: 700, display: 'block', marginTop: '3px' }}>
-                          Visualizar Comprovante Anexo
+                          Abrir / baixar comprovante
                         </a>
                       ) : (
                         <span style={{ fontSize: '0.70rem', color: colors.textMuted, display: 'block', marginTop: '2px' }}>
@@ -1112,8 +1237,8 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
                         (Saldo: R$ {(selectedContract.balanceAmount ?? Math.max(0, (selectedContract.totalAmount || 0) - (selectedContract.entryAmount || 0))).toLocaleString('pt-BR', { minimumFractionDigits: 2 })})
                       </span>
                     </div>
-                    <span style={{ fontSize: '0.72rem', color: colors.textMuted, display: 'block', marginTop: '2px' }}>
-                      Condição: {(typeof selectedContract.paymentTerms === 'string' ? selectedContract.paymentTerms : selectedContract.paymentMethod) || 'Conforme proposta comercial'}
+                    <span style={{ fontSize: '0.72rem', color: colors.textMuted, display: 'block', marginTop: '2px', whiteSpace: 'pre-wrap' }}>
+                      Acordo de pagamento: {(typeof selectedContract.paymentTerms === 'string' ? selectedContract.paymentTerms : selectedContract.paymentMethod) || 'Conforme proposta comercial'}
                     </span>
                   </div>
                 </div>
@@ -1142,20 +1267,37 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '10px', fontSize: '0.78rem' }}>
                   <div style={{ padding: '10px 12px', borderRadius: '6px', backgroundColor: colors.bgCardSub, border: `1px solid ${colors.borderSub}` }}>
                     <span style={{ fontSize: '0.72rem', fontWeight: 700, color: colors.textTitle, display: 'block', marginBottom: '4px' }}>
-                      Desejos & Perfil da Homenageada:
+                      Ficha do Fechamento Comercial:
                     </span>
-                    <p style={{ margin: 0, color: colors.textMuted, fontSize: '0.76rem', lineHeight: '1.4' }}>
+                    <p style={{ margin: 0, color: colors.textMuted, fontSize: '0.76rem', lineHeight: '1.4', whiteSpace: 'pre-wrap' }}>
                       {selectedContract.handoverNotes || (selectedContract.commercialFieldsSnapshot as any)?.debutanteWishes || 'Conforme alinhamento comercial'}
                     </p>
                   </div>
 
                   <div style={{ padding: '10px 12px', borderRadius: '6px', backgroundColor: colors.bgCardSub, border: `1px solid ${colors.borderSub}` }}>
                     <span style={{ fontSize: '0.72rem', fontWeight: 700, color: colors.textTitle, display: 'block', marginBottom: '4px' }}>
-                      Particularidades da Família & Promessas:
+                      Combinados, Promessas e Condições Especiais:
                     </span>
-                    <p style={{ margin: 0, color: colors.textMuted, fontSize: '0.76rem', lineHeight: '1.4' }}>
-                      {((selectedContract.commercialFieldsSnapshot as any)?.familyPromises) || 'Sem observações adicionais no fechamento'}
+                    <p style={{ margin: 0, color: colors.textMuted, fontSize: '0.76rem', lineHeight: '1.4', whiteSpace: 'pre-wrap' }}>
+                      {((selectedContract.commercialFieldsSnapshot as any)?.familyPromises)
+                        || ((selectedContract.commercialFieldsSnapshot as any)?.closerNotes)
+                        || 'Nenhum combinado registrado no fechamento'}
                     </p>
+                    {(() => {
+                      const sc = ((selectedContract.commercialFieldsSnapshot as any)?.specialConditions || {}) as { financeiro?: string; decoracao?: string; outros?: string };
+                      const rows: Array<[string, string | undefined]> = [['Financeiro', sc.financeiro], ['Decoração', sc.decoracao], ['Outras', sc.outros]];
+                      const filled = rows.filter(([, v]) => v);
+                      if (filled.length === 0) return null;
+                      return (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '8px' }}>
+                          {filled.map(([label, v]) => (
+                            <div key={label} style={{ fontSize: '0.74rem', color: colors.textMuted, whiteSpace: 'pre-wrap' }}>
+                              <strong style={{ color: colors.textTitle }}>{label}:</strong> {v}
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
               </div>
@@ -1175,7 +1317,45 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
                   <span>Histórico da Jornada do Lead (Até a Assinatura)</span>
                 </div>
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.76rem' }}>
+                {journey.length > 0 && (() => {
+                  const fmtDur = (ms: number) => {
+                    const mins = Math.max(0, Math.round(ms / 60000));
+                    if (mins < 60) return `${mins} min`;
+                    const h = Math.floor(mins / 60);
+                    if (h < 24) return `${h}h ${String(mins % 60).padStart(2, '0')}min`;
+                    const d = Math.floor(h / 24);
+                    return `${d}d ${h % 24}h`;
+                  };
+                  const start = new Date(journey[0].enteredAt).getTime();
+                  const endRef = selectedContract.submittedAt || selectedContract.approvedAt || selectedContract.createdAt;
+                  const end = endRef ? new Date(endRef).getTime() : Date.now();
+                  return (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.76rem' }}>
+                      <div style={{ color: colors.textMuted, fontSize: '0.72rem' }}>
+                        Tempo total na esteira até o fechamento: <strong style={{ color: colors.textTitle }}>{fmtDur(end - start)}</strong>
+                      </div>
+                      {journey.map((h, i) => {
+                        const funnel = funnels.find(f => f.id === h.funnelId);
+                        const name = h.stageName || funnel?.stages?.find(s => s.id === h.stageId)?.name || h.stageId;
+                        const leftMs = h.leftAt ? new Date(h.leftAt).getTime() : end;
+                        return (
+                          <div key={`${h.stageId}-${i}`} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', padding: '6px 10px', borderRadius: '6px', backgroundColor: colors.bgCardSub, border: `1px solid ${colors.borderSub}` }}>
+                            <div>
+                              <strong>{i + 1}. {name}</strong>
+                              {funnel ? <span style={{ color: colors.textMuted }}> · {funnel.name}</span> : null}
+                              {h.movedByName ? <span style={{ color: colors.textMuted }}> · por {h.movedByName}</span> : null}
+                            </div>
+                            <span style={{ color: colors.textMuted, fontSize: '0.70rem', whiteSpace: 'nowrap' }}>
+                              {new Date(h.enteredAt).toLocaleDateString('pt-BR')} · {fmtDur(Math.max(0, leftMs - new Date(h.enteredAt).getTime()))}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+
+                <div style={{ display: journey.length > 0 ? 'none' : 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.76rem' }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 10px', borderRadius: '6px', backgroundColor: colors.bgCardSub, border: `1px solid ${colors.borderSub}` }}>
                     <div>
                       <strong>1. Entrada do Lead:</strong> Campanha Comercial ({selectedContract.venueName})
@@ -1208,6 +1388,50 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
                 </div>
               </div>
 
+              {/* Bloco 6: Funis de Pós-Venda vinculados (clique para abrir o contrato no funil) */}
+              {(selectedContract.approvalStatus === 'approved' || selectedContract.approvalStatus === 'completed') && (
+                <div style={{
+                  backgroundColor: colors.bgCard,
+                  border: `1px solid ${colors.border}`,
+                  borderRadius: '8px',
+                  padding: '16px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '10px',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.76rem', fontWeight: 700, color: colors.primary, textTransform: 'uppercase' }}>
+                    <Kanban size={14} />
+                    <span>Funis vinculados a este contrato</span>
+                  </div>
+                  {contractPlacements.length === 0 ? (
+                    <span style={{ fontSize: '0.76rem', color: colors.textMuted }}>Nenhum funil de pós-venda vinculado.</span>
+                  ) : contractPlacements.map(pl => {
+                    const funnel = funnels.find(f => f.id === pl.funnelId);
+                    const stageName = funnel?.stages?.find(s => s.id === pl.stageId)?.name || pl.stageId;
+                    return (
+                      <button
+                        key={pl.id}
+                        type="button"
+                        onClick={() => {
+                          setIsDrawerOpen(false);
+                          onOpenContractKanban?.(selectedContract.id, pl.funnelId, selectedContract.clientId);
+                        }}
+                        style={{
+                          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px',
+                          padding: '8px 12px', borderRadius: '6px', cursor: 'pointer', textAlign: 'left',
+                          backgroundColor: colors.bgCardSub, border: `1px solid ${colors.borderSub}`, color: colors.textTitle,
+                        }}
+                      >
+                        <span style={{ fontWeight: 700, fontSize: '0.80rem' }}>{pl.funnelName || funnel?.name || 'Funil'}</span>
+                        <span style={{ fontSize: '0.72rem', color: colors.textMuted }}>
+                          Etapa: {stageName}{pl.status === 'completed' ? ' (concluído)' : ''} · Abrir no funil
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
             </div>
 
             {/* Rodapé Fixo do Drawer com Ações */}
@@ -1237,6 +1461,21 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
                 Fechar Visualização
               </button>
 
+              {selectedContract.approvalStatus === 'approved' && canCancelContract && (
+                <button
+                  type="button"
+                  onClick={() => setIsCancelModalOpen(true)}
+                  style={{
+                    padding: '8px 16px', borderRadius: '6px', backgroundColor: 'transparent',
+                    color: colors.danger, border: `1px solid ${colors.danger}`, fontWeight: 700,
+                    cursor: 'pointer', fontSize: '0.80rem', display: 'flex', alignItems: 'center', gap: '6px',
+                  }}
+                >
+                  <X size={14} />
+                  <span>Cancelar contrato</span>
+                </button>
+              )}
+
               {selectedContract.approvalStatus === 'pending_approval' && canApproveContract && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                   {/* Botão Solicitar Ajuste / Devolver */}
@@ -1258,7 +1497,7 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
                     }}
                   >
                     <AlertTriangle size={14} />
-                    <span>Solicitar Ajuste / Devolver</span>
+                    <span>Negar contrato / Solicitar alteração</span>
                   </button>
 
                   {/* Botão Homologar Venda */}
@@ -1463,6 +1702,48 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
       {/* ============================================================ */}
       {/* MODAL 2: SOLICITAR AJUSTE / DEVOLVER (CRIA TAREFA PRO CLOSER)*/}
       {/* ============================================================ */}
+      {isCancelModalOpen && selectedContract && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0, 0, 0, 0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10002, padding: '20px' }}>
+          <div style={{ backgroundColor: colors.bgCard, border: `1px solid ${colors.border}`, borderRadius: '10px', width: '100%', maxWidth: '500px', padding: '22px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.74rem', fontWeight: 800, color: colors.danger, textTransform: 'uppercase' }}>
+              <AlertTriangle size={14} />
+              <span>Cancelamento definitivo</span>
+            </div>
+            <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: colors.textTitle }}>
+              Cancelar {selectedContract.contractCode}
+            </h3>
+            <p style={{ margin: 0, fontSize: '0.78rem', color: colors.textMuted, lineHeight: 1.45 }}>
+              O contrato sai de todos os funis vinculados. O documento e o snapshot ficam preservados para consulta. Esta ação não pode ser desfeita pela tela.
+            </p>
+            <textarea
+              value={cancelReason}
+              onChange={e => setCancelReason(e.target.value)}
+              placeholder="Motivo do cancelamento (obrigatório)"
+              rows={4}
+              style={{ width: '100%', padding: '10px', borderRadius: '6px', border: `1px solid ${colors.border}`, backgroundColor: colors.bgCardSub, color: colors.textTitle, fontSize: '0.80rem', resize: 'vertical' }}
+            />
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button
+                type="button"
+                disabled={isSubmittingCancel}
+                onClick={() => { setIsCancelModalOpen(false); setCancelReason(''); }}
+                style={{ padding: '8px 16px', borderRadius: '6px', backgroundColor: 'transparent', border: `1px solid ${colors.border}`, color: colors.textMuted, cursor: 'pointer', fontSize: '0.80rem', fontWeight: 600 }}
+              >
+                Voltar
+              </button>
+              <button
+                type="button"
+                disabled={isSubmittingCancel}
+                onClick={handleConfirmCancel}
+                style={{ padding: '8px 16px', borderRadius: '6px', backgroundColor: colors.danger, color: '#FFFFFF', border: 'none', cursor: isSubmittingCancel ? 'wait' : 'pointer', fontSize: '0.80rem', fontWeight: 700 }}
+              >
+                {isSubmittingCancel ? 'Cancelando...' : 'Confirmar cancelamento'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {isRejectModalOpen && selectedContract && (
         <div style={{
           position: 'fixed',

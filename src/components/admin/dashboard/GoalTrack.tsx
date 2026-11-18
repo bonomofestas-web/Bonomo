@@ -2,6 +2,7 @@ import React from 'react';
 import { Flag, Trophy } from 'lucide-react';
 import { EmptyHint, Panel, SectionTitle } from './DashboardKpi';
 import { Avatar } from './TeamPodiums';
+import { CollaboratorIdentity } from './CollaboratorIdentity';
 import { getGoalStatus } from '../../../utils/goalStatus';
 import type { CollaboratorRow } from '../../../hooks/useCommercialDashboardData';
 
@@ -20,12 +21,7 @@ const TrackRow: React.FC<{ row: CollaboratorRow; expectedPct: number }> = ({ row
       display: 'grid', gridTemplateColumns: 'minmax(120px, 190px) 1fr 120px', gap: '14px', alignItems: 'center',
       padding: '10px 0', borderBottom: '1px solid var(--adm-border)',
     }}>
-      <div style={{ minWidth: 0 }}>
-        <div title={row.name} style={{ fontSize: '0.8rem', fontWeight: 800, color: 'var(--adm-text-title)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-          {row.name}
-        </div>
-        <div style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)' }}>{row.role === 'closer' ? 'Closer' : 'SDR'}</div>
-      </div>
+      <CollaboratorIdentity name={row.name} role={row.role} />
 
       {/* Pista: o avatar corre ate a bandeira de chegada (100%); a marca vertical e o ritmo esperado */}
       <div style={{ position: 'relative', height: `${AVATAR + 8}px`, margin: `0 ${AVATAR / 2 + 12}px 0 ${AVATAR / 2}px` }}>

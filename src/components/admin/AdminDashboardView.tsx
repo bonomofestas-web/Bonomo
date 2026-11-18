@@ -64,6 +64,16 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({ onNaviga
         <>
           <AlertsPanel data={data} />
 
+          {/* Foco no time: podios, esteira de metas e radar da equipe logo no topo */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '16px' }}>
+            <ClosersPodium closers={data.closers} />
+            <SdrsPodium sdrs={data.sdrs} />
+          </div>
+
+          <GoalTrack rows={data.collaborators} expectedPct={data.pacing.expectedPct} />
+
+          <CollaboratorRadar rows={data.collaborators} loadingPresence={data.loadingPresence} truncated={data.presenceTruncated} />
+
           {/* Faixa 1 — Termometro de meta e ritmo + KPIs */}
           <PacingThermometer
             pacing={data.pacing}
@@ -141,17 +151,6 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({ onNaviga
           <SourceEfficiencyTable rows={data.sourceEfficiency} />
           <VenueComparison rows={data.venueRows} />
 
-          {/* Faixa 3 — Podios */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '16px' }}>
-            <ClosersPodium closers={data.closers} />
-            <SdrsPodium sdrs={data.sdrs} />
-          </div>
-
-          {/* Esteira de metas: todos os colaboradores */}
-          <GoalTrack rows={data.collaborators} expectedPct={data.pacing.expectedPct} />
-
-          {/* Faixa 4 — Radar da equipe */}
-          <CollaboratorRadar rows={data.collaborators} loadingPresence={data.loadingPresence} truncated={data.presenceTruncated} />
         </>
       )}
     </div>

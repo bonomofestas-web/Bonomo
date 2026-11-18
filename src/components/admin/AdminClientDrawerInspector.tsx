@@ -5,8 +5,8 @@ import {
   FileText, Copy, Plus, Trash2, Tag,
   Shield, MessageSquare,
   Gift, Award, Star,
-  ArrowRightLeft, Compass, UserPlus, CheckCircle2, Eye, X, Building2,
-  Calendar, ChevronLeft, Palette, Music, ScrollText, DollarSign, Workflow, Clock
+  Compass, UserPlus, CheckCircle2, Eye, X, Building2,
+  Calendar, ChevronLeft, Workflow
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAdminState } from '../../context/AdminStateContext';
@@ -15,7 +15,8 @@ import { renderFunnelOrStageIcon } from '../../utils/funnelIconLibrary';
 import { WhatsAppBrandIcon } from './WhatsAppBrandIcon';
 import { AdminLeadInspector } from './AdminLeadInspector';
 import { ClientVenueEventsCard } from './ClientVenueEventsCard';
-import type { Lead, ClientStage, LeadContact } from '../../types/admin';
+import { contractService } from '../../services/contractService';
+import type { Lead, ClientStage, LeadContact, ContractFunnelPlacement } from '../../types/admin';
 
 interface AdminClientDrawerInspectorProps {
   lead: Lead;
@@ -77,6 +78,67 @@ const POST_SALE_STAGES: { id: ClientStage; label: string; color: string; bg: str
   },
 ];
 
+// Funis de pos-venda realmente vinculados ao contrato (contract_funnel_placements), somente leitura.
+// Cada funil e um setor independente: a etapa so muda no Kanban do proprio funil.
+const LinkedFunnelsProgress: React.FC<{ clientId?: string }> = ({ clientId }) => {
+  const { funnels, currentUser } = useAdminState();
+  const masterId = currentUser?.masterId || currentUser?.id || '';
+  const [placements, setPlacements] = useState<ContractFunnelPlacement[] | null>(null);
+
+  const load = useCallback(async () => {
+    if (!clientId || !masterId) { setPlacements([]); return; }
+    setPlacements(await contractService.getPlacementsByClient(clientId, masterId));
+  }, [clientId, masterId]);
+
+  React.useEffect(() => { load(); }, [load]);
+  React.useEffect(() => {
+    const onChanged = () => { load(); };
+    window.addEventListener('f5:contracts-changed', onChanged);
+    return () => window.removeEventListener('f5:contracts-changed', onChanged);
+  }, [load]);
+
+  const rows = (placements || []).map(p => {
+    const funnel = funnels.find(f => f.id === p.funnelId);
+    const stages = funnel?.stages || [];
+    const idx = stages.findIndex(s => s.id === p.stageId);
+    const percent = p.status === 'completed'
+      ? 100
+      : stages.length > 0 && idx >= 0 ? Math.round(((idx + 1) / stages.length) * 100) : 0;
+    return { p, funnelName: funnel?.name || p.funnelName || 'Funil', stageName: idx >= 0 ? stages[idx].name : p.stageId, percent };
+  });
+  const average = rows.length > 0 ? Math.round(rows.reduce((s, r) => s + r.percent, 0) / rows.length) : 0;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '10px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.72rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
+          <Workflow size={12} color="#8B5CF6" />
+          <span>Funis do Contrato</span>
+        </div>
+        {rows.length > 0 && (
+          <span style={{ fontSize: '0.64rem', fontWeight: 800, color: '#8B5CF6' }}>Progressão média {average}%</span>
+        )}
+      </div>
+      {placements === null ? (
+        <span style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)' }}>Carregando...</span>
+      ) : rows.length === 0 ? (
+        <span style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)' }}>Nenhum funil vinculado a este contrato.</span>
+      ) : rows.map(r => (
+        <div key={r.p.id} style={{ padding: '7px 9px', borderRadius: '8px', background: 'var(--adm-bg-input)', border: '1px solid var(--adm-border)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px', fontSize: '0.72rem' }}>
+            <strong style={{ color: 'var(--adm-text-title)' }}>{r.funnelName}</strong>
+            <span style={{ color: 'var(--adm-text-muted)', fontWeight: 700 }}>{r.percent}%</span>
+          </div>
+          <div style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)', marginTop: '1px' }}>Etapa: {r.stageName}</div>
+          <div style={{ height: '5px', borderRadius: '3px', background: 'var(--adm-border)', overflow: 'hidden', marginTop: '5px' }}>
+            <div style={{ width: `${r.percent}%`, height: '100%', background: '#8B5CF6' }} />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+};
+
 export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProps> = ({
   lead,
   onStageChange,
@@ -85,14 +147,12 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
   readOnly = false,
 }) => {
   const { 
-    currentUser,
     clients, 
     collaborators, 
     venues, 
     debutantes,
     leads,
     funnels,
-    reassignLeadFunnel,
     updateClient,
     updateLeadData,
     linkClientDebutante,
@@ -103,8 +163,6 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
   const [copiedLink, setCopiedLink] = useState(false);
   const [previewLeadId, setPreviewLeadId] = useState<string | null>(null);
   const [isStageDropdownOpen, setIsStageDropdownOpen] = useState(false);
-  const [expandedFunnelId, setExpandedFunnelId] = useState<string | null>(null);
-  const [isTransferringFunnel, setIsTransferringFunnel] = useState(false);
   const [isSuccessManagerDropdownOpen, setIsSuccessManagerDropdownOpen] = useState(false);
   const [isTagDropdownOpen, setIsTagDropdownOpen] = useState(false);
   const [showCustomTagInput, setShowCustomTagInput] = useState(false);
@@ -190,33 +248,6 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
   const currentStage = (client?.stage || lead.stage || activePostSaleStages[0]?.id || 'onboarding') as ClientStage;
   const currentStageConfig = activePostSaleStages.find(s => s.id === currentStage) || activePostSaleStages[0] || POST_SALE_STAGES[0];
   const currentStageIndex = Math.max(0, activePostSaleStages.findIndex(s => s.id === currentStage));
-
-  const isFunnelPostSale = useCallback((f: any) => Boolean(
-    f?.isPostSale ||
-    f?.category === 'Pós-Venda' ||
-    f?.category === 'pos_venda' ||
-    f?.name?.toLowerCase().includes('pós-venda') ||
-    f?.name?.toLowerCase().includes('pos-venda') ||
-    f?.name?.toLowerCase().includes('sucesso do cliente')
-  ), []);
-
-  const otherPostSaleFunnels = useMemo(() => {
-    return funnels.filter(f => {
-      if (f.id === lead.funnelId) return false;
-      if (!isFunnelPostSale(f)) return false;
-
-      if (currentUser?.role !== 'master' && currentUser?.role !== 'admin') {
-        const userVenueIds = (currentUser as any)?.venueIds || [];
-        if (userVenueIds.length > 0 && f.venueId && f.venueId !== 'all') {
-          const funnelVenueIds = Array.isArray((f as any).venueIds) ? (f as any).venueIds : [f.venueId];
-          const hasAccess = funnelVenueIds.some((vId: string) => vId === 'all' || userVenueIds.includes(vId));
-          if (!hasAccess) return false;
-        }
-      }
-
-      return true;
-    });
-  }, [funnels, lead.funnelId, isFunnelPostSale, currentUser]);
 
   const linkedDebutante = useMemo(() => {
     if (client?.debutanteId) return debutantes.find(d => d.id === client.debutanteId);
@@ -685,35 +716,6 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
             </div>
           </div>
 
-          {/* Botão de Atalho em Destaque: Consultar Lead Comercial de Origem */}
-          <button
-            type="button"
-            onClick={() => setActiveTab(activeTab === 'comercial' ? 'ficha' : 'comercial')}
-            style={{
-              padding: '6px 10px',
-              borderRadius: '7px',
-              border: activeTab === 'comercial' ? '1.5px solid #06B6D4' : '1px solid var(--adm-border)',
-              background: activeTab === 'comercial' ? 'rgba(6, 182, 212, 0.15)' : 'var(--adm-bg-input)',
-              color: activeTab === 'comercial' ? '#06B6D4' : 'var(--adm-text-title)',
-              fontSize: '0.72rem',
-              fontWeight: 800,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '6px',
-              transition: 'all 0.15s ease',
-              marginTop: '2px',
-            }}
-          >
-            <Compass size={12} color="#06B6D4" />
-            <span>
-              {activeTab === 'comercial' 
-                ? '← Voltar à Ficha do Contrato' 
-                : `Consultar Lead Comercial de Origem (${commercialLead?.code || client?.commercialLeadCode || 'LEAD'})`
-              }
-            </span>
-          </button>
         </div>
 
         {/* ── ETAPA DO FUNIL DE PÓS-VENDA (DROPDOWN + PROGRESS BAR) ── */}
@@ -837,154 +839,6 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
                 );
               })}
 
-              {/* ── SEÇÃO DE OUTROS FUNIS DE PÓS-VENDA ── */}
-              {otherPostSaleFunnels.length > 0 && (
-                <>
-                  <div style={{
-                    marginTop: '8px',
-                    marginBottom: '4px',
-                    padding: '8px 8px 4px',
-                    borderTop: '1px solid var(--adm-border)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                  }}>
-                    <div style={{
-                      fontSize: '0.62rem',
-                      fontWeight: 800,
-                      color: '#06B6D4',
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.5px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '5px',
-                    }}>
-                      <ArrowRightLeft size={11} color="#06B6D4" />
-                      <span>Outros Funis de Pós-Venda</span>
-                    </div>
-                    <span style={{ fontSize: '0.58rem', color: 'var(--adm-text-muted)', fontWeight: 600 }}>
-                      {otherPostSaleFunnels.length} {otherPostSaleFunnels.length === 1 ? 'funil' : 'funis'}
-                    </span>
-                  </div>
-
-                  {otherPostSaleFunnels.map(f => {
-                    const isExpanded = expandedFunnelId === f.id;
-                    const targetStages = (f.stages && f.stages.length > 0) ? f.stages : [
-                      { id: 'onboarding', name: 'ONBOARDING', color: '#3B82F6', icon: 'inbox' },
-                    ];
-
-                    return (
-                      <div key={f.id} style={{ display: 'flex', flexDirection: 'column', gap: '2px', marginBottom: '2px' }}>
-                        <button
-                          type="button"
-                          onClick={() => setExpandedFunnelId(prev => prev === f.id ? null : f.id)}
-                          style={{
-                            padding: '7px 10px',
-                            borderRadius: '6px',
-                            border: isExpanded ? '1px solid rgba(6, 182, 212, 0.4)' : '1px solid var(--adm-border)',
-                            background: isExpanded ? 'rgba(6, 182, 212, 0.12)' : 'var(--adm-bg-input)',
-                            color: isExpanded ? '#06B6D4' : 'var(--adm-text-title)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            cursor: 'pointer',
-                            fontSize: '0.72rem',
-                            fontWeight: 700,
-                            transition: 'all 0.15s ease',
-                            width: '100%',
-                          }}
-                        >
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
-                            {renderFunnelOrStageIcon(f.icon || 'layers', 13, isExpanded ? '#06B6D4' : 'var(--adm-text-muted)')}
-                            <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                              {f.name}
-                            </span>
-                            <span style={{
-                              fontSize: '0.58rem',
-                              padding: '1px 5px',
-                              borderRadius: '4px',
-                              background: 'var(--adm-border)',
-                              color: 'var(--adm-text-muted)',
-                              fontWeight: 600,
-                            }}>
-                              {targetStages.length} etapas
-                            </span>
-                          </div>
-                          <ChevronDown
-                            size={13}
-                            style={{
-                              transform: isExpanded ? 'rotate(180deg)' : 'rotate(-90deg)',
-                              transition: 'transform 0.15s ease',
-                              flexShrink: 0,
-                            }}
-                          />
-                        </button>
-
-                        {isExpanded && (
-                          <div style={{
-                            padding: '4px 0 4px 8px',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            gap: '2px',
-                            borderLeft: '2px dashed rgba(6, 182, 212, 0.4)',
-                            marginLeft: '10px',
-                            marginTop: '2px',
-                          }}>
-                            <div style={{ fontSize: '0.60rem', color: 'var(--adm-text-muted)', fontWeight: 600, marginBottom: '2px', paddingLeft: '4px' }}>
-                              Clique na etapa para transferir direto:
-                            </div>
-                            {targetStages.map(targetStg => {
-                              const color = targetStg.color || '#3B82F6';
-                              return (
-                                <button
-                                  key={targetStg.id}
-                                  type="button"
-                                  disabled={isTransferringFunnel}
-                                  onClick={async () => {
-                                    setIsTransferringFunnel(true);
-                                    try {
-                                      await reassignLeadFunnel(lead.id, f.id, targetStg.id);
-                                      onStageChange(targetStg.id as ClientStage);
-                                      setIsStageDropdownOpen(false);
-                                      setExpandedFunnelId(null);
-                                    } finally {
-                                      setIsTransferringFunnel(false);
-                                    }
-                                  }}
-                                  style={{
-                                    padding: '6px 8px',
-                                    borderRadius: '5px',
-                                    border: '1px solid var(--adm-border)',
-                                    background: 'var(--adm-bg-card)',
-                                    color: color,
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'space-between',
-                                    cursor: isTransferringFunnel ? 'wait' : 'pointer',
-                                    fontSize: '0.70rem',
-                                    fontWeight: 700,
-                                    textTransform: 'uppercase',
-                                    textAlign: 'left',
-                                    width: '100%',
-                                  }}
-                                >
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                    {renderFunnelOrStageIcon(targetStg.icon || targetStg.id, 12, color)}
-                                    <span>{targetStg.name.toUpperCase()}</span>
-                                  </div>
-                                  <span style={{ fontSize: '0.60rem', color: '#10B981', fontWeight: 800 }}>
-                                    Transferir →
-                                  </span>
-                                </button>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </>
-              )}
             </div>
           )}
         </div>
@@ -2172,378 +2026,8 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
               );
             })}
 
-            {/* ── SEÇÃO: FUNIS SETORIAIS & ANDAMENTO DA ENTREGA ── */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '10px' }}>
-              <div style={sectionTitleStyle}>
-                <Workflow size={12} color="#8B5CF6" />
-                <span>Funis Setoriais & Entrega</span>
-              </div>
-              <span style={{ fontSize: '0.62rem', fontWeight: 800, color: '#8B5CF6', background: 'rgba(139, 92, 246, 0.12)', padding: '2px 7px', borderRadius: '4px', border: '1px solid rgba(139, 92, 246, 0.3)' }}>
-                Visão 360° da Festa
-              </span>
-            </div>
-
-            {(() => {
-              const sectorialData = (client as any)?.sectorialDelivery || {};
-
-              // 1. Pós-Venda Geral
-              const generalProgress = Math.min(100, Math.round(((currentStageIndex + 1) / Math.max(1, activePostSaleStages.length)) * 100));
-
-              // 2. Decoração
-              const decStages = [
-                { id: 'briefing', label: 'Briefing Decorativo', pct: 25 },
-                { id: 'projeto', label: 'Projeto 3D & Paleta', pct: 50 },
-                { id: 'flores', label: 'Floral & Mobiliário', pct: 75 },
-                { id: 'montagem', label: 'Montagem Final', pct: 100 },
-              ];
-              const decStageId = sectorialData.decoracao?.stageId || (currentStageIndex >= 4 ? 'montagem' : currentStageIndex >= 3 ? 'flores' : currentStageIndex >= 2 ? 'projeto' : 'briefing');
-              const decPct = sectorialData.decoracao?.percent ?? (decStages.find(s => s.id === decStageId)?.pct || 25);
-
-              // 3. Cerimonial
-              const cerStages = [
-                { id: 'reuniao', label: 'Alinhamento Inicial', pct: 25 },
-                { id: 'roteiro', label: 'Roteiro & Cortejo', pct: 50 },
-                { id: 'ensaio', label: 'Ensaio Geral', pct: 75 },
-                { id: 'execucao', label: 'Execução do Evento', pct: 100 },
-              ];
-              const cerStageId = sectorialData.cerimonial?.stageId || (currentStageIndex >= 5 ? 'execucao' : currentStageIndex >= 4 ? 'ensaio' : currentStageIndex >= 2 ? 'roteiro' : 'reuniao');
-              const cerPct = sectorialData.cerimonial?.percent ?? (cerStages.find(s => s.id === cerStageId)?.pct || 25);
-
-              // 4. Coreografia
-              const corStages = [
-                { id: 'musica', label: 'Seleção Musical', pct: 25 },
-                { id: 'ensaios', label: 'Ensaios em Andamento', pct: 50 },
-                { id: 'figurino', label: 'Figurinos & Roupas', pct: 75 },
-                { id: 'pronta', label: 'Coreografia Pronta', pct: 100 },
-              ];
-              const corStageId = sectorialData.coreografia?.stageId || (currentStageIndex >= 5 ? 'pronta' : currentStageIndex >= 3 ? 'figurino' : currentStageIndex >= 1 ? 'ensaios' : 'musica');
-              const corPct = sectorialData.coreografia?.percent ?? (corStages.find(s => s.id === corStageId)?.pct || 25);
-
-              // 5. Financeiro
-              const finPct = totalClientValue > 0 
-                ? Math.min(100, Math.round(((totalClientValue - installmentsRemaining) / totalClientValue) * 100))
-                : 100;
-              const finLabel = installmentsRemaining <= 0 ? 'Quitado 100%' : `${installmentsCount - Math.round(installmentsRemaining / Math.max(1, parcelValue))}/${installmentsCount} Parcelas Pagas`;
-
-              const handleUpdateSector = (sectorKey: string, stageId: string, pct: number) => {
-                if (!client || readOnly) return;
-                const updated = {
-                  ...sectorialData,
-                  [sectorKey]: { stageId, percent: pct },
-                };
-                updateClient(client.id, { sectorialDelivery: updated } as any);
-                toast.success(`Andamento de ${sectorKey === 'decoracao' ? 'Decoração' : sectorKey === 'cerimonial' ? 'Cerimonial' : 'Coreografia'} atualizado para ${pct}%!`);
-              };
-
-              const averageDelivery = Math.round((generalProgress + decPct + cerPct + corPct + finPct) / 5);
-
-              const tracks = [
-                {
-                  id: 'geral',
-                  name: 'Pós-Venda Geral',
-                  icon: <CheckCircle2 size={13} color="#3B82F6" />,
-                  color: '#3B82F6',
-                  currentLabel: currentStageConfig.label,
-                  percent: generalProgress,
-                  stages: activePostSaleStages.map((s, idx) => ({
-                    id: s.id,
-                    label: s.label,
-                    pct: Math.round(((idx + 1) / activePostSaleStages.length) * 100),
-                  })),
-                  isNativeFunnel: true,
-                  readOnlyTrack: false,
-                },
-                {
-                  id: 'decoracao',
-                  name: 'Decoração & Cenografia',
-                  icon: <Palette size={13} color="#EC4899" />,
-                  color: '#EC4899',
-                  currentLabel: decStages.find(s => s.id === decStageId)?.label || 'Em Andamento',
-                  percent: decPct,
-                  stages: decStages,
-                  isNativeFunnel: false,
-                  readOnlyTrack: false,
-                },
-                {
-                  id: 'cerimonial',
-                  name: 'Cerimonial & Cronograma',
-                  icon: <ScrollText size={13} color="#8B5CF6" />,
-                  color: '#8B5CF6',
-                  currentLabel: cerStages.find(s => s.id === cerStageId)?.label || 'Em Andamento',
-                  percent: cerPct,
-                  stages: cerStages,
-                  isNativeFunnel: false,
-                  readOnlyTrack: false,
-                },
-                {
-                  id: 'coreografia',
-                  name: 'Coreografia & Atrações',
-                  icon: <Music size={13} color="#10B981" />,
-                  color: '#10B981',
-                  currentLabel: corStages.find(s => s.id === corStageId)?.label || 'Em Andamento',
-                  percent: corPct,
-                  stages: corStages,
-                  isNativeFunnel: false,
-                  readOnlyTrack: false,
-                },
-                {
-                  id: 'financeiro',
-                  name: 'Financeiro & Quitação',
-                  icon: <DollarSign size={13} color="#F59E0B" />,
-                  color: '#F59E0B',
-                  currentLabel: finLabel,
-                  percent: finPct,
-                  stages: [],
-                  isNativeFunnel: false,
-                  readOnlyTrack: true,
-                },
-              ];
-
-              return (
-                <div style={cardStyle}>
-                  {/* Resumo Geral de Entrega */}
-                  <div style={{
-                    padding: '8px 10px',
-                    borderRadius: '8px',
-                    background: 'var(--adm-bg-input)',
-                    border: '1px solid var(--adm-border)',
-                    marginBottom: '8px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                  }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <Clock size={13} color="var(--adm-accent, #06B6D4)" />
-                      <span style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
-                        Progresso Médio de Entrega
-                      </span>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <div style={{
-                        width: '80px',
-                        height: '6px',
-                        borderRadius: '3px',
-                        background: 'var(--adm-border)',
-                        overflow: 'hidden',
-                      }}>
-                        <div style={{
-                          width: `${averageDelivery}%`,
-                          height: '100%',
-                          background: averageDelivery >= 80 ? '#10B981' : averageDelivery >= 50 ? '#F59E0B' : '#3B82F6',
-                          borderRadius: '3px',
-                          transition: 'width 0.3s ease',
-                        }} />
-                      </div>
-                      <span style={{ fontSize: '0.74rem', fontWeight: 900, color: averageDelivery >= 80 ? '#10B981' : averageDelivery >= 50 ? '#F59E0B' : '#3B82F6' }}>
-                        {averageDelivery}%
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Lista de Trilhas Setoriais */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {tracks.map((trk) => {
-                      return (
-                        <div
-                          key={trk.id}
-                          style={{
-                            padding: '8px',
-                            borderRadius: '8px',
-                            background: 'var(--adm-bg-card)',
-                            border: '1px solid var(--adm-border)',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            gap: '5px',
-                          }}
-                        >
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                              {trk.icon}
-                              <span style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
-                                {trk.name}
-                              </span>
-                            </div>
-                            <span style={{
-                              fontSize: '0.62rem',
-                              fontWeight: 800,
-                              color: trk.color,
-                              background: `${trk.color}18`,
-                              padding: '1px 6px',
-                              borderRadius: '4px',
-                              border: `1px solid ${trk.color}40`,
-                            }}>
-                              {trk.percent}%
-                            </span>
-                          </div>
-
-                          {/* Subtítulo com a etapa atual */}
-                          <div style={{ fontSize: '0.64rem', color: 'var(--adm-text-muted)', fontWeight: 600 }}>
-                            Etapa: <strong style={{ color: 'var(--adm-text-title)' }}>{trk.currentLabel}</strong>
-                          </div>
-
-                          {/* Barra de Progresso do Setor */}
-                          <div style={{
-                            width: '100%',
-                            height: '5px',
-                            borderRadius: '3px',
-                            background: 'var(--adm-border)',
-                            overflow: 'hidden',
-                          }}>
-                            <div style={{
-                              width: `${trk.percent}%`,
-                              height: '100%',
-                              background: trk.color,
-                              borderRadius: '3px',
-                              transition: 'width 0.25s ease',
-                            }} />
-                          </div>
-
-                          {/* Etapas Interativas Clicáveis (se aplicável) */}
-                          {!trk.readOnlyTrack && trk.stages.length > 0 && !readOnly && (
-                            <div style={{ display: 'flex', gap: '3px', marginTop: '2px', overflowX: 'auto', scrollbarWidth: 'none' }}>
-                              {trk.stages.map((stg) => {
-                                const isCurrent = stg.pct === trk.percent;
-                                const isDone = stg.pct <= trk.percent;
-
-                                return (
-                                  <button
-                                    key={stg.id}
-                                    type="button"
-                                    onClick={() => {
-                                      if (trk.isNativeFunnel) {
-                                        if (client) updateClient(client.id, { stage: stg.id as ClientStage });
-                                        onStageChange(stg.id as ClientStage);
-                                      } else {
-                                        handleUpdateSector(trk.id, stg.id, stg.pct);
-                                      }
-                                    }}
-                                    title={`Avançar para: ${stg.label} (${stg.pct}%)`}
-                                    style={{
-                                      flex: 1,
-                                      padding: '2px 4px',
-                                      borderRadius: '4px',
-                                      border: isCurrent 
-                                        ? `1px solid ${trk.color}` 
-                                        : '1px solid transparent',
-                                      background: isDone 
-                                        ? `${trk.color}22` 
-                                        : 'var(--adm-bg-input)',
-                                      color: isDone ? trk.color : 'var(--adm-text-muted)',
-                                      fontSize: '0.58rem',
-                                      fontWeight: isCurrent ? 800 : 600,
-                                      cursor: 'pointer',
-                                      textAlign: 'center',
-                                      whiteSpace: 'nowrap',
-                                      overflow: 'hidden',
-                                      textOverflow: 'ellipsis',
-                                      transition: 'all 0.15s ease',
-                                    }}
-                                  >
-                                    {stg.label}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  {/* Outros Funis de Pós-Venda do Sistema (Se existirem) */}
-                  {otherPostSaleFunnels.length > 0 && (
-                    <div style={{ marginTop: '10px', paddingTop: '8px', borderTop: '1px dashed var(--adm-border)' }}>
-                      <div style={{ fontSize: '0.64rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                        <ArrowRightLeft size={11} color="var(--adm-accent, #06B6D4)" />
-                        <span>Outros Funis Registrados ({otherPostSaleFunnels.length})</span>
-                      </div>
-
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                        {otherPostSaleFunnels.map(f => {
-                          const isExpanded = expandedFunnelId === f.id;
-                          const targetStages = (f.stages && f.stages.length > 0) ? f.stages : [
-                            { id: 'onboarding', name: 'ONBOARDING', color: '#3B82F6', icon: 'inbox' },
-                          ];
-
-                          return (
-                            <div key={f.id} style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                              <button
-                                type="button"
-                                onClick={() => setExpandedFunnelId(prev => prev === f.id ? null : f.id)}
-                                style={{
-                                  padding: '5px 8px',
-                                  borderRadius: '6px',
-                                  border: isExpanded ? '1px solid rgba(139, 92, 246, 0.4)' : '1px solid var(--adm-border)',
-                                  background: isExpanded ? 'rgba(139, 92, 246, 0.10)' : 'var(--adm-bg-input)',
-                                  color: isExpanded ? '#8B5CF6' : 'var(--adm-text-title)',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'space-between',
-                                  cursor: 'pointer',
-                                  fontSize: '0.70rem',
-                                  fontWeight: 700,
-                                  width: '100%',
-                                }}
-                              >
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                  {renderFunnelOrStageIcon(f.icon || 'layers', 12, isExpanded ? '#8B5CF6' : 'var(--adm-text-muted)')}
-                                  <span>{f.name}</span>
-                                </div>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                  <span style={{ fontSize: '0.56rem', color: 'var(--adm-text-muted)' }}>{targetStages.length} etapas</span>
-                                  <ChevronDown size={11} style={{ transform: isExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s ease' }} />
-                                </div>
-                              </button>
-
-                              {isExpanded && (
-                                <div style={{ padding: '4px 0 4px 6px', display: 'flex', flexDirection: 'column', gap: '2px', borderLeft: '2px dashed #8B5CF6', marginLeft: '8px' }}>
-                                  {targetStages.map(targetStg => (
-                                    <button
-                                      key={targetStg.id}
-                                      type="button"
-                                      disabled={isTransferringFunnel}
-                                      onClick={async () => {
-                                        setIsTransferringFunnel(true);
-                                        try {
-                                          await reassignLeadFunnel(lead.id, f.id, targetStg.id);
-                                          onStageChange(targetStg.id as ClientStage);
-                                          setExpandedFunnelId(null);
-                                          toast.success(`Transferido para ${f.name} (${targetStg.name})`);
-                                        } finally {
-                                          setIsTransferringFunnel(false);
-                                        }
-                                      }}
-                                      style={{
-                                        padding: '4px 6px',
-                                        borderRadius: '4px',
-                                        border: '1px solid var(--adm-border)',
-                                        background: 'var(--adm-bg-card)',
-                                        color: targetStg.color || '#3B82F6',
-                                        fontSize: '0.64rem',
-                                        fontWeight: 700,
-                                        cursor: isTransferringFunnel ? 'wait' : 'pointer',
-                                        textAlign: 'left',
-                                        width: '100%',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'space-between',
-                                      }}
-                                    >
-                                      <span>{targetStg.name}</span>
-                                      <span style={{ fontSize: '0.56rem', opacity: 0.8 }}>Transferir</span>
-                                    </button>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })()}
+            {/* ── FUNIS VINCULADOS (somente leitura): cada funil e um setor independente ── */}
+            <LinkedFunnelsProgress clientId={client?.id} />
 
             <ClientVenueEventsCard
               client={client || undefined}

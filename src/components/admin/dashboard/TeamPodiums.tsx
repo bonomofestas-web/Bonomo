@@ -3,6 +3,7 @@ import { Crown, Handshake, Medal, Trophy } from 'lucide-react';
 import { DeltaBadge, EmptyHint, Panel, SectionTitle, formatBRL } from './DashboardKpi';
 import { pctDelta } from '../../../utils/dashboardPeriod';
 import type { CloserRank, SdrRank } from '../../../hooks/useCommercialDashboardData';
+import { roleLabel } from './CollaboratorIdentity';
 
 const GOLD = '#D4AF37';
 const SILVER = '#CBD5E1';
@@ -28,6 +29,7 @@ interface PodiumItem {
   id: string;
   name: string;
   avatarUrl?: string;
+  role?: string;
   main: string;     // valor principal (ex.: R$)
   sub: string;      // linha secundaria
   extra?: React.ReactNode;
@@ -48,6 +50,13 @@ const PodiumColumn: React.FC<{ item: PodiumItem; place: 0 | 1 | 2 }> = ({ item, 
       }}>
         {item.name}
       </div>
+      {item.role && (
+        <span style={{
+          marginTop: '2px', fontSize: '0.58rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em',
+          padding: '1px 6px', borderRadius: '4px', color: 'var(--adm-text-muted)',
+          background: 'var(--adm-bg-input)', border: '1px solid var(--adm-border)',
+        }}>{roleLabel(item.role)}</span>
+      )}
       <div style={{ fontSize: '0.7rem', color: 'var(--adm-text-muted)', fontVariantNumeric: 'tabular-nums', textAlign: 'center' }}>{item.sub}</div>
       {item.extra}
       <div style={{
@@ -113,7 +122,7 @@ export const ClosersPodium: React.FC<{ closers: CloserRank[] }> = ({ closers }) 
   <Podium
     title="Pódio de Closers" hint="Por valor fechado no período" empty="Nenhum fechamento atribuído a Closers no período."
     items={closers.slice(0, 6).map(c => ({
-      id: c.id, name: c.name, avatarUrl: c.avatarUrl,
+      id: c.id, name: c.name, avatarUrl: c.avatarUrl, role: 'closer',
       main: formatBRL(c.revenue),
       sub: `${c.closings} ${c.closings === 1 ? 'contrato' : 'contratos'}`,
       extra: c.topSdrName ? (
@@ -134,7 +143,7 @@ export const SdrsPodium: React.FC<{ sdrs: SdrRank[] }> = ({ sdrs }) => (
   <Podium
     title="Pódio de SDRs" hint="Por agendamentos realizados" empty="Nenhum agendamento realizado por SDRs no período."
     items={sdrs.slice(0, 6).map(s => ({
-      id: s.id, name: s.name, avatarUrl: s.avatarUrl,
+      id: s.id, name: s.name, avatarUrl: s.avatarUrl, role: 'sdr',
       main: `${s.appointments} agend.`,
       sub: `Visita ${s.visits} · Degust. ${s.tastings}`,
       extra: (

@@ -3,6 +3,7 @@ import { DeltaBadge, EmptyHint, Panel, SectionTitle, formatMinutes } from './Das
 import { pctDelta } from '../../../utils/dashboardPeriod';
 import { getGoalStatus } from '../../../utils/goalStatus';
 import type { CollaboratorRow } from '../../../hooks/useCommercialDashboardData';
+import { CollaboratorIdentity } from './CollaboratorIdentity';
 
 const formatHours = (minutes: number | null): string => {
   if (minutes === null) return '—';
@@ -35,10 +36,12 @@ export const CollaboratorRadar: React.FC<{ rows: CollaboratorRow[]; loadingPrese
       <EmptyHint>Nenhum SDR ou Closer ativo no escopo.</EmptyHint>
     ) : (
       <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '680px' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '820px' }}>
           <thead>
             <tr>
               <th style={th}>Colaborador</th>
+              <th style={th}>Conversas</th>
+              <th style={th}>Mensagens</th>
               <th style={th}>TMA</th>
               <th style={th}>Tempo online</th>
               <th style={th}>Entregas</th>
@@ -52,10 +55,23 @@ export const CollaboratorRadar: React.FC<{ rows: CollaboratorRow[]; loadingPrese
               return (
                 <tr key={r.id}>
                   <td style={td}>
-                    <div style={{ fontWeight: 800 }}>{r.name}</div>
-                    <div style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)' }}>
-                      {r.role === 'closer' ? 'Closer' : 'SDR'}
-                    </div>
+                    <CollaboratorIdentity name={r.name} role={r.role} />
+                  </td>
+                  <td style={td}>
+                    {loadingPresence ? '...' : <strong>{r.conversations}</strong>}
+                    {!loadingPresence && r.activeDays > 0 && (
+                      <div style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)' }}>
+                        {(Math.round((r.conversations / r.activeDays) * 10) / 10).toLocaleString('pt-BR')}/dia
+                      </div>
+                    )}
+                  </td>
+                  <td style={td}>
+                    {loadingPresence ? '...' : <strong>{r.messages}</strong>}
+                    {!loadingPresence && r.activeDays > 0 && (
+                      <div style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)' }}>
+                        {(Math.round((r.messages / r.activeDays) * 10) / 10).toLocaleString('pt-BR')}/dia
+                      </div>
+                    )}
                   </td>
                   <td style={td}>
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontWeight: 700 }}>

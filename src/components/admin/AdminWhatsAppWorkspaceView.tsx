@@ -9,8 +9,8 @@ import {
   GitBranch, Users, Trash2, Zap, Smile, Image as ImageIcon,
   Headphones, Pause, Play, CheckCircle2, Edit3, AlertCircle, AlertTriangle, Copy,
   History, RefreshCw, MoreVertical, CheckCheck, DollarSign, TrendingUp, Folder,
-  ExternalLink, ShieldCheck, Sparkles, ShoppingBag, Video, Download, Loader2, Camera, Crown,
-  Target, Lock, RotateCcw, XCircle, Flame, ArrowUpDown, UserCheck, Smartphone, QrCode,
+  ExternalLink, ShieldCheck, Sparkles, ShoppingBag, Video, Download, Loader2, Camera,
+  Target, Lock, RotateCcw, XCircle, Flame, ArrowUpDown, ArrowUp, ArrowDown, BadgeCheck, UserCheck, Smartphone, QrCode,
   Reply, ArrowRightLeft
 } from 'lucide-react';
 import { IcpTargetUserIcon } from './IcpTargetUserIcon';
@@ -2517,20 +2517,10 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
         isMain: false,
         avatarUrl: undefined,
       });
-    } else if (debName && debName.toLowerCase() !== cleanMainName.toLowerCase() && !list.some(l => l.name.toLowerCase() === debName.toLowerCase())) {
-      // Adiciona canal da protagonista caso o nome seja distinto do contratante
-      list.push({
-        key: `protagonist-shared-${debName}`,
-        phone: mainPhone || '',
-        name: debName,
-        label: debName,
-        role: 'Protagonista',
-        roleBadge: 'Protagonista do Evento',
-        isDecisor: false,
-        isMain: false,
-        avatarUrl: undefined,
-      });
     }
+    // Regra: so existe canal de conversa para pessoa com telefone PROPRIO cadastrado.
+    // (Antes criava um item "protagonista" reutilizando o telefone do contratante, o que
+    // duplicava o mesmo numero em todos os leads e podia enviar a mensagem para a pessoa errada.)
 
     const motherPhone = leadAny.motherPhone?.trim();
     if (motherPhone && !seenPhones.has(motherPhone)) {
@@ -2589,6 +2579,12 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
 
   useEffect(() => {
     if (availableRecipients.length > 0) {
+      // Preserva a pessoa escolhida se ela continua na lista (evita voltar ao 1o item a cada atualizacao do lead)
+      const keep = selectedRecipientKey ? availableRecipients.find(r => r.key === selectedRecipientKey) : undefined;
+      if (keep) {
+        setSelectedRecipientPhone(keep.phone);
+        return;
+      }
       setSelectedRecipientKey(availableRecipients[0].key);
       setSelectedRecipientPhone(availableRecipients[0].phone);
     } else if (selectedLead?.phone) {
@@ -3111,6 +3107,30 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   const presenceTimerRef = useRef<any>(null);
   const currentLeadPhoneRef = useRef<string>('');
 
+  // Presenca na lista de conversas: "digitando..." / "gravando audio..." ao lado de cada lead (chave = ultimos 8 digitos)
+  const [listPresence, setListPresence] = useState<Record<string, 'composing' | 'recording'>>({});
+  const listPresenceTimersRef = useRef<Record<string, any>>({});
+  useEffect(() => {
+    const unsub = uazapiSseService.onPresence((evt) => {
+      const key = (evt.phone || '').replace(/\D/g, '').slice(-8);
+      if (key.length < 8) return;
+      clearTimeout(listPresenceTimersRef.current[key]);
+      if (evt.presence === 'composing' || evt.presence === 'recording') {
+        const kind = evt.presence;
+        setListPresence(prev => ({ ...prev, [key]: kind }));
+        listPresenceTimersRef.current[key] = setTimeout(() => {
+          setListPresence(prev => { const n = { ...prev }; delete n[key]; return n; });
+        }, kind === 'recording' ? 15000 : 10000);
+      } else {
+        setListPresence(prev => { if (!prev[key]) return prev; const n = { ...prev }; delete n[key]; return n; });
+      }
+    });
+    return () => {
+      unsub();
+      Object.values(listPresenceTimersRef.current).forEach(t => clearTimeout(t));
+    };
+  }, []);
+
   // Presença do Cliente / Lead em Tempo Real (Digitando... / Gravando áudio...)
   const [customerPresence, setCustomerPresence] = useState<{ isTyping: boolean; isRecording: boolean }>({ isTyping: false, isRecording: false });
   const customerPresenceTimerRef = useRef<any>(null);
@@ -3118,10 +3138,18 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   useEffect(() => {
     const unsub = uazapiSseService.onPresence((evt) => {
       const currentPhone = selectedRecipientPhone || selectedLead?.phone || '';
-      const cleanCurrent = currentPhone.replace(/\D/g, '');
       const cleanIncoming = (evt.phone || '').replace(/\D/g, '');
+      const incomingJidDigits = (evt.jid || '').replace(/@.*$/, '').replace(/\D/g, '');
 
-      if (cleanCurrent && cleanIncoming && (cleanCurrent === cleanIncoming || cleanCurrent.endsWith(cleanIncoming) || cleanIncoming.endsWith(cleanCurrent))) {
+      // Casa por telefone (tolera 9o digito e DDI) ou pelo LID/JID gravado no lead
+      const leadIds = [
+        (selectedLead as any)?.whatsappLid,
+        (selectedLead as any)?.whatsappJid,
+      ].map(v => String(v || '').replace(/@.*$/, '').replace(/\D/g, '')).filter(Boolean);
+      const matchesPhone = isPhoneMatch(currentPhone, cleanIncoming);
+      const matchesLid = leadIds.some(id => id === cleanIncoming || (incomingJidDigits && id === incomingJidDigits));
+
+      if (matchesPhone || matchesLid) {
         if (customerPresenceTimerRef.current) clearTimeout(customerPresenceTimerRef.current);
 
         if (evt.presence === 'composing') {
@@ -3144,7 +3172,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       unsub();
       if (customerPresenceTimerRef.current) clearTimeout(customerPresenceTimerRef.current);
     };
-  }, [selectedLead?.id, selectedRecipientPhone]);
+  }, [selectedLead?.id, selectedLead?.phone, (selectedLead as any)?.whatsappLid, (selectedLead as any)?.whatsappJid, selectedRecipientPhone]);
 
   const triggerComposingPresence = () => {
     const targetPhone = selectedRecipientPhone || selectedLead?.phone;
@@ -6012,7 +6040,12 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                           overflow: 'hidden',
                           textOverflow: 'ellipsis',
                         }}>
-                          {cleanPreviewText || (lastActivity?.title || 'Sem mensagens recentes')}
+                          {(() => {
+                            const pres = listPresence[(lead.phone || '').replace(/\D/g, '').slice(-8)];
+                            if (pres === 'composing') return <span style={{ color: '#00a884', fontWeight: 700, animation: 'pulse 1.2s infinite' }}>digitando...</span>;
+                            if (pres === 'recording') return <span style={{ color: '#00a884', fontWeight: 700, animation: 'pulse 1.2s infinite', display: 'inline-flex', alignItems: 'center', gap: '4px' }}><Mic size={11} color="#00a884" />gravando áudio...</span>;
+                            return cleanPreviewText || (lastActivity?.title || 'Sem mensagens recentes');
+                          })()}
                         </span>
                       </div>
                       {Boolean(lead.unreadCount && lead.unreadCount > 0) && (
@@ -6898,7 +6931,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                               color: isSelected ? '#059669' : '#10B981',
                             }}
                           >
-                            <Crown size={12} style={{ flexShrink: 0 }} />
+                            <BadgeCheck size={12} style={{ flexShrink: 0 }} />
                           </span>
                         ) : isProtagonist ? (
                           <span
@@ -8003,7 +8036,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                 title={`Disparado por ${displayedSenderName}${displayedSenderPhone ? ` (${displayedSenderPhone})` : ''}`}
                               >
                                 <span style={{ color: 'var(--adm-text-muted)', fontWeight: 500 }}>
-                                  Disparado por:
+                                  <ArrowUp size={13} aria-label="Disparado por" />
                                 </span>
 
                                 {displayedSenderAvatar ? (
@@ -11963,7 +11996,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                             }}
                           >
                             <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--adm-text-muted)' }}>
-                              Disparado por:
+                              <ArrowUp size={13} aria-label="Disparado por" />
                             </span>
 
                             {/* WhatsApp Avatar ou Logo fica DEPOIS do texto 'Disparado por:' e ANTES do nome */}
@@ -12201,7 +12234,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                 border: '1px solid var(--adm-border)',
                               }}>
                                 <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--adm-text-muted)' }}>
-                                  Enviado para:
+                                  <ArrowDown size={13} aria-label="Enviado para" />
                                 </span>
 
                                 {/* Foto / Avatar do destinatário antes do nome */}
@@ -12240,7 +12273,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                 <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#10B981', display: 'flex', alignItems: 'center', gap: '4px' }}>
                                   <span>{formatPersonShortName(availableRecipients[0].name)}</span>
                                   {availableRecipients[0].isDecisor ? (
-                                    <span title="Decisor" style={{ display: 'inline-flex', alignItems: 'center' }}><Crown size={11} color="#10B981" /></span>
+                                    <span title="Decisor" style={{ display: 'inline-flex', alignItems: 'center' }}><BadgeCheck size={11} color="#10B981" /></span>
                                   ) : availableRecipients[0].roleBadge?.toLowerCase().includes('protagonista') ? (
                                     <span title="Protagonista" style={{ display: 'inline-flex', alignItems: 'center' }}><Sparkles size={11} color="#EC4899" /></span>
                                   ) : (
@@ -12267,7 +12300,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                   }}
                                 >
                                   <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--adm-text-muted)' }}>
-                                    Enviado para:
+                                    <ArrowDown size={13} aria-label="Enviado para" />
                                   </span>
 
                                   {(() => {
@@ -12318,7 +12351,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                         }}>
                                           <span>{formatPersonShortName(currentRec.name)}</span>
                                           {currentRec.isDecisor ? (
-                                            <span title="Decisor" style={{ display: 'inline-flex', alignItems: 'center' }}><Crown size={11} color="#10B981" /></span>
+                                            <span title="Decisor" style={{ display: 'inline-flex', alignItems: 'center' }}><BadgeCheck size={11} color="#10B981" /></span>
                                           ) : currentRec.roleBadge?.toLowerCase().includes('protagonista') ? (
                                             <span title="Protagonista" style={{ display: 'inline-flex', alignItems: 'center' }}><Sparkles size={11} color="#EC4899" /></span>
                                           ) : (

@@ -840,7 +840,10 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
 
     setStages(prev => prev.map(s => {
       if (s.id !== stageId) return s;
-      const existing = (s.triggers || []).filter(t => t.type !== selectedTriggerType);
+      // Pos-venda aceita varios funis por etapa de ganho (substitui so o mesmo funil); os demais tipos mantem 1 por etapa
+      const existing = (s.triggers || []).filter(t => selectedTriggerType === 'create_post_sale_client'
+        ? !(t.type === 'create_post_sale_client' && t.targetFunnelId === selectedTargetFunnelId)
+        : t.type !== selectedTriggerType);
       return {
         ...s,
         triggers: [...existing, newTrigger],
@@ -3429,7 +3432,8 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                         ) : (() => {
                           const hasSchedule = (stage.triggers || []).some(t => t.type === 'open_schedule');
                           const hasMoveFunnel = (stage.triggers || []).some(t => t.type === 'move_to_funnel' || (t as any).type === 'transfer_funnel');
-                          const hasPostSale = (stage.triggers || []).some(t => t.type === 'create_post_sale_client');
+                          const postSaleCount = (stage.triggers || []).filter(t => t.type === 'create_post_sale_client').length;
+                          const hasPostSale = false; // varios funis de pos-venda por etapa de ganho
                           const isStageWon = Boolean(stage.isWon || stage.id === 'deal_closed' || stage.id === 'contrato_fechado' || stage.id === 'ganho' || stage.name?.toLowerCase().includes('ganho') || stage.name?.toLowerCase().includes('contrato fechado'));
                           const canAddMoreTriggers = !hasSchedule || !hasMoveFunnel || (isStageWon && !hasPostSale);
 
@@ -3613,7 +3617,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                                             <span style={{ fontSize: '0.58rem', color: 'var(--adm-text-muted)' }}>Duplica lead ganho para cliente</span>
                                           </div>
                                         </div>
-                                        {hasPostSale && <span style={{ fontSize: '0.56rem', color: '#EF4444', fontWeight: 700 }}>1/1 ativo</span>}
+                                        {postSaleCount > 0 && <span style={{ fontSize: '0.56rem', color: '#10B981', fontWeight: 700 }}>{postSaleCount} ativo(s)</span>}
                                       </button>
                                     )}
                                   </div>

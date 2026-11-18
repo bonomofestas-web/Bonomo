@@ -2316,6 +2316,38 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
           </div>
         </div>
 
+        {/* Alteração contratual: contrato negado pela gerência antes do ganho */}
+        {(lead.customFieldValues as any)?.contract_rejection && (() => {
+          const rej = (lead.customFieldValues as any).contract_rejection as {
+            contractCode?: string; reason?: string; rejectedBy?: string; rejectedByRole?: string; rejectedAt?: string; deadline?: string;
+          };
+          const deadline = rej.deadline ? new Date(rej.deadline) : null;
+          const overdue = deadline ? deadline.getTime() < Date.now() : false;
+          return (
+            <div style={{
+              background: 'rgba(245, 158, 11, 0.12)',
+              border: '1px solid rgba(245, 158, 11, 0.45)',
+              borderRadius: '10px',
+              padding: '10px 14px',
+              marginBottom: '12px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '4px',
+            }}>
+              <strong style={{ fontSize: '0.78rem', color: '#F59E0B' }}>
+                Alteração contratual solicitada{rej.contractCode ? ` (${rej.contractCode})` : ''}
+              </strong>
+              <span style={{ fontSize: '0.74rem', color: 'var(--adm-text-title, #E2E8F0)', whiteSpace: 'pre-wrap' }}>
+                Orientações de {rej.rejectedBy || 'gerência'}{rej.rejectedByRole ? ` (${rej.rejectedByRole})` : ''}: {rej.reason || 'sem detalhes'}
+              </span>
+              <span style={{ fontSize: '0.70rem', color: overdue ? '#EF4444' : 'var(--adm-text-muted, #94A3B8)' }}>
+                {deadline ? `Prazo: ${deadline.toLocaleString('pt-BR')}${overdue ? ' (vencido)' : ''}. ` : ''}
+                Ajuste os dados do fechamento e mova o lead novamente para o ganho para reenviar à aprovação.
+              </span>
+            </div>
+          );
+        })()}
+
         {/* Banner de Lead Removido do Funil (com motivo e botão de restauração) */}
         {lead.isRemovedFromFunnel && (
           <div style={{

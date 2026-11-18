@@ -956,7 +956,8 @@ export const AdminGlobalSearch: React.FC<AdminGlobalSearchProps> = ({
                           <div
                             key={ctr.id}
                             onClick={() => {
-                              onNavigateTab('contracts');
+                              // Contrato (documento): abre o drawer do contrato na tela de Contratos
+                              onNavigateTab('contracts', undefined, { contractId: ctr.id });
                               handleClose();
                             }}
                             style={{
@@ -1007,7 +1008,28 @@ export const AdminGlobalSearch: React.FC<AdminGlobalSearchProps> = ({
                               </div>
                             </div>
 
-                            <ExternalLink size={14} color="#D4AF37" style={{ flexShrink: 0 }} />
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                              {ctr.clientId && ctr.approvalStatus === 'approved' && (
+                                <button
+                                  type="button"
+                                  title="Abrir este contrato na esteira do funil de pós-venda"
+                                  onClick={e => {
+                                    e.stopPropagation();
+                                    const fid = (ctr.targetPosSaleFunnelIds || ctr.targetPostSaleFunnelIds || [])[0];
+                                    onNavigateTab('post-sale-crm', fid, { clientId: ctr.clientId });
+                                    handleClose();
+                                  }}
+                                  style={{
+                                    padding: '3px 8px', borderRadius: '5px', cursor: 'pointer',
+                                    border: '1px solid #D4AF37', background: 'transparent',
+                                    color: isLight ? '#B45309' : '#D4AF37', fontSize: '0.68rem', fontWeight: 700,
+                                  }}
+                                >
+                                  Ver na esteira
+                                </button>
+                              )}
+                              <ExternalLink size={14} color="#D4AF37" />
+                            </div>
                           </div>
                         ))}
                       </div>

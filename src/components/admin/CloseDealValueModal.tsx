@@ -37,6 +37,8 @@ interface CloseDealValueModalProps {
       payerAddress?: string;
       payerNeighborhood?: string;
       paymentTerms?: string;
+      promises?: string;
+      specialConditions?: { financeiro?: string; decoracao?: string; outros?: string };
     }
   ) => void;
 }
@@ -135,6 +137,10 @@ export const CloseDealValueModal: React.FC<CloseDealValueModalProps> = ({
   });
   const [contractTitle, setContractTitle] = useState('');
   const [closerNotes, setCloserNotes] = useState('');
+  const [promises, setPromises] = useState('');
+  const [condFinance, setCondFinance] = useState('');
+  const [condDecor, setCondDecor] = useState('');
+  const [condOther, setCondOther] = useState('');
   const [contractSignedFileUrl, setContractSignedFileUrl] = useState<string>('');
   const [contractSignedFileName, setContractSignedFileName] = useState<string>('');
   const [paymentFileUrl, setPaymentFileUrl] = useState<string>('');
@@ -287,6 +293,12 @@ export const CloseDealValueModal: React.FC<CloseDealValueModalProps> = ({
       payerAddress: payerAddress.trim() || undefined,
       payerNeighborhood: payerNeighborhood.trim() || undefined,
       paymentTerms: computedTerms,
+      promises: promises.trim() || undefined,
+      specialConditions: {
+        financeiro: condFinance.trim() || undefined,
+        decoracao: condDecor.trim() || undefined,
+        outros: condOther.trim() || undefined,
+      },
     });
     onClose();
   };
@@ -955,6 +967,52 @@ export const CloseDealValueModal: React.FC<CloseDealValueModalProps> = ({
                 lineHeight: 1.4,
               }}
             />
+          </div>
+
+          {/* Combinados e condicoes especiais: visiveis para todo o time na ficha do contrato */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <div>
+              <label style={labelStyle}>Combinados e promessas feitas ao cliente</label>
+              <textarea
+                rows={2}
+                value={promises}
+                onChange={(e) => setPromises(e.target.value)}
+                placeholder="O que foi prometido, cortesias, particularidades da família..."
+                style={{ ...inputStyle, resize: 'vertical', minHeight: '55px', lineHeight: 1.4 }}
+              />
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '8px' }}>
+              <div>
+                <label style={labelStyle}>Condição especial: Financeiro</label>
+                <textarea
+                  rows={2}
+                  value={condFinance}
+                  onChange={(e) => setCondFinance(e.target.value)}
+                  placeholder="Desconto, prazo, forma de pagamento diferenciada..."
+                  style={{ ...inputStyle, resize: 'vertical', lineHeight: 1.4 }}
+                />
+              </div>
+              <div>
+                <label style={labelStyle}>Condição especial: Decoração</label>
+                <textarea
+                  rows={2}
+                  value={condDecor}
+                  onChange={(e) => setCondDecor(e.target.value)}
+                  placeholder="Tema, itens incluídos, restrições..."
+                  style={{ ...inputStyle, resize: 'vertical', lineHeight: 1.4 }}
+                />
+              </div>
+              <div>
+                <label style={labelStyle}>Outras condições especiais</label>
+                <textarea
+                  rows={2}
+                  value={condOther}
+                  onChange={(e) => setCondOther(e.target.value)}
+                  placeholder="Cerimonial, buffet, coreografia, outros..."
+                  style={{ ...inputStyle, resize: 'vertical', lineHeight: 1.4 }}
+                />
+              </div>
+            </div>
           </div>
 
           {/* Footer Buttons */}

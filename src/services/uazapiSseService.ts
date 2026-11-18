@@ -24,6 +24,7 @@ export interface UazapiIncomingMessageEvent {
 export interface UazapiPresenceEvent {
   instanceToken: string;
   phone: string;
+  jid?: string; // identificador bruto (pode ser @lid)
   presence: 'composing' | 'recording' | 'paused' | 'available' | 'unavailable';
 }
 
@@ -462,7 +463,7 @@ class UazapiSseManager {
       eventType === 'presence' ||
       eventType === 'presence.update' ||
       eventType.includes('presence') ||
-      eventType === 'chats.update' ||
+      (eventType === 'chats.update' && Boolean((payload.data || payload)?.presence || (payload.data || payload)?.presences || (payload.data || payload)?.lastKnownPresence)) ||
       eventType === 'user.presence' ||
       Boolean(payload.presences) ||
       Boolean(payload.data?.presences) ||
@@ -499,6 +500,7 @@ class UazapiSseManager {
         this.presenceListeners.forEach(fn => fn({
           instanceToken,
           phone: cleanPhone,
+          jid: String(jid || ""),
           presence: normalizedPresence,
         }));
       }
