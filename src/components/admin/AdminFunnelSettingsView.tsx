@@ -2754,9 +2754,9 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
                           {([
                             {
-                              label: 'Responsável',
+                              label: 'Quem é avisado',
                               value: stage.responsibility || 'both',
-                              options: [['both', 'SDR e Closer'], ['sdr', 'Só SDR'], ['closer', 'Só Closer']],
+                              options: [['both', 'SDR e Closer do lead'], ['sdr', 'Só o SDR do lead'], ['closer', 'Só o Closer do lead']],
                               onChange: (v: string) => setStages(prev => prev.map(s => s.id === stage.id ? { ...s, responsibility: v as StageResponsibility } : s)),
                             },
                             {

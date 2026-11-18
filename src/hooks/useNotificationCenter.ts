@@ -128,12 +128,6 @@ export function useNotificationCenter(
     await notificationService.markAllRead(userId);
   }, [userId]);
 
-  const clear = useCallback(async (onlyRead = true) => {
-    if (!userId) return;
-    setItems(prev => (onlyRead ? prev.filter(n => !n.readAt) : []));
-    await notificationService.clear(userId, onlyRead);
-  }, [userId]);
-
   const updatePrefs = useCallback(async (next: NotificationPrefs, masterId: string) => {
     setPrefs(next);
     if (userId) await notificationService.savePrefs(userId, masterId, next);
@@ -154,5 +148,5 @@ export function useNotificationCenter(
     logNotif('teste', err ? `Falhou ao gravar: ${err}` : 'Gravada no banco. Aguardando o pop-up em tempo real...', !err);
   }, [userId]);
 
-  return { items, unreadCount, prefs, markRead, markAllRead, clear, updatePrefs, sendTest };
+  return { items, unreadCount, prefs, markRead, markAllRead, updatePrefs, sendTest };
 }

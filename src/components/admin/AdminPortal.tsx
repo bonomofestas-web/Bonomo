@@ -675,7 +675,6 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                 prefs={notif.prefs}
                 onOpen={openNotification}
                 onMarkAllRead={() => { void notif.markAllRead(); }}
-                onClear={(onlyRead) => { void notif.clear(onlyRead); }}
                 onTogglePref={(patch) => { void notif.updatePrefs({ ...notif.prefs, ...patch }, currentUser?.masterId || currentUser?.id || ''); }}
               />
               {(currentUser?.isDev || ['master', 'admin', 'gerencia'].includes(currentUser?.role || '')) && (

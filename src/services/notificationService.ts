@@ -67,13 +67,12 @@ export const mapNotification = (r: any): AdminNotification => ({
 
 export const notificationService = {
   /** Caixa de entrada do usuario logado (RLS tambem restringe ao destinatario). */
-  async list(recipientId: string, limit = 150): Promise<AdminNotification[]> {
+  async list(recipientId: string, limit = 400): Promise<AdminNotification[]> {
     if (!isSupabaseConfigured || !recipientId) return [];
     const { data, error } = await supabase
       .from('notifications')
       .select(COLUMNS)
       .eq('recipient_id', recipientId)
-      .is('cleared_at', null)
       .order('created_at', { ascending: false })
       .limit(limit);
     if (error) { console.error('[notifications] list', error.message); return []; }
@@ -122,14 +121,6 @@ export const notificationService = {
     await supabase.from('notifications')
       .update({ delivery_status: 'delivered', delivered_at: new Date().toISOString() })
       .in('id', ids).eq('delivery_status', 'pending');
-  },
-
-  /** Limpar: apenas oculta da central (cleared_at). O historico nunca e apagado. */
-  async clear(recipientId: string, onlyRead = true): Promise<void> {
-    if (!isSupabaseConfigured || !recipientId) return;
-    let q = supabase.from('notifications').update({ cleared_at: new Date().toISOString() }).eq('recipient_id', recipientId).is('cleared_at', null);
-    if (onlyRead) q = q.not('read_at', 'is', null);
-    await q;
   },
 
   async getPrefs(collaboratorId: string): Promise<NotificationPrefs> {
