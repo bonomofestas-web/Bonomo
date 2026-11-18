@@ -351,7 +351,7 @@ export const agendaAvailabilityService = {
 
   /**
    * Calcula a disponibilidade de horários com PRECEDÊNCIA:
-   * 0º: VenueEvent (Evento da Unidade com trava do dia ativa)
+   * (Festa na unidade NAO bloqueia visitas/degustacoes: a UI apenas avisa. Ver utils/venueEventDay.ts)
    * 1º: AgendaDateOverride (bloqueio ou ajuste pontual do dia)
    * 2º: AgendaBlockRule (regra por período de datas que suspende a regra semanal)
    * 3º: AgendaRecurringRule (regra base semanal por dia da semana)
@@ -362,14 +362,13 @@ export const agendaAvailabilityService = {
     arg3?: any,
     arg4?: any,
     arg5?: any,
-    arg6?: any
+    _arg6?: any
   ): AvailabilityResult {
     let config: VenueAgendaConfig | null = null;
     let dateStr: string = '';
     let type: CommercialCommitmentType = 'visit';
     let existingAppointments: Appointment[] = [];
     let targetVenueId: string = '';
-    let venueEvents: VenueEvent[] = [];
 
     // Checa assinatura: se arg1 for string ('2026-09-18'), é (dateStr, type, venueId, appointments, config, venueEvents)
     if (typeof arg1 === 'string') {
@@ -378,7 +377,6 @@ export const agendaAvailabilityService = {
       targetVenueId = typeof arg3 === 'string' ? arg3 : '';
       existingAppointments = Array.isArray(arg4) ? arg4 : [];
       config = (arg5 as VenueAgendaConfig) || null;
-      venueEvents = Array.isArray(arg6) ? arg6 : [];
     } else {
       // Assinatura: (config, dateStr, type, existingAppointments, venueEvents)
       config = (arg1 as VenueAgendaConfig) || null;
@@ -386,33 +384,14 @@ export const agendaAvailabilityService = {
       dateStr = String(arg2 || '');
       type = (arg3 as CommercialCommitmentType) || 'visit';
       existingAppointments = Array.isArray(arg4) ? arg4 : [];
-      venueEvents = Array.isArray(arg5) ? arg5 : [];
     }
 
     if (!targetVenueId && config?.venueId) {
       targetVenueId = config.venueId;
     }
 
-    // 0º Precedência: Trava de Dia pela Agenda de Eventos da Unidade (administrada pelo Pós-Venda)
-    if (dateStr && venueEvents.length > 0) {
-      const blockingEvent = venueEvents.find(ev =>
-        ev.status !== 'cancelled' &&
-        ev.blocksVenueDay !== false &&
-        ev.eventDate === dateStr &&
-        (!targetVenueId || targetVenueId === 'all' || ev.venueId === targetVenueId)
-      );
-      if (blockingEvent) {
-        const msg = `Dia travado por Evento na Unidade (${blockingEvent.title})`;
-        return {
-          isBlocked: true,
-          isDayAvailable: false,
-          blockReason: msg,
-          reason: msg,
-          appliedMode: 'override',
-          slots: [],
-        };
-      }
-    }
+    // Festa na unidade nao trava mais o dia (uma festa por dia, mas visitas/degustacoes seguem liberadas);
+    // o aviso ao usuario e feito na tela de agendamento com venueEventWarning().
 
     // Se o compromisso (visita ou degustação) não estiver configurado para esta unidade, a opção de agendamento fica indisponível
     if (!this.isCommitmentTypeConfigured(config, type)) {

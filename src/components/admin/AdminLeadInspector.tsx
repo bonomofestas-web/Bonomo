@@ -6229,77 +6229,43 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
               </div>
             )}
 
-            {/* Bloco Específico: Sub-origem & WhatsApp API */}
+            {/* Sub-origem (WhatsApp): card neutro, igual ao Canal de Entrada; a origem principal ja aparece acima */}
             {(lead.subSource || lead.source === 'whatsapp' || leadSource?.type === 'whatsapp_api') && (
               <div style={{
-                background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(20, 17, 24, 0.6) 100%)',
-                border: '1.5px solid rgba(16, 185, 129, 0.35)',
-                borderRadius: '14px',
+                background: 'var(--adm-bg-card)',
+                border: '1px solid var(--adm-border)',
+                borderRadius: '12px',
                 padding: '16px',
                 display: 'flex',
                 flexDirection: 'column',
-                gap: '12px',
+                gap: '10px',
               }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <WhatsAppBrandIcon size={16} color="#10B981" />
-                    <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#10B981', textTransform: 'uppercase' }}>
-                      Identificação de Sub-origem WhatsApp
-                    </span>
-                  </div>
-                  {lead.subSource && (
-                    <span style={{
-                      fontSize: '0.7rem',
-                      fontWeight: 600,
-                      padding: '2px 8px',
-                      borderRadius: '6px',
-                      background: 'rgba(16, 185, 129, 0.2)',
-                      color: '#10B981',
-                      border: '1px solid #10B981',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                    }}>
-                      <Tag size={11} /> {lead.subSource}
-                    </span>
-                  )}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.74rem', fontWeight: 800, color: 'var(--adm-accent)', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+                    <WhatsAppBrandIcon size={14} color="#10B981" /> Sub-origem
+                  </span>
+                  <span style={{
+                    display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '0.7rem', fontWeight: 700, padding: '3px 8px', borderRadius: '6px',
+                    background: lead.subSource ? 'rgba(16, 185, 129, 0.15)' : 'var(--adm-bg-input)',
+                    color: lead.subSource ? '#10B981' : 'var(--adm-text-muted)',
+                  }}>
+                    {lead.subSource ? <><Tag size={11} /> {lead.subSource}</> : 'WhatsApp direto'}
+                  </span>
                 </div>
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  <div style={{ background: 'var(--adm-bg-card)', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--adm-border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <span style={{ fontSize: '0.70rem', color: 'var(--adm-text-muted)' }}>Origem Principal:</span>
-                    <strong style={{ fontSize: '0.82rem', color: 'var(--adm-text-title)', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700 }}>
-                      <WhatsAppBrandIcon size={14} color="#10B981" /> {lead.sourceName || leadSource?.name || 'WhatsApp API'}
-                    </strong>
-                  </div>
-
-                  <div style={{ background: 'var(--adm-bg-card)', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--adm-border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <span style={{ fontSize: '0.70rem', color: 'var(--adm-text-muted)' }}>Sub-origem / Canal:</span>
-                    <strong style={{ fontSize: '0.82rem', color: lead.subSource ? '#10B981' : 'var(--adm-text-muted)', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600 }}>
-                      {lead.subSource ? (
-                        <>
-                          <Tag size={12} /> {lead.subSource}
-                        </>
-                      ) : (
-                        'Sem suborigem (WhatsApp Direto)'
-                      )}
-                    </strong>
-                  </div>
-                </div>
-
-                {/* Sub-source editor / selector */}
                 {leadSource?.configuration?.subSources && leadSource.configuration.subSources.length > 0 && (
-                  <div style={{ background: 'var(--adm-bg-card)', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--adm-border)' }}>
+                  <div>
                     <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 600, color: 'var(--adm-text-muted)', marginBottom: '4px' }}>
-                      Alterar Sub-origem do Lead
+                      Alterar sub-origem do lead
                     </label>
                     <select
                       value={lead.subSource || ''}
+                      disabled={readOnly}
                       onChange={(e) => handleUpdate({ subSource: e.target.value || undefined })}
                       className="adm-input"
                       style={{ width: '100%', height: '32px', fontSize: '0.76rem', borderRadius: '6px' }}
                     >
-                      <option value="">Nenhuma sub-origem (WhatsApp Direto)</option>
+                      <option value="">Nenhuma sub-origem (WhatsApp direto)</option>
                       {leadSource.configuration.subSources.map(sub => (
                         <option key={sub.id} value={sub.name}>{sub.name} (Gatilho: "{sub.keyword}")</option>
                       ))}

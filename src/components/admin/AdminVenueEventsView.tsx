@@ -25,7 +25,9 @@ import { useAdminState } from '../../context/AdminStateContext';
 import type { AdminTask, VenueEvent, VenueEventStatus } from '../../types/admin';
 import { AdminCalendarMonthView } from './tasks/AdminCalendarMonthView';
 import { AdminCalendarWeekView } from './tasks/AdminCalendarWeekView';
-import { AdminCalendarDayView } from './tasks/AdminCalendarDayView';
+import { AdminCalendarDayView } from './tasks/AdminCalendarDayView';
+import { VENUE_DAY_TAKEN, venueDayTakenMessage } from '../../utils/venueEventDay';
+import { eventTypeLabels } from '../../utils/roleLabels';
 
 const EVENT_TYPE_OPTIONS = [
   '15 Anos / Debutante',
@@ -200,7 +202,7 @@ export const AdminVenueEventsView: React.FC = () => {
 
   const kpis = useMemo(() => {
     const activeMonth = monthEvents.filter(ev => ev.status !== 'cancelled');
-    const lockedDays = new Set(activeMonth.filter(ev => ev.blocksVenueDay !== false).map(ev => `${ev.venueId}:${ev.eventDate}`)).size;
+    const lockedDays = new Set(activeMonth.filter(ev => ev.status !== 'cancelled').map(ev => `${ev.venueId}:${ev.eventDate}`)).size;
     const linked = activeMonth.filter(ev => Boolean(ev.clientId)).length;
     const unlinked = activeMonth.filter(ev => !ev.clientId).length;
     return {
@@ -310,6 +312,25 @@ export const AdminVenueEventsView: React.FC = () => {
     }
   };
 
+  // Vindo de "Agendar na Casa" (ficha do cliente): abre o modal de nova festa ja preenchido
+  useEffect(() => {
+    if (!canManageEvents) return;
+    let raw: string | null = null;
+    try { raw = localStorage.getItem('f5_venue_event_prefill'); } catch { /* ignora */ }
+    if (!raw) return;
+    try { localStorage.removeItem('f5_venue_event_prefill'); } catch { /* ignora */ }
+    try {
+      const p = JSON.parse(raw) as { clientId?: string; venueId?: string; date?: string; eventType?: string; guestCount?: number | null };
+      openCreateModal(p.date || undefined);
+      if (p.venueId && scopedVenues.some(v => v.id === p.venueId)) setFormVenueId(p.venueId);
+      if (p.clientId) handleSelectClientInForm(p.clientId);
+      const kind = eventTypeLabels(p.eventType).kind;
+      setFormEventType(kind === 'casamento' ? 'Casamento' : kind === 'aniversario' ? 'Festa Infantil' : '15 Anos / Debutante');
+      if (p.guestCount) setFormGuestCount(String(p.guestCount));
+      setFormStatus('scheduled'); // pendente ate a confirmacao
+    } catch { /* prefill invalido: abre a agenda normalmente */ }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleSaveEvent = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!canManageEvents) return;
@@ -370,16 +391,16 @@ export const AdminVenueEventsView: React.FC = () => {
       setSelectedDate(formDate);
       setIsModalOpen(false);
     } catch (err) {
-      console.error('Erro ao salvar evento da unidade:', err);
-      setFormError('Não foi possível salvar o evento. Tente novamente.');
+      const msg = err instanceof Error ? err.message : '';
+      if (msg.startsWith(`${VENUE_DAY_TAKEN}:`)) {
+        setFormError(venueDayTakenMessage(msg.slice(VENUE_DAY_TAKEN.length + 1)));
+      } else {
+        console.error('Erro ao salvar evento da unidade:', err);
+        setFormError('Não foi possível salvar o evento. Tente novamente.');
+      }
     } finally {
       setIsSaving(false);
     }
-  };
-
-  const handleToggleLockDay = async (ev: VenueEvent) => {
-    if (!canManageEvents) return;
-    await updateVenueEvent(ev.id, { blocksVenueDay: !ev.blocksVenueDay });
   };
 
   const handleConfirmDelete = async () => {
@@ -441,7 +462,7 @@ export const AdminVenueEventsView: React.FC = () => {
         >
           <Lock size={15} color="#2563EB" />
           <span>
-            Agenda administrada pela equipe de Pós-Venda. O time Comercial possui acesso de consulta às datas travadas da unidade; datas com evento bloqueado ficam indisponíveis para novos agendamentos de visita.
+            Agenda administrada pela equipe de Pós-Venda. Uma festa por dia por unidade. O time Comercial consulta as datas; visitas e degustações continuam liberadas em dias com festa, com aviso na hora de agendar.
           </span>
         </div>
       )}
@@ -485,7 +506,7 @@ export const AdminVenueEventsView: React.FC = () => {
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
           {[
             { label: 'no mês', value: kpis.totalMonth, icon: CalendarIcon, color: '#2563EB' },
-            { label: 'dias travados', value: kpis.lockedDays, icon: Lock, color: '#DC2626' },
+            { label: 'dias com festa', value: kpis.lockedDays, icon: Lock, color: '#DC2626' },
             { label: 'com cliente', value: kpis.linked, icon: UserCheck, color: '#059669' },
             { label: 'avulsos', value: kpis.unlinked, icon: Building2, color: '#7C3AED' },
           ].map(item => {
@@ -663,7 +684,7 @@ export const AdminVenueEventsView: React.FC = () => {
                           }}
                         >
                           {isLocked ? <Lock size={11} /> : <Unlock size={11} />}
-                          {isLocked ? 'Dia Travado (Comercial bloqueado)' : 'Sem Trava de Agenda'}
+                          {isLocked ? 'Ocupa o dia (1 festa por dia)' : 'Cancelado'}
                         </span>
 
                         {ev.clientId ? (
@@ -729,21 +750,6 @@ export const AdminVenueEventsView: React.FC = () => {
                             }}
                           >
                             <Edit3 size={12} /> Editar / Vincular
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleToggleLockDay(ev)}
-                            title={ev.blocksVenueDay ? 'Destravar dia para visitas' : 'Travar dia para visitas'}
-                            style={{
-                              padding: '5px 9px',
-                              borderRadius: '7px',
-                              border: '1px solid var(--adm-border, #CBD5E1)',
-                              background: 'var(--adm-bg-surface, #FFFFFF)',
-                              color: ev.blocksVenueDay ? '#DC2626' : '#059669',
-                              cursor: 'pointer',
-                            }}
-                          >
-                            {ev.blocksVenueDay ? <Unlock size={13} /> : <Lock size={13} />}
                           </button>
                           <button
                             type="button"
@@ -840,7 +846,7 @@ export const AdminVenueEventsView: React.FC = () => {
                         }}
                       >
                         {isLocked ? <Lock size={11} /> : <Unlock size={11} />}
-                        {isLocked ? 'Dia Travado' : 'Sem Trava'}
+                        {isLocked ? 'Ocupa o dia' : 'Cancelado'}
                       </span>
                     </div>
 
@@ -935,7 +941,7 @@ export const AdminVenueEventsView: React.FC = () => {
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <CalendarCheck2 size={20} color="#2563EB" />
                 <h3 style={{ margin: 0, fontSize: '1.02rem', fontWeight: 800, color: 'var(--adm-text-title, #0F172A)' }}>
-                  {editingEvent ? 'Editar Evento na Agenda da Unidade' : 'Novo Evento / Trava de Data'}
+                  {editingEvent ? 'Editar Evento na Agenda da Unidade' : 'Nova Festa / Evento na Unidade'}
                 </h3>
               </div>
               <button
@@ -1205,40 +1211,13 @@ export const AdminVenueEventsView: React.FC = () => {
               </select>
             </div>
 
-            {/* Toggle Trava do Dia */}
-            <label
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: '12px',
-                padding: '12px',
-                borderRadius: '10px',
-                border: formBlocksVenueDay
-                  ? '1px solid rgba(220, 38, 38, 0.35)'
-                  : '1px solid var(--adm-border, #E2E8F0)',
-                background: formBlocksVenueDay ? 'rgba(239, 68, 68, 0.06)' : 'var(--adm-bg-muted, #F8FAFC)',
-                cursor: 'pointer',
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                {formBlocksVenueDay ? <Lock size={16} color="#DC2626" /> : <Unlock size={16} color="#64748B" />}
-                <div>
-                  <div style={{ fontSize: '0.80rem', fontWeight: 800, color: 'var(--adm-text-title, #0F172A)' }}>
-                    Travar dia da unidade na agenda comercial
-                  </div>
-                  <div style={{ fontSize: '0.71rem', color: 'var(--adm-text-muted, #64748B)' }}>
-                    Impede o Comercial de marcar visitas ou degustações nesta data enquanto o evento estiver ativo.
-                  </div>
-                </div>
-              </div>
-              <input
-                type="checkbox"
-                checked={formBlocksVenueDay}
-                onChange={(e) => setFormBlocksVenueDay(e.target.checked)}
-                style={{ width: '18px', height: '18px', accentColor: '#DC2626' }}
-              />
-            </label>
+            {/* Regra de negocio: uma festa por dia por unidade; visitas e degustacoes seguem liberadas */}
+            <div style={{
+              padding: '10px 12px', borderRadius: '10px', fontSize: '0.74rem', lineHeight: 1.45,
+              border: '1px solid var(--adm-border, #E2E8F0)', background: 'var(--adm-bg-muted, #F8FAFC)', color: 'var(--adm-text-muted, #64748B)',
+            }}>
+              Uma festa por dia por unidade. Visitas e degustações continuam liberadas nesta data; quem agenda recebe um aviso de que há festa no dia.
+            </div>
 
             <div>
               <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, marginBottom: '5px', color: 'var(--adm-text-muted, #475569)' }}>
@@ -1336,7 +1315,7 @@ export const AdminVenueEventsView: React.FC = () => {
               <h4 style={{ margin: 0, fontSize: '0.96rem', fontWeight: 800 }}>Excluir Evento da Unidade?</h4>
             </div>
             <p style={{ margin: 0, fontSize: '0.80rem', color: 'var(--adm-text-muted, #475569)' }}>
-              Tem certeza que deseja remover <strong>{deletingEvent.title}</strong> ({formatDateBr(deletingEvent.eventDate)})? Caso o dia estivesse travado apenas por este evento, ele voltará a ficar disponível na agenda comercial.
+              Tem certeza que deseja remover <strong>{deletingEvent.title}</strong> ({formatDateBr(deletingEvent.eventDate)})? O dia voltará a ficar livre para uma nova festa nesta unidade.
             </p>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
               <button

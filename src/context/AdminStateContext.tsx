@@ -78,6 +78,7 @@ import { generateLeadCode, generateClientCode, buildHandoverActivity } from '../
 import { isUuid } from '../utils/uuid';
 import { getLeadPendingWaitingTime } from '../utils/leadSorting';
 import { notificationService, type NewNotification } from '../services/notificationService';
+import { eventsOnDay, VENUE_DAY_TAKEN } from '../utils/venueEventDay';
 import { buildNewOpportunity, buildInboundMessage, buildContractNotifications, buildTaskNotifications, buildAppointmentNotifications } from '../utils/notificationEngine';
 
 const STORAGE_KEY_USER = 'bonomo_admin_user_v7';
@@ -10307,6 +10308,12 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       return null;
     }
 
+    // Uma festa por dia por unidade (visitas e degustacoes continuam liberadas)
+    const dayClash = eventsOnDay(scopedVenueEvents, eventData.venueId, eventData.eventDate)[0];
+    if (dayClash && eventData.status !== 'cancelled') {
+      throw new Error(`${VENUE_DAY_TAKEN}:${dayClash.title}`);
+    }
+
     const now = new Date().toISOString();
     const linkedClient = eventData.clientId ? scopedClients.find(c => c.id === eventData.clientId) : undefined;
     const newEvent: VenueEvent = {
@@ -10365,6 +10372,14 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const nextVenueId = updates.venueId || existing.venueId;
     const targetVenue = scopedVenues.find(v => v.id === nextVenueId);
     if (!targetVenue) return false;
+
+    // Mudou unidade/data (ou reativou): nao pode cair em dia com outra festa
+    const nextDate = updates.eventDate || existing.eventDate;
+    const nextStatus = updates.status || existing.status;
+    if (nextStatus !== 'cancelled' && (nextVenueId !== existing.venueId || nextDate !== existing.eventDate || existing.status === 'cancelled')) {
+      const dayClash = eventsOnDay(scopedVenueEvents, nextVenueId, nextDate, eventId)[0];
+      if (dayClash) throw new Error(`${VENUE_DAY_TAKEN}:${dayClash.title}`);
+    }
 
     const now = new Date().toISOString();
     const nextClientId = updates.clientId !== undefined ? updates.clientId : existing.clientId;

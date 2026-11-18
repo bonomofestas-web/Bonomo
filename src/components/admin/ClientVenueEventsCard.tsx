@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from 'react';
-import { CalendarCheck2, Lock, Unlock, Plus, Clock, Building2, CheckCircle2, X } from 'lucide-react';
+import React, { useMemo } from 'react';
+import { CalendarCheck2, Lock, Unlock, Plus, Clock, Building2 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import type { Client, VenueEventStatus } from '../../types/admin';
 
@@ -32,7 +32,7 @@ export const ClientVenueEventsCard: React.FC<ClientVenueEventsCardProps> = ({
   fallbackGuestCount,
   readOnly = false,
 }) => {
-  const { venueEvents, addVenueEvent, venues, currentUser } = useAdminState();
+  const { venueEvents, venues, currentUser } = useAdminState();
 
   const canManage = useMemo(() => {
     if (readOnly) return false;
@@ -47,53 +47,21 @@ export const ClientVenueEventsCard: React.FC<ClientVenueEventsCardProps> = ({
       .sort((a, b) => a.eventDate.localeCompare(b.eventDate));
   }, [venueEvents, client?.id]);
 
-  const [isAdding, setIsAdding] = useState(false);
-  const [title, setTitle] = useState('');
-  const [eventDate, setEventDate] = useState('');
-  const [venueId, setVenueId] = useState('');
-  const [startTime, setStartTime] = useState('19:00');
-  const [endTime, setEndTime] = useState('01:00');
-  const [blocksVenueDay, setBlocksVenueDay] = useState(true);
-  const [isSaving, setIsSaving] = useState(false);
-
-  const openQuickForm = () => {
+  // "Agendar na Casa" abre o modal completo da Agenda de Eventos, ja preenchido com os dados do cliente.
+  // A agenda aplica a regra de uma festa por dia por unidade e o status inicial pendente.
+  const openFullAgendaModal = () => {
     if (!canManage || !client) return;
-    setTitle(`Evento ${client.honoreeName || client.name}`);
-    const defaultDate =
-      (client.partyDate || client.eventDate || fallbackPartyDate || '').split('T')[0] ||
-      new Date().toISOString().split('T')[0];
-    setEventDate(defaultDate);
-    setVenueId(client.venueId || fallbackVenueId || venues[0]?.id || '');
-    setStartTime('19:00');
-    setEndTime('01:00');
-    setBlocksVenueDay(true);
-    setIsAdding(true);
-  };
-
-  const handleSave = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!canManage || !client || !venueId || !eventDate || !title.trim()) return;
-    setIsSaving(true);
+    const date = (client.partyDate || client.eventDate || fallbackPartyDate || '').split('T')[0];
     try {
-      const targetVenue = venues.find(v => v.id === venueId);
-      await addVenueEvent({
-        venueId,
-        venueName: targetVenue?.name || client.venueName,
+      localStorage.setItem('f5_venue_event_prefill', JSON.stringify({
         clientId: client.id,
-        clientName: client.name,
-        title: title.trim(),
-        eventType: '15 Anos / Debutante',
-        eventDate,
-        startTime: startTime || undefined,
-        endTime: endTime || undefined,
-        guestCount: client.guestCount || fallbackGuestCount,
-        status: 'confirmed',
-        blocksVenueDay,
-      });
-      setIsAdding(false);
-    } finally {
-      setIsSaving(false);
-    }
+        venueId: client.venueId || fallbackVenueId || '',
+        date,
+        eventType: client.eventType || '',
+        guestCount: client.guestCount || fallbackGuestCount || null,
+      }));
+    } catch { /* sem localStorage: abre a agenda sem pre-preenchimento */ }
+    window.dispatchEvent(new CustomEvent('admin_switch_tab', { detail: { tab: 'venue-events' } }));
   };
 
   if (!client) return null;
@@ -124,10 +92,10 @@ export const ClientVenueEventsCard: React.FC<ClientVenueEventsCardProps> = ({
           <span>Agenda de Eventos da Unidade ({linkedEvents.length})</span>
         </div>
 
-        {canManage && !isAdding && (
+        {canManage && (
           <button
             type="button"
-            onClick={openQuickForm}
+            onClick={openFullAgendaModal}
             style={{
               display: 'inline-flex',
               alignItems: 'center',
@@ -158,146 +126,6 @@ export const ClientVenueEventsCard: React.FC<ClientVenueEventsCardProps> = ({
           gap: '8px',
         }}
       >
-        {isAdding && canManage && (
-          <form
-            onSubmit={handleSave}
-            style={{
-              padding: '10px',
-              borderRadius: '8px',
-              background: 'var(--adm-bg-input)',
-              border: '1px solid rgba(37, 99, 235, 0.35)',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '8px',
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
-                Registrar Evento na Unidade
-              </span>
-              <button
-                type="button"
-                onClick={() => setIsAdding(false)}
-                style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--adm-text-muted)' }}
-              >
-                <X size={14} />
-              </button>
-            </div>
-
-            <input
-              type="text"
-              required
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="Título do evento"
-              style={{
-                width: '100%',
-                padding: '6px 8px',
-                borderRadius: '6px',
-                border: '1px solid var(--adm-border)',
-                background: 'var(--adm-bg-surface)',
-                color: 'var(--adm-text-title)',
-                fontSize: '0.75rem',
-              }}
-            />
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
-              <select
-                required
-                value={venueId}
-                onChange={(e) => setVenueId(e.target.value)}
-                style={{
-                  padding: '6px 8px',
-                  borderRadius: '6px',
-                  border: '1px solid var(--adm-border)',
-                  background: 'var(--adm-bg-surface)',
-                  color: 'var(--adm-text-title)',
-                  fontSize: '0.74rem',
-                }}
-              >
-                <option value="">Unidade...</option>
-                {venues.map(v => (
-                  <option key={v.id} value={v.id}>{v.name}</option>
-                ))}
-              </select>
-              <input
-                type="date"
-                required
-                value={eventDate}
-                onChange={(e) => setEventDate(e.target.value)}
-                style={{
-                  padding: '6px 8px',
-                  borderRadius: '6px',
-                  border: '1px solid var(--adm-border)',
-                  background: 'var(--adm-bg-surface)',
-                  color: 'var(--adm-text-title)',
-                  fontSize: '0.74rem',
-                }}
-              />
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
-              <input
-                type="time"
-                value={startTime}
-                onChange={(e) => setStartTime(e.target.value)}
-                style={{
-                  padding: '6px 8px',
-                  borderRadius: '6px',
-                  border: '1px solid var(--adm-border)',
-                  background: 'var(--adm-bg-surface)',
-                  color: 'var(--adm-text-title)',
-                  fontSize: '0.74rem',
-                }}
-              />
-              <input
-                type="time"
-                value={endTime}
-                onChange={(e) => setEndTime(e.target.value)}
-                style={{
-                  padding: '6px 8px',
-                  borderRadius: '6px',
-                  border: '1px solid var(--adm-border)',
-                  background: 'var(--adm-bg-surface)',
-                  color: 'var(--adm-text-title)',
-                  fontSize: '0.74rem',
-                }}
-              />
-            </div>
-
-            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.72rem', fontWeight: 700, color: 'var(--adm-text-title)', cursor: 'pointer' }}>
-              <input
-                type="checkbox"
-                checked={blocksVenueDay}
-                onChange={(e) => setBlocksVenueDay(e.target.checked)}
-                style={{ accentColor: '#DC2626' }}
-              />
-              Travar dia da unidade na agenda comercial
-            </label>
-
-            <button
-              type="submit"
-              disabled={isSaving}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '5px',
-                padding: '7px 10px',
-                borderRadius: '7px',
-                border: 'none',
-                background: '#2563EB',
-                color: '#FFFFFF',
-                fontSize: '0.74rem',
-                fontWeight: 700,
-                cursor: 'pointer',
-              }}
-            >
-              <CheckCircle2 size={13} /> {isSaving ? 'Salvando...' : 'Confirmar Evento'}
-            </button>
-          </form>
-        )}
-
         {linkedEvents.length === 0 ? (
           <div style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)', textAlign: 'center', padding: '6px 0' }}>
             Nenhum evento vinculado na agenda da unidade para este cliente.
@@ -306,7 +134,7 @@ export const ClientVenueEventsCard: React.FC<ClientVenueEventsCardProps> = ({
           linkedEvents.map(ev => {
             const st = STATUS_LABELS[ev.status] || STATUS_LABELS.scheduled;
             const venueLabel = venues.find(v => v.id === ev.venueId)?.name || ev.venueName || 'Unidade';
-            const locked = ev.blocksVenueDay !== false && ev.status !== 'cancelled';
+            const locked = ev.status !== 'cancelled'; // ocupa o dia (uma festa por dia); nao bloqueia visitas/degustacoes
 
             return (
               <div
@@ -366,7 +194,7 @@ export const ClientVenueEventsCard: React.FC<ClientVenueEventsCardProps> = ({
                     }}
                   >
                     {locked ? <Lock size={10} /> : <Unlock size={10} />}
-                    {locked ? 'Dia da Casa Travado' : 'Sem Trava de Agenda'}
+                    {locked ? 'Ocupa o dia da Casa' : 'Cancelado'}
                   </span>
                 </div>
               </div>

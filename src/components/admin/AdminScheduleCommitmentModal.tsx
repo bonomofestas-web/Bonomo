@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import { eventsOnDay, venueEventWarning } from '../../utils/venueEventDay';
 import { 
   X, Check, ChevronLeft, ChevronRight,
   Search, Building2, AlertCircle,
@@ -363,6 +364,17 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
   }, [calendarMonth]);
 
   // Grid de disponibilidade do mês corrente
+  // Festas da unidade: nao bloqueiam o agendamento, apenas sinalizam o dia
+  const partyDays = useMemo(() => new Set(
+    (venueEvents || [])
+      .filter(ev => ev.status !== 'cancelled' && (!targetVenueId || targetVenueId === 'all' || ev.venueId === targetVenueId))
+      .map(ev => ev.eventDate)
+  ), [venueEvents, targetVenueId]);
+  const selectedDayEvents = useMemo(
+    () => eventsOnDay(venueEvents || [], targetVenueId, selectedDate),
+    [venueEvents, targetVenueId, selectedDate],
+  );
+
   const monthDaysGrid = useMemo(() => {
     const year = calendarMonth.getFullYear();
     const month = calendarMonth.getMonth();
@@ -1256,9 +1268,16 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
                           alignItems: 'center',
                           justifyContent: 'center',
                           opacity: d.isPast ? 0.35 : 1,
+                          position: 'relative',
                         }}
                       >
                         {d.dayNum}
+                        {partyDays.has(d.dateStr) && (
+                          <span
+                            title="Há festa marcada neste dia"
+                            style={{ position: 'absolute', bottom: '3px', width: '5px', height: '5px', borderRadius: '50%', background: '#EC4899' }}
+                          />
+                        )}
                       </button>
                     );
                   })}
@@ -1289,6 +1308,18 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
                         </div>
                         <div style={{ lineHeight: 1.45 }}>{realtimeBookingConflict}</div>
                       </div>
+                    </div>
+                  )}
+
+                  {/* Aviso (nao bloqueia): ha festa marcada na unidade neste dia */}
+                  {selectedDayEvents.length > 0 && (
+                    <div style={{
+                      padding: '10px 14px', borderRadius: '10px', background: '#FDF2F8', border: '1.5px solid #EC4899',
+                      color: '#9D174D', fontSize: '0.80rem', fontWeight: 700, marginBottom: '14px',
+                      display: 'flex', alignItems: 'flex-start', gap: '10px',
+                    }}>
+                      <AlertTriangle size={16} color="#EC4899" style={{ flexShrink: 0, marginTop: '2px' }} />
+                      <div style={{ lineHeight: 1.45 }}>{venueEventWarning(selectedDayEvents)}</div>
                     </div>
                   )}
 
