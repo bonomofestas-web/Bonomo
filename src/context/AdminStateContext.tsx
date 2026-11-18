@@ -78,8 +78,9 @@ import { generateLeadCode, generateClientCode, buildHandoverActivity } from '../
 import { isUuid } from '../utils/uuid';
 import { getLeadPendingWaitingTime } from '../utils/leadSorting';
 import { notificationService, type NewNotification } from '../services/notificationService';
+import { logNotif } from '../utils/notificationDiag';
 import { eventsOnDay, VENUE_DAY_TAKEN } from '../utils/venueEventDay';
-import { buildNewOpportunity, buildInboundMessage, buildContractNotifications, buildTaskNotifications, buildAppointmentNotifications } from '../utils/notificationEngine';
+import { buildContractNotifications, buildTaskNotifications, buildAppointmentNotifications } from '../utils/notificationEngine';
 
 const STORAGE_KEY_USER = 'bonomo_admin_user_v7';
 const STORAGE_KEY_COLLABORATORS = 'bonomo_admin_collaborators_v7';
@@ -764,9 +765,6 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const funnelsRef = React.useRef<CommercialFunnel[]>([]);
   const collaboratorsRef = React.useRef<Collaborator[]>([]);
 
-  // Mensagens do mesmo lead dentro de 30s compartilham a chave (um aviso por rajada; os dois caminhos de deteccao nao duplicam)
-  const messageBucket = () => Math.floor(Date.now() / 30000);
-
   // Gera notificacoes (idempotente por dedupeKey) apenas com dados do Master ativo.
   // So usa refs: seguro dentro dos handlers Realtime registrados uma unica vez.
   const emitNotifications = (
@@ -779,13 +777,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       const collaborators = collaboratorsRef.current.filter(c => c.id === masterId || c.masterId === masterId);
       const funnels = funnelsRef.current.filter(f => !f.masterId || f.masterId === masterId);
       const rows = build({ masterId, collaborators, funnels });
-      if (rows.length === 0) { console.warn('[notifications] evento sem destinatarios (verifique SDR/Closer do lead, funil e equipe)'); return; }
-      // Pop-up imediato para o proprio usuario (o Realtime do banco confirma depois, sem duplicar)
-      rows.filter(r => r.recipientId === user?.id).forEach(r => {
-        window.dispatchEvent(new CustomEvent('f5:local-notification', {
-          detail: { ...r, id: `local:${r.dedupeKey}`, payload: r.payload || {}, createdAt: new Date().toISOString() },
-        }));
-      });
+      if (rows.length === 0) { logNotif('gerar', 'Evento sem destinatários (verifique responsáveis e equipe)', false); return; }
       void notificationService.createMany(rows);
     } catch (err) {
       console.error('[notifications] emit', err);
@@ -1759,11 +1751,6 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         if (eventType === 'UPDATE' && newRow?.id) {
           if (deletedLeadIdsRef.current.has(newRow.id)) return;
           const freshLead = formatLeadFromDb(newRow);
-          // Mensagem nova do cliente: nao-lidas aumentou e a ultima mensagem e recebida (independe do titulo/horario da atividade)
-          const prevLead = leadsRef.current.find(l => l.id === newRow.id);
-          if (prevLead && freshLead.lastMessageDirection === 'incoming' && (freshLead.unreadCount || 0) > (prevLead.unreadCount || 0)) {
-            emitNotifications(ctx => buildInboundMessage(freshLead, `${freshLead.id}:${messageBucket()}`, freshLead.lastMessageText || '', ctx));
-          }
           setLeads(prev => {
             const updated = prev.map(currentLead => {
               if (currentLead.id !== newRow.id) return currentLead;
@@ -1801,7 +1788,6 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             safeLocalStorageSet(STORAGE_KEY_LEADS, JSON.stringify(updated));
             return updated;
           });
-          emitNotifications(ctx => buildNewOpportunity(freshLead, ctx));
           return;
         }
 
@@ -1914,15 +1900,6 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         const newRow = payload.new;
         const oldRow = payload.old;
         const targetLeadId = newRow?.lead_id || oldRow?.lead_id;
-
-        // Notificacao de mensagem recebida (ignora historico importado: so eventos recentes)
-        if (eventType === 'INSERT' && newRow && newRow.type === 'contact' && /recebid/i.test(newRow.title || '')) {
-          const ageMs = Date.now() - new Date(newRow.created_at || newRow.timestamp || Date.now()).getTime();
-          const targetLead = leadsRef.current.find(l => l.id === newRow.lead_id);
-          if (targetLead && ageMs < 2 * 60 * 1000) {
-            emitNotifications(ctx => buildInboundMessage(targetLead, `${targetLead.id}:${messageBucket()}`, newRow.text || '', ctx));
-          }
-        }
 
         if (targetLeadId) {
           setLeads(prev => {

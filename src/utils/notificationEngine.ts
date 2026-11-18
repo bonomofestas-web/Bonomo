@@ -1,8 +1,10 @@
-import type { Collaborator, CommercialFunnel, Lead } from '../types/admin';
+import type { Collaborator, CommercialFunnel } from '../types/admin';
 import type { NewNotification } from '../services/notificationService';
-import { getLeadNotificationRecipientIds, isManagerLike } from './funnelResponsibility';
+import { isManagerLike } from './funnelResponsibility';
 
-// Constroi as notificacoes a partir dos eventos. Funcoes puras: quem grava e o notificationService.
+// Notificacoes de ACOES do usuario (contrato, tarefa, compromisso). Mensagem recebida e nova oportunidade
+// sao geradas no servidor (api/whatsapp-webhook.ts), pois nascem no WhatsApp e precisam existir mesmo com o sistema fechado.
+// Funcoes puras: quem grava e o notificationService.
 // Todas recebem apenas colaboradores/funis do Master ativo (scoped) e carimbam master_id.
 // Chaves de dedupe tornam a geracao idempotente (varios clientes podem processar o mesmo evento).
 
@@ -12,61 +14,10 @@ interface Ctx {
   funnels: CommercialFunnel[];
 }
 
-const preview = (text?: string, max = 110) => {
-  const t = (text || '').replace(/\s+/g, ' ').trim();
-  return t.length > max ? `${t.slice(0, max - 1)}…` : t;
-};
-
-const leadPayload = (lead: Lead) => ({
-  leadId: lead.id,
-  leadName: lead.name,
-  avatarUrl: lead.avatarUrl,
-  funnelId: lead.funnelId,
-  sourceName: lead.sourceName,
-});
-
 const toRows = (
   recipientIds: string[],
   base: Omit<NewNotification, 'recipientId'>,
 ): NewNotification[] => Array.from(new Set(recipientIds)).map(recipientId => ({ ...base, recipientId }));
-
-const resolveLeadRecipients = (lead: Lead, ctx: Ctx): string[] => {
-  const funnel = ctx.funnels.find(f => f.id === lead.funnelId);
-  const stage = funnel?.stages?.find(s => s.id === lead.stage);
-  return getLeadNotificationRecipientIds(funnel, stage, lead, ctx.collaborators, { masterId: ctx.masterId });
-};
-
-/** Nova oportunidade (lead novo). Leads de pos-venda/clientes nao geram. */
-export function buildNewOpportunity(lead: Lead, ctx: Ctx): NewNotification[] {
-  if (lead.isClient) return [];
-  return toRows(resolveLeadRecipients(lead, ctx), {
-    masterId: ctx.masterId,
-    venueId: lead.venueId,
-    type: 'new_opportunity',
-    title: 'Nova oportunidade',
-    body: [lead.name, lead.sourceName].filter(Boolean).join(' · '),
-    entityType: 'lead',
-    entityId: lead.id,
-    payload: leadPayload(lead),
-    dedupeKey: `opp:${lead.id}`,
-  });
-}
-
-/** Mensagem recebida: so o dono do lead, ou quem poderia ser o dono se ainda nao tiver. */
-export function buildInboundMessage(lead: Lead, activityId: string, text: string, ctx: Ctx): NewNotification[] {
-  if (lead.isClient) return [];
-  return toRows(resolveLeadRecipients(lead, ctx), {
-    masterId: ctx.masterId,
-    venueId: lead.venueId,
-    type: 'message',
-    title: lead.name || 'Nova mensagem',
-    body: preview(text) || 'Mensagem recebida',
-    entityType: 'lead',
-    entityId: lead.id,
-    payload: leadPayload(lead),
-    dedupeKey: `msg:${activityId}`,
-  });
-}
 
 const hasVenue = (c: Collaborator, venueId?: string): boolean => {
   if (!venueId || c.venueId === 'all') return true;

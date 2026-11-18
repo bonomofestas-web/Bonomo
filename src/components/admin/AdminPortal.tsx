@@ -5,6 +5,7 @@ import { useNotificationCenter } from '../../hooks/useNotificationCenter';
 import { notificationService, type AdminNotification } from '../../services/notificationService';
 import { setUnreadNotifications } from '../../utils/notificationBadge';
 import { AdminNotificationsList } from './notifications/AdminNotificationsList';
+import { NotificationDiagnostics } from './notifications/NotificationDiagnostics';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { AdminSidebar, type AdminTabType } from './AdminSidebar';
 import { AdminHomeView } from './AdminHomeView';
@@ -677,6 +678,9 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                 onClear={(onlyRead) => { void notif.clear(onlyRead); }}
                 onTogglePref={(patch) => { void notif.updatePrefs({ ...notif.prefs, ...patch }, currentUser?.masterId || currentUser?.id || ''); }}
               />
+              {(currentUser?.isDev || ['master', 'admin', 'gerencia'].includes(currentUser?.role || '')) && (
+                <NotificationDiagnostics onSendTest={() => { void notif.sendTest(currentUser?.masterId || currentUser?.id || ''); }} />
+              )}
 
             </div>
           </div>

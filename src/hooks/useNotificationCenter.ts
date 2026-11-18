@@ -5,13 +5,16 @@ import {
   type AdminNotification, type NotificationPrefs,
 } from '../services/notificationService';
 import { playNotificationTone } from '../utils/audioUtils';
+import { logNotif, setNotifChannelStatus } from '../utils/notificationDiag';
 import { showNotificationToast } from '../components/admin/notifications/notificationUi';
 
 const DEFAULT_PREFS: NotificationPrefs = { mutedTypes: [], soundEnabled: true, pushEnabled: false };
 
 /**
- * Central de notificacoes do usuario logado: carrega a caixa de entrada, escuta INSERT/UPDATE/DELETE
- * em tempo real (filtrado por recipient_id) e dispara pop-up + som por tipo.
+ * Central de notificacoes do usuario logado.
+ * - Lista e contador vem do banco (tudo e gravado la, inclusive para quem estava offline).
+ * - Online: Realtime INSERT em `notifications` (filtrado por recipient_id) dispara pop-up + som.
+ * - Sem polling: recarrega ao conectar/reconectar o canal e ao voltar o foco da aba.
  */
 export function useNotificationCenter(
   userId: string | undefined,
@@ -25,47 +28,40 @@ export function useNotificationCenter(
   onOpenRef.current = onOpen;
   const seenRef = useRef<Set<string>>(new Set());
 
-  // Pop-up + som respeitando as preferencias; ignora evento ja exibido (dedupeKey)
+  const reload = useCallback(async () => {
+    if (!userId) return;
+    const list = await notificationService.list(userId);
+    list.forEach(n => seenRef.current.add(n.id));
+    setItems(list);
+  }, [userId]);
+
+  // Pop-up + som respeitando as preferencias
   const deliver = useCallback((n: AdminNotification) => {
     const p = prefsRef.current;
-    if (p.mutedTypes.includes(n.type)) return;
-    if (showNotificationToast(n, x => onOpenRef.current(x)) && p.soundEnabled) playNotificationTone(n.type);
+    if (p.mutedTypes.includes(n.type)) { logNotif('exibir', `Tipo "${n.type}" silenciado nas preferências`); return; }
+    const shown = showNotificationToast(n, x => onOpenRef.current(x));
+    if (shown && p.soundEnabled) playNotificationTone(n.type);
+    logNotif('exibir', `Pop-up ${shown ? 'exibido' : 'já exibido antes'}${shown && p.soundEnabled ? ' com som' : ''} (${n.type})`);
   }, []);
 
-  // Notificacoes geradas por este proprio cliente chegam na hora, sem esperar o round-trip do banco
   useEffect(() => {
-    if (!userId) return;
-    const onLocal = (e: Event) => {
-      const n = (e as CustomEvent<AdminNotification>).detail;
-      if (!n || n.recipientId !== userId) return;
-      setItems(prev => (n.dedupeKey && prev.some(p => p.dedupeKey === n.dedupeKey) ? prev : [n, ...prev]));
-      deliver(n);
-    };
-    window.addEventListener('f5:local-notification', onLocal);
-    return () => window.removeEventListener('f5:local-notification', onLocal);
-  }, [userId, deliver]);
-
-  useEffect(() => {
-    if (!userId) { setItems([]); return; }
+    if (!userId) { setItems([]); setNotifChannelStatus('sem usuário'); return; }
     let cancelled = false;
     seenRef.current = new Set();
-    notificationService.list(userId).then(list => {
-      if (cancelled) return;
-      list.forEach(n => seenRef.current.add(n.id));
-      setItems(list);
-    });
+    void reload();
     notificationService.getPrefs(userId).then(p => { if (!cancelled) setPrefs(p); });
 
-    if (!isSupabaseConfigured) return () => { cancelled = true; };
+    if (!isSupabaseConfigured) { setNotifChannelStatus('Supabase não configurado'); return () => { cancelled = true; }; }
+
     const channel = supabase
       .channel(`f5-notifications-${userId}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications', filter: `recipient_id=eq.${userId}` }, (payload: any) => {
         if (payload.eventType === 'INSERT' && payload.new?.id) {
           const n = mapNotification(payload.new);
+          logNotif('receber', `Notificação recebida em tempo real (${n.type}): ${n.title}`);
           if (seenRef.current.has(n.id)) return;
           seenRef.current.add(n.id);
-          // Substitui a copia local (id provisorio) do mesmo evento pela linha real do banco
-          setItems(prev => [n, ...prev.filter(p => p.id !== n.id && !(n.dedupeKey && p.dedupeKey === n.dedupeKey))]);
+          setItems(prev => [n, ...prev.filter(p => p.id !== n.id)]);
           deliver(n);
         } else if (payload.eventType === 'UPDATE' && payload.new?.id) {
           const n = mapNotification(payload.new);
@@ -74,10 +70,24 @@ export function useNotificationCenter(
           setItems(prev => prev.filter(p => p.id !== payload.old.id));
         }
       })
-      .subscribe();
+      .subscribe((status: string, err?: Error) => {
+        setNotifChannelStatus(status);
+        logNotif('canal', `Canal em tempo real: ${status}${err?.message ? ` (${err.message})` : ''}`, status === 'SUBSCRIBED');
+        // Ao (re)conectar, busca o que chegou enquanto o canal estava fora
+        if (status === 'SUBSCRIBED') void reload();
+      });
 
-    return () => { cancelled = true; supabase.removeChannel(channel); };
-  }, [userId]);
+    const onFocus = () => { if (document.visibilityState === 'visible') void reload(); };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onFocus);
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onFocus);
+      supabase.removeChannel(channel);
+    };
+  }, [userId, reload, deliver]);
 
   const unreadCount = useMemo(() => items.filter(n => !n.readAt).length, [items]);
 
@@ -105,5 +115,20 @@ export function useNotificationCenter(
     if (userId) await notificationService.savePrefs(userId, masterId, next);
   }, [userId]);
 
-  return { items, unreadCount, prefs, markRead, markAllRead, clear, updatePrefs };
+  /** Grava uma notificacao real para o proprio usuario: valida gravacao, Realtime, pop-up, som e badge. */
+  const sendTest = useCallback(async (masterId: string) => {
+    if (!userId || !masterId) { logNotif('teste', 'Sem usuário ou Master para o teste', false); return; }
+    logNotif('teste', 'Enviando notificação de teste...');
+    const err = await notificationService.createMany([{
+      masterId,
+      recipientId: userId,
+      type: 'message',
+      title: 'Notificação de teste',
+      body: 'Se você viu e ouviu isso, a entrega está funcionando.',
+      dedupeKey: `test:${userId}:${Date.now()}`,
+    }]);
+    logNotif('teste', err ? `Falhou ao gravar: ${err}` : 'Gravada no banco. Aguardando o pop-up em tempo real...', !err);
+  }, [userId]);
+
+  return { items, unreadCount, prefs, markRead, markAllRead, clear, updatePrefs, sendTest };
 }

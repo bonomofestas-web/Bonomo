@@ -1,4 +1,5 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { logNotif } from '../utils/notificationDiag';
 
 export type NotificationType =
   | 'new_opportunity' | 'message' | 'task' | 'contract' | 'post_sale'
@@ -74,9 +75,9 @@ export const notificationService = {
     return (data || []).map(mapNotification);
   },
 
-  /** Gera notificacoes para varios destinatarios. Duplicadas (mesmo recipient + dedupeKey) sao ignoradas. */
-  async createMany(rows: NewNotification[]): Promise<void> {
-    if (!isSupabaseConfigured || rows.length === 0) return;
+  /** Gera notificacoes para varios destinatarios. Duplicadas (mesmo recipient + dedupeKey) sao ignoradas. Retorna a mensagem de erro, se houver. */
+  async createMany(rows: NewNotification[]): Promise<string | null> {
+    if (!isSupabaseConfigured || rows.length === 0) return null;
     const payload = rows.map(r => ({
       master_id: r.masterId,
       venue_id: r.venueId || null,
@@ -92,7 +93,12 @@ export const notificationService = {
     const { error } = await supabase
       .from('notifications')
       .upsert(payload, { onConflict: 'recipient_id,dedupe_key', ignoreDuplicates: true });
-    if (error) console.error('[notifications] createMany', error.message);
+    if (error) {
+      logNotif('gravar', `Falha ao gravar ${rows.length} notificação(ões): ${error.message}`, false);
+      return error.message;
+    }
+    logNotif('gravar', `${rows.length} notificação(ões) gravada(s) (${rows[0].type})`);
+    return null;
   },
 
   async markRead(ids: string[]): Promise<void> {
