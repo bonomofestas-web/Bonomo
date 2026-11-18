@@ -28,21 +28,45 @@ export function useNotificationCenter(
   onOpenRef.current = onOpen;
   const seenRef = useRef<Set<string>>(new Set());
 
+  // Pop-up + som respeitando as preferencias; depois de exibido, a notificacao passa de "pendente" para "entregue"
+  const deliver = useCallback((n: AdminNotification) => {
+    const p = prefsRef.current;
+    if (p.mutedTypes.includes(n.type)) {
+      logNotif('exibir', `Tipo "${n.type}" silenciado nas preferências (marcada como entregue)`);
+    } else {
+      const shown = showNotificationToast(n, x => onOpenRef.current(x));
+      if (shown && p.soundEnabled) playNotificationTone(n.type);
+      logNotif('exibir', `Pop-up ${shown ? 'exibido' : 'já exibido antes'}${shown && p.soundEnabled ? ' com som' : ''} (${n.type})`);
+    }
+    const now = new Date().toISOString();
+    setItems(prev => prev.map(x => (x.id === n.id ? { ...x, deliveryStatus: 'delivered', deliveredAt: now } : x)));
+    void notificationService.markDelivered([n.id]);
+  }, []);
+
+  // Carrega a caixa de entrada. O que caiu enquanto o usuario estava fora (pendente) vira UM aviso resumido e e marcado como entregue.
   const reload = useCallback(async () => {
     if (!userId) return;
     const list = await notificationService.list(userId);
+    const fresh = list.filter(n => n.deliveryStatus === 'pending' && !seenRef.current.has(n.id));
     list.forEach(n => seenRef.current.add(n.id));
     setItems(list);
-  }, [userId]);
-
-  // Pop-up + som respeitando as preferencias
-  const deliver = useCallback((n: AdminNotification) => {
-    const p = prefsRef.current;
-    if (p.mutedTypes.includes(n.type)) { logNotif('exibir', `Tipo "${n.type}" silenciado nas preferências`); return; }
-    const shown = showNotificationToast(n, x => onOpenRef.current(x));
-    if (shown && p.soundEnabled) playNotificationTone(n.type);
-    logNotif('exibir', `Pop-up ${shown ? 'exibido' : 'já exibido antes'}${shown && p.soundEnabled ? ' com som' : ''} (${n.type})`);
-  }, []);
+    if (fresh.length === 1) {
+      deliver(fresh[0]);
+    } else if (fresh.length > 1) {
+      const p = prefsRef.current;
+      const shown = showNotificationToast({
+        id: `summary-${Date.now()}`, masterId: fresh[0].masterId, recipientId: userId, type: 'announcement',
+        title: `${fresh.length} notificações novas`, body: 'Chegaram enquanto você estava fora. Abra a central para ver.',
+        payload: {}, deliveryStatus: 'delivered', createdAt: new Date().toISOString(), dedupeKey: `summary:${Date.now()}`,
+      }, x => onOpenRef.current(x));
+      if (shown && p.soundEnabled) playNotificationTone('announcement');
+      const now = new Date().toISOString();
+      const ids = fresh.map(n => n.id);
+      setItems(prev => prev.map(x => (ids.includes(x.id) ? { ...x, deliveryStatus: 'delivered', deliveredAt: now } : x)));
+      void notificationService.markDelivered(ids);
+      logNotif('exibir', `${fresh.length} notificações pendentes entregues em um aviso resumido`);
+    }
+  }, [userId, deliver]);
 
   useEffect(() => {
     if (!userId) { setItems([]); setNotifChannelStatus('sem usuário'); return; }

@@ -21,6 +21,8 @@ export interface AdminNotification {
   payload: Record<string, any>;
   dedupeKey?: string;
   readAt?: string;
+  deliveryStatus: 'pending' | 'delivered';
+  deliveredAt?: string;
   createdAt: string;
 }
 
@@ -43,7 +45,7 @@ export interface NotificationPrefs {
   pushEnabled: boolean;
 }
 
-const COLUMNS = 'id, master_id, venue_id, recipient_id, type, title, body, entity_type, entity_id, payload, dedupe_key, read_at, created_at';
+const COLUMNS = 'id, master_id, venue_id, recipient_id, type, title, body, entity_type, entity_id, payload, dedupe_key, read_at, delivery_status, delivered_at, created_at';
 
 export const mapNotification = (r: any): AdminNotification => ({
   id: r.id,
@@ -58,6 +60,8 @@ export const mapNotification = (r: any): AdminNotification => ({
   payload: r.payload || {},
   dedupeKey: r.dedupe_key || undefined,
   readAt: r.read_at || undefined,
+  deliveryStatus: r.delivery_status === 'delivered' ? 'delivered' : 'pending',
+  deliveredAt: r.delivered_at || undefined,
   createdAt: r.created_at,
 });
 
@@ -69,6 +73,7 @@ export const notificationService = {
       .from('notifications')
       .select(COLUMNS)
       .eq('recipient_id', recipientId)
+      .is('cleared_at', null)
       .order('created_at', { ascending: false })
       .limit(limit);
     if (error) { console.error('[notifications] list', error.message); return []; }
@@ -111,10 +116,18 @@ export const notificationService = {
     await supabase.from('notifications').update({ read_at: new Date().toISOString() }).eq('recipient_id', recipientId).is('read_at', null);
   },
 
-  /** Limpar: remove somente as ja lidas (ou todas, com onlyRead=false). */
+  /** Marca como entregue (pop-up/aviso exibido ao destinatario). Idempotente. */
+  async markDelivered(ids: string[]): Promise<void> {
+    if (!isSupabaseConfigured || ids.length === 0) return;
+    await supabase.from('notifications')
+      .update({ delivery_status: 'delivered', delivered_at: new Date().toISOString() })
+      .in('id', ids).eq('delivery_status', 'pending');
+  },
+
+  /** Limpar: apenas oculta da central (cleared_at). O historico nunca e apagado. */
   async clear(recipientId: string, onlyRead = true): Promise<void> {
     if (!isSupabaseConfigured || !recipientId) return;
-    let q = supabase.from('notifications').delete().eq('recipient_id', recipientId);
+    let q = supabase.from('notifications').update({ cleared_at: new Date().toISOString() }).eq('recipient_id', recipientId).is('cleared_at', null);
     if (onlyRead) q = q.not('read_at', 'is', null);
     await q;
   },
