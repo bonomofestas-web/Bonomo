@@ -1417,6 +1417,7 @@ export interface Contract {
   originLeadId?: string;
   leadId?: string;
   originFunnelId?: string;
+  sourceId?: string;                     // Origem (instancia WhatsApp) do lead que gerou o contrato
   venueId: string;                       // REGRA SUPREMA: UNIDADE ÚNICA
   venueName?: string;
 

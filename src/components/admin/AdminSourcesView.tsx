@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { SourcesHealthPanel } from './SourcesHealthPanel';
 import { 
   Compass, Plus, FileText, PhoneCall, Gift,
   Copy, Check, Code,
@@ -348,6 +349,8 @@ export const AdminSourcesView: React.FC = () => {
           100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
         }
       `}</style>
+
+      <SourcesHealthPanel />
       
       {/* ── Header ───────────────────────────────────────────────────────── */}
       <HeaderActions>

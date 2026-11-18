@@ -276,11 +276,25 @@ export const contractService = {
       const entryAmount = Number(params.entryAmount ?? 0);
       const balanceAmount = Number(params.balanceAmount ?? Math.max(0, totalAmount - entryAmount));
 
+      // Origem do contrato = origem do lead que o gerou (mesmo Master)
+      let originSourceId: string | null = null;
+      const originLeadForSource = params.originLeadId || params.leadId;
+      if (originLeadForSource && isUuid(originLeadForSource)) {
+        const { data: originLeadRow } = await supabase
+          .from('leads')
+          .select('source_id')
+          .eq('id', originLeadForSource)
+          .eq('master_id', params.masterId)
+          .maybeSingle();
+        originSourceId = (originLeadRow?.source_id as string | null) || null;
+      }
+
       const payload: Record<string, any> = {
         master_id: params.masterId,
         contract_code: contractCode,
         client_id: params.clientId && isUuid(params.clientId) ? params.clientId : null,
         contact_id: effectiveContactId,
+        ...(originSourceId ? { source_id: originSourceId } : {}),
         origin_lead_id: params.originLeadId && isUuid(params.originLeadId) ? params.originLeadId : (params.leadId && isUuid(params.leadId) ? params.leadId : null),
         lead_id: params.leadId && isUuid(params.leadId) ? params.leadId : (params.originLeadId && isUuid(params.originLeadId) ? params.originLeadId : null),
         origin_funnel_id: params.originFunnelId && isUuid(params.originFunnelId) ? params.originFunnelId : null,
@@ -482,6 +496,7 @@ export const contractService = {
         origin_lead_id: params.lead.id,
         lead_id: params.lead.id,
         origin_funnel_id: params.lead.funnelId || null,
+        ...(params.lead.sourceId ? { source_id: params.lead.sourceId } : {}),
         venue_id: params.lead.venueId, // REGRA SUPREMA: UNIDADE ÚNICA
         client_id: params.clientId && isUuid(params.clientId) ? params.clientId : null,
         event_type: params.eventData.eventType || params.lead.eventType || '15_anos',
@@ -1572,6 +1587,7 @@ function mapRowToContract(row: any): Contract {
     originLeadId: row.origin_lead_id || row.lead_id,
     leadId: row.lead_id || row.origin_lead_id,
     originFunnelId: row.origin_funnel_id,
+    sourceId: row.source_id || undefined,
     venueId: row.venue_id,
     venueName: row.venue?.name || row.venue_name || '',
     eventType: row.event_type || '15_anos',
