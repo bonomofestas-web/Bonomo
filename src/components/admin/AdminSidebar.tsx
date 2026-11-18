@@ -8,9 +8,10 @@ import {
   Sparkles, Radio, Compass,
   ShieldCheck, Star, X, AlertTriangle, Sliders, Headset,
   Eye, RotateCcw, Gift, Calendar, CalendarCheck2, GripVertical, UserCheck, Clock, Zap,
-  Contact as ContactIcon, FileCheck2, Bell, LogOut, MessageSquare
+  Contact as ContactIcon, FileCheck2, LogOut, MessageSquare
 } from 'lucide-react';
 import { SafeAvatar } from './SafeAvatar';
+import { NotificationBell } from './notifications/NotificationBell';
 import { IcpTargetUserIcon } from './IcpTargetUserIcon';
 import { renderFunnelOrStageIcon } from '../../utils/funnelIconLibrary';
 import { useAdminState } from '../../context/AdminStateContext';
@@ -290,7 +291,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
   // 1. Workspace (Enxuto e Direto: Início com tarefas pessoais, Notificações e Equipe)
   const workspaceItems: { id: AdminTabType; label: string; icon: React.ReactNode; roles: string[]; alertBadge?: boolean }[] = [
     { id: 'home', label: 'Início', icon: <Home size={15} />, roles: ['master', 'admin', 'crm', 'sdr', 'closer', 'pos_venda'] },
-    { id: 'notifications', label: 'Notificações', icon: <Bell size={15} />, roles: ['master', 'admin', 'crm', 'sdr', 'closer', 'pos_venda'], alertBadge: Boolean(announcements && announcements.length > 0) },
+    { id: 'notifications', label: 'Notificações', icon: <NotificationBell size={15} />, roles: ['master', 'admin', 'crm', 'sdr', 'closer', 'pos_venda'], alertBadge: Boolean(announcements && announcements.length > 0) },
     { id: 'team', label: 'Equipe', icon: <Users size={15} />, roles: ['master', 'admin', 'crm', 'sdr', 'closer', 'pos_venda'] },
   ];
 

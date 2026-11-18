@@ -1,6 +1,10 @@
 import { motion } from 'motion/react';
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useAdminState } from '../../context/AdminStateContext';
+import { useNotificationCenter } from '../../hooks/useNotificationCenter';
+import { notificationService, type AdminNotification } from '../../services/notificationService';
+import { setUnreadNotifications } from '../../utils/notificationBadge';
+import { AdminNotificationsList } from './notifications/AdminNotificationsList';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { AdminSidebar, type AdminTabType } from './AdminSidebar';
 import { AdminHomeView } from './AdminHomeView';
@@ -44,8 +48,8 @@ import { AdminContactsView } from './AdminContactsView';
 import { AdminContractsView } from './AdminContractsView';
 import { AdminGlobalSearch } from './AdminGlobalSearch';
 import { Toaster } from 'sonner';
-import { Menu, X, Eye, Plus, Megaphone, Bell, Sparkles, Clock, Headset, ChevronDown, Check, Layers } from 'lucide-react';
-import { type FeatureFlagId, type Lead, type AdminTask, type SystemAnnouncement } from '../../types/admin';
+import { Menu, X, Eye, Plus, Megaphone, Headset, ChevronDown, Check, Layers } from 'lucide-react';
+import { type FeatureFlagId, type SystemAnnouncement } from '../../types/admin';
 
 interface AdminPortalProps {
   onOpenDebutanteApp: (slug?: string) => void;
@@ -67,7 +71,6 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     setViewingAsCollaborator,
     theme,
     leads,
-    tasks,
     venues,
     collaborators,
     funnels,
@@ -325,6 +328,39 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     handleSelectTab(isPostSale ? 'post-sale-crm' : 'crm', targetFunnelId);
   };
 
+  // Central de notificações: clique marca como lida e leva ao destino resolvido pelo estado atual
+  const openNotification = (n: AdminNotification) => {
+    void notificationService.markRead([n.id]);
+    const leadId: string | undefined = n.payload?.leadId || (n.entityType === 'lead' ? n.entityId : undefined);
+    switch (n.type) {
+      case 'new_opportunity':
+        if (leadId) handleOpenLeadInFunnel(leadId, n.payload?.funnelId);
+        break;
+      case 'message':
+        if (leadId) handleOpenLeadInWhatsApp(leadId);
+        break;
+      case 'contract':
+        // A tela de contratos abre o contrato pelo status atual (pendente na mesa de aprovação, aprovado no contrato)
+        if (n.entityId) setOpenContractId(n.entityId);
+        handleSelectTab('contracts');
+        break;
+      case 'task':
+        if (leadId) handleOpenLeadFromTask(leadId, 'tasks'); else handleSelectTab('home');
+        break;
+      case 'appointment':
+      case 'visit_tasting':
+        handleSelectTab('post-sale-visits-tastings');
+        break;
+      case 'support':
+        handleToggleSupport();
+        break;
+      default:
+        handleSelectTab('notifications');
+    }
+  };
+  const notif = useNotificationCenter(currentUser?.id, openNotification);
+  useEffect(() => { setUnreadNotifications(notif.unreadCount); }, [notif.unreadCount]);
+
   // Dynamic First Available Tab calculation (Audio 1 & 2)
   const getFirstAvailableTab = useCallback((): AdminTabType => {
     const effectiveUser = viewingAsCollaborator || currentUser;
@@ -458,12 +494,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     }) || null;
   }, [announcements, currentUser, isUserTargetedByAnnouncement]);
 
-  // Notifications calculation
-  const todayStr = useMemo<string>(() => new Date().toISOString().split('T')[0], []);
-  const dueTodayTasks = useMemo<AdminTask[]>(() => tasks.filter((t: AdminTask) => t.status !== 'completed' && t.dueDate === todayStr), [tasks, todayStr]);
-  const newUnassignedLeads = useMemo<Lead[]>(() => leads.filter((l: Lead) => l.stage === 'new_lead'), [leads]);
   const userAnnouncements = useMemo<SystemAnnouncement[]>(() => announcements.filter(isUserTargetedByAnnouncement), [announcements, isUserTargetedByAnnouncement]);
-  const totalNotificationsCount = dueTodayTasks.length + newUnassignedLeads.length + (unreadAnnouncement ? 1 : 0);
+  const totalNotificationsCount = notif.unreadCount + (unreadAnnouncement ? 1 : 0) + (unreadSupportCount > 0 ? 1 : 0);
 
   // Removido handleOpenLeadFromTask redundante
 
@@ -635,97 +667,16 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                 </div>
               )}
 
-              {/* Tarefas com Prazo Hoje */}
-              {dueTodayTasks.length > 0 && (
-                <div style={{
-                  backgroundColor: 'var(--adm-bg-card, #111C2E)',
-                  border: '1px solid var(--adm-border, rgba(255, 255, 255, 0.08))',
-                  borderRadius: '10px',
-                  padding: '18px 20px',
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px', color: '#F59E0B', fontWeight: 700, fontSize: '0.9rem' }}>
-                    <Clock size={16} />
-                    Tarefas com Vencimento Hoje ({dueTodayTasks.length})
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {dueTodayTasks.map(t => (
-                      <div
-                        key={t.id}
-                        onClick={() => handleSelectTab('home')}
-                        style={{
-                          padding: '10px 12px',
-                          borderRadius: '6px',
-                          backgroundColor: 'rgba(255, 255, 255, 0.02)',
-                          border: '1px solid rgba(255, 255, 255, 0.06)',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                        }}
-                      >
-                        <span style={{ fontSize: '0.84rem', fontWeight: 600, color: 'var(--adm-text-title, #FFFFFF)' }}>
-                          {t.title}
-                        </span>
-                        <span style={{ fontSize: '0.74rem', color: '#F59E0B', fontWeight: 600 }}>
-                          {t.dueTime ? `Às ${t.dueTime}` : 'Hoje'}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
+              {/* Central de notificações (tarefas, mensagens, contratos, oportunidades, compromissos) */}
+              <AdminNotificationsList
+                items={notif.items}
+                prefs={notif.prefs}
+                onOpen={openNotification}
+                onMarkAllRead={() => { void notif.markAllRead(); }}
+                onClear={(onlyRead) => { void notif.clear(onlyRead); }}
+                onTogglePref={(patch) => { void notif.updatePrefs({ ...notif.prefs, ...patch }, currentUser?.masterId || currentUser?.id || ''); }}
+              />
 
-              {/* Novas Indicações / Leads */}
-              {newUnassignedLeads.length > 0 && (
-                <div style={{
-                  backgroundColor: 'var(--adm-bg-card, #111C2E)',
-                  border: '1px solid var(--adm-border, rgba(255, 255, 255, 0.08))',
-                  borderRadius: '10px',
-                  padding: '18px 20px',
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px', color: '#10B981', fontWeight: 700, fontSize: '0.9rem' }}>
-                    <Sparkles size={16} />
-                    Novos Leads Recebidos ({newUnassignedLeads.length})
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {newUnassignedLeads.map(l => (
-                      <div
-                        key={l.id}
-                        onClick={() => {
-                          handleSelectTab('crm', l.funnelId);
-                          handleOpenLeadInWhatsApp(l.id);
-                        }}
-                        style={{
-                          padding: '10px 12px',
-                          borderRadius: '6px',
-                          backgroundColor: 'rgba(255, 255, 255, 0.02)',
-                          border: '1px solid rgba(255, 255, 255, 0.06)',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                        }}
-                      >
-                        <span style={{ fontSize: '0.84rem', fontWeight: 600, color: 'var(--adm-text-title, #FFFFFF)' }}>
-                          {l.name}
-                        </span>
-                        <span style={{ fontSize: '0.74rem', color: '#10B981', fontWeight: 600 }}>
-                          Atender no Funil
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {totalNotificationsCount === 0 && (
-                <div style={{ padding: '60px 20px', textAlign: 'center', color: 'var(--adm-text-muted, #94A3B8)' }}>
-                  <Bell size={36} style={{ margin: '0 auto 12px auto', opacity: 0.3 }} />
-                  <p style={{ margin: 0, fontSize: '0.9rem', fontWeight: 600 }}>
-                    Nenhuma notificação ou comunicado pendente!
-                  </p>
-                </div>
-              )}
             </div>
           </div>
         );
