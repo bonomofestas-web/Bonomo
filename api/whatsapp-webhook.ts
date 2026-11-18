@@ -71,7 +71,7 @@ async function resolveLeadNotification(leadId: string) {
   return { lead, masterId, recipients, reason: 'equipe elegível' };
 }
 
-async function notifyLead(kind: 'message' | 'new_opportunity', leadId: string, opts: { activityId?: string; preview?: string; sourceName?: string } = {}) {
+async function notifyLead(kind: 'message' | 'new_opportunity', leadId: string, opts: { messageKey?: string; preview?: string; sourceName?: string } = {}) {
   try {
     const r = await resolveLeadNotification(leadId);
     if (!r) return;
@@ -93,7 +93,7 @@ async function notifyLead(kind: 'message' | 'new_opportunity', leadId: string, o
       entity_type: 'lead',
       entity_id: leadId,
       payload: { leadId, leadName: lead.name, avatarUrl: avatar, funnelId: lead.funnel_id, sourceName: opts.sourceName },
-      dedupe_key: kind === 'message' ? `msg:${opts.activityId}` : `opp:${leadId}`,
+      dedupe_key: kind === 'message' ? `msg:${opts.messageKey}` : `opp:${leadId}`,
     }));
     const { error } = await supabase.from('notifications').upsert(rows, { onConflict: 'recipient_id,dedupe_key', ignoreDuplicates: true });
     if (error) console.error('[Webhook] Erro ao gravar notificações:', error.message);
@@ -955,7 +955,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
           // Mensagem recebida do cliente: avisa o dono do lead (ou quem poderia ser) e grava no sino
           if (!isFromMe && !actErr) {
-            await notifyLead('message', existingLead.id, { activityId, preview: previewText, sourceName: matchedSource?.name });
+            await notifyLead('message', existingLead.id, { messageKey: waMessageId ? String(waMessageId).split(':').pop() : activityId, preview: previewText, sourceName: matchedSource?.name });
           }
 
           const updatePayload: Record<string, any> = {

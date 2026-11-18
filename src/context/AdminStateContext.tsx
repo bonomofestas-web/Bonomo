@@ -80,7 +80,7 @@ import { getLeadPendingWaitingTime } from '../utils/leadSorting';
 import { notificationService, type NewNotification } from '../services/notificationService';
 import { logNotif } from '../utils/notificationDiag';
 import { eventsOnDay, VENUE_DAY_TAKEN } from '../utils/venueEventDay';
-import { buildContractNotifications, buildTaskNotifications, buildAppointmentNotifications } from '../utils/notificationEngine';
+import { buildNewOpportunity, buildInboundMessage, buildContractNotifications, buildTaskNotifications, buildAppointmentNotifications } from '../utils/notificationEngine';
 
 const STORAGE_KEY_USER = 'bonomo_admin_user_v7';
 const STORAGE_KEY_COLLABORATORS = 'bonomo_admin_collaborators_v7';
@@ -1788,6 +1788,11 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             safeLocalStorageSet(STORAGE_KEY_LEADS, JSON.stringify(updated));
             return updated;
           });
+          // Lead novo que chegou por mensagem do cliente (historico importado nasce com 0 nao lidas e nao notifica)
+          if ((freshLead.unreadCount || 0) > 0) {
+            logNotif('detectar', `Lead novo: ${freshLead.name}`);
+            emitNotifications(ctx => buildNewOpportunity(freshLead, ctx));
+          }
           return;
         }
 
@@ -1900,6 +1905,22 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         const newRow = payload.new;
         const oldRow = payload.old;
         const targetLeadId = newRow?.lead_id || oldRow?.lead_id;
+
+        // Mensagem recebida do cliente. Historico importado tem horario antigo e fica de fora.
+        if (eventType === 'INSERT' && newRow && newRow.type === 'contact' && /recebid/i.test(newRow.title || '')) {
+          const ageMs = Date.now() - new Date(newRow.timestamp || Date.now()).getTime();
+          const targetLead = leadsRef.current.find(l => l.id === newRow.lead_id);
+          if (ageMs < 10 * 60 * 1000) {
+            if (!targetLead) {
+              logNotif('detectar', 'Mensagem recebida de um lead que não está carregado neste navegador', false);
+            } else {
+              const waId = newRow.metadata?.messageId || newRow.metadata?.waId || newRow.message_id;
+              const messageKey = waId ? String(waId).split(':').pop() as string : newRow.id;
+              logNotif('detectar', `Mensagem recebida de ${targetLead.name}`);
+              emitNotifications(ctx => buildInboundMessage(targetLead, messageKey, newRow.text || '', ctx));
+            }
+          }
+        }
 
         if (targetLeadId) {
           setLeads(prev => {

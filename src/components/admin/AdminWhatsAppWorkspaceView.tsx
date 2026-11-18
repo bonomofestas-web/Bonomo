@@ -43,6 +43,10 @@ import { uazapiSseService } from '../../services/uazapiSseService';
 import { isSupabaseConfigured } from '../../lib/supabase';
 import { leadService, mergeAndSortActivities, isPhoneMatch } from '../../services/leadService';
 import { whatsappMediaService, MediaDownloadError, describeMediaFailure, resolveMediaMessageIds } from '../../services/whatsappMediaService';
+
+// Ids da UAZAPI de uma mensagem: o id pode estar em metadata (webhook) ou no campo principal da atividade (envio/SSE)
+const mediaIdsOf = (a: { metadata?: any; messageId?: string }) =>
+  resolveMediaMessageIds({ ...(a.metadata || {}), messageId: a.metadata?.messageId || a.messageId });
 import { renderWhatsAppFormattedText } from '../../utils/whatsappFormatter';
 import { describePendingMedia } from '../../utils/mediaStoragePolicy';
 import { mediaStorageService } from '../../services/mediaStorageService';
@@ -2310,7 +2314,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   const handleManualDownloadMedia = async (act: LeadActivity) => {
     if (!selectedLead || downloadingMediaIds.has(act.id)) return;
     // Ids da UAZAPI (completo owner:messageid e curto). Nunca usa o UUID interno da atividade.
-    const messageIds = resolveMediaMessageIds(act.metadata);
+    const messageIds = mediaIdsOf(act);
     if (messageIds.length === 0) {
       toast.warning('Esta mensagem não tem identificador da UAZAPI salvo. Sincronize o histórico novamente para recuperá-lo.');
       return;
@@ -2336,13 +2340,13 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     // Âncora do history-sync: mensagem mais NOVA do mesmo chat com id da UAZAPI (o pedido traz as mensagens anteriores a ela)
     const actTime = new Date(act.timestamp || 0).getTime();
     const anchorAct = (selectedLead.activities || [])
-      .filter(a => a.id !== act.id && new Date(a.timestamp || 0).getTime() > actTime && resolveMediaMessageIds(a.metadata).length > 0)
+      .filter(a => a.id !== act.id && new Date(a.timestamp || 0).getTime() > actTime && mediaIdsOf(a).length > 0)
       .sort((a, b) => new Date(a.timestamp || 0).getTime() - new Date(b.timestamp || 0).getTime())[0];
     const leadDigits = String(selectedRecipientPhone || selectedLead.phone || '').replace(/\D/g, '');
     const anchor = leadDigits.length >= 8 && anchorAct
       ? {
           number: `${leadDigits}@s.whatsapp.net`,
-          messageid: resolveMediaMessageIds(anchorAct.metadata)[0],
+          messageid: mediaIdsOf(anchorAct)[0],
           timestamp: new Date(anchorAct.timestamp).getTime(),
           fromMe: anchorAct.authorId === 'whatsapp_mobile' || (anchorAct.title || '').toLowerCase().includes('enviad'),
         }
@@ -7597,7 +7601,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                       const needsMediaRecovery = Boolean(
                         needsManualDownload ||
                         brokenMediaIds.has(act.id) ||
-                        (isIncoming && (isAudioMsg || effectiveMediaType === 'image') && !effectiveMediaUrl && resolveMediaMessageIds(act.metadata).length > 0)
+                        (isIncoming && (isAudioMsg || effectiveMediaType === 'image') && !effectiveMediaUrl && mediaIdsOf(act).length > 0)
                       );
 
                       if (isIncoming) {
