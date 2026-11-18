@@ -1,3 +1,5 @@
+import { SafeAvatar } from './SafeAvatar';
+import { HeaderActions } from './HeaderActions';
 import React, { useState, useMemo } from 'react';
 import { 
   Users, Plus, Share2, Send, 
@@ -141,7 +143,7 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
     const venueName = venue?.name || 'Espaço Bonomo';
     const link = `${window.location.origin}/?debutante=${encodeURIComponent(debutante.slug)}`;
     
-    const text = `Olá, ${debutante.name}! 👑✨\nSeu aplicativo oficial para os seus 15 Anos no ${venueName} está pronto!\n\nAcesse diretamente pelo seu link exclusivo:\n${link}`;
+    const text = `Olá, ${debutante.name}!\nSeu aplicativo oficial para os seus 15 Anos no ${venueName} está pronto!\n\nAcesse diretamente pelo seu link exclusivo:\n${link}`;
     const cleanPhone = debutante.phone.replace(/\D/g, '');
     const url = cleanPhone
       ? `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(text)}`
@@ -170,41 +172,9 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
       animation: 'fadeIn 0.25s ease-out',
       fontFamily: "'Poppins', sans-serif",
     }}>
-      {/* ── HEADER BAR ── */}
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        flexWrap: 'wrap',
-        gap: '16px',
-        borderBottom: '1.5px solid var(--adm-border)',
-        paddingBottom: '16px',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-          <div style={{
-            width: '46px',
-            height: '46px',
-            borderRadius: '14px',
-            background: 'var(--adm-bg-card)',
-            border: '1.5px solid var(--adm-accent)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            boxShadow: '0 0 16px rgba(212,175,55,0.25)',
-          }}>
-            <Gift size={22} color="var(--adm-accent)" />
-          </div>
-          <div>
-            <h1 style={{ fontSize: '1.35rem', fontWeight: 900, color: 'var(--adm-text-title)', margin: 0, letterSpacing: '-0.3px' }}>
-              Aplicativo • Contas & Convidados
-            </h1>
-            <p style={{ fontSize: '0.8rem', color: 'var(--adm-text-muted)', margin: '3px 0 0 0' }}>
-              Gestão de contas, convites e links de acesso ao aplicativo oficial (/app/:slug)
-            </p>
-          </div>
-        </div>
-
-        {!selectedDebutanteId && (
+      {/* Título no breadcrumb; ações no menu superior */}
+      {!selectedDebutanteId && (
+        <HeaderActions>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
             {canAccessVipAndPrizes && (
               <>
@@ -212,9 +182,9 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
                   type="button"
                   onClick={() => onNavigateTab ? onNavigateTab('benefits') : null}
                   style={{
-                    background: 'var(--adm-bg-card)',
-                    border: '1px solid var(--adm-border)',
-                    color: 'var(--adm-text-title)',
+                    background: 'rgba(255,255,255,0.08)',
+                    border: '1px solid rgba(255,255,255,0.14)',
+                    color: '#E2E8F0',
                     padding: '8px 14px',
                     borderRadius: '10px',
                     fontWeight: 700,
@@ -230,8 +200,8 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
                     e.currentTarget.style.color = 'var(--adm-accent)';
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.borderColor = 'var(--adm-border)';
-                    e.currentTarget.style.color = 'var(--adm-text-title)';
+                    e.currentTarget.style.borderColor = 'rgba(255,255,255,0.14)';
+                    e.currentTarget.style.color = '#E2E8F0';
                   }}
                   title="Configurar catálogo de prêmios e benefícios para aniversariantes"
                 >
@@ -243,9 +213,9 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
                   type="button"
                   onClick={() => onNavigateTab ? onNavigateTab('templates') : null}
                   style={{
-                    background: 'var(--adm-bg-card)',
-                    border: '1px solid var(--adm-border)',
-                    color: 'var(--adm-text-title)',
+                    background: 'rgba(255,255,255,0.08)',
+                    border: '1px solid rgba(255,255,255,0.14)',
+                    color: '#E2E8F0',
                     padding: '8px 14px',
                     borderRadius: '10px',
                     fontWeight: 700,
@@ -261,8 +231,8 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
                     e.currentTarget.style.color = '#F59E0B';
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.borderColor = 'var(--adm-border)';
-                    e.currentTarget.style.color = 'var(--adm-text-title)';
+                    e.currentTarget.style.borderColor = 'rgba(255,255,255,0.14)';
+                    e.currentTarget.style.color = '#E2E8F0';
                   }}
                   title="Configurar templates e fases das Jornadas VIP"
                 >
@@ -292,8 +262,8 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
               <span>Cadastrar Conta no App</span>
             </button>
           </div>
-        )}
-      </div>
+        </HeaderActions>
+      )}
 
       {/* ── ANIVERSARIANTES CONTENT ─────────────────────────────── */}
       {selectedDebutanteId ? (
@@ -538,17 +508,12 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
                   >
                     {/* Top Row: Avatar, Name & Venue */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <img
+                      <SafeAvatar
                         src={deb.avatarUrl}
-                        alt={deb.name}
-                        style={{
-                          width: '46px',
-                          height: '46px',
-                          borderRadius: '50%',
-                          objectFit: 'cover',
-                          border: '2px solid var(--adm-accent)',
-                          flexShrink: 0,
-                        }}
+                        name={deb.name}
+                        size={46}
+                        border="2px solid var(--adm-accent)"
+                        style={{ flexShrink: 0 }}
                       />
 
                       <div style={{ minWidth: 0, flex: 1 }}>
@@ -632,7 +597,9 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
                         <span>Festa: <strong style={{ color: 'var(--adm-text-title)' }}>{deb.partyDate.split('-').reverse().join('/')}</strong></span>
                       </span>
                       <span style={{ color: 'var(--adm-accent)', fontWeight: 650 }}>
-                        Faltam {deb.partyDaysLeft} dias
+                        {deb.partyDaysLeft > 0
+                          ? `Faltam ${deb.partyDaysLeft} dias`
+                          : (deb.partyDate < new Date().toLocaleDateString('en-CA') ? 'Festa realizada' : 'É hoje')}
                       </span>
                     </div>
 
@@ -938,17 +905,12 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
                     }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: '14px', minWidth: 0, flex: 1 }}>
-                      <img
+                      <SafeAvatar
                         src={deb.avatarUrl}
-                        alt={deb.name}
-                        style={{
-                          width: '42px',
-                          height: '42px',
-                          borderRadius: '50%',
-                          objectFit: 'cover',
-                          border: '2px solid var(--adm-accent)',
-                          flexShrink: 0,
-                        }}
+                        name={deb.name}
+                        size={42}
+                        border="2px solid var(--adm-accent)"
+                        style={{ flexShrink: 0 }}
                       />
 
                       <div style={{ minWidth: 0 }}>

@@ -1,3 +1,4 @@
+import { toast } from 'sonner';
 import React, { useState } from 'react';
 import { 
   Radio, Plus, Eye, CheckCircle2, 
@@ -41,7 +42,7 @@ export const AdminDevAnnouncementsView: React.FC = () => {
         if (role === 'master') {
           const hasSubordinates = prev.some(r => r !== 'master');
           if (hasSubordinates) {
-            alert('A hierarquia Master recebe obrigatoriamente todos os comunicados direcionados à equipe.');
+            toast.warning('A hierarquia Master recebe obrigatoriamente todos os comunicados direcionados à equipe.');
             return prev;
           }
         }
@@ -498,7 +499,7 @@ export const AdminDevAnnouncementsView: React.FC = () => {
                 <input
                   type="text"
                   required
-                  placeholder="Ex: 🎬 Veja como usar o novo CRM e Funil!"
+                  placeholder="Ex: Veja como usar o novo CRM e Funil!"
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
                   style={{
@@ -534,10 +535,10 @@ export const AdminDevAnnouncementsView: React.FC = () => {
                     outline: 'none',
                   }}
                 >
-                  <option value="feature">✨ Nova Funcionalidade</option>
-                  <option value="update">🚀 Atualização do Sistema</option>
-                  <option value="maintenance">⚠️ Aviso Importante / Manutenção</option>
-                  <option value="general">📢 Comunicado Geral</option>
+                  <option value="feature">Nova Funcionalidade</option>
+                  <option value="update">Atualização do Sistema</option>
+                  <option value="maintenance">Aviso Importante / Manutenção</option>
+                  <option value="general">Comunicado Geral</option>
                 </select>
               </div>
 
@@ -663,7 +664,7 @@ export const AdminDevAnnouncementsView: React.FC = () => {
                 {/* Upload de Imagem no Cloudflare R2 */}
                 {mediaType === 'image' && (
                   <ImageUploadField
-                    label="Imagem do Broadcast (Cloudflare R2)"
+                    label="Imagem do Broadcast (Mídia HD)"
                     value={mediaUrl}
                     onChange={(url) => setMediaUrl(url)}
                     folder="broadcasts"

@@ -1,3 +1,5 @@
+import { toast } from 'sonner';
+import { HeaderActions } from './HeaderActions';
 import React, { useState, useMemo } from 'react';
 import { 
   Users, 
@@ -154,7 +156,7 @@ export const AdminLeadsListView: React.FC<AdminLeadsListViewProps> = ({
       setReassigningLeadIds([]);
     } catch (err) {
       console.error('Erro ao realocar funil:', err);
-      alert('Ocorreu um erro ao realocar o lead para o novo funil.');
+      toast.warning('Ocorreu um erro ao realocar o lead para o novo funil.');
     } finally {
       setIsSubmittingReassign(false);
     }
@@ -174,7 +176,7 @@ export const AdminLeadsListView: React.FC<AdminLeadsListViewProps> = ({
     if (selectedLeadIds.length === 0) return;
     const reason = prompt(`Deseja realmente excluir os ${selectedLeadIds.length} leads selecionados? Essa ação registrará os dados no histórico de apagados.\n\nInforme o motivo da exclusão:`);
     if (!reason || !reason.trim()) {
-      alert('A exclusão foi cancelada: é obrigatório informar o motivo.');
+      toast.warning('A exclusão foi cancelada: é obrigatório informar o motivo.');
       return;
     }
     const idsToDelete = [...selectedLeadIds];
@@ -400,45 +402,8 @@ export const AdminLeadsListView: React.FC<AdminLeadsListViewProps> = ({
       boxSizing: 'border-box',
     }}>
       
-      {/* ── HEADER PRINCIPAL ── */}
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        flexWrap: 'wrap',
-        gap: '16px',
-        background: 'var(--adm-bg-card, #FFFFFF)',
-        border: '1px solid var(--adm-border, #E2E8F0)',
-        borderRadius: '14px',
-        padding: '20px 24px',
-        boxShadow: '0 2px 10px rgba(0,0,0,0.03)',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-          <div style={{
-            width: '44px',
-            height: '44px',
-            borderRadius: '12px',
-            background: 'rgba(20, 169, 215, 0.12)',
-            border: '1.5px solid rgba(20, 169, 215, 0.35)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: 'var(--adm-accent, #14A9D7)',
-            flexShrink: 0,
-          }}>
-            <Users size={22} />
-          </div>
-          <div>
-            <h1 style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--adm-text-title, #0F172A)', margin: 0, letterSpacing: '-0.02em' }}>
-              Gestão Geral de Leads
-            </h1>
-            <p style={{ fontSize: '0.80rem', color: 'var(--adm-text-muted, #64748B)', margin: '3px 0 0 0' }}>
-              Visão consolidada da base comercial, controle de indexação, criação e gestão de funis
-            </p>
-          </div>
-        </div>
-
-        {/* Ações Rápidas no Topo */}
+      {/* Título no breadcrumb; alertas rápidos no menu superior */}
+      <HeaderActions>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
           {stats.unindexed > 0 && (
             <button
@@ -492,7 +457,7 @@ export const AdminLeadsListView: React.FC<AdminLeadsListViewProps> = ({
             </button>
           )}
         </div>
-      </div>
+      </HeaderActions>
 
       {/* ── CARDS DE ESTATÍSTICAS NO TOPO (6 KPIS) ── */}
       <div style={{
@@ -1484,11 +1449,13 @@ export const AdminLeadsListView: React.FC<AdminLeadsListViewProps> = ({
                             name={lead.name}
                             size={34}
                           />
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', minWidth: 0, maxWidth: '260px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
                               <span 
                                 onClick={() => onOpenLead(lead.id)}
+                                title={lead.name}
                                 style={{ 
+                                  whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0,
                                   fontWeight: 800, 
                                   color: 'var(--adm-text-title, #0F172A)', 
                                   cursor: 'pointer',

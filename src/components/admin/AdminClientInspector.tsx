@@ -16,6 +16,7 @@ import { DocumentFileUploadZone } from './DocumentFileUploadZone';
 import { ClientVenueEventsCard } from './ClientVenueEventsCard';
 import { isTaskOverdue } from '../../utils/taskColors';
 import type { Client, ClientStage, ClientDocument, LeadContact, AdminTask, TaskStatus, ClientUpsellSale } from '../../types/admin';
+import { toast } from 'sonner';
 
 interface AdminClientInspectorProps {
   clientId: string | null;
@@ -462,7 +463,7 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
     e.preventDefault();
     if (isDocUploading) return;
     if (!docTitle.trim() || !docFileUrl.trim() || docFileUrl === '#') {
-      alert('Selecione e faça o upload de um arquivo antes de salvar.');
+      toast.warning('Selecione e faça o upload de um arquivo antes de salvar.');
       return;
     }
     addClientDocument(client.id, {
@@ -530,7 +531,7 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
 
     const numericVal = parseFloat(upsellValue.replace(/[^0-9.,]/g, '').replace(',', '.'));
     if (isNaN(numericVal) || numericVal <= 0) {
-      alert('Por favor, insira um valor numérico válido.');
+      toast.error('Por favor, insira um valor numérico válido.');
       return;
     }
 
@@ -566,7 +567,7 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
   const handleDirectWhatsApp = (phone?: string, customText?: string) => {
     const target = (phone || selectedClientRecipientPhone || client?.payerPhone || '').replace(/\D/g, '');
     if (!target) {
-      alert('Nenhum número de WhatsApp válido encontrado para este contato.');
+      toast.error('Nenhum número de WhatsApp válido encontrado para este contato.');
       return;
     }
     const textParam = customText ? `?text=${encodeURIComponent(customText)}` : '';
@@ -2905,8 +2906,8 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
                     boxShadow: '0 2px 6px rgba(16, 185, 129, 0.08)',
                   }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <span style={{ fontSize: '0.68rem', fontWeight: 800, color: '#047857', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                        🟢 Dinheiro em Caixa
+                      <span style={{ fontSize: '0.68rem', fontWeight: 800, color: '#047857', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <CheckCircle2 size={12} color="#047857" /> Dinheiro em Caixa
                       </span>
                       <span style={{ fontSize: '0.58rem', fontWeight: 800, background: '#10B981', color: '#FFF', padding: '1px 5px', borderRadius: '4px' }}>
                         RECEBIDO
@@ -2932,8 +2933,8 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
                     boxShadow: '0 2px 6px rgba(245, 158, 11, 0.08)',
                   }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <span style={{ fontSize: '0.68rem', fontWeight: 800, color: '#B45309', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                        🟡 Dinheiro Previsto
+                      <span style={{ fontSize: '0.68rem', fontWeight: 800, color: '#B45309', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <Clock size={12} color="#B45309" /> Dinheiro Previsto
                       </span>
                       <span style={{ fontSize: '0.58rem', fontWeight: 800, background: '#F59E0B', color: '#FFF', padding: '1px 5px', borderRadius: '4px' }}>
                         A RECEBER
@@ -3014,8 +3015,8 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
                       background: signalIsPaid ? 'rgba(16, 185, 129, 0.12)' : 'rgba(245, 158, 11, 0.12)',
                       border: `1px solid ${signalIsPaid ? '#10B981' : '#F59E0B'}40`,
                     }}>
-                      <span style={{ fontSize: '0.72rem', fontWeight: 800, color: signalIsPaid ? '#10B981' : '#F59E0B' }}>
-                        {signalIsPaid ? '✓ Sinal Quitado em Caixa' : '⏳ Aguardando Sinal'}
+                      <span style={{ fontSize: '0.72rem', fontWeight: 800, color: signalIsPaid ? '#10B981' : '#F59E0B', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                        {signalIsPaid ? <><CheckCircle2 size={12} /> Sinal Quitado em Caixa</> : <><Clock size={12} /> Aguardando Sinal</>}
                       </span>
                     </div>
                   </div>

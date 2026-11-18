@@ -1,24 +1,25 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { HeaderActions } from './HeaderActions';
 import { 
   Plus, Search, Kanban, Inbox, List, LayoutGrid,
-  PartyPopper, Settings, CheckCircle2,
-  ChevronDown, MoreVertical, Store, Tag as TagIcon, Clock, Sparkles,
-  MessageSquare, Trash2, ExternalLink,
-  Eye, Check, X, Gem, Calendar, CheckSquare, UserPlus,
-  Copy, Building2, Layers, Users, DollarSign, ArrowRight, ChevronLeft, Pin, ShieldCheck,
-  Smartphone, ArrowRightLeft
+  Settings, CheckCircle2,
+  ChevronDown, Clock,
+  Trash2,
+  Check, X, Calendar, CheckSquare,
+  Copy, Building2, Layers, Users, DollarSign, ArrowRight, Pin, ShieldCheck,
+  Smartphone, ArrowRightLeft, MoreHorizontal
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { formatPhone } from '../../utils/phoneFormatter';
 import { AdminNewClientModal } from './AdminNewClientModal';
 import { AdminFunnelSettingsView } from './AdminFunnelSettingsView';
 import { AdminWhatsAppWorkspaceView } from './AdminWhatsAppWorkspaceView';
-import { AdminClientInspector } from './AdminClientInspector';
 import { AdminLeadInspector } from './AdminLeadInspector';
 import { AdminCreatePostSaleFunnelModal } from './AdminCreatePostSaleFunnelModal';
-import { WhatsAppBrandIcon } from './WhatsAppBrandIcon';
 import { renderFunnelOrStageIcon } from '../../utils/funnelIconLibrary';
 import { getDefaultPostSaleFunnelId, filterExtraPostSaleLeads, matchesFunnelStrict as matchesFunnelStrictHelper } from '../../utils/funnelUtils';
+import { AdminContractKanbanCard } from './AdminContractKanbanCard';
+import { toast } from 'sonner';
 import type { Client, ClientStage, CommercialFunnel } from '../../types/admin';
 
 interface AdminPostSaleKanbanViewProps {
@@ -219,6 +220,26 @@ export const POST_SALE_ENTRY_COLUMN: StageColumn = {
   borderColor: 'rgba(239, 68, 68, 0.3)',
 };
 
+// Formatador seguro de data que impede Invalid Date com ISO ou formatação brasileira
+function formatSafeLocalDate(dateStr?: string | null): string {
+  if (!dateStr) return '';
+  try {
+    const cleanStr = String(dateStr).trim();
+    if (cleanStr.includes('T')) {
+      const d = new Date(cleanStr);
+      if (!isNaN(d.getTime())) return d.toLocaleDateString('pt-BR');
+    }
+    if (/^\d{4}-\d{2}-\d{2}$/.test(cleanStr)) {
+      const parts = cleanStr.split('-');
+      return `${parts[2]}/${parts[1]}/${parts[0]}`;
+    }
+    const d = new Date(cleanStr);
+    return isNaN(d.getTime()) ? '' : d.toLocaleDateString('pt-BR');
+  } catch {
+    return '';
+  }
+}
+
 // Matcher resiliente entre cliente e coluna do Kanban (impede que clientes em etapas distintas desapareçam do quadro)
 const getClientMatchedColumnId = (
   client: Client,
@@ -255,8 +276,6 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
   initialFunnelId = null,
   onSelectFunnel,
   onOpenDebutanteApp,
-  onOpenCommercialLead,
-  onOpenLead,
 }) => {
   const { 
     clients, 
@@ -266,8 +285,6 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
     currentUser,
     viewingAsCollaborator,
     activeVenueId, 
-    updateClient, 
-    updateLeadData,
     deleteClient, 
     deleteMultipleClients,
     moveMultipleClientsToLead,
@@ -283,8 +300,11 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
 
   const [selectedFunnelId, setSelectedFunnelId] = useState<string | null>(initialFunnelId || null);
 
+  const prevFunnelIdRef = useRef<string | null | undefined>(initialFunnelId);
   useEffect(() => {
-    if (initialFunnelId !== undefined) {
+    if (initialFunnelId !== undefined && initialFunnelId !== prevFunnelIdRef.current) {
+      prevFunnelIdRef.current = initialFunnelId;
+      setViewMode('kanban');
       if (initialFunnelId && funnels.length > 0) {
         const isPs = funnels.some(f =>
           f.id === initialFunnelId && (
@@ -306,6 +326,7 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
 
   const handleSelectFunnel = (id: string | null) => {
     setSelectedFunnelId(id);
+    setViewMode('kanban'); // Regra de Ouro: todo funil ao abrir reseta para Kanban
     if (id) {
       try { localStorage.setItem('f5_active_funnel_id', id); } catch {}
     }
@@ -317,7 +338,7 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
   const [funnelViewMode, setFunnelViewMode] = useState<'cards' | 'list'>('list');
   const [search, setSearch] = useState('');
   const [funnelSearch, setFunnelSearch] = useState('');
-  const [isFunnelSwitcherOpen, setIsFunnelSwitcherOpen] = useState(false);
+  const [isFunnelMoreMenuOpen, setIsFunnelMoreMenuOpen] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const [inspectorClientId, setInspectorClientId] = useState<string | null>(null);
@@ -326,7 +347,24 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [activeSettingsFunnelId, setActiveSettingsFunnelId] = useState<string | null>(null);
   const [draggedClientId, setDraggedClientId] = useState<string | null>(null);
-  const funnelSwitcherRef = useRef<HTMLDivElement>(null);
+  const moreMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleGlobalFilter = (e: any) => {
+      if (e.detail && typeof e.detail.query === 'string') {
+        setSearch(e.detail.query);
+      }
+    };
+    const handleOpenNewClient = () => {
+      setIsNewClientModalOpen(true);
+    };
+    window.addEventListener('f5_crm_filter_query', handleGlobalFilter);
+    window.addEventListener('f5_open_new_client', handleOpenNewClient);
+    return () => {
+      window.removeEventListener('f5_crm_filter_query', handleGlobalFilter);
+      window.removeEventListener('f5_open_new_client', handleOpenNewClient);
+    };
+  }, []);
 
   // Permissão de Configuração: Master, Admin ou Dev
   const canConfigurePostSale = Boolean(
@@ -359,9 +397,6 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
   const scrollLeftRef = useRef(0);
   const [isDraggingBoard, setIsDraggingBoard] = useState(false);
 
-  // Estados de Ações e Interatividades dos Cards
-  const [activeClientMenuId, setActiveClientMenuId] = useState<string | null>(null);
-  const [hoveredRevenueClientId, setHoveredRevenueClientId] = useState<string | null>(null);
   const [isMoveToLeadModalOpen, setIsMoveToLeadModalOpen] = useState(false);
   const [targetCommercialFunnelId, setTargetCommercialFunnelId] = useState('');
   const [targetCommercialStageId, setTargetCommercialStageId] = useState('');
@@ -381,14 +416,11 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
       setIsMovingToLead(false);
     }
   };
-  const [addTagClientId, setAddTagClientId] = useState<string | null>(null);
-  const [newTagInput, setNewTagInput] = useState<string>('');
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      setActiveClientMenuId(null);
-      if (funnelSwitcherRef.current && !funnelSwitcherRef.current.contains(e.target as Node)) {
-        setIsFunnelSwitcherOpen(false);
+      if (moreMenuRef.current && !moreMenuRef.current.contains(e.target as Node)) {
+        setIsFunnelMoreMenuOpen(false);
       }
     };
     document.addEventListener('click', handleClickOutside);
@@ -400,32 +432,6 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
     setSelectedClientIds(prev => 
       prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
     );
-  };
-
-  const handleAddTag = (clientId: string, tagToUse?: string) => {
-    const rawTag = tagToUse || newTagInput;
-    if (!rawTag.trim()) {
-      setAddTagClientId(null);
-      return;
-    }
-    const normalized = rawTag.trim().toUpperCase();
-    const targetClient = clients.find(c => c.id === clientId);
-    if (targetClient) {
-      const currentTags = targetClient.tags || [];
-      if (!currentTags.includes(normalized)) {
-        updateClient(clientId, { tags: [...currentTags, normalized] });
-      }
-    } else {
-      const targetLead = leads.find(l => l.id === clientId);
-      if (targetLead) {
-        const currentTags = targetLead.tags || [];
-        if (!currentTags.includes(normalized)) {
-          updateLeadData(clientId, { tags: [...currentTags, normalized] });
-        }
-      }
-    }
-    setNewTagInput('');
-    setAddTagClientId(null);
   };
 
   // Funis de Pós-Venda Identificados no Tenant (deduplicados por ID para segurança)
@@ -1040,117 +1046,21 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
 
   const handleBatchDelete = async () => {
     if (selectedClientIds.length === 0) return;
-    if (confirm(`Deseja realmente excluir os ${selectedClientIds.length} clientes selecionados? Essa ação não pode ser desfeita.`)) {
-      const idsToDelete = [...selectedClientIds];
-      setSelectedClientIds([]);
-      setIsMultiSelectMode(false);
-      await deleteMultipleClients(idsToDelete);
-    }
+    const idsToDelete = [...selectedClientIds];
+    setSelectedClientIds([]);
+    setIsMultiSelectMode(false);
+    await deleteMultipleClients(idsToDelete);
+    toast.success(`${idsToDelete.length} cliente(s) excluído(s) com sucesso.`);
   };
 
-  if (inspectorClientId) {
-    const previewLead = previewLeadId ? (leads || []).find(l => l.id === previewLeadId) : null;
-    const handleOpenLead = (leadId: string) => {
-      const userRole = currentUser?.role;
-      const isCommercialAllowed = userRole === 'master' || userRole === 'dev' || userRole === 'admin' || userRole === 'closer' || userRole === 'sdr' || currentUser?.sectors?.includes('comercial');
-      if (!isCommercialAllowed) {
-        setPreviewLeadId(leadId);
-      } else if (onOpenCommercialLead) {
-        onOpenCommercialLead(leadId);
-      } else if (onOpenLead) {
-        onOpenLead(leadId);
-      } else {
-        setPreviewLeadId(leadId);
-      }
-    };
-
-    return (
-      <>
-        <AdminClientInspector
-          clientId={inspectorClientId}
-          onClose={() => {
-            setInspectorClientId(null);
-            setPreviewLeadId(null);
-          }}
-          onOpenDebutanteApp={onOpenDebutanteApp}
-          onOpenCommercialLead={handleOpenLead}
-        />
-        {previewLead && (
-          <div style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.75)',
-            backdropFilter: 'blur(4px)',
-            zIndex: 99999,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '24px',
-          }}>
-            <div style={{
-              width: '100%',
-              maxWidth: '1100px',
-              maxHeight: '92vh',
-              background: 'var(--adm-bg-card)',
-              borderRadius: '16px',
-              border: '1px solid var(--adm-border)',
-              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
-              overflow: 'hidden',
-              display: 'flex',
-              flexDirection: 'column',
-              position: 'relative',
-            }}>
-              <div style={{
-                padding: '12px 20px',
-                borderBottom: '1px solid var(--adm-border)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                background: 'rgba(234, 179, 8, 0.08)',
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <ShieldCheck size={16} color="#EAB308" />
-                  <span style={{ fontSize: '0.84rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
-                    Ficha Comercial do Lead (Modo Somente Leitura • Espectador)
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setPreviewLeadId(null)}
-                  style={{
-                    background: 'transparent',
-                    border: 'none',
-                    color: 'var(--adm-text-muted)',
-                    cursor: 'pointer',
-                    padding: '4px',
-                    borderRadius: '6px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                >
-                  <X size={18} />
-                </button>
-              </div>
-              <div style={{ flex: 1, overflowY: 'auto' }}>
-                <AdminLeadInspector
-                  lead={previewLead}
-                  readOnly={true}
-                  isModal={true}
-                  isPostSale={true}
-                  onClose={() => setPreviewLeadId(null)}
-                  onStageChange={() => {}}
-                />
-              </div>
-            </div>
-          </div>
-        )}
-      </>
-    );
-  }
+  // Redirecionamento exclusivo para o Modo Workspace (elimina qualquer drawer lateral no Pós-Venda)
+  useEffect(() => {
+    if (inspectorClientId) {
+      setSelectedClientId(inspectorClientId);
+      setViewMode('inbox');
+      setInspectorClientId(null);
+    }
+  }, [inspectorClientId]);
 
   if (isSettingsOpen && (activeSettingsFunnelId || currentFunnel?.id || postSaleFunnels[0]?.id)) {
     return (
@@ -1206,21 +1116,9 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
         animation: 'fadeIn 0.25s ease-out',
         fontFamily: "'Plus Jakarta Sans', sans-serif"
       }}>
-        {/* Main Title & Action */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
-              <ShieldCheck size={24} color="#06B6D4" />
-              <h1 style={{ fontSize: '1.5rem', fontWeight: 900, color: 'var(--adm-text-title)', letterSpacing: '-0.4px', margin: 0 }}>
-                Central de Funis de Pós-Venda
-              </h1>
-            </div>
-            <p style={{ fontSize: '0.82rem', color: 'var(--adm-text-muted)', margin: 0, maxWidth: '650px' }}>
-              Pipelines de pós-venda estruturados e independentes. Gerencie clientes na carteira, visitas técnicas, degustações e engajamento.
-            </p>
-          </div>
-
-          {canConfigurePostSale && (
+        {/* Título e ação primária no menu superior */}
+        {canConfigurePostSale && (
+          <HeaderActions>
             <button
               type="button"
               onClick={() => setIsCreateModalOpen(true)}
@@ -1243,8 +1141,8 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
               <Plus size={16} color="#FFFFFF" />
               <span>Novo Funil Pós-Venda</span>
             </button>
-          )}
-        </div>
+          </HeaderActions>
+        )}
 
         {/* Overview KPIs - 5 Métricas Operacionais Clean (Sem sombras pesadas) */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
@@ -1947,211 +1845,43 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
         {/* Left Side: Funnel Pill + Search + Inline Filters + Ownership Toggle */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: 1, minWidth: 0, flexWrap: 'nowrap' }}>
           
-          {/* Botão Voltar para Central de Funis */}
-          <button
-            type="button"
-            onClick={() => setSelectedFunnelId(null)}
-            style={{
+
+
+          {/* Chip de Filtro de Busca Ativa (Alinhado com a Busca Global do Header) */}
+          {search.trim() && (
+            <div style={{
               display: 'inline-flex',
               alignItems: 'center',
-              gap: '4px',
-              padding: '4px 8px',
+              gap: '6px',
+              padding: '3px 8px',
               borderRadius: '6px',
-              background: 'var(--adm-bg-input)',
-              border: '1px solid var(--adm-border)',
-              color: 'var(--adm-text-title)',
-              fontSize: '0.73rem',
-              fontWeight: 700,
-              cursor: 'pointer',
-              transition: 'all 0.15s ease',
-              flexShrink: 0,
-            }}
-            title="Voltar para a Central de Funis de Pós-Venda"
-          >
-            <ChevronLeft size={13} />
-            <span>Central de Funis</span>
-          </button>
-
-          {/* Active Funnel Indicator Pill com Dropdown Switcher */}
-          <div ref={funnelSwitcherRef} style={{ position: 'relative', display: 'inline-block', zIndex: isFunnelSwitcherOpen ? 999 : 2 }}>
-            <button
-              type="button"
-              onClick={() => setIsFunnelSwitcherOpen(!isFunnelSwitcherOpen)}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                padding: '4px 9px',
-                borderRadius: '7px',
-                background: `${currentFunnel?.badgeColor || '#06B6D4'}18`,
-                border: `1px solid ${currentFunnel?.badgeColor || '#06B6D4'}45`,
-                color: 'var(--adm-text-title)',
-                fontSize: '0.74rem',
-                fontWeight: 800,
-                cursor: 'pointer',
-                flexShrink: 0,
-                userSelect: 'none',
-                transition: 'all 0.15s ease',
-              }}
-              title={`Trocar funil de pós-venda (ID: ${currentFunnel?.id || 'N/A'})`}
-            >
-              <span style={{ color: currentFunnel?.badgeColor || '#06B6D4', display: 'inline-flex', alignItems: 'center' }}>
-                {renderFunnelOrStageIcon(currentFunnel?.icon || 'shield-check', 13, currentFunnel?.badgeColor || '#06B6D4')}
-              </span>
-              <span style={{ maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textTransform: 'uppercase' }}>
-                {currentFunnel?.name || 'SUCESSO DO CLIENTE'}
-              </span>
-              <ChevronDown size={11} style={{ transform: isFunnelSwitcherOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s ease' }} />
-            </button>
-
-            {/* Dropdown Menu de Troca de Funil */}
-            {isFunnelSwitcherOpen && (
-              <div style={{
-                position: 'absolute',
-                top: 'calc(100% + 4px)',
-                left: 0,
-                zIndex: 9999,
-                minWidth: '240px',
-                background: 'var(--adm-bg-card)',
-                border: '1px solid var(--adm-border)',
-                borderRadius: '10px',
-                boxShadow: '0 10px 28px rgba(0,0,0,0.45)',
-                padding: '6px',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '3px',
-              }}>
-                <div style={{ padding: '4px 8px', fontSize: '0.66rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase' }}>
-                  Funis de Pós-Venda
-                </div>
-                {postSaleFunnels.map(f => {
-                  const isActive = f.id === currentFunnel?.id;
-                  return (
-                    <button
-                      key={f.id}
-                      type="button"
-                      onClick={() => {
-                        handleSelectFunnel(f.id);
-                        setIsFunnelSwitcherOpen(false);
-                      }}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        gap: '8px',
-                        padding: '6px 10px',
-                        borderRadius: '6px',
-                        background: isActive ? 'var(--adm-accent-bg)' : 'transparent',
-                        border: 'none',
-                        color: isActive ? 'var(--adm-accent)' : 'var(--adm-text-title)',
-                        fontSize: '0.74rem',
-                        fontWeight: isActive ? 800 : 500,
-                        cursor: 'pointer',
-                        textAlign: 'left',
-                        width: '100%',
-                        transition: 'background 0.1s ease',
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
-                        <span style={{ color: f.badgeColor || '#06B6D4', display: 'inline-flex', alignItems: 'center', flexShrink: 0 }}>
-                          {renderFunnelOrStageIcon(f.icon || 'shield-check', 12, f.badgeColor || '#06B6D4')}
-                        </span>
-                        <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                          {f.name}
-                        </span>
-                      </div>
-                      {isActive && <Check size={12} color="var(--adm-accent)" style={{ flexShrink: 0 }} />}
-                    </button>
-                  );
-                })}
-
-                <div style={{ borderTop: '1px solid var(--adm-border)', marginTop: '4px', paddingTop: '4px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedFunnelId(null);
-                      setIsFunnelSwitcherOpen(false);
-                    }}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      padding: '6px 10px',
-                      borderRadius: '6px',
-                      background: 'transparent',
-                      border: 'none',
-                      color: 'var(--adm-text-muted)',
-                      fontSize: '0.70rem',
-                      fontWeight: 700,
-                      cursor: 'pointer',
-                      width: '100%',
-                      textAlign: 'left',
-                    }}
-                  >
-                    <Layers size={12} />
-                    <span>Ver todos os funis (Central)</span>
-                  </button>
-
-                  {canConfigurePostSale && currentFunnel && (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setIsFunnelSwitcherOpen(false);
-                        handleDuplicateFunnel(currentFunnel.id);
-                      }}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        padding: '6px 10px',
-                        borderRadius: '6px',
-                        background: 'transparent',
-                        border: 'none',
-                        color: 'var(--adm-text-muted)',
-                        fontSize: '0.70rem',
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                        width: '100%',
-                        textAlign: 'left',
-                      }}
-                    >
-                      <Copy size={12} />
-                      <span>Duplicar este funil</span>
-                    </button>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Busca Compacta */}
-          <div style={{
-            position: 'relative',
-            width: isFilterBarExpanded ? '150px' : '200px',
-            transition: 'width 0.2s ease',
-            flexShrink: 0,
-          }}>
-            <Search size={13} color="var(--adm-accent)" style={{ position: 'absolute', left: '9px', top: '7px' }} />
-            <input
-              type="text"
-              placeholder="Buscar cliente ou telefone..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              style={{
-                width: '100%',
-                background: 'var(--adm-bg-input)',
-                border: '1px solid var(--adm-border)',
-                borderRadius: '6px',
-                padding: '4px 8px 4px 28px',
-                color: 'var(--adm-text-title)',
-                fontSize: '0.74rem',
-                outline: 'none',
-                boxSizing: 'border-box',
-                fontFamily: "'Inter', sans-serif",
-              }}
-            />
-          </div>
+              background: 'var(--adm-accent-bg, rgba(6, 182, 212, 0.12))',
+              border: '1px solid var(--adm-accent, #06B6D4)',
+              fontSize: '0.72rem',
+              color: 'var(--adm-accent, #06B6D4)',
+              fontWeight: 600,
+            }}>
+              <Search size={11} />
+              <span>Filtro: &ldquo;{search}&rdquo;</span>
+              <button
+                type="button"
+                onClick={() => setSearch('')}
+                title="Limpar filtro de busca"
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  padding: 0,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  color: 'inherit',
+                  marginLeft: '2px',
+                }}
+              >
+                <X size={12} />
+              </button>
+            </div>
+          )}
 
           {/* Botão de Filtros com Popover Flutuante (Anti-quebra de linha) */}
           <div style={{ position: 'relative' }}>
@@ -2333,72 +2063,9 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
           </div>
         </div>
 
-        {/* Right Side: Seleção Múltipla + Adicionar Cliente + Seletor de Modo + Configurar */}
+        {/* Right Side: Adicionar Cliente + Seletor de Modo + Configurar */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
           
-          {/* Botão de Seleção Múltipla */}
-          <button
-            type="button"
-            onClick={() => {
-              const next = !isMultiSelectMode;
-              setIsMultiSelectMode(next);
-              if (!next) setSelectedClientIds([]);
-            }}
-            title={isMultiSelectMode ? "Sair da seleção múltipla" : "Ativar seleção múltipla de clientes"}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '6px 12px',
-              borderRadius: '6px',
-              background: isMultiSelectMode ? 'rgba(6, 182, 212, 0.15)' : 'var(--adm-bg-input)',
-              border: `1px solid ${isMultiSelectMode ? '#06B6D4' : 'var(--adm-border)'}`,
-              color: isMultiSelectMode ? '#06B6D4' : 'var(--adm-text-title)',
-              fontSize: '0.74rem',
-              fontWeight: 700,
-              cursor: 'pointer',
-              transition: 'all 0.15s ease',
-            }}
-          >
-            <CheckSquare size={13} />
-            <span>{isMultiSelectMode ? 'Cancelar Seleção' : 'Seleção Múltipla'}</span>
-            {selectedClientIds.length > 0 && (
-              <span style={{
-                background: '#06B6D4',
-                color: '#fff',
-                fontSize: '0.62rem',
-                fontWeight: 800,
-                borderRadius: '10px',
-                padding: '1px 5px',
-              }}>
-                {selectedClientIds.length}
-              </span>
-            )}
-          </button>
-
-          {/* Botão + Adicionar Cliente */}
-          <button
-            type="button"
-            onClick={() => setIsNewClientModalOpen(true)}
-            style={{
-              background: 'linear-gradient(135deg, #06B6D4, #0891B2)',
-              border: 'none',
-              borderRadius: '6px',
-              color: '#ffffff',
-              padding: '6px 12px',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '5px',
-              fontSize: '0.76rem',
-              fontWeight: 600,
-              boxShadow: '0 2px 6px rgba(6, 182, 212, 0.3)',
-              transition: 'all 0.15s ease',
-            }}
-          >
-            <UserPlus size={13} />
-            <span>Adicionar Cliente</span>
-          </button>
 
           {/* Seletor de Modo Minimalista (Apenas Ícones) */}
           <div style={{
@@ -2469,66 +2136,6 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
               <List size={14} />
             </button>
 
-            {currentFunnel && (
-              <button
-                type="button"
-                disabled={Boolean(viewingAsCollaborator)}
-                onClick={() => togglePinFunnel(currentFunnel.id)}
-                title={viewingAsCollaborator ? "Fixação desabilitada no modo Ver como..." : (isFunnelPinned(currentFunnel.id) ? "Desafixar do menu lateral" : "Fixar no menu lateral")}
-                style={{
-                  background: isFunnelPinned(currentFunnel.id) ? 'rgba(6, 182, 212, 0.18)' : 'var(--adm-bg-input)',
-                  color: isFunnelPinned(currentFunnel.id) ? '#06B6D4' : 'var(--adm-text-title)',
-                  borderRadius: '6px',
-                  border: `1px solid ${isFunnelPinned(currentFunnel.id) ? '#06B6D4' : 'var(--adm-border)'}`,
-                  padding: '4px 9px',
-                  cursor: viewingAsCollaborator ? 'not-allowed' : 'pointer',
-                  opacity: viewingAsCollaborator ? 0.4 : 1,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '5px',
-                  fontSize: '0.74rem',
-                  fontWeight: 700,
-                  transition: 'all 0.15s ease',
-                }}
-              >
-                <Pin size={13} style={{ transform: isFunnelPinned(currentFunnel.id) ? 'rotate(45deg)' : 'none' }} />
-                <span>{isFunnelPinned(currentFunnel.id) ? 'Fixado' : 'Fixar'}</span>
-              </button>
-            )}
-
-            {canConfigurePostSale && currentFunnel && (
-              <button
-                type="button"
-                onClick={(e) => handleDuplicateFunnel(currentFunnel.id, e)}
-                title="Duplicar este Funil de Pós-Venda"
-                style={{
-                  background: 'var(--adm-bg-input)',
-                  color: 'var(--adm-text-title)',
-                  borderRadius: '6px',
-                  border: '1px solid var(--adm-border)',
-                  padding: '4px 9px',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '5px',
-                  fontSize: '0.74rem',
-                  fontWeight: 700,
-                  transition: 'all 0.15s ease',
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.color = '#06B6D4';
-                  e.currentTarget.style.borderColor = '#06B6D4';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.color = 'var(--adm-text-title)';
-                  e.currentTarget.style.borderColor = 'var(--adm-border)';
-                }}
-              >
-                <Copy size={13} />
-                <span>Duplicar</span>
-              </button>
-            )}
-
             {canConfigurePostSale && (
               <button
                 type="button"
@@ -2560,35 +2167,176 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
                 <Settings size={14} />
               </button>
             )}
+
+            {/* Menu de Ações Secundárias (...) */}
+            <div ref={moreMenuRef} style={{ position: 'relative' }}>
+              <button
+                type="button"
+                onClick={() => setIsFunnelMoreMenuOpen(prev => !prev)}
+                title="Mais opções do funil"
+                style={{
+                  background: isFunnelMoreMenuOpen || isMultiSelectMode ? 'rgba(99, 102, 241, 0.12)' : 'var(--adm-bg-input)',
+                  color: isFunnelMoreMenuOpen || isMultiSelectMode ? 'var(--adm-accent, #6366F1)' : 'var(--adm-text-title)',
+                  borderRadius: '6px',
+                  border: `1px solid ${isFunnelMoreMenuOpen || isMultiSelectMode ? 'var(--adm-accent, #6366F1)' : 'var(--adm-border)'}`,
+                  padding: '4px 8px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '0.74rem',
+                  fontWeight: 700,
+                  transition: 'all 0.15s ease',
+                  position: 'relative',
+                }}
+              >
+                <MoreHorizontal size={14} />
+                {selectedClientIds.length > 0 && (
+                  <span style={{
+                    position: 'absolute',
+                    top: '-4px',
+                    right: '-4px',
+                    background: 'var(--adm-accent, #6366F1)',
+                    color: '#fff',
+                    fontSize: '0.55rem',
+                    fontWeight: 800,
+                    borderRadius: '50%',
+                    width: '14px',
+                    height: '14px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}>
+                    {selectedClientIds.length}
+                  </span>
+                )}
+              </button>
+
+              {isFunnelMoreMenuOpen && (
+                <div style={{
+                  position: 'absolute',
+                  top: '100%',
+                  right: 0,
+                  marginTop: '6px',
+                  background: 'var(--adm-bg-card, #ffffff)',
+                  border: '1px solid var(--adm-border)',
+                  borderRadius: '8px',
+                  boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.2), 0 8px 10px -6px rgba(0, 0, 0, 0.1)',
+                  padding: '6px',
+                  minWidth: '180px',
+                  zIndex: 100,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '2px',
+                }}>
+                  {/* 1. Seleção Múltipla */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const next = !isMultiSelectMode;
+                      setIsMultiSelectMode(next);
+                      if (!next) setSelectedClientIds([]);
+                      setIsFunnelMoreMenuOpen(false);
+                    }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      padding: '7px 10px',
+                      borderRadius: '6px',
+                      border: 'none',
+                      background: isMultiSelectMode ? 'rgba(99, 102, 241, 0.1)' : 'transparent',
+                      color: isMultiSelectMode ? 'var(--adm-accent, #6366F1)' : 'var(--adm-text-title)',
+                      fontSize: '0.76rem',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                      width: '100%',
+                    }}
+                  >
+                    <CheckSquare size={13} />
+                    <span style={{ flex: 1 }}>{isMultiSelectMode ? 'Desativar Seleção' : 'Seleção Múltipla'}</span>
+                    {selectedClientIds.length > 0 && (
+                      <span style={{
+                        background: 'var(--adm-accent, #6366F1)',
+                        color: '#fff',
+                        fontSize: '0.6rem',
+                        fontWeight: 700,
+                        padding: '1px 5px',
+                        borderRadius: '10px',
+                      }}>
+                        {selectedClientIds.length}
+                      </span>
+                    )}
+                  </button>
+
+                  {/* 2. Fixar no Menu */}
+                  {currentFunnel && (
+                    <button
+                      type="button"
+                      disabled={Boolean(viewingAsCollaborator)}
+                      onClick={() => {
+                        togglePinFunnel(currentFunnel.id);
+                        setIsFunnelMoreMenuOpen(false);
+                      }}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        padding: '7px 10px',
+                        borderRadius: '6px',
+                        border: 'none',
+                        background: isFunnelPinned(currentFunnel.id) ? 'rgba(6, 182, 212, 0.1)' : 'transparent',
+                        color: isFunnelPinned(currentFunnel.id) ? '#06B6D4' : 'var(--adm-text-title)',
+                        fontSize: '0.76rem',
+                        fontWeight: 600,
+                        cursor: viewingAsCollaborator ? 'not-allowed' : 'pointer',
+                        opacity: viewingAsCollaborator ? 0.4 : 1,
+                        textAlign: 'left',
+                        width: '100%',
+                      }}
+                    >
+                      <Pin size={13} style={{ transform: isFunnelPinned(currentFunnel.id) ? 'rotate(45deg)' : 'none' }} />
+                      <span>{isFunnelPinned(currentFunnel.id) ? 'Desafixar do Menu' : 'Fixar no Menu'}</span>
+                    </button>
+                  )}
+
+                  {/* 3. Duplicar Funil */}
+                  {canConfigurePostSale && currentFunnel && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        handleDuplicateFunnel(currentFunnel.id, e);
+                        setIsFunnelMoreMenuOpen(false);
+                      }}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        padding: '7px 10px',
+                        borderRadius: '6px',
+                        border: 'none',
+                        background: 'transparent',
+                        color: 'var(--adm-text-title)',
+                        fontSize: '0.76rem',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                        width: '100%',
+                      }}
+                    >
+                      <Copy size={13} />
+                      <span>Duplicar Funil</span>
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
 
       {/* Top bar separator */}
-
-      {/* ── 2. BARRA DE MÉTRICAS ULTRA-COMPACTA (IDÊNTICA AO COMERCIAL) ── */}
-      {viewMode !== 'inbox' && (
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'flex-end',
-          gap: '14px',
-          padding: '3px 16px',
-          background: 'var(--adm-bg-app)',
-          borderBottom: '1px solid var(--adm-border)',
-          flexShrink: 0,
-        }}>
-          <div style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)' }}>
-            Total: <strong style={{ color: 'var(--adm-text-title)' }}>{filteredClients.length}</strong>
-          </div>
-          <div style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)' }}>
-            Em Andamento: <strong style={{ color: 'var(--adm-green, #10B981)' }}>{filteredClients.filter(c => c.stage !== 'completed' && c.stage !== 'cancelled').length}</strong>
-          </div>
-          <div style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)' }}>
-            Realizadas: <strong style={{ color: 'var(--adm-accent, #6366F1)' }}>{filteredClients.filter(c => c.stage === 'completed').length}</strong>
-          </div>
-        </div>
-      )}
 
       {/* ── 3. MAIN CONTENT: Kanban, Inbox, or List ── */}
       <div style={{ flex: 1, overflow: 'hidden', padding: viewMode === 'inbox' ? 0 : '8px 16px 20px', display: 'flex', flexDirection: 'column' }}>
@@ -2859,1045 +2607,52 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
                     }}
                   >
                     {stageClients.map(client => {
-                      const pDateStr = client.partyDate || client.eventDate;
-                      const pTime = pDateStr ? new Date(pDateStr).getTime() : 0;
-                      const daysLeft = pTime ? Math.ceil((pTime - Date.now()) / (1000 * 60 * 60 * 24)) : null;
-
-                      // Cálculos Financeiros (Contrato Base, Sinal, Parcelado, Upsell à vista vs parcelado, Caixa vs Previsto)
-                      const baseContract = client.baseContractValue !== undefined ? client.baseContractValue : (client.dealValue || 0);
-                      const signalGiven = client.contractDownPayment !== undefined ? client.contractDownPayment : (client.signalValue || 0);
-                      const contractRemaining = client.contractInstallmentsRemaining !== undefined 
-                        ? client.contractInstallmentsRemaining 
-                        : Math.max(0, baseContract - signalGiven);
-
-                      const upsells = client.upsellSales || [];
-                      const totalUpsell = upsells.reduce((acc: number, u: any) => acc + (Number(u.value) || 0), 0);
-                      
-                      const upsellAVista = upsells
-                        .filter((u: any) => u.paymentType === 'a_vista' || u.paymentType === 'sinal' || u.paymentStatus === 'pago')
-                        .reduce((acc: number, u: any) => acc + (Number(u.value) || 0), 0);
-                      
-                      const upsellParcelado = upsells
-                        .filter((u: any) => u.paymentType === 'parcelado' || (u.paymentStatus !== 'pago' && u.paymentType !== 'a_vista' && u.paymentType !== 'sinal'))
-                        .reduce((acc: number, u: any) => acc + (Number(u.value) || 0), 0);
-
-                      const totalCashReceived = signalGiven + upsellAVista;
-                      const totalForecastedRemaining = contractRemaining + upsellParcelado;
-                      const totalRentabilidade = (client.baseContractValue !== undefined) ? (baseContract + totalUpsell) : (client.dealValue || 0);
-
-                      const managerCollab = collaborators.find(c => 
-                        (client.assignedSuccessManagerId && c.id === client.assignedSuccessManagerId) ||
-                        (client.assignedToId && c.id === client.assignedToId) ||
-                        (client.assignedSuccessManagerName && c.name?.toLowerCase() === client.assignedSuccessManagerName.toLowerCase()) ||
-                        (client.assignedTo && c.name?.toLowerCase() === client.assignedTo.toLowerCase())
-                      );
-
                       const isSelectedInMulti = selectedClientIds.includes(client.id);
-                      const isMenuOpen = activeClientMenuId === client.id;
-                      const isRevenueHovered = hoveredRevenueClientId === client.id;
-
-                      // Tarefas do cliente (exige IDs válidos para nunca equiparar undefined === undefined)
                       const clientTasks = (tasks || []).filter(t =>
                         Boolean(client.id && t.customProperties?.clientId === client.id) ||
                         Boolean(client.id && t.debutanteId === client.id) ||
                         Boolean(client.debutanteId && t.debutanteId === client.debutanteId) ||
                         Boolean(client.commercialLeadId && (t.leadId === client.commercialLeadId || t.customProperties?.leadId === client.commercialLeadId))
                       );
-                      const pendingTasks = clientTasks.filter(t => t.status !== 'completed');
-                      const todayStr = new Date().toISOString().split('T')[0];
-                      const overdueTasks = pendingTasks.filter(t => t.dueDate && t.dueDate < todayStr).length;
-
-                      // Compromissos / Agendamentos do cliente (exige IDs válidos)
                       const clientApps = (appointments || []).filter(a =>
                         Boolean(client.id && a.debutanteId === client.id) ||
                         Boolean(client.debutanteId && a.debutanteId === client.debutanteId)
                       );
-                      const pendingApps = clientApps.filter(a => a.status === 'confirmed' || a.status === 'scheduled');
 
                       return (
-                        <div
+                        <AdminContractKanbanCard
                           key={client.id}
-                          draggable={!isMultiSelectMode}
-                          onDragStart={(e) => handleDragStart(e, client.id)}
+                          client={client}
+                          isMultiSelectMode={isMultiSelectMode}
+                          isSelectedInMulti={isSelectedInMulti}
+                          onToggleSelect={toggleClientSelection}
+                          onDragStart={handleDragStart}
                           onClick={() => {
                             if (isMultiSelectMode) {
                               toggleClientSelection(client.id);
                             } else {
                               setSelectedClientId(client.id);
-                              setViewMode('inbox');
+                              setViewMode("inbox");
                             }
                           }}
-                          style={{
-                            padding: '8px 10px',
-                            borderRadius: '8px',
-                            backgroundColor: isSelectedInMulti ? 'rgba(6, 182, 212, 0.05)' : 'var(--adm-bg-card, #ffffff)',
-                            border: isSelectedInMulti ? '1.5px solid #06B6D4' : '1px solid var(--adm-border, #E2E8F0)',
-                            boxShadow: isSelectedInMulti ? '0 2px 8px rgba(6, 182, 212, 0.15)' : '0 1px 3px rgba(0, 0, 0, 0.03)',
-                            cursor: 'pointer',
-                            transition: 'transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            gap: '5px',
-                            position: 'relative',
-                            zIndex: (activeClientMenuId === client.id || addTagClientId === client.id) ? 100 : 1,
+                          onOpenInspector={(id) => {
+                            setSelectedClientId(id);
+                            setViewMode("inbox");
                           }}
-                          onMouseEnter={(e) => {
-                            if (!isSelectedInMulti) {
-                              e.currentTarget.style.transform = 'translateY(-1px)';
-                              e.currentTarget.style.boxShadow = '0 3px 8px rgba(0, 0, 0, 0.06)';
-                              e.currentTarget.style.borderColor = '#06B6D4';
-                            }
+                          onOpenWhatsApp={(id) => {
+                            setSelectedClientId(id);
+                            setViewMode("inbox");
                           }}
-                          onMouseLeave={(e) => {
-                            if (!isSelectedInMulti) {
-                              e.currentTarget.style.transform = 'none';
-                              e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.03)';
-                              e.currentTarget.style.borderColor = 'var(--adm-border, #E2E8F0)';
-                            }
+                          onOpenDebutanteApp={onOpenDebutanteApp}
+                          onDeleteClient={(cli) => {
+                            deleteClient(cli.id);
+                            toast.success(`Cliente "${cli.name}" excluído.`);
                           }}
-                        >
-                          {/* ── 1. CABEÇALHO DO CARD: 3 Pontinhos + Avatar + Nome + Telefone + VALOR FINANCEIRO (TOP RIGHT) COM HOVER POPOVER ── */}
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
-                            {/* Esquerda: Checkbox / 3 Pontinhos + Avatar + Nome + Decisor */}
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, flex: 1 }}>
-                              {isMultiSelectMode ? (
-                                <div 
-                                  onClick={(e) => toggleClientSelection(client.id, e)}
-                                  style={{
-                                    width: '15px',
-                                    height: '15px',
-                                    borderRadius: '3px',
-                                    border: `1.5px solid ${isSelectedInMulti ? '#06B6D4' : 'var(--adm-border, #CBD5E1)'}`,
-                                    background: isSelectedInMulti ? '#06B6D4' : 'transparent',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    cursor: 'pointer',
-                                    flexShrink: 0,
-                                  }}
-                                >
-                                  {isSelectedInMulti && <Check size={10} color="#fff" strokeWidth={3} />}
-                                </div>
-                              ) : (
-                                /* Botão 3 Pontinhos com Menu Flutuante */
-                                <div style={{ position: 'relative', flexShrink: 0, marginLeft: '-3px' }}>
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setActiveClientMenuId(isMenuOpen ? null : client.id);
-                                    }}
-                                    title="Opções do Cliente"
-                                    style={{
-                                      background: isMenuOpen ? 'var(--adm-bg-input, #F1F5F9)' : 'transparent',
-                                      border: 'none',
-                                      borderRadius: '4px',
-                                      padding: '2px',
-                                      cursor: 'pointer',
-                                      color: 'var(--adm-text-muted, #64748B)',
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      justifyContent: 'center',
-                                      transition: 'all 0.15s ease',
-                                    }}
-                                  >
-                                    <MoreVertical size={13} />
-                                  </button>
-
-                                  {/* Menu Flutuante */}
-                                  {isMenuOpen && (
-                                    <div
-                                      onClick={(e) => e.stopPropagation()}
-                                      style={{
-                                        position: 'absolute',
-                                        top: 'calc(100% + 4px)',
-                                        left: 0,
-                                        zIndex: 200,
-                                        background: 'var(--adm-bg-card, #ffffff)',
-                                        border: '1px solid var(--adm-border, #CBD5E1)',
-                                        borderRadius: '8px',
-                                        boxShadow: '0 10px 25px -5px rgba(0,0,0,0.18)',
-                                        padding: '4px',
-                                        minWidth: '170px',
-                                        display: 'flex',
-                                        flexDirection: 'column',
-                                        gap: '2px',
-                                      }}
-                                    >
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          setActiveClientMenuId(null);
-                                          setInspectorClientId(client.id);
-                                        }}
-                                        style={{
-                                          display: 'flex',
-                                          alignItems: 'center',
-                                          gap: '6px',
-                                          padding: '6px 8px',
-                                          borderRadius: '5px',
-                                          border: 'none',
-                                          background: 'transparent',
-                                          color: 'var(--adm-text-title, #0F172A)',
-                                          fontSize: '0.72rem',
-                                          fontWeight: 600,
-                                          cursor: 'pointer',
-                                          textAlign: 'left',
-                                          width: '100%',
-                                        }}
-                                        onMouseEnter={(e) => e.currentTarget.style.background = 'var(--adm-bg-input, #F8FAFC)'}
-                                        onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                                      >
-                                        <Eye size={12} color="var(--adm-accent)" />
-                                        <span>Abrir Ficha do Cliente</span>
-                                      </button>
-
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          setActiveClientMenuId(null);
-                                          setSelectedClientId(client.id);
-                                          setViewMode('inbox');
-                                        }}
-                                        style={{
-                                          display: 'flex',
-                                          alignItems: 'center',
-                                          gap: '6px',
-                                          padding: '6px 8px',
-                                          borderRadius: '5px',
-                                          border: 'none',
-                                          background: 'transparent',
-                                          color: 'var(--adm-text-title, #0F172A)',
-                                          fontSize: '0.72rem',
-                                          fontWeight: 600,
-                                          cursor: 'pointer',
-                                          textAlign: 'left',
-                                          width: '100%',
-                                        }}
-                                        onMouseEnter={(e) => e.currentTarget.style.background = 'var(--adm-bg-input, #F8FAFC)'}
-                                        onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                                      >
-                                        <MessageSquare size={12} color="#10B981" />
-                                        <span>Atendimento WhatsApp</span>
-                                      </button>
-
-                                      {client.debutanteSlug && onOpenDebutanteApp && (
-                                        <button
-                                          type="button"
-                                          onClick={() => {
-                                            setActiveClientMenuId(null);
-                                            onOpenDebutanteApp(client.debutanteSlug!);
-                                          }}
-                                          style={{
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: '6px',
-                                            padding: '6px 8px',
-                                            borderRadius: '5px',
-                                            border: 'none',
-                                            background: 'transparent',
-                                            color: 'var(--adm-text-title, #0F172A)',
-                                            fontSize: '0.72rem',
-                                            fontWeight: 600,
-                                            cursor: 'pointer',
-                                            textAlign: 'left',
-                                            width: '100%',
-                                          }}
-                                          onMouseEnter={(e) => e.currentTarget.style.background = 'var(--adm-bg-input, #F8FAFC)'}
-                                          onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                                        >
-                                          <ExternalLink size={12} color="#F59E0B" />
-                                          <span>App da Debutante</span>
-                                        </button>
-                                      )}
-
-                                      <div style={{ height: '1px', background: 'var(--adm-border, #E2E8F0)', margin: '2px 0' }} />
-
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          setActiveClientMenuId(null);
-                                          if (confirm(`Deseja realmente excluir o cliente "${client.name}"?`)) {
-                                            deleteClient(client.id);
-                                          }
-                                        }}
-                                        style={{
-                                          display: 'flex',
-                                          alignItems: 'center',
-                                          gap: '6px',
-                                          padding: '6px 8px',
-                                          borderRadius: '5px',
-                                          border: 'none',
-                                          background: 'transparent',
-                                          color: '#EF4444',
-                                          fontSize: '0.72rem',
-                                          fontWeight: 600,
-                                          cursor: 'pointer',
-                                          textAlign: 'left',
-                                          width: '100%',
-                                        }}
-                                        onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(239, 68, 68, 0.08)'}
-                                        onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                                      >
-                                        <Trash2 size={12} color="#EF4444" />
-                                        <span>Excluir Cliente</span>
-                                      </button>
-                                    </div>
-                                  )}
-                                </div>
-                              )}
-
-                              {/* Avatar Monograma Dourado / Foto */}
-                              <div style={{
-                                width: '24px',
-                                height: '24px',
-                                borderRadius: '50%',
-                                background: '#18181B',
-                                border: '1px solid rgba(217, 119, 6, 0.4)',
-                                boxShadow: '0 1px 2px rgba(0,0,0,0.15)',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                flexShrink: 0,
-                              }}>
-                                <span style={{
-                                  color: '#F59E0B',
-                                  fontSize: '0.68rem',
-                                  fontWeight: 800,
-                                  lineHeight: 1,
-                                }}>
-                                  {((client.birthdayPersonName || client.name) || 'C').trim().charAt(0).toUpperCase()}
-                                </span>
-                              </div>
-
-                              {/* Nome e Decisor */}
-                              <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1, gap: '0px' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '3px', minWidth: 0 }}>
-                                  <span style={{
-                                    fontSize: '0.75rem',
-                                    fontWeight: 800,
-                                    color: 'var(--adm-text-title, #0F172A)',
-                                    whiteSpace: 'nowrap',
-                                    overflow: 'hidden',
-                                    textOverflow: 'ellipsis',
-                                    lineHeight: 1.15,
-                                  }}>
-                                    {client.payerName && client.birthdayPersonName && client.payerName.toLowerCase().trim() !== client.birthdayPersonName.toLowerCase().trim()
-                                      ? `${client.payerName.trim()} • ${client.birthdayPersonName.trim()}`
-                                      : (client.birthdayPersonName || client.payerName || client.name)}
-                                  </span>
-                                </div>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', minWidth: 0 }}>
-                                  <span style={{
-                                    fontSize: '0.62rem',
-                                    fontWeight: 500,
-                                    color: 'var(--adm-text-muted, #64748B)',
-                                    whiteSpace: 'nowrap',
-                                    overflow: 'hidden',
-                                    textOverflow: 'ellipsis',
-                                    lineHeight: 1.1,
-                                  }}>
-                                    {client.payerPhone ? formatPhone(client.payerPhone) : (client.payerName && !client.birthdayPersonName ? client.code : client.payerName ? `Decisor: ${client.payerName}` : client.code)}
-                                  </span>
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Direita Superior: Valor Financeiro Total com Selo $ e Popover no Hover (Exato ao CRM Comercial) */}
-                            <div 
-                              style={{ position: 'relative', flexShrink: 0, display: 'flex', alignItems: 'center', gap: '4px' }}
-                              onMouseEnter={() => setHoveredRevenueClientId(client.id)}
-                              onMouseLeave={() => setHoveredRevenueClientId(null)}
-                            >
-                              <div style={{ width: '1px', height: '14px', background: 'var(--adm-border, #CBD5E1)', opacity: 0.6 }} />
-                              <span style={{
-                                fontSize: '0.76rem',
-                                fontWeight: 800,
-                                color: '#047857',
-                                letterSpacing: '-0.2px',
-                                whiteSpace: 'nowrap',
-                                cursor: 'help',
-                              }}>
-                                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(totalRentabilidade)}
-                              </span>
-                              <div style={{
-                                width: '18px',
-                                height: '18px',
-                                borderRadius: '50%',
-                                background: '#10B981',
-                                color: '#ffffff',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                fontWeight: 800,
-                                fontSize: '0.60rem',
-                                boxShadow: '0 1px 3px rgba(16, 185, 129, 0.3)',
-                                flexShrink: 0,
-                                cursor: 'help',
-                              }}>
-                                $
-                              </div>
-
-                              {/* Popover Hover: Detalhamento Completo de Rentabilidade e Caixa vs Previsto */}
-                              {isRevenueHovered && (
-                                <div
-                                  onClick={(e) => e.stopPropagation()}
-                                  style={{
-                                    position: 'absolute',
-                                    top: 'calc(100% + 6px)',
-                                    right: 0,
-                                    zIndex: 300,
-                                    width: '260px',
-                                    padding: '12px 14px',
-                                    background: 'var(--adm-bg-card, #ffffff)',
-                                    border: '1px solid var(--adm-border, #CBD5E1)',
-                                    borderRadius: '10px',
-                                    boxShadow: '0 12px 30px -5px rgba(0,0,0,0.22)',
-                                    fontSize: '0.72rem',
-                                    color: 'var(--adm-text-body)',
-                                    pointerEvents: 'none',
-                                  }}
-                                >
-                                  <div style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '6px',
-                                    paddingBottom: '6px',
-                                    borderBottom: '1px solid var(--adm-border)',
-                                    marginBottom: '8px',
-                                    fontWeight: 800,
-                                    color: 'var(--adm-text-title)',
-                                    fontSize: '0.76rem',
-                                  }}>
-                                    <Gem size={13} color="#10B981" />
-                                    <span>Detalhamento Financeiro do Cliente</span>
-                                  </div>
-
-                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                                    {/* Contrato Base */}
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                      <span style={{ color: 'var(--adm-text-title)', fontWeight: 700 }}>
-                                        📄 Contrato Base:
-                                      </span>
-                                      <strong style={{ color: 'var(--adm-text-title)' }}>
-                                        {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(baseContract)}
-                                      </strong>
-                                    </div>
-
-                                    {/* Detalhes do Contrato: Sinal e Parcelado */}
-                                    <div style={{ paddingLeft: '10px', display: 'flex', flexDirection: 'column', gap: '2px', fontSize: '0.66rem', color: 'var(--adm-text-muted)' }}>
-                                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                        <span>• Sinal:</span>
-                                        <span style={{ color: '#059669', fontWeight: 600 }}>
-                                          {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(signalGiven)}
-                                        </span>
-                                      </div>
-                                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                        <span>• Parcelado:</span>
-                                        <span style={{ color: '#D97706', fontWeight: 600 }}>
-                                          {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(contractRemaining)}
-                                        </span>
-                                      </div>
-                                    </div>
-
-                                    {/* Serviços Extras / Upsell */}
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '2px' }}>
-                                      <span style={{ color: '#059669', fontWeight: 700 }}>
-                                        💎 Upsell ({upsells.length} {upsells.length === 1 ? 'item' : 'itens'}):
-                                      </span>
-                                      <strong style={{ color: '#059669' }}>
-                                        +{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalUpsell)}
-                                      </strong>
-                                    </div>
-
-                                    {/* Detalhes dos Extras: À vista vs Parcelado */}
-                                    {upsells.length > 0 && (
-                                      <div style={{ paddingLeft: '10px', display: 'flex', flexDirection: 'column', gap: '2px', fontSize: '0.66rem', color: 'var(--adm-text-muted)' }}>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                          <span>• À Vista:</span>
-                                          <span style={{ color: '#059669', fontWeight: 600 }}>
-                                            {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(upsellAVista)}
-                                          </span>
-                                        </div>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                          <span>• Parcelado:</span>
-                                          <span style={{ color: '#D97706', fontWeight: 600 }}>
-                                            {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(upsellParcelado)}
-                                          </span>
-                                        </div>
-                                      </div>
-                                    )}
-
-                                    {/* Divisória de Resumo de Caixa */}
-                                    <div style={{ height: '1px', background: 'var(--adm-border)', margin: '4px 0' }} />
-
-                                    {/* Resumo de Dinheiro em Caixa vs Previsto */}
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.68rem' }}>
-                                      <span style={{ color: '#059669', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                        🟢 Em Caixa:
-                                      </span>
-                                      <strong style={{ color: '#059669' }}>
-                                        {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalCashReceived)}
-                                      </strong>
-                                    </div>
-
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.68rem' }}>
-                                      <span style={{ color: '#D97706', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                        🟡 Previsto:
-                                      </span>
-                                      <strong style={{ color: '#D97706' }}>
-                                        {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalForecastedRemaining)}
-                                      </strong>
-                                    </div>
-
-                                    {/* Faturamento Total Geral */}
-                                    <div style={{
-                                      display: 'flex',
-                                      justifyContent: 'space-between',
-                                      alignItems: 'center',
-                                      paddingTop: '6px',
-                                      borderTop: '1px dashed var(--adm-border)',
-                                      marginTop: '2px',
-                                    }}>
-                                      <span style={{ fontWeight: 800, color: 'var(--adm-text-title)' }}>
-                                        Faturamento Total:
-                                      </span>
-                                      <strong style={{ fontWeight: 800, color: '#047857', fontSize: '0.84rem' }}>
-                                        {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalRentabilidade)}
-                                      </strong>
-                                    </div>
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-
-                          {/* ── 2. LINHA DEDICADA DA DATA DA FESTA / ANIVERSÁRIO (DIRETO E LIMPO, SEM RETÂNGULOS/BOXES) ── */}
-                          {pDateStr && (
-                            <div style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '5px',
-                              fontSize: '0.70rem',
-                              lineHeight: 1.2,
-                              marginTop: '1px',
-                            }}>
-                              <PartyPopper size={11} color="#3B82F6" style={{ flexShrink: 0 }} />
-                              <span style={{ fontWeight: 700, color: 'var(--adm-text-title)' }}>
-                                {new Date(pDateStr + 'T00:00:00').toLocaleDateString('pt-BR')}
-                              </span>
-                              {daysLeft !== null && (
-                                <span style={{
-                                  fontWeight: 600,
-                                  color: daysLeft <= 30 ? '#EF4444' : daysLeft <= 90 ? '#F59E0B' : 'var(--adm-accent)',
-                                  fontSize: '0.66rem',
-                                }}>
-                                  ({daysLeft > 0 ? `${daysLeft} dias` : daysLeft === 0 ? 'Hoje!' : 'Realizada'})
-                                </span>
-                              )}
-                            </div>
-                          )}
-
-                          {/* ── 3. ÁREA CENTRAL: Nuvem de Tags em Formato Pílula (Pills Suaves + Ícones Profissionais) ── */}
-                          {(() => {
-                            const chips: Array<{
-                              id: string;
-                              label: string;
-                              icon: React.ReactNode;
-                              bg: string;
-                              color: string;
-                              border: string;
-                              title?: string;
-                            }> = [];
-
-                            // A) Casa de Festas (Ícone Store)
-                            const venueObj = venues.find(v => v.id === client.venueId);
-                            const venueTitle = venueObj?.name || client.venueName;
-                            if (venueTitle) {
-                              chips.push({
-                                id: 'venue',
-                                label: venueTitle.toUpperCase(),
-                                icon: <Store size={9} style={{ flexShrink: 0 }} />,
-                                bg: 'rgba(99, 102, 241, 0.08)',
-                                color: '#4F46E5',
-                                border: 'rgba(99, 102, 241, 0.22)',
-                                title: `CASA DE FESTAS: ${venueTitle.toUpperCase()}`,
-                              });
-                            }
-
-                            // B) Tipo de Evento (apenas quando preenchido explicitamente)
-                            if (client.eventType && client.eventType.trim()) {
-                              const rawType = client.eventType.replace(/_/g, ' ').toUpperCase();
-                              chips.push({
-                                id: 'event_type',
-                                label: rawType,
-                                icon: <Sparkles size={9} style={{ flexShrink: 0 }} />,
-                                bg: 'rgba(212, 175, 55, 0.10)',
-                                color: '#B45309',
-                                border: 'rgba(212, 175, 55, 0.25)',
-                                title: `TIPO DE EVENTO: ${rawType}`,
-                              });
-                            }
-
-                            // C) App de Convidados (CAPSLOCK)
-                            if (client.debutanteId || client.debutanteSlug) {
-                              chips.push({
-                                id: 'app_active',
-                                label: 'APP ATIVO',
-                                icon: <CheckCircle2 size={9} style={{ flexShrink: 0 }} />,
-                                bg: 'rgba(16, 185, 129, 0.08)',
-                                color: '#059669',
-                                border: 'rgba(16, 185, 129, 0.22)',
-                                title: `APP ATIVO: /app/${client.debutanteSlug || client.debutanteId}`,
-                              });
-                            }
-
-                            // D) Tags Customizadas (CAPSLOCK)
-                            (client.tags || []).forEach((t: string, idx: number) => {
-                              if (t && t.trim()) {
-                                const norm = t.trim().toLowerCase();
-                                if (norm === 'new_lead' || norm === 'new-lead' || norm === 'newlead') return;
-                                chips.push({
-                                  id: `tag_${idx}`,
-                                  label: t.trim().toUpperCase(),
-                                  icon: <TagIcon size={8.5} color="#64748B" style={{ flexShrink: 0 }} />,
-                                  bg: 'rgba(100, 116, 139, 0.08)',
-                                  color: 'var(--adm-text-body, #334155)',
-                                  border: 'rgba(100, 116, 139, 0.22)',
-                                  title: `TAG: ${t.trim().toUpperCase()}`,
-                                });
-                              }
-                            });
-
-                            return (
-                              <div style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '4px',
-                                flexWrap: 'wrap',
-                                minWidth: 0,
-                                marginTop: '1px',
-                              }}>
-                                {chips.map(chip => (
-                                  <span
-                                    key={chip.id}
-                                    title={chip.title || chip.label}
-                                    style={{
-                                      display: 'inline-flex',
-                                      alignItems: 'center',
-                                      gap: '3px',
-                                      padding: '2px 6px',
-                                      borderRadius: '9999px',
-                                      fontSize: '0.58rem',
-                                      fontWeight: 700,
-                                      background: chip.bg,
-                                      border: `1px solid ${chip.border}`,
-                                      color: chip.color,
-                                      whiteSpace: 'nowrap',
-                                      maxWidth: '130px',
-                                      overflow: 'hidden',
-                                      textOverflow: 'ellipsis',
-                                      lineHeight: 1.15,
-                                    }}
-                                  >
-                                    {chip.icon}
-                                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                      {chip.label}
-                                    </span>
-                                  </span>
-                                ))}
-
-                                {/* Adicionar Tag Rápida (+) */}
-                                {addTagClientId === client.id ? (
-                                  <div 
-                                    onClick={(e) => e.stopPropagation()}
-                                    style={{
-                                      position: 'absolute',
-                                      bottom: '28px',
-                                      left: '10px',
-                                      background: '#141118',
-                                      border: '1px solid var(--adm-accent)',
-                                      borderRadius: '8px',
-                                      padding: '6px',
-                                      boxShadow: '0 8px 24px rgba(0,0,0,0.85)',
-                                      zIndex: 9999,
-                                      display: 'flex',
-                                      flexDirection: 'column',
-                                      gap: '6px',
-                                      minWidth: '160px',
-                                      maxWidth: '220px',
-                                    }}
-                                  >
-                                    {/* Tags Pré-cadastradas no Funil */}
-                                    {currentFunnel?.predefinedTags && currentFunnel.predefinedTags.length > 0 && (
-                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                                        <span style={{ fontSize: '0.55rem', fontWeight: 800, textTransform: 'uppercase', color: 'var(--adm-accent)' }}>
-                                          Tags do Funil
-                                        </span>
-                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px', maxHeight: '70px', overflowY: 'auto' }}>
-                                          {currentFunnel.predefinedTags
-                                            .filter(t => !(client.tags || []).includes(t.trim().toUpperCase()))
-                                            .map(tag => (
-                                              <button
-                                                key={tag}
-                                                type="button"
-                                                onClick={() => handleAddTag(client.id, tag)}
-                                                style={{
-                                                  fontSize: '0.58rem',
-                                                  fontWeight: 700,
-                                                  padding: '2px 5px',
-                                                  borderRadius: '4px',
-                                                  background: 'rgba(212, 175, 55, 0.15)',
-                                                  border: '1px solid rgba(212, 175, 55, 0.35)',
-                                                  color: '#D4AF37',
-                                                  cursor: 'pointer',
-                                                  whiteSpace: 'nowrap',
-                                                }}
-                                              >
-                                                + {tag}
-                                              </button>
-                                            ))}
-                                        </div>
-                                      </div>
-                                    )}
-
-                                    {/* Input para Nova Tag Customizada */}
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '2px', borderTop: currentFunnel?.predefinedTags?.length ? '1px solid rgba(255,255,255,0.08)' : 'none', paddingTop: currentFunnel?.predefinedTags?.length ? '4px' : 0 }}>
-                                      <input
-                                        type="text"
-                                        autoFocus
-                                        placeholder="NOVA TAG..."
-                                        value={newTagInput}
-                                        onChange={(e) => setNewTagInput(e.target.value.toUpperCase())}
-                                        onKeyDown={(e) => {
-                                          if (e.key === 'Enter') handleAddTag(client.id);
-                                          if (e.key === 'Escape') setAddTagClientId(null);
-                                        }}
-                                        style={{
-                                          fontSize: '0.62rem',
-                                          padding: '3px 6px',
-                                          borderRadius: '4px',
-                                          border: '1px solid var(--adm-border)',
-                                          background: 'var(--adm-bg-input)',
-                                          color: 'var(--adm-text-title)',
-                                          flex: 1,
-                                          minWidth: 0,
-                                          outline: 'none',
-                                        }}
-                                      />
-                                      <button
-                                        type="button"
-                                        onClick={() => handleAddTag(client.id)}
-                                        style={{ background: 'transparent', border: 'none', padding: '2px', cursor: 'pointer', color: '#10B981' }}
-                                      >
-                                        <Check size={12} />
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => setAddTagClientId(null)}
-                                        style={{ background: 'transparent', border: 'none', padding: '2px', cursor: 'pointer', color: '#EF4444' }}
-                                      >
-                                        <X size={12} />
-                                      </button>
-                                    </div>
-                                  </div>
-                                ) : (
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setAddTagClientId(client.id);
-                                      setNewTagInput('');
-                                    }}
-                                    title="Adicionar tag ao cliente"
-                                    style={{
-                                      display: 'inline-flex',
-                                      alignItems: 'center',
-                                      justifyContent: 'center',
-                                      width: '18px',
-                                      height: '18px',
-                                      borderRadius: '50%',
-                                      border: '1px dashed var(--adm-border, #94A3B8)',
-                                      background: 'transparent',
-                                      color: 'var(--adm-text-muted, #64748B)',
-                                      cursor: 'pointer',
-                                      transition: 'all 0.15s ease',
-                                      flexShrink: 0,
-                                      padding: 0,
-                                    }}
-                                    onMouseEnter={(e) => {
-                                      e.currentTarget.style.borderColor = '#06B6D4';
-                                      e.currentTarget.style.color = '#06B6D4';
-                                    }}
-                                    onMouseLeave={(e) => {
-                                      e.currentTarget.style.borderColor = 'var(--adm-border, #94A3B8)';
-                                      e.currentTarget.style.color = 'var(--adm-text-muted, #64748B)';
-                                    }}
-                                  >
-                                    <Plus size={9} />
-                                  </button>
-                                )}
-                              </div>
-                            );
-                          })()}
-
-                          {/* Divisória sutil */}
-                          <div style={{ height: '1px', backgroundColor: 'var(--adm-border, #E2E8F0)', opacity: 0.5, margin: '2px 0 1px' }} />
-
-                          {/* ── 4. ÁREA INFERIOR: Foto do Gestor + 3 Ícones de Status (Tarefas, WhatsApp, Agenda) + Data de Entrada ── */}
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
-                            {/* Esquerda: Avatar Gestor + 3 Ícones de Status */}
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
-                              {/* Foto do Gestor de Sucesso */}
-                              {managerCollab?.avatarUrl ? (
-                                <img
-                                  src={managerCollab.avatarUrl}
-                                  alt={managerCollab.name}
-                                  title={`Sucesso do Cliente: ${managerCollab.name}`}
-                                  style={{
-                                    width: '20px',
-                                    height: '20px',
-                                    borderRadius: '50%',
-                                    objectFit: 'cover',
-                                    border: '1px solid var(--adm-border, #E2E8F0)',
-                                    flexShrink: 0,
-                                  }}
-                                  onError={(e) => {
-                                    (e.currentTarget as HTMLElement).style.display = 'none';
-                                  }}
-                                />
-                              ) : (
-                                <div 
-                                  title={`Gestão: ${managerCollab?.name || client.assignedSuccessManagerName || 'Pós-Venda'}`}
-                                  style={{
-                                    width: '20px',
-                                    height: '20px',
-                                    borderRadius: '50%',
-                                    background: 'var(--adm-bg-input, #F1F5F9)',
-                                    border: '1px solid var(--adm-border, #E2E8F0)',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    fontSize: '0.58rem',
-                                    fontWeight: 700,
-                                    color: 'var(--adm-text-muted)',
-                                    flexShrink: 0,
-                                  }}
-                                >
-                                  {(managerCollab?.name || client.assignedSuccessManagerName || 'P').trim().charAt(0).toUpperCase()}
-                                </div>
-                              )}
-
-                              {/* Barra com os 3 Ícones Essenciais (Tarefas, WhatsApp e Agenda) */}
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
-                                {/* 1. Tarefas (☑ CheckSquare) */}
-                                {(() => {
-                                  let bg = 'var(--adm-bg-input, #F8FAFC)';
-                                  let border = 'var(--adm-border, #E2E8F0)';
-                                  let color = '#94A3B8';
-                                  let count = 0;
-
-                                  if (overdueTasks > 0) {
-                                    bg = 'rgba(239, 68, 68, 0.12)';
-                                    border = 'rgba(239, 68, 68, 0.35)';
-                                    color = '#DC2626';
-                                    count = overdueTasks;
-                                  } else if (pendingTasks.length > 0) {
-                                    bg = 'rgba(245, 158, 11, 0.12)';
-                                    border = 'rgba(245, 158, 11, 0.35)';
-                                    color = '#D97706';
-                                    count = pendingTasks.length;
-                                  } else if (clientTasks.length > 0 && pendingTasks.length === 0) {
-                                    bg = 'rgba(16, 185, 129, 0.15)';
-                                    border = 'rgba(16, 185, 129, 0.35)';
-                                    color = '#10B981';
-                                  }
-
-                                  return (
-                                    <div
-                                      title={
-                                        overdueTasks > 0 ? `${overdueTasks} tarefa(s) atrasada(s)` :
-                                        pendingTasks.length > 0 ? `${pendingTasks.length} tarefa(s) pendente(s)` :
-                                        clientTasks.length > 0 ? 'Todas as tarefas concluídas' : 'Tarefas do Cliente'
-                                      }
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setSelectedClientId(client.id);
-                                        setViewMode('inbox');
-                                      }}
-                                      style={{
-                                        width: '21px',
-                                        height: '21px',
-                                        borderRadius: '5px',
-                                        background: bg,
-                                        border: `1px solid ${border}`,
-                                        color: color,
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        cursor: 'pointer',
-                                        position: 'relative',
-                                      }}
-                                    >
-                                      <CheckSquare size={11} />
-                                      {count > 0 && (
-                                        <span style={{
-                                          position: 'absolute',
-                                          top: '-3px',
-                                          right: '-3px',
-                                          background: color,
-                                          color: '#fff',
-                                          fontSize: '0.48rem',
-                                          fontWeight: 800,
-                                          borderRadius: '50%',
-                                          minWidth: '10px',
-                                          height: '10px',
-                                          display: 'flex',
-                                          alignItems: 'center',
-                                          justifyContent: 'center',
-                                          padding: '0 1px',
-                                        }}>
-                                          {count}
-                                        </span>
-                                      )}
-                                    </div>
-                                  );
-                                })()}
-
-                                {/* 2. WhatsApp (WhatsAppBrandIcon) */}
-                                {(() => {
-                                  const clientPhoneNorm = (client.payerPhone || (client as any).phone || '').replace(/\D/g, '');
-                                  const matchingLead = leads.find(l => l.id === client.id || (clientPhoneNorm && (l.phone || '').replace(/\D/g, '') === clientPhoneNorm));
-                                  const unread = Number((client as any).unreadMessagesCount ?? (client as any).unreadCount ?? (matchingLead as any)?.unreadMessagesCount ?? matchingLead?.unreadCount ?? 0);
-                                  const hasUnread = unread > 0;
-
-                                  return (
-                                    <div
-                                      title={hasUnread ? `${unread} mensagem(ns) pendente(s)` : 'WhatsApp do Cliente'}
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setSelectedClientId(client.id);
-                                        setViewMode('inbox');
-                                      }}
-                                      style={{
-                                        width: '21px',
-                                        height: '21px',
-                                        borderRadius: '5px',
-                                        background: hasUnread ? 'rgba(37, 211, 102, 0.15)' : 'var(--adm-bg-input, #F8FAFC)',
-                                        border: hasUnread ? '1px solid rgba(37, 211, 102, 0.4)' : '1px solid var(--adm-border, #E2E8F0)',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        cursor: 'pointer',
-                                        position: 'relative',
-                                      }}
-                                    >
-                                      <WhatsAppBrandIcon size={12} color={hasUnread ? '#25D366' : '#94A3B8'} />
-                                      {hasUnread && (
-                                        <span style={{
-                                          position: 'absolute',
-                                          top: '-3px',
-                                          right: '-3px',
-                                          background: '#EF4444',
-                                          color: '#fff',
-                                          fontSize: '0.48rem',
-                                          fontWeight: 800,
-                                          borderRadius: '50%',
-                                          minWidth: '10px',
-                                          height: '10px',
-                                          display: 'flex',
-                                          alignItems: 'center',
-                                          justifyContent: 'center',
-                                          padding: '0 1px',
-                                        }}>
-                                          {unread}
-                                        </span>
-                                      )}
-                                    </div>
-                                  );
-                                })()}
-
-                                {/* 3. Agenda / Compromissos (Calendar) */}
-                                {(() => {
-                                  const hasApp = pendingApps.length > 0;
-                                  const hasAppToday = pendingApps.some(a => a.date === todayStr);
-
-                                  return (
-                                    <div
-                                      title={
-                                        hasAppToday ? 'Compromisso agendado para HOJE!' :
-                                        hasApp ? `${pendingApps.length} compromisso(s) agendado(s)` :
-                                        'Agenda do Cliente'
-                                      }
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setSelectedClientId(client.id);
-                                      }}
-                                      style={{
-                                        width: '21px',
-                                        height: '21px',
-                                        borderRadius: '5px',
-                                        background: hasAppToday ? 'rgba(239, 68, 68, 0.12)' : hasApp ? 'rgba(245, 158, 11, 0.12)' : 'var(--adm-bg-input, #F8FAFC)',
-                                        border: `1px solid ${hasAppToday ? 'rgba(239, 68, 68, 0.4)' : hasApp ? 'rgba(245, 158, 11, 0.4)' : 'var(--adm-border, #E2E8F0)'}`,
-                                        color: hasAppToday ? '#EF4444' : hasApp ? '#D97706' : '#94A3B8',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        cursor: 'pointer',
-                                        position: 'relative',
-                                      }}
-                                    >
-                                      <Calendar size={11} />
-                                      {pendingApps.length > 0 && (
-                                        <span style={{
-                                          position: 'absolute',
-                                          top: '-3px',
-                                          right: '-3px',
-                                          background: hasAppToday ? '#EF4444' : '#D97706',
-                                          color: '#fff',
-                                          fontSize: '0.48rem',
-                                          fontWeight: 800,
-                                          borderRadius: '50%',
-                                          minWidth: '10px',
-                                          height: '10px',
-                                          display: 'flex',
-                                          alignItems: 'center',
-                                          justifyContent: 'center',
-                                          padding: '0 1px',
-                                        }}>
-                                          {pendingApps.length}
-                                        </span>
-                                      )}
-                                    </div>
-                                  );
-                                })()}
-                              </div>
-                            </div>
-
-                            {/* Direita: Data de Entrada no Funil */}
-                            {(() => {
-                              const enteredDate = client.funnelEnteredAt || client.contractDate || client.createdAt;
-                              if (!enteredDate) return null;
-                              return (
-                                <span 
-                                  title={`Data de entrada no funil de pós-venda: ${new Date(enteredDate + 'T00:00:00').toLocaleDateString('pt-BR')}`}
-                                  style={{
-                                    fontSize: '0.62rem',
-                                    fontWeight: 500,
-                                    color: 'var(--adm-text-muted, #64748B)',
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: '3px',
-                                    flexShrink: 0,
-                                  }}
-                                >
-                                  <Clock size={9} style={{ opacity: 0.7 }} />
-                                  {new Date(enteredDate + 'T00:00:00').toLocaleDateString('pt-BR')}
-                                </span>
-                              );
-                            })()}
-                          </div>
-                        </div>
+                          venues={venues}
+                          collaborators={collaborators}
+                          clientTasks={clientTasks}
+                          clientAppointments={clientApps}
+                        />
                       );
                     })}
 
@@ -3906,22 +2661,25 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
                         onDragOver={handleDragOver}
                         onDrop={(e) => handleDrop(e, column.id)}
                         style={{
-                          flex: 1,
-                          minHeight: '160px',
                           display: 'flex',
+                          flexDirection: 'column',
                           alignItems: 'center',
                           justifyContent: 'center',
-                          border: '1.5px dashed var(--adm-border)',
+                          gap: '6px',
+                          border: '1px dashed var(--adm-border)',
                           borderRadius: '8px',
                           color: 'var(--adm-text-muted)',
-                          fontSize: '0.72rem',
-                          fontWeight: 600,
+                          fontSize: '0.68rem',
+                          fontWeight: 500,
                           textAlign: 'center',
-                          padding: '16px 10px',
-                          margin: '6px 0',
+                          padding: '24px 10px',
+                          margin: '4px 0',
+                          background: 'rgba(255, 255, 255, 0.01)',
+                          transition: 'all 0.15s ease',
                         }}
                       >
-                        Arraste um cliente para cá
+                        <Layers size={15} strokeWidth={1.5} style={{ opacity: 0.35 }} />
+                        <span>Nenhum contrato nesta etapa</span>
                       </div>
                     ) : (
                       /* Drop target elástico na parte inferior da coluna */
@@ -4022,7 +2780,7 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
 
                       <td style={{ padding: '14px 16px' }}>
                         <span style={{ fontWeight: 600, color: 'var(--adm-text-title)' }}>
-                          {new Date(client.eventDate).toLocaleDateString('pt-BR')}
+                          {formatSafeLocalDate(client.eventDate || client.partyDate)}
                         </span>
                       </td>
 

@@ -1,3 +1,4 @@
+import { toast } from 'sonner';
 import React, { useEffect, useState } from 'react';
 import { 
   CheckCircle2, AlertCircle, Loader2,
@@ -142,7 +143,7 @@ export const PublicFormLandingView: React.FC<PublicFormLandingViewProps> = ({ sl
 
       setIsSubmitted(true);
     } catch (err: any) {
-      alert('Erro ao enviar formulário. Por favor tente novamente.');
+      toast.error('Erro ao enviar formulário. Por favor tente novamente.');
     } finally {
       setIsSubmitting(false);
     }

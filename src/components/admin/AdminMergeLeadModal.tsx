@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { 
-  X, Merge, Search, AlertTriangle, ArrowRight, Check, RefreshCw 
+  X, Merge, Search, AlertTriangle, ArrowRight, Check, RefreshCw, MessageSquare 
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { formatPhone } from '../../utils/phoneFormatter';
@@ -219,7 +219,9 @@ export const AdminMergeLeadModal: React.FC<AdminMergeLeadModalProps> = ({
                 </div>
               </div>
               <div style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)', display: 'flex', gap: '8px' }}>
-                <span>💬 {sourceLead.activities?.length || 0} atividades</span>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                  <MessageSquare size={10} /> {sourceLead.activities?.length || 0} atividades
+                </span>
                 {sourceLead.code && <span>• Cód: {sourceLead.code}</span>}
               </div>
             </div>
@@ -310,7 +312,9 @@ export const AdminMergeLeadModal: React.FC<AdminMergeLeadModalProps> = ({
                     </button>
                   </div>
                   <div style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)', display: 'flex', gap: '8px' }}>
-                    <span>💬 {targetLead.activities?.length || 0} atividades</span>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                      <MessageSquare size={10} /> {targetLead.activities?.length || 0} atividades
+                    </span>
                     {targetLead.code && <span>• Cód: {targetLead.code}</span>}
                   </div>
                 </div>

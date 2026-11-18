@@ -1,3 +1,4 @@
+import { toast } from 'sonner';
 import { ShieldAlert } from 'lucide-react';
 import React, { createContext, useContext, useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import type { 
@@ -37,7 +38,7 @@ import type {
   LeadContact,
   SystemSlaConfig,
   QuickMessage,
-  VenueEvent
+  VenueEvent,
 } from '../types/admin';
 import type { Source } from '../types/sources';
 import type { 
@@ -49,7 +50,6 @@ import {
   mockMilestones, 
   mockVipRewards 
 } from '../data/mockData';
-import { mockClients } from '../data/mockClients';
 import { safeLocalStorageSet, safeLocalStorageGet } from '../utils/mediaStorage';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { venueService } from '../services/venueService';
@@ -68,8 +68,10 @@ import { quickMessageService } from '../services/quickMessageService';
 import { mqlService } from '../services/mqlService';
 import { supportService } from '../services/supportService';
 import { clientService } from '../services/clientService';
+import { contractService } from '../services/contractService';
 import { uazapiService } from '../services/uazapiService';
-import { whatsappMediaService } from '../services/whatsappMediaService';
+import { whatsappMediaService, MediaPendingError } from '../services/whatsappMediaService';
+import { mediaStorageService } from '../services/mediaStorageService';
 import { uazapiSseService, isLidIdentifier } from '../services/uazapiSseService';
 import { createMonogramAvatar } from '../utils/avatarUtils';
 import { generateLeadCode, generateClientCode, buildHandoverActivity } from '../utils/leadUtils';
@@ -84,6 +86,21 @@ const STORAGE_KEY_CLIENTS = 'bonomo_admin_clients_v7';
 const STORAGE_KEY_AGENDA_CONFIGS = 'bonomo_admin_agenda_configs_v1';
 const STORAGE_KEY_APPOINTMENTS = 'bonomo_admin_appointments_v1';
 const STORAGE_KEY_LEADS = 'bonomo_admin_leads_v7';
+
+/**
+ * Recargas "leves" de leads trazem só as últimas ~5 atividades por lead. Para não apagar o
+ * histórico já carregado em memória (conversa aberta), mescla por id/messageId em vez de substituir.
+ */
+const mergeLeadsKeepingActivities = (fresh: Lead[], current: Lead[]): Lead[] => {
+  const currentById = new Map(current.map(l => [l.id, l]));
+  return fresh.map(freshLead => {
+    const currentActs = currentById.get(freshLead.id)?.activities;
+    if (!currentActs || currentActs.length === 0) return freshLead;
+    const freshActs = freshLead.activities || [];
+    if (freshActs.length === 0) return { ...freshLead, activities: currentActs };
+    return { ...freshLead, activities: mergeAndSortActivities(currentActs, freshActs, freshLead.id) };
+  });
+};
 const STORAGE_KEY_SOURCES = 'bonomo_admin_sources_v1';
 const STORAGE_KEY_TEMPLATES = 'bonomo_admin_templates_v7';
 const STORAGE_KEY_QUICK_MESSAGES = 'f5_admin_quick_messages_v1';
@@ -464,6 +481,10 @@ export interface AdminContextType {
     contractDate?: string,
     closerNotes?: string,
     extraOptions?: {
+      contractTitle?: string;
+      contractFileUrl?: string;
+      paymentFileUrl?: string;
+      paymentFileName?: string;
       downPayment?: number;
       installmentsCount?: number;
       hasCreditCard?: boolean;
@@ -680,7 +701,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       } catch {}
     }
-    return mockClients;
+    return [];
   });
 
   const [systemSlaConfig, setSystemSlaConfig] = useState<SystemSlaConfig>(() => {
@@ -711,6 +732,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const deletedCollabIdsRef = React.useRef<Set<string>>(new Set());
 
   // Refs para acesso ao vivo dentro de callbacks SSE sem re-registrar listeners
+  const currentUserRef = React.useRef<AdminUser | null>(currentUser);
+  currentUserRef.current = currentUser;
   const leadsRef = React.useRef<Lead[]>([]);
   const clientsRef = React.useRef<Client[]>([]);
   const sourcesRef = React.useRef<Source[]>([]);
@@ -1233,10 +1256,11 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const loadLiveSupabaseData = async () => {
       refreshDataRef.current = loadLiveSupabaseData;
       try {
+        const activeMaster = currentUser?.masterId || currentUser?.id;
         const results = await Promise.allSettled([
           venueService.getAll(),             // 0
           funnelService.getAll(),            // 1
-          leadService.getAll({ includeActivities: false }), // 2 - Levíssimo (não baixa 5.000 mensagens de WhatsApp)
+          leadService.getAll({ includeActivities: false, masterId: activeMaster || undefined }), // 2 - Levíssimo e blindado por master_id
           debutanteService.getAll(),         // 3
           taskService.getAll(),              // 4
           collaboratorService.getAll(),      // 5
@@ -1245,7 +1269,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           journeyTemplateService.getAll(),   // 8
           sourceService.getAll(),            // 9
           mqlService.getAll(),               // 10
-          clientService.getAll(),            // 11
+          clientService.getAll(activeMaster || undefined), // 11 - Blindado por master_id
           agendaAvailabilityService.getAllConfigs(), // 12
           appointmentService.getAll(),       // 13
           quickMessageService.getAll(),      // 14
@@ -1335,8 +1359,11 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             if (mergedCount > 0) {
               console.log(`[Supabase Sync] ${mergedCount} lead(s) duplicado(s) foram consolidados e apagados com sucesso no banco de dados.`);
             }
-            setLeads(consolidatedLeads);
-            safeLocalStorageSet(STORAGE_KEY_LEADS, JSON.stringify(consolidatedLeads));
+            // Refresh manual não pode apagar o histórico já carregado na conversa aberta
+            const keptLeads = mergeLeadsKeepingActivities(consolidatedLeads, leadsRef.current);
+            leadsRef.current = keptLeads;
+            setLeads(keptLeads);
+            safeLocalStorageSet(STORAGE_KEY_LEADS, JSON.stringify(keptLeads));
 
             // Auto-cura assíncrona de leads que ainda possuam LID temporário no campo de telefone
             setTimeout(() => {
@@ -1644,12 +1671,14 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     });
 
     // Setup Realtime WebSocket Listener with Debounce
-    let debounceTimer: any = null;
-    const triggerDebouncedSync = (fn: () => Promise<void>) => {
-      clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(() => {
+    // Um timer por tipo de evento: um evento de outra tabela não cancela a sincronização pendente de leads.
+    const debounceTimers = new Map<string, any>();
+    const triggerDebouncedSync = (fn: () => Promise<void>, key: string = 'default') => {
+      clearTimeout(debounceTimers.get(key));
+      debounceTimers.set(key, setTimeout(() => {
+        debounceTimers.delete(key);
         if (isMounted) fn();
-      }, 150);
+      }, 150));
     };
 
     const realtimeChannel = supabase
@@ -1714,21 +1743,16 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
         // Fallback defensivo com payload leve caso o evento venha sem dados completos
         triggerDebouncedSync(async () => {
-          const updated = await leadService.getAll({ includeActivities: false });
+          const activeMaster = currentUserRef.current?.masterId || currentUserRef.current?.id;
+          const updated = await leadService.getAll({ includeActivities: false, masterId: activeMaster || undefined });
           if (isMounted) {
             const filtered = updated.filter(l => !deletedLeadIdsRef.current.has(l.id));
-            const merged = filtered.map(freshLead => {
-              const currentLead = leadsRef.current.find(l => l.id === freshLead.id);
-              if (!currentLead || !currentLead.activities || currentLead.activities.length === 0) {
-                return freshLead;
-              }
-              return { ...freshLead, activities: currentLead.activities };
-            });
+            const merged = mergeLeadsKeepingActivities(filtered, leadsRef.current);
             leadsRef.current = merged;
             setLeads(merged);
             safeLocalStorageSet(STORAGE_KEY_LEADS, JSON.stringify(merged));
           }
-        });
+        }, 'leads');
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'debutantes' }, async () => {
         const updated = await debutanteService.getAll();
@@ -1741,19 +1765,22 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       .on('postgres_changes', { event: '*', schema: 'public', table: 'referrals' }, async () => {
         // Debutante cadastrou indicação -> atualiza debutantes e leads em tempo real
         triggerDebouncedSync(async () => {
+          const activeMaster = currentUserRef.current?.masterId || currentUserRef.current?.id;
           const [updatedDebs, updatedLeads] = await Promise.all([
             debutanteService.getAll(),
-            leadService.getAll({ includeActivities: false }),
+            leadService.getAll({ includeActivities: false, masterId: activeMaster || undefined }),
           ]);
           if (isMounted) {
             const filteredDebs = updatedDebs.filter(d => !deletedDebutanteIdsRef.current.has(d.id) && !deletedDebutanteIdsRef.current.has(d.slug));
             const filteredLeads = updatedLeads.filter(l => !deletedLeadIdsRef.current.has(l.id));
+            const mergedLeads = mergeLeadsKeepingActivities(filteredLeads, leadsRef.current);
+            leadsRef.current = mergedLeads;
             setDebutantes(filteredDebs);
-            setLeads(filteredLeads);
+            setLeads(mergedLeads);
             safeLocalStorageSet(STORAGE_KEY_DEBUTANTES, JSON.stringify(filteredDebs));
-            safeLocalStorageSet(STORAGE_KEY_LEADS, JSON.stringify(filteredLeads));
+            safeLocalStorageSet(STORAGE_KEY_LEADS, JSON.stringify(mergedLeads));
           }
-        });
+        }, 'referrals');
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'guests' }, async () => {
         // Convidado confirmou -> atualiza lista de convidados em tempo real
@@ -1883,7 +1910,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                     return merged;
                   });
                 }
-              });
+              }, `lead-single-${targetLeadId}`);
               return prev;
             }
 
@@ -1940,12 +1967,19 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'lead_participants' }, async () => {
         triggerDebouncedSync(async () => {
-          const updated = await leadService.getAll({ includeActivities: false });
-          if (isMounted && updated.length > 0) setLeads(updated);
-        });
+          const activeMaster = currentUserRef.current?.masterId || currentUserRef.current?.id;
+          const updated = await leadService.getAll({ includeActivities: false, masterId: activeMaster || undefined });
+          if (isMounted && updated.length > 0) {
+            const filtered = updated.filter(l => !deletedLeadIdsRef.current.has(l.id));
+            const merged = mergeLeadsKeepingActivities(filtered, leadsRef.current);
+            leadsRef.current = merged;
+            setLeads(merged);
+          }
+        }, 'participants');
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'clients' }, async () => {
-        const updated = await clientService.getAll();
+        const activeMaster = currentUserRef.current?.masterId || currentUserRef.current?.id;
+        const updated = await clientService.getAll(activeMaster || undefined);
         if (isMounted) {
           setClients(updated);
           safeLocalStorageSet(STORAGE_KEY_CLIENTS, JSON.stringify(updated));
@@ -1964,7 +1998,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
               if (me.active === false) {
                 setTimeout(() => {
                   logout();
-                  alert('Sua conta de acesso foi suspensa ou desativada pelo administrador.');
+                  toast.warning('Sua conta de acesso foi suspensa ou desativada pelo administrador.');
                 }, 50);
                 return null;
               }
@@ -2062,20 +2096,17 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       if (now - lastFocusSyncTime < 5 * 60 * 1000) return;
       if (document.visibilityState === 'visible' && isMounted) {
         lastFocusSyncTime = now;
+        const activeMaster = currentUserRef.current?.masterId || currentUserRef.current?.id;
         Promise.all([
-          leadService.getAll({ includeActivities: false }),
+          leadService.getAll({ includeActivities: false, masterId: activeMaster || undefined }),
           debutanteService.getAll(),
-          clientService.getAll(),
+          clientService.getAll(activeMaster || undefined),
           supportService.getAll(),
         ]).then(([updatedLeads, updatedDebs, updatedClients, updatedTickets]) => {
           if (isMounted) {
             if (updatedLeads.length > 0) {
               setLeads(prev => {
-                const actsMap = new Map(prev.map(l => [l.id, l.activities || []]));
-                const merged = updatedLeads.map(l => ({
-                  ...l,
-                  activities: (l.activities && l.activities.length > 0) ? l.activities : (actsMap.get(l.id) || []),
-                }));
+                const merged = mergeLeadsKeepingActivities(updatedLeads, prev);
                 leadsRef.current = merged;
                 safeLocalStorageSet(STORAGE_KEY_LEADS, JSON.stringify(merged));
                 return merged;
@@ -2105,7 +2136,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
     return () => {
       isMounted = false;
-      clearTimeout(debounceTimer);
+      debounceTimers.forEach(t => clearTimeout(t));
+      debounceTimers.clear();
       window.removeEventListener('focus', handleWindowFocus);
       window.removeEventListener('bonomo_feature_flag_changed', handleLocalFlagChanged);
       supabase.removeChannel(realtimeChannel);
@@ -3173,7 +3205,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const isManager = currentUser?.role === 'admin' || currentUser?.role === 'gerencia';
     if (isManager) {
       if (['admin', 'gerencia', 'master', 'dev'].includes(data.role)) {
-        alert('Acesso Negado: Gerentes não possuem permissão para cadastrar outros gerentes ou administradores.');
+        toast.warning('Acesso Negado: Gerentes não possuem permissão para cadastrar outros gerentes ou administradores.');
         throw new Error('Acesso Negado: Gerentes não podem criar outros gerentes.');
       }
     }
@@ -3434,7 +3466,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     // Trava de tenant: apenas colaboradores do próprio tenant podem ser editados
     const targetCollab = scopedCollaborators.find(c => c.id === id) || (currentUser?.id === id ? (currentUser as any) : null);
     if (!targetCollab) {
-      alert('Acesso Negado: O colaborador selecionado não pertence à sua rede.');
+      toast.warning('Acesso Negado: O colaborador selecionado não pertence à sua rede.');
       return;
     }
 
@@ -3444,17 +3476,17 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       if (id === currentUser?.id) {
         const isChangingPrivileges = data.role !== undefined || data.active !== undefined || (data as any).permissions !== undefined;
         if (isChangingPrivileges) {
-          alert('Acesso Negado: Gerentes não podem alterar seu próprio cargo ou permissões na equipe.');
+          toast.warning('Acesso Negado: Gerentes não podem alterar seu próprio cargo ou permissões na equipe.');
           return;
         }
       } else {
         if (['master', 'admin', 'gerencia', 'dev'].includes(targetCollab.role)) {
-          alert('Acesso Negado: Gerentes não podem editar outros gerentes ou superiores.');
+          toast.warning('Acesso Negado: Gerentes não podem editar outros gerentes ou superiores.');
           return;
         }
       }
       if (data.role && ['master', 'admin', 'gerencia', 'dev'].includes(data.role)) {
-        alert('Acesso Negado: Gerentes não podem promover colaboradores para cargos de gerência.');
+        toast.warning('Acesso Negado: Gerentes não podem promover colaboradores para cargos de gerência.');
         return;
       }
     }
@@ -3479,14 +3511,14 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     // Trava de tenant: apenas colaboradores do próprio tenant podem ser excluídos
     const targetCollab = scopedCollaborators.find(c => c.id === id);
     if (!targetCollab) {
-      alert('Acesso Negado: O colaborador selecionado não pertence à sua rede.');
+      toast.warning('Acesso Negado: O colaborador selecionado não pertence à sua rede.');
       return;
     }
 
     if (reassignToId) {
       const isAssigneeInTenant = scopedCollaborators.some(c => c.id === reassignToId);
       if (!isAssigneeInTenant) {
-        alert('Acesso Negado: O colaborador de destino não pertence à sua rede.');
+        toast.warning('Acesso Negado: O colaborador de destino não pertence à sua rede.');
         return;
       }
     }
@@ -3786,7 +3818,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const updateVenue = async (id: string, venueData: Partial<Venue>) => {
     const venue = scopedVenues.find(v => v.id === id);
     if (!venue) {
-      alert('Acesso Negado: Esta casa de festa não pertence à sua rede.');
+      toast.warning('Acesso Negado: Esta casa de festa não pertence à sua rede.');
       return;
     }
 
@@ -4194,13 +4226,13 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     // 1. Trava estrita de tenant: impede que um usuário exclua funis de outra rede
     const targetFunnel = scopedFunnels.find(f => f.id === id);
     if (!targetFunnel) {
-      alert("Acesso Negado: Você não possui permissão para excluir funis que pertencem a outra rede.");
+      toast.warning("Acesso Negado: Você não possui permissão para excluir funis que pertencem a outra rede.");
       return;
     }
 
     // 2. Validação de proteção: proibido excluir se houver apenas 1 funil ativo na conta do tenant
     if (scopedFunnels.length <= 1) {
-      alert("Você não pode excluir este funil, pois é obrigatório ter ao menos um funil ativo na sua conta.");
+      toast.warning("Você não pode excluir este funil, pois é obrigatório ter ao menos um funil ativo na sua conta.");
       return;
     }
 
@@ -4235,19 +4267,19 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     // 1. Trava estrita de tenant: impede que um usuário exclua funis de outra rede
     const funnelToDelete = scopedFunnels.find(f => f.id === funnelId);
     if (!funnelToDelete) {
-      alert("Acesso Negado: Você não possui permissão para excluir funis que pertencem a outra rede.");
+      toast.warning("Acesso Negado: Você não possui permissão para excluir funis que pertencem a outra rede.");
       return { success: false, migratedLeadsCount: 0, updatedSourcesCount: 0 };
     }
 
     if (scopedFunnels.length <= 1) {
-      alert("Você não pode excluir este funil, pois é obrigatório ter ao menos um funil ativo na sua conta.");
+      toast.warning("Você não pode excluir este funil, pois é obrigatório ter ao menos um funil ativo na sua conta.");
       return { success: false, migratedLeadsCount: 0, updatedSourcesCount: 0 };
     }
 
     const isUnassigned = destinationFunnelId === 'unassigned' || !destinationFunnelId;
     const destFunnel = isUnassigned ? null : scopedFunnels.find(f => f.id === destinationFunnelId);
     if (!isUnassigned && !destFunnel) {
-      alert("Acesso Negado: O funil de destino da migração não pertence à sua rede.");
+      toast.warning("Acesso Negado: O funil de destino da migração não pertence à sua rede.");
       return { success: false, migratedLeadsCount: 0, updatedSourcesCount: 0 };
     }
 
@@ -4506,23 +4538,35 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       return;
     }
 
-    // Evita duplicidade se o mesmo colaborador já visualizou recentemente e nenhuma mensagem nova do cliente entrou
+    // Recibo de visualização só na PRIMEIRA vez que o colaborador vê a mensagem pendente (sem interação).
+    // Se ele já tem recibo posterior à última mensagem de chat, reabrir a conversa não grava outro:
+    // o ciclo só recomeça quando a equipe responde (pendência some) e o cliente escreve de novo.
     const author = currentUser?.name || 'Equipe';
-    const lastAct = recentActs[recentActs.length - 1];
-    if (lastAct && (lastAct.title === 'Mensagem Visualizada' || lastAct.text?.includes('visualizou esta mensagem'))) {
-      if (lastAct.authorId === currentUser?.id) {
-        if (hasUnread) {
-          setLeads(prev => {
-            const updated = prev.map(l => l.id === leadId ? { ...l, unreadCount: 0 } : l);
-            safeLocalStorageSet(STORAGE_KEY_LEADS, JSON.stringify(updated));
-            return updated;
-          });
-          if (isSupabaseConfigured) {
-            leadService.update(leadId, { unreadCount: 0 }).catch(() => {});
-          }
+    const isViewAuditAct = (a: LeadActivity) => {
+      const t = (a.title || '').toLowerCase();
+      return (a as any).metadata?.isViewAudit === true || t.includes('visualizada') || (a.text || '').includes('visualizou esta mensagem');
+    };
+    const tsOf = (a: LeadActivity) => new Date(a.timestamp || 0).getTime() || 0;
+    const lastChatTs = recentActs.reduce((max, a) => {
+      if (isViewAuditAct(a)) return max;
+      const isChat = a.type === 'contact' || (a.type === 'creation' && !!a.text?.trim());
+      return isChat ? Math.max(max, tsOf(a)) : max;
+    }, 0);
+    const alreadyViewedByMe = !!currentUser?.id && recentActs.some(a =>
+      isViewAuditAct(a) && a.authorId === currentUser.id && tsOf(a) >= lastChatTs
+    );
+    if (alreadyViewedByMe) {
+      if (hasUnread) {
+        setLeads(prev => {
+          const updated = prev.map(l => l.id === leadId ? { ...l, unreadCount: 0 } : l);
+          safeLocalStorageSet(STORAGE_KEY_LEADS, JSON.stringify(updated));
+          return updated;
+        });
+        if (isSupabaseConfigured) {
+          leadService.update(leadId, { unreadCount: 0 }).catch(() => {});
         }
-        return;
       }
+      return;
     }
 
     const now = new Date();
@@ -4623,7 +4667,12 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       }
 
       // 2. Busca do Supabase as mensagens mais recentes do lead de forma rápida e otimizada
-      const res = await leadService.getLeadConversationDays(leadId, days);
+      let res = await leadService.getLeadConversationDays(leadId, days);
+      if (res?.error) {
+        // Falha transitória (rede/timeout): uma nova tentativa antes de desistir
+        await new Promise(r => setTimeout(r, 800));
+        res = await leadService.getLeadConversationDays(leadId, days);
+      }
       if (!res || !res.activities || res.activities.length === 0) return false;
 
       setLeads(prev => {
@@ -4708,6 +4757,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       const handoverAct = buildHandoverActivity(targetLead, clientCode, oldFunnelName, destFunnel.name, currentUser?.name, currentUser?.id);
       const postSaleClient: Client = {
         id: targetLead.id,
+        masterId: (targetLead.masterId || targetVenue?.masterId || scopedMasterId) || undefined,
         code: clientCode,
         name: targetLead.name,
         payerName: (targetLead as any).payerName || targetLead.name,
@@ -4886,7 +4936,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     // Somente gerentes da casa (admin) e diretoria master têm permissão para excluir aniversariantes
     const canDelete = currentUser?.role === 'master' || currentUser?.role === 'admin';
     if (!canDelete) {
-      alert('Apenas gerentes e diretoria master possuem permissão para excluir aniversariantes.');
+      toast.warning('Apenas gerentes e diretoria master possuem permissão para excluir aniversariantes.');
       return;
     }
 
@@ -4987,6 +5037,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       payerAddress: clientData.payerAddress || '',
       payerNeighborhood: clientData.payerNeighborhood || '',
       payerCity: clientData.payerCity || '',
+      masterId: (clientData.masterId || venueObj?.masterId || (venueObj as any)?.master_id || scopedMasterId) || undefined,
       birthdayPersonName: birthdayPersonName || payerName,
       birthdayPersonAge: Number(clientData.birthdayPersonAge) || 0,
       birthdayPersonBirthdate: clientData.birthdayPersonBirthdate || '',
@@ -5080,7 +5131,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     if (!clientIds || clientIds.length === 0) return;
     const isMasterOrAdmin = currentUser?.role === 'master' || currentUser?.role === 'admin' || currentUser?.isDev || currentUser?.role === 'pos_venda';
     if (!isMasterOrAdmin) {
-      alert('Permissão negada: apenas responsáveis autorizados podem excluir clientes.');
+      toast.warning('Permissão negada: apenas responsáveis autorizados podem excluir clientes.');
       return;
     }
 
@@ -5109,9 +5160,11 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   };
 
   const updateClientStage = (id: string, stage: ClientStage) => {
+    let clientFound = false;
     setClients(prev => {
       const updated = prev.map(c => {
         if (c.id === id) {
+          clientFound = true;
           const stageLabels: Record<ClientStage, string> = {
             new_lead: 'Entrada do Cliente',
             entry: 'Entrada do Cliente',
@@ -5134,7 +5187,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           const mod: Client = {
             ...c,
             stage,
-            activities: [newActivity, ...c.activities],
+            activities: [newActivity, ...(c.activities || [])],
             updatedAt: new Date().toISOString().split('T')[0],
           };
           clientService.upsert(mod);
@@ -5142,9 +5195,22 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         }
         return c;
       });
-      safeLocalStorageSet(STORAGE_KEY_CLIENTS, JSON.stringify(updated));
+      if (clientFound) {
+        safeLocalStorageSet(STORAGE_KEY_CLIENTS, JSON.stringify(updated));
+      }
       return updated;
     });
+
+    // Se não for encontrado na tabela de clientes, pode ser um lead alocado em funil pós-venda
+    if (!clientFound) {
+      const lead = leads.find(l => l.id === id);
+      if (lead) {
+        updateLeadData(id, { stage: stage as any });
+        leadService.update(id, { stage: stage as any }).catch(err => {
+          console.warn('[updateClientStage] Erro ao sincronizar estágio do lead de pós-venda:', err);
+        });
+      }
+    }
   };
 
   const addClientNote = (id: string, noteText: string) => {
@@ -5462,7 +5528,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
     // Regra F5 System: Não é permitido retornar para "Novo Lead" após ter avançado no funil
     if (targetLead && targetLead.stage !== 'new_lead' && newStage === 'new_lead') {
-      alert('Regra do CRM: A coluna "Novo Lead" é exclusivamente uma porta de entrada do sistema. Leads que já avançaram no pipeline não podem retornar para ela.');
+      toast.warning('Regra do CRM: A coluna "Novo Lead" é exclusivamente uma porta de entrada do sistema. Leads que já avançaram no pipeline não podem retornar para ela.');
       return;
     }
 
@@ -5752,21 +5818,42 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       }
     }
 
-    // Se a etapa for alterada para Contrato Fechado (Ganho), assegura criação no Pós-Venda
+    // Se a etapa for alterada para Contrato Fechado (Ganho), assegura criação no Pós-Venda e Contratos
     if (newStage === 'contract_signed' && targetLead) {
+      let createdClientId: string | null = null;
+      let effectiveVenueObj: any = null;
+      let effectivePDate: string = '';
+      let effectivePayer: string = '';
+      let effectivePayerPhone: string = '';
+      let effectiveBirthdayName: string = '';
+      let effectivePostSaleFunnelId: string | undefined = undefined;
+      let effectiveContractTitle: string = '';
+
       setClients(prevClients => {
         const existingIdx = prevClients.findIndex(c => c.commercialLeadId === leadId || (c.payerPhone && c.payerPhone === targetLead.phone));
-        if (existingIdx >= 0) return prevClients;
+        if (existingIdx >= 0) {
+          createdClientId = prevClients[existingIdx].id;
+          return prevClients;
+        }
 
         const newCliId = generateUuid();
+        createdClientId = newCliId;
         const targetVenueId = targetLead.venueId || venues[0]?.id || '';
         const venueObj = venues.find(v => v.id === targetVenueId);
+        effectiveVenueObj = venueObj;
         const pDate = targetLead.partyDate || new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+        effectivePDate = pDate;
         const birthdayName = (targetLead as any).birthdayPersonName?.trim() || targetLead.name.trim();
+        effectiveBirthdayName = birthdayName;
         const primaryDecisor = (targetLead.contacts || []).find(c => c.isPrimaryDecisionMaker) || (targetLead.contacts || [])[0];
         const payer = primaryDecisor?.name || (targetLead as any).decisionMakerName?.trim() || (targetLead as any).payerName?.trim() || `${targetLead.name.trim()} (Responsável)`;
+        effectivePayer = payer;
         const payerPhone = primaryDecisor?.phone || targetLead.phone.trim();
+        effectivePayerPhone = payerPhone;
         const payerRel = primaryDecisor?.role || ((targetLead as any).decisionMakerRole as any) || 'mother';
+        const eventTypeLabel = targetLead.eventType || '15 Anos';
+        const defaultContractTitle = `${payer} – ${birthdayName} ${eventTypeLabel}`.trim();
+        effectiveContractTitle = defaultContractTitle;
 
         const psCandidates = funnels.filter(f =>
           f.isPostSale ||
@@ -5777,6 +5864,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         );
         const preferredPsId = getDefaultPostSaleFunnelId(psCandidates);
         const postSaleFunnelMatch = psCandidates.find(f => f.id === preferredPsId) || psCandidates[0];
+        effectivePostSaleFunnelId = postSaleFunnelMatch?.id;
         const isEntryStageActive = Boolean(postSaleFunnelMatch?.isEntryStageActive);
         const clientInitialStage: ClientStage = isEntryStageActive ? ('new_lead' as any) : 'onboarding';
 
@@ -5784,6 +5872,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           id: newCliId,
           code: generateClientCode(),
           name: birthdayName,
+          contractTitle: defaultContractTitle,
           payerName: payer,
           payerRelationship: payerRel,
           payerCpf: (targetLead as any).payerCpf || (targetLead as any).cpf || '',
@@ -5803,13 +5892,18 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           venueName: venueObj?.name || 'Bonomo Festas',
           packageSold: targetLead.packageSold || targetLead.interestService || 'Contrato Fechado',
           dealValue: targetLead.dealValue || targetLead.estimatedBudget || 0,
+          baseContractValue: targetLead.dealValue || targetLead.estimatedBudget || 0,
+          contractDownPayment: (targetLead as any).downPayment ?? (targetLead as any).down_payment ?? 0,
+          contractInstallmentsRemaining: Math.max(0, (targetLead.dealValue || 0) - ((targetLead as any).downPayment ?? (targetLead as any).down_payment ?? 0)),
+          signalValue: (targetLead as any).downPayment ?? (targetLead as any).down_payment ?? 0,
           contractDate: new Date().toISOString().split('T')[0],
           contractStatus: 'aguardando_sinal',
           contractSignedAt: null,
-          signalPaid: false,
+          signalPaid: Boolean(((targetLead as any).downPayment ?? (targetLead as any).down_payment ?? 0) > 0),
           paymentTerms: (targetLead as any).paymentTerms || targetLead.paymentMethod || 'Negociação comercial fechada',
           paymentStatus: 'pending',
           funnelId: postSaleFunnelMatch?.id,
+          masterId: targetLead.masterId || currentUser?.masterId || currentUser?.id || undefined,
           stage: clientInitialStage,
           contacts: targetLead.contacts || [],
           assignedSuccessManagerId: undefined,
@@ -5845,6 +5939,55 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         clientService.upsert(newClient);
         return updated;
       });
+
+      if (isSupabaseConfigured) {
+        const effectiveContractMasterId = targetLead.masterId || currentUser?.masterId || currentUser?.id;
+        const effectiveVenueId = targetLead.venueId || venues[0]?.id;
+        if (effectiveContractMasterId && effectiveVenueId) {
+          const primaryDecisor = (targetLead.contacts || []).find(c => c.isPrimaryDecisionMaker) || (targetLead.contacts || [])[0];
+          const totalVal = Number(targetLead.dealValue || targetLead.estimatedBudget || 0);
+          const downVal = Number((targetLead as any).downPayment ?? (targetLead as any).down_payment ?? 0);
+
+          contractService.createContract({
+            masterId: effectiveContractMasterId,
+            clientId: createdClientId || undefined,
+            contactId: (primaryDecisor as any)?.id && isUuid((primaryDecisor as any).id) ? (primaryDecisor as any).id : undefined,
+            leadId,
+            originLeadId: leadId,
+            originFunnelId: targetLead.funnelId,
+            venueId: effectiveVenueId,
+            venueName: effectiveVenueObj?.name || 'Bonomo Festas',
+            eventType: targetLead.eventType || '15_anos',
+            contractTitle: effectiveContractTitle || `${effectivePayer || targetLead.name} – ${effectiveBirthdayName || targetLead.name}`,
+            title: effectiveContractTitle || `${effectivePayer || targetLead.name} – ${effectiveBirthdayName || targetLead.name}`,
+            eventTitle: effectiveContractTitle || `${effectivePayer || targetLead.name} – ${effectiveBirthdayName || targetLead.name}`,
+            eventDate: effectivePDate || targetLead.partyDate || targetLead.eventDate,
+            guestCount: (targetLead as any).guestCount || (targetLead as any).estimatedGuests || 150,
+            packageName: targetLead.packageSold || targetLead.interestService || 'Contrato Fechado',
+            clientSnapshot: {
+              name: effectivePayer || targetLead.name,
+              phone: effectivePayerPhone || targetLead.phone,
+              email: targetLead.email?.trim() || '',
+              cpf: (targetLead as any).payerCpf || (targetLead as any).cpf || '',
+              birthdayPersonName: effectiveBirthdayName || targetLead.name,
+              capturedAt: new Date().toISOString(),
+            },
+            totalAmount: totalVal,
+            dealValue: totalVal,
+            entryAmount: downVal,
+            balanceAmount: Math.max(0, totalVal - downVal),
+            paymentTerms: (targetLead as any).paymentTerms || targetLead.paymentMethod || 'Negociação comercial fechada',
+            sdrId: targetLead.sdrId || undefined,
+            sdrName: targetLead.sdrName || 'Equipe Comercial',
+            closerId: authorId || undefined,
+            closerName: author,
+            closerEmail: currentUser?.email || undefined,
+            approvalStatus: 'pending_approval',
+            targetPosSaleFunnelIds: effectivePostSaleFunnelId ? [effectivePostSaleFunnelId] : [],
+            notes: targetLead.notes || '',
+          }).catch(cErr => console.error('❌ Erro ao criar contrato em moveLeadToStage:', cErr));
+        }
+      }
     }
   };
 
@@ -6844,8 +6987,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             timestamp: incoming.timestamp || new Date().toISOString(),
             type: 'contact',
             title: isFromMe 
-              ? (isAudio ? 'Mensagem de voz enviada (Celular/Web)' : 'Mensagem enviada via WhatsApp (Celular/Web)')
-              : (isAudio ? 'Mensagem de voz recebida' : 'Mensagem recebida no WhatsApp'),
+              ? (isAudio ? 'Mensagem de voz enviada (Celular/Web)' : incoming.mediaType === 'image' ? 'Foto enviada (Celular/Web)' : incoming.mediaType === 'video' ? 'Vídeo enviado (Celular/Web)' : incoming.mediaType === 'document' ? 'Documento enviado (Celular/Web)' : 'Mensagem enviada via WhatsApp (Celular/Web)')
+              : (isAudio ? 'Mensagem de voz recebida' : incoming.mediaType === 'image' ? 'Foto recebida' : incoming.mediaType === 'video' ? 'Vídeo recebido' : incoming.mediaType === 'document' ? 'Documento recebido' : 'Mensagem recebida no WhatsApp'),
             text: incoming.text,
             mediaUrl: incoming.mediaUrl,
             mediaType: incoming.mediaType,
@@ -6855,6 +6998,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             status: isFromMe ? 'sent' : 'delivered',
             metadata: {
               messageId: incoming.messageId,
+              // Origem (chip) da mensagem: necessária para baixar a mídia depois com o token certo (nunca grava o token)
+              sourceId: sourcesRef.current.find(s => s.whatsappInstanceId === incoming.instanceToken)?.id,
               quotedMessage: incoming.quotedMessage,
             },
           };
@@ -6864,7 +7009,16 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           leadUpdates.updatedAt = new Date().toISOString().split('T')[0];
           leadUpdates.lastInteractionAt = incoming.timestamp || new Date().toISOString();
           leadUpdates.lastMessageDirection = isFromMe ? 'outgoing' : 'incoming';
-          
+          const ssePreview = (newAct.text || '').replace(/^\[media:[^\]]*\]\s*/i, '').trim();
+          const sseMediaLabel = incoming.mediaType && incoming.mediaType !== 'text'
+            ? ({ image: '[Foto]', video: '[Vídeo]', audio: '[Áudio]', document: '[Documento]' } as Record<string, string>)[incoming.mediaType] || ''
+            : '';
+          const sseLastText = `${sseMediaLabel} ${ssePreview}`.trim().slice(0, 200);
+          if (sseLastText) {
+            leadUpdates.lastMessageText = sseLastText;
+            leadUpdates.lastMessageAt = leadUpdates.lastInteractionAt;
+          }
+
           if (!isFromMe) {
             leadUpdates.unreadCount = (existingLead.unreadCount || 0) + 1;
           }
@@ -6879,11 +7033,14 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
           // Ingestão assíncrona de mídia transitória recebida (áudios, imagens, docs) para o Cloudflare R2
           if (incoming.messageId && incoming.instanceToken && incoming.mediaType && incoming.mediaType !== 'text') {
+            const sseSourceId = sourcesRef.current.find(s => s.whatsappInstanceId === incoming.instanceToken)?.id;
+            const sseMasterId = currentUserRef.current?.masterId || currentUserRef.current?.id;
             whatsappMediaService.ingestTransientMedia({
               instanceToken: incoming.instanceToken,
               messageId: incoming.messageId,
-              instanceId: incoming.instanceToken,
+              instanceId: sseSourceId || 'default', // pasta por origem, nunca o token
               transcribeAudio: false,
+              enforcePolicy: { mediaType: incoming.mediaType }, // foto até 2 MB, vídeo até 10 MB, doc até 5 MB, áudio sempre
             }).then((ingestRes) => {
               if (ingestRes.permanentR2Url) {
                 setLeads(prev => prev.map(l => {
@@ -6896,8 +7053,53 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                 if (isSupabaseConfigured) {
                   leadService.updateActivity(newActId, { mediaUrl: ingestRes.permanentR2Url, mediaType: incoming.mediaType }).catch(() => {});
                 }
+                mediaStorageService.register({
+                  masterId: sseMasterId || '',
+                  venueId: existingLead.venueId,
+                  sourceId: sseSourceId,
+                  leadId: existingLead.id,
+                  activityId: newActId,
+                  messageId: incoming.messageId,
+                  mediaType: incoming.mediaType,
+                  mimetype: ingestRes.mimetype,
+                  fileName: ingestRes.fileName,
+                  sizeBytes: ingestRes.fileSize,
+                  r2Key: ingestRes.r2Key,
+                  publicUrl: ingestRes.permanentR2Url,
+                  status: 'stored',
+                });
               }
-            }).catch(() => {});
+            }).catch((ingestErr) => {
+              // Mídia pesada (política de armazenamento) fica pendente com o peso; outras falhas viram download manual com o motivo.
+              const isPending = ingestErr instanceof MediaPendingError;
+              if (!isPending) console.warn('[WhatsApp] Mídia não foi salva automaticamente:', ingestErr?.message || ingestErr);
+              const failMeta = {
+                needsManualDownload: true,
+                mediaError: isPending ? undefined : ((ingestErr as any)?.kind || 'unknown'),
+                mediaSizeBytes: isPending ? (ingestErr as MediaPendingError).sizeBytes : undefined,
+              };
+              mediaStorageService.register({
+                masterId: sseMasterId || '',
+                venueId: existingLead.venueId,
+                sourceId: sseSourceId,
+                leadId: existingLead.id,
+                activityId: newActId,
+                messageId: incoming.messageId,
+                mediaType: incoming.mediaType,
+                sizeBytes: isPending ? (ingestErr as MediaPendingError).sizeBytes : undefined,
+                status: isPending ? 'pending' : 'unavailable',
+                failureReason: isPending ? (ingestErr as Error).message : ((ingestErr as any)?.kind || 'unknown'),
+              });
+              setLeads(prev => prev.map(l => l.id !== existingLead.id ? l : {
+                ...l,
+                activities: (l.activities || []).map(a => a.id === newActId
+                  ? { ...a, needsManualDownload: true, metadata: { ...(a.metadata || {}), ...failMeta } }
+                  : a),
+              }));
+              if (isSupabaseConfigured) {
+                leadService.updateActivity(newActId, { metadata: { ...(newAct.metadata || {}), ...failMeta } }).catch(() => {});
+              }
+            });
           }
 
           // Puxa informações atualizadas de contato e foto sob demanda via POST /chat/details
@@ -7529,14 +7731,14 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     // 1. Validação de perfil / permissão
     const isMasterOrAdmin = currentUser?.role === 'master' || currentUser?.role === 'admin' || currentUser?.isDev;
     if (!isMasterOrAdmin) {
-      alert('Permissão negada: apenas gerentes (Admin) e Master podem excluir leads do sistema.');
+      toast.warning('Permissão negada: apenas gerentes (Admin) e Master podem excluir leads do sistema.');
       return;
     }
 
     // 2. Trava de isolamento de tenant: garante que o lead pertence estritamente à rede do usuário
     const targetLead = scopedLeads.find(l => l.id === leadId) || leadsRef.current.find(l => l.id === leadId);
     if (!targetLead) {
-      alert('Acesso Negado: O lead selecionado não pertence à sua rede ou não existe.');
+      toast.warning('Acesso Negado: O lead selecionado não pertence à sua rede ou não existe.');
       return;
     }
 
@@ -7544,7 +7746,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const isWon = targetLead.stage === 'contract_signed' || (targetLead.stage as string) === 'deal_closed';
     const isLost = targetLead.stage === 'lost';
     if (isWon || isLost) {
-      alert('Ação bloqueada: Leads com contrato fechado (ganhos) ou perdidos não podem ser excluídos para preservação da auditoria financeira e integridade do CRM.');
+      toast.warning('Ação bloqueada: Leads com contrato fechado (ganhos) ou perdidos não podem ser excluídos para preservação da auditoria financeira e integridade do CRM.');
       return;
     }
 
@@ -7679,7 +7881,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     // 1. Validação de perfil / permissão
     const isMasterOrAdmin = currentUser?.role === 'master' || currentUser?.role === 'admin' || currentUser?.isDev;
     if (!isMasterOrAdmin) {
-      alert('Permissão negada: apenas gerentes (Admin) e Master podem excluir leads do sistema.');
+      toast.warning('Permissão negada: apenas gerentes (Admin) e Master podem excluir leads do sistema.');
       return;
     }
 
@@ -7687,7 +7889,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const scopedIds = new Set(scopedLeads.map(l => l.id));
     const safeLeadIds = leadIds.filter(id => scopedIds.has(id));
     if (safeLeadIds.length === 0) {
-      alert('Acesso Negado: Nenhum dos leads selecionados pertence à sua rede.');
+      toast.warning('Acesso Negado: Nenhum dos leads selecionados pertence à sua rede.');
       return;
     }
 
@@ -7712,7 +7914,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     });
 
     if (blockedLeads.length > 0) {
-      alert(`Aviso de Segurança: ${blockedLeads.length} lead(s) com contrato fechado ou perdidos foram ignorados e preservados no CRM.`);
+      toast.warning(`Aviso de Segurança: ${blockedLeads.length} lead(s) com contrato fechado ou perdidos foram ignorados e preservados no CRM.`);
     }
 
     if (validIdsToDelete.length === 0) return;
@@ -8151,6 +8353,10 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     contractDate?: string, 
     closerNotes?: string,
     extraOptions?: {
+      contractTitle?: string;
+      contractFileUrl?: string;
+      paymentFileUrl?: string;
+      paymentFileName?: string;
       downPayment?: number;
       installmentsCount?: number;
       hasCreditCard?: boolean;
@@ -8234,8 +8440,149 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       return targetLead;
     }));
 
-    // Sincronização e duplicação automática para a esteira de Pós-Venda (Cliente)
+    // Sincronização e duplicação automática para a esteira de Pós-Venda (Cliente) e Contratos
     if (currentLead) {
+      const downPay = extraOptions?.downPayment ?? 0;
+      const installCount = extraOptions?.installmentsCount ?? 10;
+      const installRemaining = Math.max(0, dealValue - downPay);
+      const hasCard = extraOptions?.hasCreditCard ?? false;
+      const gCount = extraOptions?.guestCount || (currentLead as any)?.guestCount || (currentLead as any)?.estimatedGuests || 150;
+      const eYear = extraOptions?.eventYear || (currentLead as any)?.eventYear || new Date(currentLead.partyDate || Date.now()).getFullYear();
+
+      // Identificar o(a) Aniversariante real a partir da ficha/contatos
+      const birthdayContact = (currentLead.contacts || []).find(c => c.role === 'debutante' || (c.role as any) === 'aniversariante');
+      const birthdayName = extraOptions?.birthdayPersonName?.trim() || birthdayContact?.name?.trim() || (currentLead as any).birthdayPersonName?.trim() || (currentLead.primaryContactRole === 'debutante' || currentLead.primaryContactRole === 'aniversariante' ? currentLead.name.trim() : (currentLead.debutanteName && currentLead.debutanteName !== 'Indicação Externa' ? currentLead.debutanteName.trim() : currentLead.name.trim()));
+      const birthdayPhone = extraOptions?.birthdayPersonPhone?.trim() || birthdayContact?.phone?.trim() || (currentLead as any).birthdayPersonPhone?.trim() || (currentLead.primaryContactRole === 'debutante' ? currentLead.phone.trim() : '');
+      const birthdayDate = extraOptions?.birthdayPersonBirthdate?.trim() || birthdayContact?.birthday || (currentLead as any).debutanteBirthDate || (currentLead as any).birthday || '';
+
+      // Identificar o Decisor Legal do Contrato
+      const primaryDecisor = (currentLead.contacts || []).find(c => c.isPrimaryDecisionMaker) || 
+        (currentLead.primaryContactRole !== 'debutante' ? {
+          name: currentLead.name,
+          phone: currentLead.phone,
+          role: currentLead.primaryContactRole || 'responsavel',
+          email: currentLead.email,
+          cpf: currentLead.cpf,
+          address: currentLead.address,
+          neighborhood: currentLead.neighborhood,
+        } : (currentLead.contacts || []).find(c => c.role !== 'debutante')) || (currentLead.contacts || [])[0];
+
+      const payer = extraOptions?.payerName?.trim() || primaryDecisor?.name?.trim() || (currentLead as any).decisionMakerName?.trim() || (currentLead as any).payerName?.trim() || `${currentLead.name.trim()} (Responsável)`;
+      const payerPhone = extraOptions?.payerPhone?.trim() || primaryDecisor?.phone?.trim() || currentLead.phone?.trim() || '';
+      const payerRel = primaryDecisor?.role || ((currentLead as any).decisionMakerRole as any) || 'responsavel';
+      const payerCpf = extraOptions?.payerCpf?.trim() || primaryDecisor?.cpf || (currentLead as any).payerCpf || currentLead.cpf || '';
+      const payerEmail = extraOptions?.payerEmail?.trim() || primaryDecisor?.email || currentLead.email?.trim() || '';
+      const payerAddress = extraOptions?.payerAddress?.trim() || primaryDecisor?.address || (currentLead as any).address || '';
+      const payerNeighborhood = extraOptions?.payerNeighborhood?.trim() || (primaryDecisor as any)?.neighborhood || (currentLead as any).neighborhood || '';
+      const leadProfession = (currentLead as any).profession || (primaryDecisor as any)?.profession || '';
+
+      const targetVenueId = currentLead.venueId || venues[0]?.id || '';
+      const venueObj = venues.find(v => v.id === targetVenueId);
+      const venueName = venueObj?.name || 'Bonomo Festas';
+
+      const formattedDown = downPay > 0 
+        ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(downPay)
+        : 'Sem entrada';
+      const parcelVal = installCount > 0 ? (dealValue - downPay) / installCount : 0;
+      const formattedParcel = parcelVal > 0 
+        ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(parcelVal)
+        : 'R$ 0,00';
+      const eventTypeLabel = (currentLead.eventType as any) === 'casamento' 
+        ? 'Casamento' 
+        : (currentLead.eventType as any) === 'corporativo' 
+        ? 'Corporativo' 
+        : (currentLead.eventType as any) === 'infantil' 
+        ? 'Festa Infantil' 
+        : '15 Anos (Debutante)';
+      const formattedPartyDate = currentLead.partyDate || currentLead.eventDate || cDate;
+
+      // Regra Oficial Ted Mosby: Título do contrato persistido com fallback [Contratante] – [Protagonista] [Tipo de Evento]
+      const defaultContractTitle = `${payer} – ${birthdayName} ${eventTypeLabel}`.trim();
+      const finalContractTitle = extraOptions?.contractTitle?.trim() || defaultContractTitle;
+
+      const finalContractFileUrl = extraOptions?.contractFileUrl || extraOptions?.contractSignedFileUrl;
+      const finalPaymentFileUrl = extraOptions?.paymentFileUrl;
+
+      // Montagem do Relatório Estruturado de Passagem de Bastão do Closer
+      const handoverFormattedReport = [
+        `PASSAGEM DE BASTÃO • FECHAMENTO COMERCIAL`,
+        `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+        `Título do Contrato: ${finalContractTitle}`,
+        `Aniversariante / Homenageada: ${birthdayName} (Tel: ${birthdayPhone || 'Não informado'})`,
+        `Data de Nascimento: ${birthdayDate || 'Não informada'}`,
+        `Tomador de Decisão (Contratante): ${payer} (${payerRel})`,
+        `Tel. Decisor: ${payerPhone || 'Não informado'} | CPF: ${payerCpf || 'Não informado'}`,
+        `E-mail: ${payerEmail || 'Não informado'}`,
+        `Endereço / Bairro: ${[payerAddress, payerNeighborhood].filter(Boolean).join(' - ') || 'Não informado'}`,
+        `Profissão: ${leadProfession || 'Não informada'}`,
+        ``,
+        `Cartão de Crédito: ${hasCard ? 'Sim' : 'Não'}`,
+        `Valor Total do Contrato: ${formattedVal}`,
+        `Valor de Entrada (Sinal): ${formattedDown}`,
+        `Condição de Pagamento: ${installCount}x de ${formattedParcel}`,
+        `Tipo do Evento: ${eventTypeLabel}`,
+        `Data Prevista do Evento: ${formattedPartyDate}`,
+        `Número de Convidados (Pax): ${gCount} pessoas`,
+        `Unidade / Casa: ${venueName}`,
+        `Pacote Contratado: ${packageSold}`,
+        ``,
+        `RELATÓRIO DO CLOSER:`,
+        closerNotes || 'Sem observações adicionais.'
+      ].join('\n');
+
+      // Documentos de fechamento
+      const docList: ClientDocument[] = [];
+      if (finalContractFileUrl) {
+        docList.push({
+          id: generateUuid(),
+          clientId: extraOptions?.existingClientId || '',
+          title: extraOptions?.contractSignedFileName || 'Contrato Assinado (Fechamento Comercial)',
+          type: 'contract',
+          fileUrl: finalContractFileUrl,
+          uploadedAt: new Date().toISOString(),
+          fileSize: 'PDF',
+        });
+      }
+      if (finalPaymentFileUrl) {
+        docList.push({
+          id: generateUuid(),
+          clientId: extraOptions?.existingClientId || '',
+          title: extraOptions?.paymentFileName || 'Comprovante de Entrada / Sinal',
+          type: 'receipt',
+          fileUrl: finalPaymentFileUrl,
+          uploadedAt: new Date().toISOString(),
+          fileSize: 'Comprovante',
+        });
+      }
+
+      // Subcontatos unificados (garantindo contratante e aniversariante com ambos telefones vinculados)
+      const mergedContacts: LeadContact[] = [...(currentLead.contacts || [])];
+      if (birthdayPhone && !mergedContacts.some(c => c.phone && c.phone.replace(/\D/g, '') === birthdayPhone.replace(/\D/g, ''))) {
+        mergedContacts.push({
+          id: generateUuid(),
+          name: birthdayName,
+          phone: birthdayPhone,
+          role: 'debutante',
+          birthday: birthdayDate || undefined,
+          isPrimaryDecisionMaker: false,
+        });
+      }
+      if (payerPhone && !mergedContacts.some(c => c.phone && c.phone.replace(/\D/g, '') === payerPhone.replace(/\D/g, ''))) {
+        mergedContacts.push({
+          id: generateUuid(),
+          name: payer,
+          phone: payerPhone,
+          role: payerRel as any,
+          email: payerEmail || undefined,
+          cpf: payerCpf || undefined,
+          address: payerAddress || undefined,
+          isPrimaryDecisionMaker: true,
+        });
+      }
+
+      let resolvedClientId = extraOptions?.existingClientId;
+      let targetPostSaleFunnelId: string | undefined = undefined;
+
       setClients(prevClients => {
         // Dispositivo de segurança anti-duplicidade em todos os funis de pós-venda
         const cleanLeadPhone = (currentLead.phone || '').replace(/\D/g, '');
@@ -8251,130 +8598,13 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
         // Se o usuário selecionou expressamente manter o pós-venda como está
         if (extraOptions?.updateExistingClient === false) {
+          if (existingIdx >= 0) resolvedClientId = prevClients[existingIdx].id;
           return prevClients;
-        }
-
-        const downPay = extraOptions?.downPayment ?? 0;
-        const installCount = extraOptions?.installmentsCount ?? 10;
-        const installRemaining = Math.max(0, dealValue - downPay);
-        const hasCard = extraOptions?.hasCreditCard ?? false;
-        const gCount = extraOptions?.guestCount || (currentLead as any)?.guestCount || (currentLead as any)?.estimatedGuests || 150;
-        const eYear = extraOptions?.eventYear || (currentLead as any)?.eventYear || new Date(currentLead.partyDate || Date.now()).getFullYear();
-
-        // Identificar o(a) Aniversariante real a partir da ficha/contatos
-        const birthdayContact = (currentLead.contacts || []).find(c => c.role === 'debutante' || (c.role as any) === 'aniversariante');
-        const birthdayName = extraOptions?.birthdayPersonName?.trim() || birthdayContact?.name?.trim() || (currentLead as any).birthdayPersonName?.trim() || (currentLead.primaryContactRole === 'debutante' || currentLead.primaryContactRole === 'aniversariante' ? currentLead.name.trim() : (currentLead.debutanteName && currentLead.debutanteName !== 'Indicação Externa' ? currentLead.debutanteName.trim() : currentLead.name.trim()));
-        const birthdayPhone = extraOptions?.birthdayPersonPhone?.trim() || birthdayContact?.phone?.trim() || (currentLead as any).birthdayPersonPhone?.trim() || (currentLead.primaryContactRole === 'debutante' ? currentLead.phone.trim() : '');
-        const birthdayDate = extraOptions?.birthdayPersonBirthdate?.trim() || birthdayContact?.birthday || (currentLead as any).debutanteBirthDate || (currentLead as any).birthday || '';
-
-        // Identificar o Decisor Legal do Contrato
-        const primaryDecisor = (currentLead.contacts || []).find(c => c.isPrimaryDecisionMaker) || 
-          (currentLead.primaryContactRole !== 'debutante' ? {
-            name: currentLead.name,
-            phone: currentLead.phone,
-            role: currentLead.primaryContactRole || 'responsavel',
-            email: currentLead.email,
-            cpf: currentLead.cpf,
-            address: currentLead.address,
-            neighborhood: currentLead.neighborhood,
-          } : (currentLead.contacts || []).find(c => c.role !== 'debutante')) || (currentLead.contacts || [])[0];
-
-        const payer = extraOptions?.payerName?.trim() || primaryDecisor?.name?.trim() || (currentLead as any).decisionMakerName?.trim() || (currentLead as any).payerName?.trim() || `${currentLead.name.trim()} (Responsável)`;
-        const payerPhone = extraOptions?.payerPhone?.trim() || primaryDecisor?.phone?.trim() || currentLead.phone?.trim() || '';
-        const payerRel = primaryDecisor?.role || ((currentLead as any).decisionMakerRole as any) || 'responsavel';
-        const payerCpf = extraOptions?.payerCpf?.trim() || primaryDecisor?.cpf || (currentLead as any).payerCpf || currentLead.cpf || '';
-        const payerEmail = extraOptions?.payerEmail?.trim() || primaryDecisor?.email || currentLead.email?.trim() || '';
-        const payerAddress = extraOptions?.payerAddress?.trim() || primaryDecisor?.address || (currentLead as any).address || '';
-        const payerNeighborhood = extraOptions?.payerNeighborhood?.trim() || (primaryDecisor as any)?.neighborhood || (currentLead as any).neighborhood || '';
-        const leadProfession = (currentLead as any).profession || (primaryDecisor as any)?.profession || '';
-
-        const targetVenueId = currentLead.venueId || venues[0]?.id || '';
-        const venueObj = venues.find(v => v.id === targetVenueId);
-        const venueName = venueObj?.name || 'Bonomo Festas';
-
-        const formattedDown = downPay > 0 
-          ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(downPay)
-          : 'Sem entrada';
-        const parcelVal = installCount > 0 ? (dealValue - downPay) / installCount : 0;
-        const formattedParcel = parcelVal > 0 
-          ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(parcelVal)
-          : 'R$ 0,00';
-        const eventTypeLabel = (currentLead.eventType as any) === 'casamento' 
-          ? 'Casamento' 
-          : (currentLead.eventType as any) === 'corporativo' 
-          ? 'Corporativo' 
-          : (currentLead.eventType as any) === 'infantil' 
-          ? 'Festa Infantil' 
-          : '15 Anos (Debutante)';
-        const formattedPartyDate = currentLead.partyDate || currentLead.eventDate || cDate;
-
-        // Montagem do Relatório Estruturado de Passagem de Bastão do Closer
-        const handoverFormattedReport = [
-          `PASSAGEM DE BASTÃO • FECHAMENTO COMERCIAL`,
-          `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
-          `Aniversariante / Homenageada: ${birthdayName} (Tel: ${birthdayPhone || 'Não informado'})`,
-          `Data de Nascimento: ${birthdayDate || 'Não informada'}`,
-          `Tomador de Decisão (Contratante): ${payer} (${payerRel})`,
-          `Tel. Decisor: ${payerPhone || 'Não informado'} | CPF: ${payerCpf || 'Não informado'}`,
-          `E-mail: ${payerEmail || 'Não informado'}`,
-          `Endereço / Bairro: ${[payerAddress, payerNeighborhood].filter(Boolean).join(' - ') || 'Não informado'}`,
-          `Profissão: ${leadProfession || 'Não informada'}`,
-          ``,
-          `Cartão de Crédito: ${hasCard ? 'Sim' : 'Não'}`,
-          `Valor Total do Contrato: ${formattedVal}`,
-          `Valor de Entrada (Sinal): ${formattedDown}`,
-          `Condição de Pagamento: ${installCount}x de ${formattedParcel}`,
-          `Tipo do Evento: ${eventTypeLabel}`,
-          `Data Prevista do Evento: ${formattedPartyDate}`,
-          `Número de Convidados (Pax): ${gCount} pessoas`,
-          `Unidade / Casa: ${venueName}`,
-          `Pacote Contratado: ${packageSold}`,
-          ``,
-          `RELATÓRIO DO CLOSER:`,
-          closerNotes || 'Sem observações adicionais.'
-        ].join('\n');
-
-        // Documentos de fechamento
-        const docList: ClientDocument[] = [];
-        if (extraOptions?.contractSignedFileUrl) {
-          docList.push({
-            id: generateUuid(),
-            clientId: existingIdx >= 0 ? prevClients[existingIdx].id : '',
-            title: extraOptions.contractSignedFileName || 'Contrato Assinado (Fechamento Comercial)',
-            type: 'contract',
-            fileUrl: extraOptions.contractSignedFileUrl,
-            uploadedAt: new Date().toISOString(),
-            fileSize: 'PDF',
-          });
-        }
-
-        // Subcontatos unificados (garantindo contratante e aniversariante com ambos telefones vinculados)
-        const mergedContacts: LeadContact[] = [...(currentLead.contacts || [])];
-        if (birthdayPhone && !mergedContacts.some(c => c.phone && c.phone.replace(/\D/g, '') === birthdayPhone.replace(/\D/g, ''))) {
-          mergedContacts.push({
-            id: generateUuid(),
-            name: birthdayName,
-            phone: birthdayPhone,
-            role: 'debutante',
-            birthday: birthdayDate || undefined,
-            isPrimaryDecisionMaker: false,
-          });
-        }
-        if (payerPhone && !mergedContacts.some(c => c.phone && c.phone.replace(/\D/g, '') === payerPhone.replace(/\D/g, ''))) {
-          mergedContacts.push({
-            id: generateUuid(),
-            name: payer,
-            phone: payerPhone,
-            role: payerRel as any,
-            email: payerEmail || undefined,
-            cpf: payerCpf || undefined,
-            address: payerAddress || undefined,
-            isPrimaryDecisionMaker: true,
-          });
         }
 
         if (existingIdx >= 0) {
           // Já existe no pós-venda: Atualiza dados do cliente existente e anexa nova passagem de bastão
+          resolvedClientId = prevClients[existingIdx].id;
           const updated = [...prevClients];
           const handoverActs = [
             {
@@ -8391,18 +8621,14 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           const wonStage = currentLeadFunnel?.stages?.find(s => s.isWon || s.id === 'deal_closed' || s.id === 'contrato_fechado');
           const postSaleTrigger = (wonStage?.triggers || []).find(t => t.type === 'create_post_sale_client');
 
-          let targetPostSaleFunnelId = postSaleTrigger?.targetFunnelId;
-          let targetPostSaleStageId = postSaleTrigger?.targetStageId;
-
-          if (!targetPostSaleFunnelId) {
-            targetPostSaleFunnelId = updated[existingIdx].funnelId;
-            targetPostSaleStageId = updated[existingIdx].stage;
-          }
+          let resolvedFunnelId = postSaleTrigger?.targetFunnelId || updated[existingIdx].funnelId;
+          let resolvedStageId = postSaleTrigger?.targetStageId || updated[existingIdx].stage;
+          targetPostSaleFunnelId = resolvedFunnelId;
 
           updated[existingIdx] = {
             ...updated[existingIdx],
-            funnelId: targetPostSaleFunnelId || updated[existingIdx].funnelId,
-            stage: targetPostSaleStageId || updated[existingIdx].stage,
+            funnelId: resolvedFunnelId || updated[existingIdx].funnelId,
+            stage: resolvedStageId || updated[existingIdx].stage,
             dealValue,
             baseContractValue: dealValue,
             packageSold,
@@ -8414,6 +8640,9 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             contractInstallmentsRemaining: installRemaining,
             hasCreditCard: hasCard !== undefined ? hasCard : updated[existingIdx].hasCreditCard,
             paymentTerms: agreedPaymentTerms || updated[existingIdx].paymentTerms,
+            contractTitle: finalContractTitle || updated[existingIdx].contractTitle,
+            contractFileUrl: finalContractFileUrl || updated[existingIdx].contractFileUrl,
+            paymentFileUrl: finalPaymentFileUrl || updated[existingIdx].paymentFileUrl,
             guestCount: gCount || updated[existingIdx].guestCount,
             eventYear: eYear || updated[existingIdx].eventYear,
             profession: leadProfession || updated[existingIdx].profession,
@@ -8437,30 +8666,39 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         } else {
           // Cria novo Cliente no Pós-Venda com HISTÓRICO LIMPO (apenas a passagem de bastão)
           const newCliId = generateUuid();
+          resolvedClientId = newCliId;
           const pDate = currentLead.partyDate || new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
-          // Localizar gatilho de pós-venda configurado na etapa de ganho do funil
+          // 1. Gatilho de pós-venda configurado na etapa de ganho do funil
           const currentLeadFunnel = funnels.find(f => f.id === currentLead.funnelId);
           const wonStage = currentLeadFunnel?.stages?.find(s => s.isWon || s.id === 'deal_closed' || s.id === 'contrato_fechado');
           const postSaleTrigger = (wonStage?.triggers || []).find(t => t.type === 'create_post_sale_client');
 
-          let targetPostSaleFunnelId = postSaleTrigger?.targetFunnelId;
-          let targetPostSaleStageId = postSaleTrigger?.targetStageId;
+          let resolvedFunnelId = postSaleTrigger?.targetFunnelId;
+          let resolvedStageId = postSaleTrigger?.targetStageId;
 
-          if (!targetPostSaleFunnelId) {
-            // Se não houver gatilho configurado na etapa, busca o primeiro funil de pós-venda disponível da unidade
+          // 2. Fallback de pós-venda da unidade
+          if (!resolvedFunnelId) {
             const defaultPostSaleFunnel = funnels.find(f => f.isPostSale && (f.venueId === targetVenueId || (f as any).venueIds?.includes(targetVenueId)));
             if (defaultPostSaleFunnel) {
-              targetPostSaleFunnelId = defaultPostSaleFunnel.id;
-              targetPostSaleStageId = defaultPostSaleFunnel.stages?.[0]?.id || 'onboarding';
+              resolvedFunnelId = defaultPostSaleFunnel.id;
+              resolvedStageId = defaultPostSaleFunnel.stages?.[0]?.id || 'onboarding';
             }
           }
 
-          if (!targetPostSaleFunnelId) {
-            // Sem funil de pós-venda vinculado nos gatilhos da etapa de ganho e sem funil na unidade:
-            // a venda foi computada e salva no Lead Comercial, SEM duplicar para clientes/pós-venda
-            return prevClients;
+          // 3. Fallback garantido: primeiro funil de pós-venda do sistema
+          if (!resolvedFunnelId) {
+            const systemPostSaleFunnel = funnels.find(f => f.isPostSale || f.category === 'Pós-Venda' || f.category === 'pos_venda' || f.name?.toLowerCase().includes('pós-venda') || f.name?.toLowerCase().includes('sucesso'));
+            if (systemPostSaleFunnel) {
+              resolvedFunnelId = systemPostSaleFunnel.id;
+              resolvedStageId = systemPostSaleFunnel.stages?.[0]?.id || 'onboarding';
+            } else {
+              resolvedFunnelId = 'post_sale_default';
+              resolvedStageId = 'onboarding';
+            }
           }
+
+          targetPostSaleFunnelId = resolvedFunnelId;
 
           // Histórico limpo: única atividade inicial é o Relatório de Passagem de Bastão do Closer
           const initialActivities: ClientActivity[] = [
@@ -8481,6 +8719,9 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             masterId: scopedMasterId || currentLead.masterId || currentUser?.masterId || currentUser?.id,
             code: generateClientCode(),
             name: birthdayName, // O nome principal é o nome da Aniversariante
+            contractTitle: finalContractTitle,
+            contractFileUrl: finalContractFileUrl || undefined,
+            paymentFileUrl: finalPaymentFileUrl || undefined,
             payerName: payer,
             payerRelationship: payerRel,
             payerCpf: payerCpf,
@@ -8512,11 +8753,11 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             profession: leadProfession || undefined,
             contractDate: cDate,
             contractStatus: 'aguardando_sinal',
-            contractSignedAt: extraOptions?.contractSignedFileUrl ? new Date().toISOString() : null,
+            contractSignedAt: finalContractFileUrl ? new Date().toISOString() : null,
             paymentTerms: agreedPaymentTerms,
             paymentStatus: downPay > 0 ? 'up_to_date' : 'pending',
-            funnelId: targetPostSaleFunnelId,
-            stage: (targetPostSaleStageId || 'onboarding') as any,
+            funnelId: resolvedFunnelId,
+            stage: (resolvedStageId || 'onboarding') as any,
             contacts: mergedContacts,
             assignedSuccessManagerId: undefined,
             assignedSuccessManagerName: undefined,
@@ -8544,30 +8785,9 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           return updated;
         }
       });
-    }
 
-    if (isSupabaseConfigured) {
-      const downPay = extraOptions?.downPayment ?? 0;
-      const installCount = extraOptions?.installmentsCount ?? 10;
-      const hasCard = extraOptions?.hasCreditCard ?? false;
-      const gCount = extraOptions?.guestCount || (currentLead as any)?.guestCount || (currentLead as any)?.estimatedGuests || 150;
-      const eYear = extraOptions?.eventYear || (currentLead as any)?.eventYear;
-
-      leadService.update(leadId, {
-        stage: finalWonStage as CrmStage,
-        dealValue,
-        packageSold,
-        contractDate: cDate,
-        downPayment: downPay,
-        installments: installCount,
-        hasCreditCard: hasCard,
-        estimatedGuests: gCount,
-        eventYear: eYear ? String(eYear) : undefined,
-        paymentMethod: agreedPaymentTerms,
-      }).catch(err => {
-        console.error('❌ Erro ao atualizar lead fechado no Supabase:', err);
-        leadService.upsert({
-          id: leadId,
+      if (isSupabaseConfigured) {
+        leadService.update(leadId, {
           stage: finalWonStage as CrmStage,
           dealValue,
           packageSold,
@@ -8577,29 +8797,126 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           hasCreditCard: hasCard,
           estimatedGuests: gCount,
           eventYear: eYear ? String(eYear) : undefined,
-        }).catch(e => console.error('❌ Erro no fallback upsert do lead:', e));
-      });
+          paymentMethod: agreedPaymentTerms,
+        }).catch(err => {
+          console.error('❌ Erro ao atualizar lead fechado no Supabase:', err);
+          leadService.upsert({
+            id: leadId,
+            stage: finalWonStage as CrmStage,
+            dealValue,
+            packageSold,
+            contractDate: cDate,
+            downPayment: downPay,
+            installments: installCount,
+            hasCreditCard: hasCard,
+            estimatedGuests: gCount,
+            eventYear: eYear ? String(eYear) : undefined,
+          }).catch(e => console.error('❌ Erro no fallback upsert do lead:', e));
+        });
 
-      leadService.addActivity(leadId, {
-        leadId,
-        timestamp: newActivity.timestamp,
-        type: 'deal_closed',
-        title: newActivity.title,
-        text: newActivity.text,
-        authorName: author,
-        authorId,
-        authorAvatarUrl: authorAvatar,
-      }).catch(err => console.error('❌ Erro ao registrar atividade de fechamento no Supabase:', err));
-
-      if (authorId) {
-        leadService.addParticipant(leadId, {
-          collaboratorId: authorId,
-          collaboratorName: author,
-          collaboratorRole: currentUser?.role || 'closer',
-          collaboratorAvatarUrl: authorAvatar,
-          action: 'Fechou o contrato de venda',
+        leadService.addActivity(leadId, {
+          leadId,
           timestamp: newActivity.timestamp,
-        }).catch(err => console.error('❌ Erro ao registrar closer no Supabase:', err));
+          type: 'deal_closed',
+          title: newActivity.title,
+          text: newActivity.text,
+          authorName: author,
+          authorId,
+          authorAvatarUrl: authorAvatar,
+        }).catch(err => console.error('❌ Erro ao registrar atividade de fechamento no Supabase:', err));
+
+        if (authorId) {
+          leadService.addParticipant(leadId, {
+            collaboratorId: authorId,
+            collaboratorName: author,
+            collaboratorRole: currentUser?.role || 'closer',
+            collaboratorAvatarUrl: authorAvatar,
+            action: 'Fechou o contrato de venda',
+            timestamp: newActivity.timestamp,
+          }).catch(err => console.error('❌ Erro ao registrar closer no Supabase:', err));
+        }
+
+        // Criação oficial do Contrato na Central de Contratos / Mesa de Aprovação (Garantia E2E)
+        const effectiveVenueId = currentLead.venueId || venues[0]?.id;
+        const effectiveMaster = scopedMasterId || currentLead.masterId || currentUser?.masterId || currentUser?.id || '00000000-0000-0000-0000-000000000001';
+
+        if (effectiveVenueId && effectiveMaster) {
+          const contractAttachments: Array<{ name: string; url: string; size?: number; type?: string }> = [];
+          if (finalContractFileUrl) {
+            contractAttachments.push({
+              name: extraOptions?.contractSignedFileName || 'Contrato Assinado',
+              url: finalContractFileUrl,
+              type: 'contract',
+            });
+          }
+          if (finalPaymentFileUrl) {
+            contractAttachments.push({
+              name: extraOptions?.paymentFileName || 'Comprovante de Sinal/Pagamento',
+              url: finalPaymentFileUrl,
+              type: 'receipt',
+            });
+          }
+
+          contractService.createContract({
+            masterId: effectiveMaster,
+            venueId: effectiveVenueId,
+            venueName,
+            clientId: resolvedClientId || undefined,
+            leadId,
+            originLeadId: leadId,
+            originFunnelId: currentLead.funnelId,
+            contactId: (primaryDecisor as any)?.id && isUuid((primaryDecisor as any).id) ? (primaryDecisor as any).id : undefined,
+            contractTitle: finalContractTitle,
+            title: finalContractTitle,
+            eventTitle: finalContractTitle,
+            eventType: currentLead.eventType || '15_anos',
+            eventDate: currentLead.partyDate || currentLead.eventDate || cDate,
+            eventTime: (currentLead as any).eventTime || '20:00 às 02:00',
+            guestCount: gCount,
+            packageName: packageSold,
+            dealValue,
+            totalAmount: dealValue,
+            entryAmount: downPay,
+            balanceAmount: installRemaining,
+            paymentTerms: agreedPaymentTerms,
+            contractFileUrl: finalContractFileUrl,
+            paymentFileUrl: finalPaymentFileUrl,
+            attachments: contractAttachments,
+            targetPosSaleFunnelIds: targetPostSaleFunnelId ? [targetPostSaleFunnelId] : [],
+            sdrId: currentLead.sdrId || undefined,
+            sdrName: currentLead.sdrName || 'Equipe Comercial',
+            closerId: authorId || undefined,
+            closerName: author,
+            closerEmail: currentUser?.email,
+            handoverNotes: handoverFormattedReport,
+            notes: closerNotes || currentLead.notes || '',
+            clientSnapshot: {
+              name: payer,
+              phone: payerPhone,
+              email: payerEmail,
+              cpf: payerCpf,
+              address: payerAddress,
+              neighborhood: payerNeighborhood,
+              city: (currentLead as any).city,
+              birthdayPersonName: birthdayName,
+              payerRelationship: payerRel,
+              capturedAt: new Date().toISOString(),
+            },
+            commercialFieldsSnapshot: {
+              customFields: (currentLead as any).customFieldsData || {},
+              profession: leadProfession,
+              hasCreditCard: hasCard,
+              closerNotes: closerNotes || '',
+              capturedAt: new Date().toISOString(),
+            },
+          }).then(createdContract => {
+            if (createdContract) {
+              console.log('✅ Contrato oficial criado com sucesso na tabela contracts:', createdContract.contractCode);
+            }
+          }).catch(err => {
+            console.error('❌ Erro ao criar contrato oficial na venda:', err);
+          });
+        }
       }
     }
   };
@@ -9067,12 +9384,17 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         let currentActivities: LeadActivity[];
         if (data.activities) {
           // Garante que atividades recém-adicionadas (últimos 120s) não sejam perdidas se data.activities vier de uma closure desatualizada
+          // Também preserva o histórico mais antigo que a janela recebida (snapshot parcial não pode apagar mensagens antigas já carregadas).
           const incomingIds = new Set(data.activities.map(a => a.id));
           const twoMinutesAgo = Date.now() - 120000;
+          const oldestIncoming = data.activities.reduce(
+            (min, a) => Math.min(min, new Date(a.timestamp || 0).getTime() || Infinity),
+            Infinity
+          );
           const preservedRecent = (lead.activities || []).filter(a => {
             if (incomingIds.has(a.id)) return false;
             const actTime = new Date(a.timestamp || 0).getTime();
-            return actTime >= twoMinutesAgo;
+            return actTime >= twoMinutesAgo || actTime < oldestIncoming;
           });
           currentActivities = preservedRecent.length > 0 
             ? [...data.activities, ...preservedRecent].sort((a, b) => new Date(a.timestamp || 0).getTime() - new Date(b.timestamp || 0).getTime())
@@ -10902,7 +11224,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       updateSystemSlaConfig,
       forceLogout: (reason?: string) => {
         logout();
-        if (reason) alert(reason);
+        if (reason) toast.warning(reason);
       },
     }}>
       {children}

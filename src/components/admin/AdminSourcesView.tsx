@@ -8,9 +8,10 @@ import {
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { AdminSourceEditorView } from './AdminSourceEditorView';
+import { HeaderActions } from './HeaderActions';
 import { AdminSourceEmbedModal } from './AdminSourceEmbedModal';
 import { AdminWhatsAppConnectModal } from './AdminWhatsAppConnectModal';
-import { AdminWhatsAppHistoryTriageModal } from './AdminWhatsAppHistoryTriageModal';
+import { AdminWhatsAppSyncModal } from './AdminWhatsAppSyncModal';
 import { formatPhone } from '../../utils/phoneFormatter';
 import { uazapiService } from '../../services/uazapiService';
 import { SmartVenueLogo } from '../common/SmartVenueLogo';
@@ -184,10 +185,6 @@ export const AdminSourcesView: React.FC = () => {
   };
 
   // Filter sources by active venue (from global switcher) or specific selection
-  const activeVenue = useMemo(() => {
-    return venues.find(v => v.id === activeVenueId) || null;
-  }, [venues, activeVenueId]);
-
   const filteredSources = useMemo(() => {
     return sources.filter(s => {
       // 1. Filter by active venue if set
@@ -353,38 +350,7 @@ export const AdminSourcesView: React.FC = () => {
       `}</style>
       
       {/* ── Header ───────────────────────────────────────────────────────── */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div style={{
-            width: '44px',
-            height: '44px',
-            borderRadius: '14px',
-            background: 'var(--adm-accent-bg)',
-            border: '1.5px solid var(--adm-accent)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: 'var(--adm-accent)',
-          }}>
-            <Compass size={22} />
-          </div>
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <h1 style={{ fontSize: '1.45rem', fontWeight: 900, color: 'var(--adm-text-title)', margin: 0, letterSpacing: '-0.4px' }}>
-                Origens & Rastreamento de Leads
-              </h1>
-              {activeVenue && (
-                <span style={{ background: 'var(--adm-accent-bg)', color: 'var(--adm-accent)', fontSize: '0.68rem', fontWeight: 800, padding: '2px 8px', borderRadius: '8px', border: '1px solid rgba(212,175,55,0.3)' }}>
-                  {activeVenue.name}
-                </span>
-              )}
-            </div>
-            <div style={{ fontSize: '0.78rem', color: 'var(--adm-text-muted)', marginTop: '2px' }}>
-              Portas de entrada do CRM: Canais de WhatsApp Oficial, Formulários Públicos e Indicações de Debutantes
-            </div>
-          </div>
-        </div>
-
+      <HeaderActions>
         <button
           type="button"
           onClick={() => {
@@ -405,7 +371,7 @@ export const AdminSourcesView: React.FC = () => {
           <Plus size={16} />
           <span>Criar Nova Origem</span>
         </button>
-      </div>
+      </HeaderActions>
 
       {/* ── 3 KPI Metric Cards (Focados exclusivamente em Resultados Reais) ── */}
       <div style={{
@@ -744,8 +710,8 @@ export const AdminSourcesView: React.FC = () => {
                                       <AlertTriangle size={16} color="#EF4444" />
                                     </span>
                                   )}
-                                  <div>
-                                    <div style={{ fontWeight: 800, color: 'var(--adm-text-title)' }}>
+                                  <div style={{ minWidth: 0, maxWidth: '280px' }}>
+                                    <div style={{ fontWeight: 800, color: 'var(--adm-text-title)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={source.name}>
                                       {source.name}
                                     </div>
                                     {source.slug && source.type === 'form' && (
@@ -811,7 +777,7 @@ export const AdminSourcesView: React.FC = () => {
                                     fontWeight: 600,
                                     fontSize: '0.72rem',
                                   }}>
-                                    ⚪ Sem Funil Definido
+                                    <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: 'var(--adm-text-muted)' }} /> Sem Funil Definido
                                   </span>
                                 )}
                               </td>
@@ -1140,8 +1106,8 @@ export const AdminSourcesView: React.FC = () => {
         }}
       />
 
-      {/* Modal de Triagem Pré-CRM de Histórico */}
-      <AdminWhatsAppHistoryTriageModal
+      {/* Modal Inteligente de Sincronização de WhatsApp em 4 Etapas */}
+      <AdminWhatsAppSyncModal
         isOpen={!!historyTriageSource}
         onClose={() => setHistoryTriageSource(null)}
         source={historyTriageSource}

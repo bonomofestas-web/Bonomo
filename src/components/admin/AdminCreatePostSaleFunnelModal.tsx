@@ -1,3 +1,4 @@
+import { toast } from 'sonner';
 import React, { useState } from 'react';
 import { X, Check, Building2 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
@@ -55,7 +56,7 @@ export const AdminCreatePostSaleFunnelModal: React.FC<AdminCreatePostSaleFunnelM
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) {
-      alert('Por favor, informe o nome do funil.');
+      toast.warning('Por favor, informe o nome do funil.');
       return;
     }
 

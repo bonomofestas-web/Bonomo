@@ -360,8 +360,8 @@ export const AdminSourceFunnelSelectModal: React.FC<AdminSourceFunnelSelectModal
                           <div style={{ fontWeight: 800, color: 'var(--adm-text-title)', fontSize: '0.92rem' }}>
                             {f.name}
                           </div>
-                          <div style={{ fontSize: '0.68rem', color: '#8B5CF6', fontWeight: 800, marginTop: '1px' }}>
-                            👑 Módulo de Pós-Venda
+                          <div style={{ fontSize: '0.68rem', color: '#8B5CF6', fontWeight: 800, marginTop: '1px', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                            <Crown size={11} /> Módulo de Pós-Venda
                           </div>
                         </div>
                       </div>

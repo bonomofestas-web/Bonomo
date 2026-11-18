@@ -29,7 +29,6 @@ import {
   mockVipRewards
 } from '../data/mockData';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import { leadService } from '../services/leadService';
 import { debutanteService } from '../services/debutanteService';
 import { guestService } from '../services/guestService';
 import { playNotificationSound } from '../utils/audioUtils';
@@ -169,6 +168,12 @@ export const calculateMilestones = (
   });
 };
 
+export interface ReferralResult {
+  ok: boolean;
+  duplicate?: boolean;
+  error?: string;
+}
+
 interface AppStateContextType {
   activeTab: TabType;
   setActiveTab: (tab: TabType) => void;
@@ -204,7 +209,7 @@ interface AppStateContextType {
   selectedInviteGuest: Guest | null;
   setSelectedInviteGuest: (guest: Guest | null) => void;
   // Actions
-  addReferral: (data: { name: string; phone: string; age: number; group: ReferralGroup; notes?: string }) => void;
+  addReferral: (data: { name: string; phone: string; age: number; group: ReferralGroup; notes?: string }) => Promise<ReferralResult>;
   validateReferral: (referralId: string) => void;
   rejectReferral: (referralId: string) => void;
   simulateAddValidReferral: () => void;
@@ -218,7 +223,7 @@ interface AppStateContextType {
   simulateSetCycleRemainingHours: (hours: number) => void;
   simulateAddRenewalReferral: () => void;
   applyScenario: (scenario: ScenarioKey) => void;
-  indicateGuestAsReferral: (guestId: string) => boolean;
+  indicateGuestAsReferral: (guestId: string) => Promise<boolean>;
   addGuest: (data: Omit<Guest, 'id'>) => string;
   updateGuest: (guestId: string, data: Partial<Guest>) => void;
   deleteGuest: (guestId: string) => void;
@@ -781,11 +786,43 @@ export const AppStateProvider: React.FC<{
     });
   };
 
-  // Add a new referral from debutante (starts as 'pending' and registers in CRM)
-  const addReferral = (data: { name: string; phone: string; age: number; group: ReferralGroup; notes?: string }) => {
+  // Nova indicacao da debutante: grava no SERVIDOR (/api/referral: contato + lead no funil + referral)
+  // e so entao atualiza a tela. Sem gravacao confirmada, nao ha sucesso.
+  const addReferral = async (
+    data: { name: string; phone: string; age: number; group: ReferralGroup; notes?: string }
+  ): Promise<ReferralResult> => {
     const isPaused = debutante.journeyCycle.journeyStatus === 'paused';
-    const newRefId = generateUuid();
-    const newLeadId = generateUuid();
+    let newRefId = generateUuid();
+
+    if (isSupabaseConfigured) {
+      try {
+        const response = await fetch('/api/referral', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            debutanteId: isUuid(debutante.id) ? debutante.id : undefined,
+            slug: debutante.slug,
+            name: data.name,
+            phone: data.phone,
+            age: data.age,
+            group: data.group,
+            notes: data.notes,
+            isRenewalReferral: isPaused,
+          }),
+        });
+        const json = await response.json().catch(() => ({}));
+        if (!response.ok || !json?.ok) {
+          return {
+            ok: false,
+            duplicate: Boolean(json?.duplicate),
+            error: json?.error || 'Não foi possível enviar a indicação. Tente novamente.',
+          };
+        }
+        if (json.referralId) newRefId = json.referralId;
+      } catch {
+        return { ok: false, error: 'Sem conexão com o servidor. Verifique a internet e tente novamente.' };
+      }
+    }
 
     const newRef: Referral = {
       id: newRefId,
@@ -809,165 +846,7 @@ export const AppStateProvider: React.FC<{
       processCycleRenewalOnReferral();
     }
 
-    // Direct registration as a new lead in CRM Supabase Database
-    const safeVenueId = isUuid(debutante.venueId) ? debutante.venueId : 'a1111111-1111-1111-1111-111111111111';
-    const safeDebutanteId = isUuid(debutante.id) ? debutante.id : (isUuid(debutante.venueId) ? debutante.venueId : null);
-
-    // Dynamic resolution of destination referral funnel and tenant masterId from local cache
-    let cachedMasterId: string | undefined = undefined;
-    let cachedFunnelId: string | undefined = undefined;
-    let cachedSourceId: string | undefined = undefined;
-
-    try {
-      const savedVenues = localStorage.getItem('bonomo_admin_venues_v7');
-      if (savedVenues) {
-        const vList = JSON.parse(savedVenues);
-        const v = vList.find((item: any) => item.id === debutante.venueId);
-        if (v) cachedMasterId = v.masterId || v.master_id;
-      }
-      const savedSources = localStorage.getItem('bonomo_admin_sources_v7');
-      if (savedSources) {
-        const sList = JSON.parse(savedSources);
-        const refSrc = sList.find((s: any) => s.venueId === debutante.venueId && (s.type === 'referral' || s.name?.includes('Indicaç')) && s.status === 'active');
-        if (refSrc) {
-          cachedSourceId = refSrc.id;
-          if (refSrc.funnelId && isUuid(refSrc.funnelId)) cachedFunnelId = refSrc.funnelId;
-        }
-      }
-      if (!cachedFunnelId) {
-        const savedFunnels = localStorage.getItem('bonomo_admin_funnels_v7');
-        if (savedFunnels) {
-          const fList = JSON.parse(savedFunnels);
-          const f = fList.find((item: any) => item.venueId === debutante.venueId);
-          if (f && isUuid(f.id)) cachedFunnelId = f.id;
-        }
-      }
-    } catch {
-      // Local cache lookup fallback
-    }
-
-    const newLead: import('../types/admin').Lead = {
-      id: newLeadId,
-      masterId: cachedMasterId,
-      debutanteId: safeDebutanteId || '',
-      debutanteName: debutante.name,
-      debutanteSlug: debutante.slug || 'deb_slug',
-      venueId: safeVenueId,
-      funnelId: cachedFunnelId || 'f1111111-1111-1111-1111-111111111111',
-      sourceId: cachedSourceId,
-      source: 'indicacao',
-      name: data.name,
-      phone: data.phone,
-      age: data.age,
-      group: data.group,
-      notes: data.notes,
-      stage: 'new_lead',
-      isValidated: false,
-      pointsGranted: 0,
-      participants: [],
-      tasks: [],
-      activities: [
-        {
-          id: generateUuid(),
-          leadId: newLeadId,
-          timestamp: new Date().toISOString(),
-          type: 'creation',
-          title: `Indicação enviada pela aniversariante ${debutante.name}`,
-          authorName: debutante.name,
-        }
-      ],
-      createdAt: new Date().toISOString().split('T')[0],
-      updatedAt: new Date().toISOString().split('T')[0],
-    };
-
-    if (isSupabaseConfigured) {
-      const persistLeadAndReferral = async () => {
-        let masterId = cachedMasterId;
-        let funnelId = cachedFunnelId;
-        let sourceId = cachedSourceId;
-
-        // Se faltou masterId ou funnelId no cache, busca diretamente no Supabase
-        if ((!masterId || !funnelId) && isUuid(safeVenueId)) {
-          try {
-            if (!masterId) {
-              const { data: vRow } = await supabase.from('venues').select('master_id').eq('id', safeVenueId).maybeSingle();
-              if (vRow?.master_id) masterId = vRow.master_id;
-            }
-            if (!funnelId) {
-              const { data: sRow } = await supabase.from('sources').select('id, funnel_id').eq('venue_id', safeVenueId).eq('type', 'referral').eq('status', 'active').maybeSingle();
-              if (sRow?.funnel_id && isUuid(sRow.funnel_id)) {
-                funnelId = sRow.funnel_id;
-                sourceId = sRow.id;
-              } else {
-                const { data: fRow } = await supabase.from('funnels').select('id').eq('venue_id', safeVenueId).order('created_at', { ascending: true }).limit(1).maybeSingle();
-                if (fRow?.id && isUuid(fRow.id)) funnelId = fRow.id;
-              }
-            }
-          } catch (e) {
-            console.warn('[Referral Persistence]: Falha na resolução remota de metadados:', e);
-          }
-        }
-
-        const finalLead: import('../types/admin').Lead = {
-          ...newLead,
-          masterId: masterId || newLead.masterId,
-          funnelId: funnelId || newLead.funnelId,
-          sourceId: sourceId || newLead.sourceId,
-        };
-
-        // 1. Salva o lead na tabela do CRM Supabase
-        try {
-          const success = await leadService.upsert(finalLead);
-          if (!success) {
-            console.error('❌ Falha ao salvar indicação na tabela leads do Supabase');
-          }
-        } catch (err) {
-          console.error('❌ Exceção ao salvar indicação na tabela leads do Supabase:', err);
-        }
-
-        // 2. Salva o registro de referral associado na tabela referrals
-        const referralPayload: any = {
-          id: newRefId,
-          name: data.name,
-          phone: data.phone,
-          age: data.age,
-          group: data.group,
-          notes: data.notes,
-          status: 'pending',
-          points_granted: 0,
-          is_renewal_referral: isPaused,
-          lead_id: newLeadId,
-        };
-
-        if (safeDebutanteId) {
-          referralPayload.debutante_id = safeDebutanteId;
-        }
-        if (masterId) {
-          referralPayload.master_id = masterId;
-        }
-
-        try {
-          const { error } = await supabase.from('referrals').insert(referralPayload);
-          if (error) {
-            console.error('❌ Falha ao inserir referral na tabela referrals do Supabase:', error);
-          }
-        } catch (err) {
-          console.error('❌ Exceção ao inserir referral na tabela referrals do Supabase:', err);
-        }
-
-        // 3. Atualiza os dados da debutante se ID for UUID
-        if (safeDebutanteId) {
-          debutanteService.upsert({
-            id: safeDebutanteId,
-            validReferrals: debutante.validReferrals,
-          }).catch(err => {
-            console.error('❌ Falha ao sincronizar debutante após indicação:', err);
-          });
-        }
-      };
-
-      persistLeadAndReferral();
-    }
+    return { ok: true };
   };
 
   // Simulate commercial team validating a pending referral
@@ -1216,7 +1095,7 @@ export const AppStateProvider: React.FC<{
     removeGuest(guestId);
   };
 
-  const indicateGuestAsReferral = (guestId: string): boolean => {
+  const indicateGuestAsReferral = async (guestId: string): Promise<boolean> => {
     const targetGuest = guests.find(g => g.id === guestId);
     if (!targetGuest) return false;
 
@@ -1230,13 +1109,21 @@ export const AppStateProvider: React.FC<{
       return false;
     }
 
-    addReferral({
+    const result = await addReferral({
       name: targetGuest.name,
       phone: targetGuest.phone,
       age: targetGuest.age || 14,
       group: (targetGuest.group as any) || 'Amigos',
       notes: `Indicada automaticamente da lista de convidados (${debutante.name})`,
     });
+    if (!result.ok) {
+      // Duplicada no servidor conta como ja indicada; qualquer outra falha nao marca a convidada
+      if (result.duplicate) {
+        updateGuest(guestId, { isReferred: true });
+        guestService.markAsReferred(guestId);
+      }
+      return false;
+    }
 
     updateGuest(guestId, { isReferred: true });
     guestService.markAsReferred(guestId);

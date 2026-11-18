@@ -934,7 +934,9 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
                 lineHeight: 1.45,
                 textAlign: 'left',
               }}>
-                <strong style={{ display: 'block', marginBottom: '3px', fontSize: '0.86rem' }}>✅ Link de convite autenticado!</strong>
+                <strong style={{ display: 'flex', alignItems: 'center', gap: '5px', marginBottom: '3px', fontSize: '0.86rem' }}>
+                  <Check size={16} /> Link de convite autenticado!
+                </strong>
                 <span>
                   Olá{matchedCollab?.name ? `, ${matchedCollab.name}` : ''}! Crie sua senha de acesso abaixo para ativar sua conta no F5 System (<strong>{activationEmail}</strong>).
                 </span>

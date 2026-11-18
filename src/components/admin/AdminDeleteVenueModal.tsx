@@ -237,8 +237,12 @@ export const AdminDeleteVenueModal: React.FC<AdminDeleteVenueModalProps> = ({
                 border: '1px dashed rgba(212, 175, 55, 0.3)',
                 padding: '12px 14px',
                 borderRadius: '12px',
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '8px',
               }}>
-                💡 <strong>Como resolver:</strong> Para excluir a unidade, o gestor deve acessar a aba <em>Debutantes</em>, desativar ou transferir as jornadas das aniversariantes acima.
+                <AlertTriangle size={16} color="var(--adm-accent)" style={{ flexShrink: 0, marginTop: '2px' }} />
+                <span><strong>Como resolver:</strong> Para excluir a unidade, o gestor deve acessar a aba <em>Debutantes</em>, desativar ou transferir as jornadas das aniversariantes acima.</span>
               </div>
             </div>
           ) : (

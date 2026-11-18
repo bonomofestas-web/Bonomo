@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { HeaderActions } from './HeaderActions';
 import { 
   Gift, Crown, Plus, Search, Edit3, Trash2, 
   DollarSign, ArrowLeft
@@ -68,8 +69,8 @@ export const AdminBenefitsCatalogView: React.FC<AdminBenefitsCatalogViewProps> =
       animation: 'fadeIn 0.25s ease-out',
       fontFamily: "'Plus Jakarta Sans', sans-serif",
     }}>
-      {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+      {/* Título no breadcrumb; só o botão de voltar fica na tela */}
+      <div style={{ display: onBack ? 'flex' : 'none', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
         <div>
           {onBack && (
             <button
@@ -95,22 +96,10 @@ export const AdminBenefitsCatalogView: React.FC<AdminBenefitsCatalogViewProps> =
               <span>Voltar ao App Aniversariante</span>
             </button>
           )}
-          <h1 style={{
-            fontSize: '1.45rem',
-            fontWeight: 800,
-            color: 'var(--adm-text-title)',
-            letterSpacing: '-0.4px',
-            margin: '0 0 4px 0',
-          }}>
-            Catálogo de Benefícios & Prêmios VIP
-          </h1>
-          <p style={{ fontSize: '0.8rem', color: 'var(--adm-text-muted)', margin: 0 }}>
-            Gerencie o acervo de prêmios e bonificações para as jornadas das debutantes.
-          </p>
         </div>
 
         {/* Action Button */}
-        <div style={{ display: 'flex', gap: '10px' }}>
+        <HeaderActions><div style={{ display: 'flex', gap: '10px' }}>
           {activeSubTab === 'benefits' ? (
             <button
               onClick={() => {
@@ -146,7 +135,7 @@ export const AdminBenefitsCatalogView: React.FC<AdminBenefitsCatalogViewProps> =
               <span>Novo Presente VIP</span>
             </button>
           )}
-        </div>
+        </div></HeaderActions>
       </div>
 
       {/* Sub Tabs: Benefícios vs Presentes VIP */}
@@ -366,7 +355,7 @@ export const AdminBenefitsCatalogView: React.FC<AdminBenefitsCatalogViewProps> =
                     </span>
                   </div>
 
-                  <h3 style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--adm-text-title)', margin: '2px 0 0 0', letterSpacing: '-0.2px' }}>
+                  <h3 style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--adm-text-title)', margin: '2px 0 0 0', letterSpacing: '-0.2px', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', wordBreak: 'break-word' }} title={item.name}>
                     {item.name}
                   </h3>
 
@@ -549,7 +538,7 @@ export const AdminBenefitsCatalogView: React.FC<AdminBenefitsCatalogViewProps> =
                     </span>
                   </div>
 
-                  <h3 style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--adm-text-title)', margin: '2px 0 0 0', letterSpacing: '-0.2px' }}>
+                  <h3 style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--adm-text-title)', margin: '2px 0 0 0', letterSpacing: '-0.2px', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', wordBreak: 'break-word' }} title={item.name}>
                     {item.name}
                   </h3>
 

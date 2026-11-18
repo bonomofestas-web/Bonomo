@@ -1,3 +1,4 @@
+import { toast } from 'sonner';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   ChevronDown, ChevronLeft, ChevronRight, X, Plus, Trash2, Zap, Copy, 
@@ -387,10 +388,16 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
     setVenueDistributionConfig(activeFunnel.venueDistributionConfig || {});
     
     // Inicializar WhatsApps habilitados neste funil
+    // REGRA ARQUITETURAL 1:N: Filtra origens estritamente vinculadas a este funil ou ainda desvinculadas.
+    // Nenhuma origem vinculada a outro funil comercial pode ser puxada.
     const savedEnabledWa = (activeFunnel as any)?.enabledWhatsAppSourceIds || 
       (activeFunnel as any)?.duplicateRuleConfig?._enabledWhatsAppSourceIds || 
       sources.filter(s => s.funnelId === activeFunnel.id && s.type === 'whatsapp_api').map(s => s.id);
-    setEnabledWhatsAppSourceIds(savedEnabledWa || []);
+    const strictEnabledWa = (savedEnabledWa || []).filter((srcId: string) => {
+      const src = sources.find(s => s.id === srcId);
+      return !src || !src.funnelId || src.funnelId === activeFunnel.id;
+    });
+    setEnabledWhatsAppSourceIds(strictEnabledWa);
 
     if (activeFunnel.stages && activeFunnel.stages.length > 0) {
       let loadedStages = [...activeFunnel.stages];
@@ -547,6 +554,10 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
 
       (sources || []).forEach(src => {
         if (src.type === 'whatsapp_api' && (src.venueId && targetVenueIds.has(src.venueId))) {
+          // REGRA ARQUITETURAL 1:N: Se a origem já estiver vinculada a outro funil comercial, não pode ser capturada
+          if (src.funnelId && activeFunnel?.id && src.funnelId !== activeFunnel.id) {
+            return;
+          }
           const isChecked = enabledWhatsAppSourceIds.includes(src.id);
           if (isChecked && src.funnelId !== activeFunnel.id) {
             updateSource(src.id, { funnelId: activeFunnel.id, status: 'active' });
@@ -564,7 +575,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
       }, 700);
     } catch (err) {
       console.error('Erro ao salvar funil:', err);
-      alert('Erro ao salvar as configurações do funil. Verifique a conexão com o banco.');
+      toast.error('Erro ao salvar as configurações do funil. Verifique a conexão com o banco.');
     } finally {
       setIsSavingFunnel(false);
     }
@@ -574,7 +585,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
     if (!activeFunnel) return;
     const newId = duplicateFunnel(activeFunnel.id);
     if (newId) {
-      alert(`Funil duplicado com sucesso!`);
+      toast.warning(`Funil duplicado com sucesso!`);
       setSelectedFunnelId(newId);
     }
   };
@@ -623,7 +634,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
   const handleDeleteStage = (stageId: string) => {
     const target = stages.find(s => s.id === stageId);
     if (target?.isFixed) {
-      alert('Esta é uma etapa padrão essencial do funil e não pode ser excluída.');
+      toast.warning('Esta é uma etapa padrão essencial do funil e não pode ser excluída.');
       return;
     }
     if (confirm(`Deseja remover a etapa "${target?.name}"?`)) {
@@ -715,12 +726,12 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
   const handleSaveQuestion = (e: React.FormEvent) => {
     e.preventDefault();
     if (!questionTitleInput.trim()) {
-      alert('Preencha o título da pergunta.');
+      toast.warning('Preencha o título da pergunta.');
       return;
     }
     const filled = questionOptionsInput.filter(o => o.label.trim().length > 0);
     if (filled.length < 2) {
-      alert('Preencha pelo menos 2 situações de resposta.');
+      toast.warning('Preencha pelo menos 2 situações de resposta.');
       return;
     }
 
@@ -1189,8 +1200,8 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                   : 'A Caixa de Entrada deixa o fluxo mais organizado. Ao desativá-la, novos leads entrarão diretamente na 1ª etapa disponível deste funil comercial.'}
               </p>
               {leadsInEntryStage.length > 0 && !isEntryStageActive && (
-                <div style={{ fontSize: '0.68rem', color: '#EAB308', fontWeight: 700, marginTop: '2px' }}>
-                  ⚠️ {leadsInEntryStage.length} {isPostSale ? 'clientes' : 'leads'} aguardando migração
+                <div style={{ fontSize: '0.68rem', color: '#EAB308', fontWeight: 700, marginTop: '2px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <AlertTriangle size={12} /> {leadsInEntryStage.length} {isPostSale ? 'clientes' : 'leads'} aguardando migração
                 </div>
               )}
             </div>
@@ -1730,7 +1741,9 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
 
                                   return venueWhatsappSources.map(src => {
                                     const isOnline = isSourceOnline(src);
-                                    const isEnabled = enabledWhatsAppSourceIds.includes(src.id) || (src.funnelId === activeFunnel.id);
+                                    const isClaimedByOtherFunnel = Boolean(src.funnelId && activeFunnel?.id && src.funnelId !== activeFunnel.id);
+                                    const otherFunnel = isClaimedByOtherFunnel ? funnels.find(f => f.id === src.funnelId) : null;
+                                    const isEnabled = !isClaimedByOtherFunnel && (enabledWhatsAppSourceIds.includes(src.id) || (src.funnelId === activeFunnel.id));
                                     const isPriority = isOnline && isEnabled && effectivePriorityId === src.id;
                                     const rawPhone = src.whatsappInstanceId || (src.configuration && (src.configuration.connectedPhone || src.configuration.targetPhone)) || '';
                                     const phoneDisplay = rawPhone ? formatPhone(rawPhone) : null;
@@ -1761,11 +1774,13 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                                         }}
                                       >
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
-                                          {/* Checkbox de ativação no funil */}
+                                          {/* Checkbox de ativação no funil com trava 1:N */}
                                           <input
                                             type="checkbox"
                                             checked={isEnabled}
+                                            disabled={isClaimedByOtherFunnel}
                                             onChange={(e) => {
+                                              if (isClaimedByOtherFunnel) return;
                                               const checked = e.target.checked;
                                               setEnabledWhatsAppSourceIds(prev => {
                                                 if (checked) {
@@ -1775,11 +1790,11 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                                                 }
                                               });
                                             }}
-                                            title="Ativar/Desativar este WhatsApp neste funil"
+                                            title={isClaimedByOtherFunnel ? `Esta origem já está vinculada exclusivamente ao funil "${otherFunnel?.name || 'Outro Funil'}" (1:N)` : "Ativar/Desativar este WhatsApp neste funil"}
                                             style={{
                                               width: '15px',
                                               height: '15px',
-                                              cursor: 'pointer',
+                                              cursor: isClaimedByOtherFunnel ? 'not-allowed' : 'pointer',
                                               accentColor: 'var(--adm-accent, #3B82F6)',
                                               flexShrink: 0,
                                             }}
@@ -1802,14 +1817,19 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                                                 {phoneDisplay}
                                               </div>
                                             )}
+                                            {isClaimedByOtherFunnel && (
+                                              <div style={{ fontSize: '0.60rem', color: '#D4AF37', fontWeight: 600 }}>
+                                                Exclusivo: {otherFunnel?.name || 'Outro Funil'}
+                                              </div>
+                                            )}
                                           </div>
                                         </div>
 
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
                                           {!isOnline ? (
-                                            <span style={{ fontSize: '0.55rem', fontWeight: 800, padding: '2px 6px', borderRadius: '4px', background: 'rgba(239, 68, 68, 0.25)', color: '#EF4444' }}>
-                                              🔴 Offline
-                                            </span>
+                                              <span style={{ fontSize: '0.55rem', fontWeight: 800, padding: '2px 6px', borderRadius: '4px', background: 'rgba(239, 68, 68, 0.25)', color: '#EF4444', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                                                <span style={{ width: '4px', height: '4px', borderRadius: '50%', backgroundColor: '#EF4444' }} /> Offline
+                                              </span>
                                           ) : isEnabled ? (
                                             isPriority ? (
                                               <span style={{ fontSize: '0.55rem', fontWeight: 800, padding: '2px 6px', borderRadius: '4px', background: '#10B981', color: '#FFF' }}>

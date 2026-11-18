@@ -433,37 +433,8 @@ export const AdminUnifiedCalendarView: React.FC<AdminUnifiedCalendarViewProps> =
       boxSizing: 'border-box',
       animation: 'fadeIn 0.2s ease-out',
     }}>
-      {/* Header Bar */}
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        flexWrap: 'wrap',
-        gap: '16px',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-          <div style={{
-            width: '46px',
-            height: '46px',
-            borderRadius: '14px',
-            background: 'var(--adm-bg-card)',
-            border: `1.5px solid ${config.accentColor}`,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            boxShadow: `0 0 16px ${config.accentColor}33`,
-          }}>
-            {config.icon}
-          </div>
-          <div>
-            <h1 style={{ fontSize: '1.35rem', fontWeight: 900, color: 'var(--adm-text-title)', margin: 0, letterSpacing: '-0.3px' }}>
-              {config.title}
-            </h1>
-            <p style={{ fontSize: '0.8rem', color: 'var(--adm-text-muted)', margin: '3px 0 0 0' }}>
-              {config.subtitle}
-            </p>
-          </div>
-        </div>
+      {/* Título no breadcrumb; controles em linha compacta */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
           {/* Seletor de Membro da Equipe (visível no modo team) */}

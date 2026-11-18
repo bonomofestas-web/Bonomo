@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { HeaderActions } from './HeaderActions';
 import { 
   Calendar as CalendarIcon, Plus, Edit3, Search, 
   Building2, UserCheck, ChevronLeft, ChevronRight, List,
@@ -525,28 +526,14 @@ export const AdminAppointmentsView: React.FC<AdminAppointmentsViewProps> = ({ on
       boxSizing: 'border-box',
       fontFamily: "'Plus Jakarta Sans', sans-serif",
     }}>
-      {/* ── HEADER SUPERIOR ────────────────────────────────────────────── */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#14A9D7', marginBottom: '4px' }}>
-            <CalendarIcon size={18} />
-            <span style={{ fontSize: '0.74rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-              Central de Agendamentos & Visitas
-            </span>
-          </div>
-          <h1 style={{ fontSize: '1.45rem', fontWeight: 900, color: 'var(--adm-text-title, #0F172A)', margin: 0 }}>
-            Gestão Avançada de Agendamentos
-          </h1>
-          <p style={{ fontSize: '0.82rem', color: 'var(--adm-text-muted, #64748B)', margin: '4px 0 0' }}>
-            Acompanhe visitas comerciais, degustações e reuniões de clientes em tempo real com controle rigoroso de status e reagendamento.
-          </p>
-        </div>
+      {/* Título no breadcrumb; ações no menu superior */}
+      <HeaderActions>
 
         {/* Alternador de Visualização & Botão Novo Agendamento */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <div style={{
-            background: 'var(--adm-bg-card, #FFFFFF)',
-            border: '1px solid var(--adm-border, #CBD5E1)',
+            background: 'rgba(255,255,255,0.08)',
+            border: '1px solid rgba(255,255,255,0.14)',
             borderRadius: '10px',
             padding: '3px',
             display: 'flex',
@@ -558,7 +545,7 @@ export const AdminAppointmentsView: React.FC<AdminAppointmentsViewProps> = ({ on
               onClick={() => setViewMode('list')}
               style={{
                 background: viewMode === 'list' ? '#14A9D7' : 'transparent',
-                color: viewMode === 'list' ? '#FFFFFF' : 'var(--adm-text-muted, #64748B)',
+                color: viewMode === 'list' ? '#FFFFFF' : '#CBD5E1',
                 border: 'none',
                 borderRadius: '7px',
                 padding: '6px 14px',
@@ -579,7 +566,7 @@ export const AdminAppointmentsView: React.FC<AdminAppointmentsViewProps> = ({ on
               onClick={() => setViewMode('calendar')}
               style={{
                 background: viewMode === 'calendar' ? '#14A9D7' : 'transparent',
-                color: viewMode === 'calendar' ? '#FFFFFF' : 'var(--adm-text-muted, #64748B)',
+                color: viewMode === 'calendar' ? '#FFFFFF' : '#CBD5E1',
                 border: 'none',
                 borderRadius: '7px',
                 padding: '6px 14px',
@@ -622,7 +609,7 @@ export const AdminAppointmentsView: React.FC<AdminAppointmentsViewProps> = ({ on
             <span>Novo Agendamento</span>
           </button>
         </div>
-      </div>
+      </HeaderActions>
 
       {/* ── BARRA DE FILTROS AVANÇADOS ────────────────────────────────────── */}
       <div style={{

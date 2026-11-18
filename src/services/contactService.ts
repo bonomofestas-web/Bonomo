@@ -1,6 +1,7 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { isUuid } from '../utils/uuid';
 import type { Contact, ContactDependent, Lead, Contract } from '../types/admin';
+import { whatsappMediaService } from './whatsappMediaService';
 
 // Gerador client-side Base36 de alta capacidade para códigos alfanuméricos
 export function generateBase36Code(prefix: string, length: number = 8): string {
@@ -75,6 +76,39 @@ export const contactService = {
       console.error('Exceção em contactService.getContacts:', err);
       return [];
     }
+  },
+
+  /**
+   * Localiza contatos do Master pelos telefones informados, em lotes (sem o teto de 500 contatos da busca geral).
+   * Casa por tolerância de telefone (nono dígito/DDI) com `isPhoneMatch`. Retorna mapa telefone(dígitos) -> contato.
+   */
+  async findByPhones(masterId: string, phones: string[]): Promise<Map<string, Contact>> {
+    const found = new Map<string, Contact>();
+    if (!isSupabaseConfigured || !masterId || phones.length === 0) return found;
+    const { isPhoneMatch } = await import('./leadService');
+    const unique = Array.from(new Set(phones.map(p => p.replace(/\D/g, '')).filter(p => p.length >= 8)));
+
+    for (let i = 0; i < unique.length; i += 20) {
+      const chunk = unique.slice(i, i + 20);
+      // Últimos 4 dígitos: robusto a máscaras como "(21) 99999-9999"; o casamento exato é refeito em memória
+      const orFilter = chunk
+        .flatMap(p => [`primary_phone.ilike.%${p.slice(-4)}%`, `whatsapp_phone.ilike.%${p.slice(-4)}%`])
+        .join(',');
+      const { data, error } = await supabase
+        .from('contacts')
+        .select('*')
+        .eq('master_id', masterId)
+        .is('deleted_at', null)
+        .or(orFilter)
+        .limit(1000);
+      if (error) { console.warn('findByPhones:', error.message); continue; }
+      const contacts = (data || []).map(mapRowToContact);
+      for (const phone of chunk) {
+        const match = contacts.find(c => isPhoneMatch(phone, c.primaryPhone) || isPhoneMatch(phone, c.whatsappPhone));
+        if (match) found.set(phone, match);
+      }
+    }
+    return found;
   },
 
   /**
@@ -310,6 +344,14 @@ export const contactService = {
         };
       }
 
+      // Busca o code do contato para o cascade do avatar no R2
+      const { data: contactData } = await supabase
+        .from('contacts')
+        .select('code')
+        .eq('id', id)
+        .eq('master_id', masterId)
+        .single();
+
       // Exclusão lógica segura
       const { error } = await supabase
         .from('contacts')
@@ -319,6 +361,11 @@ export const contactService = {
 
       if (error) {
         return { success: false, message: error.message };
+      }
+
+      // Cascade: remove avatar do R2 (falha silenciosa — foto órfã não é crítico)
+      if (contactData?.code) {
+        whatsappMediaService.deleteContactAvatar(masterId, contactData.code).catch(() => { });
       }
 
       return { success: true };

@@ -73,14 +73,19 @@ export const GuestDetailView: React.FC<GuestDetailViewProps> = ({
     onBack();
   };
 
-  const handleIndicateFriend = () => {
-    addReferral({
+  const handleIndicateFriend = async () => {
+    const result = await addReferral({
       name: guest.name,
       phone: guest.phone,
       age: guest.age,
       group: (guest.group === 'VIPs' ? 'Amigos' : guest.group) as any,
       notes: `Convidada indicada como amiga debutante`,
     });
+    if (!result.ok) {
+      setToastMessage(result.duplicate ? `${guest.name} já constava como indicada.` : (result.error || 'Não foi possível enviar a indicação.'));
+      setTimeout(() => setToastMessage(null), 3500);
+      return;
+    }
     setToastMessage(`✨ ${guest.name} foi adicionada às indicações (+1 Ponto)!`);
     setTimeout(() => setToastMessage(null), 3500);
   };

@@ -78,7 +78,7 @@ export const taskService = {
     }
   },
 
-  async upsert(task: Partial<AdminTask> & { id: string }): Promise<boolean> {
+  async upsert(task: Partial<AdminTask> & { id: string }, masterId?: string): Promise<boolean> {
     if (!isSupabaseConfigured) return true;
     try {
       const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -86,6 +86,50 @@ export const taskService = {
         console.warn('Upsert ignorado: task.id deve ser um UUID válido:', task.id);
         return false;
       }
+
+      // Blindagem estrita de Tenant: Resolve e valida master_id
+      let effectiveMasterId = (task.masterId && uuidRegex.test(task.masterId))
+        ? task.masterId
+        : ((task as any).master_id && uuidRegex.test((task as any).master_id)
+            ? (task as any).master_id
+            : (masterId && uuidRegex.test(masterId)
+                ? masterId
+                : (task.customProperties?.masterId && uuidRegex.test(task.customProperties.masterId)
+                    ? task.customProperties.masterId
+                    : null)));
+
+      if (!effectiveMasterId && task.venueId && uuidRegex.test(task.venueId)) {
+        const { data: v } = await supabase.from('venues').select('master_id').eq('id', task.venueId).maybeSingle();
+        if (v?.master_id && uuidRegex.test(v.master_id)) {
+          effectiveMasterId = v.master_id;
+        }
+      }
+
+      if (!effectiveMasterId && task.leadId && uuidRegex.test(task.leadId)) {
+        const { data: l } = await supabase.from('leads').select('master_id').eq('id', task.leadId).maybeSingle();
+        if (l?.master_id && uuidRegex.test(l.master_id)) {
+          effectiveMasterId = l.master_id;
+        }
+      }
+
+      if (!effectiveMasterId && task.id && uuidRegex.test(task.id)) {
+        const { data: existingTask } = await supabase.from('admin_tasks').select('venue_id, custom_properties').eq('id', task.id).maybeSingle();
+        if (existingTask?.custom_properties?.masterId && uuidRegex.test(existingTask.custom_properties.masterId)) {
+          effectiveMasterId = existingTask.custom_properties.masterId;
+        } else if (existingTask?.venue_id && uuidRegex.test(existingTask.venue_id)) {
+          const { data: v } = await supabase.from('venues').select('master_id').eq('id', existingTask.venue_id).maybeSingle();
+          if (v?.master_id && uuidRegex.test(v.master_id)) {
+            effectiveMasterId = v.master_id;
+          }
+        }
+      }
+
+      // REGRA SUPREMA DE BLINDAGEM MULTI-TENANT: Bloqueia qualquer gravação sem tenant
+      if (!effectiveMasterId) {
+        console.error('❌ Bloqueio de Segurança Multi-Tenant: Tentativa de upsert de tarefa sem master_id válido.');
+        return false;
+      }
+
       const payload: any = {};
       if (task.databaseId !== undefined) payload.database_id = task.databaseId;
       if (task.leadId !== undefined) payload.lead_id = (task.leadId && uuidRegex.test(task.leadId)) ? task.leadId : null;
@@ -124,7 +168,7 @@ export const taskService = {
         ...(task.observations !== undefined ? { observations: task.observations } : {}),
         ...(task.resolution !== undefined ? { resolution: task.resolution } : {}),
         ...(task.customType !== undefined ? { customType: task.customType } : {}),
-        ...((task as any).masterId !== undefined ? { masterId: (task as any).masterId } : {}),
+        masterId: effectiveMasterId,
       };
       payload.custom_properties = mergedCustomProps;
 
@@ -153,9 +197,27 @@ export const taskService = {
     }
   },
 
-  async delete(id: string): Promise<boolean> {
+  async delete(id: string, masterId?: string): Promise<boolean> {
     if (!isSupabaseConfigured) return true;
     try {
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (masterId && uuidRegex.test(masterId)) {
+        // Valida se a tarefa pertence ao tenant antes de deletar
+        const { data: existingTask } = await supabase
+          .from('admin_tasks')
+          .select('venue_id, custom_properties')
+          .eq('id', id)
+          .maybeSingle();
+
+        if (existingTask) {
+          const taskMasterId = existingTask.custom_properties?.masterId;
+          if (taskMasterId && taskMasterId !== masterId) {
+            console.warn('Tentativa de exclusão de tarefa de outro tenant ignorada.');
+            return false;
+          }
+        }
+      }
+
       const { error } = await supabase
         .from('admin_tasks')
         .delete()

@@ -1,3 +1,4 @@
+import { toast } from 'sonner';
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { 
   Headphones, X, Plus, Clock, CheckCircle2, AlertCircle, 
@@ -203,7 +204,7 @@ export const AdminSupportWidget: React.FC<AdminSupportWidgetProps> = ({ isOpen, 
     try {
       await sendSupportMessage(selectedTicketId, content);
     } catch {
-      alert('Erro ao enviar mensagem para o suporte.');
+      toast.error('Erro ao enviar mensagem para o suporte.');
     } finally {
       setIsSendingMessage(false);
     }

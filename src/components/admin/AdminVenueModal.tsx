@@ -383,7 +383,7 @@ export const AdminVenueModal: React.FC<AdminVenueModalProps> = ({
               color: 'var(--adm-text-muted)',
               lineHeight: 1.5,
             }}>
-              💡 <strong>Fotos Independentes:</strong> A foto do <strong>Banner</strong> é exibida em formato paisagem panorâmico no topo do ERP. A foto de <strong>Convites</strong> é a imagem oficial apresentada aos convidados e anfitriãs na página pública de confirmação de presença (RSVP).
+              <strong>Fotos Independentes:</strong> A foto do <strong>Banner</strong> é exibida em formato paisagem panorâmico no topo do ERP. A foto de <strong>Convites</strong> é a imagem oficial apresentada aos convidados e anfitriãs na página pública de confirmação de presença (RSVP).
             </div>
 
             {/* Grid 2 Fotos Principais */}

@@ -1,3 +1,4 @@
+import { toast } from 'sonner';
 import React, { useRef, useState } from 'react';
 import { Upload, Image as ImageIcon, X, Loader2, Check, AlertCircle } from 'lucide-react';
 import { cloudflareR2Service } from '../../lib/cloudflareR2';
@@ -102,7 +103,7 @@ export const ImageUploadField: React.FC<ImageUploadFieldProps> = ({
 
   const handleFile = async (file: File) => {
     if (!file.type.startsWith('image/')) {
-      alert('Por favor, selecione um arquivo de imagem válido (.jpg, .png, .webp).');
+      toast.warning('Por favor, selecione um arquivo de imagem válido (.jpg, .png, .webp).');
       return;
     }
 

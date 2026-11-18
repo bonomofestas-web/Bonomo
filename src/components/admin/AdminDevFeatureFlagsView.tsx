@@ -286,7 +286,7 @@ export const AdminDevFeatureFlagsView: React.FC = () => {
                       'rgba(239, 68, 68, 0.4)'
                     }`,
                   }}>
-                    {currentStatus === 'active' ? '🟢 Ativo' : currentStatus === 'coming_soon' ? '🟡 Em Breve' : '🔴 Oculto'}
+                    {currentStatus === 'active' ? 'Ativo' : currentStatus === 'coming_soon' ? 'Em Breve' : 'Oculto'}
                   </span>
                 </div>
 
@@ -521,7 +521,7 @@ export const AdminDevFeatureFlagsView: React.FC = () => {
                   pendingChange.status === 'coming_soon' ? '#14A9D7' :
                   '#22C55E'
               }}>
-                {pendingChange.status === 'active' ? '🟢 Ativo' : pendingChange.status === 'coming_soon' ? '🟡 Em Breve' : '🔴 Desativado (Oculto)'}
+                {pendingChange.status === 'active' ? 'Ativo' : pendingChange.status === 'coming_soon' ? 'Em Breve' : 'Desativado (Oculto)'}
               </strong>?
             </p>
 
@@ -535,7 +535,7 @@ export const AdminDevFeatureFlagsView: React.FC = () => {
               marginBottom: '20px',
               textAlign: 'left',
             }}>
-              ℹ️ A alteração será aplicada <strong>instantaneamente em tempo real</strong> para todos os usuários abaixo do Desenvolvedor no ecossistema F5 System.
+              A alteração será aplicada <strong>instantaneamente em tempo real</strong> para todos os usuários abaixo do Desenvolvedor no ecossistema F5 System.
             </div>
 
             <div style={{ display: 'flex', gap: '10px' }}>

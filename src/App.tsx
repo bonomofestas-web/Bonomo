@@ -25,6 +25,7 @@ import { debutanteService } from './services/debutanteService';
 import { venueService } from './services/venueService';
 import type { Venue } from './types/admin';
 import { Wifi, Battery, Signal, ChevronLeft, Bell, Crown } from 'lucide-react';
+import { Toaster } from 'sonner';
 
 // localStorage key to remember slugs that completed onboarding (cross-session fallback)
 const LS_SEEN_VIDEO_KEY = 'bonomo_seen_video_slugs_v1';
@@ -609,6 +610,7 @@ const RootAppRouter: React.FC = () => {
 export default function App() {
   return (
     <AdminStateProvider>
+      <Toaster position="top-right" richColors closeButton />
       <RootAppRouter />
     </AdminStateProvider>
   );

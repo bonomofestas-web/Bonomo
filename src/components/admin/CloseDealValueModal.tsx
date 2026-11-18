@@ -14,11 +14,14 @@ interface CloseDealValueModalProps {
     packageSold: string, 
     closerNotes: string,
     extraOptions?: {
+      contractTitle?: string;
       downPayment?: number;
       installmentsCount?: number;
       hasCreditCard?: boolean;
       contractSignedFileUrl?: string;
       contractSignedFileName?: string;
+      paymentFileUrl?: string;
+      paymentFileName?: string;
       guestCount?: number;
       eventYear?: number | string;
       updateExistingClient?: boolean;
@@ -130,9 +133,12 @@ export const CloseDealValueModal: React.FC<CloseDealValueModalProps> = ({
     if (!lead) return '';
     return lead.packageSold || lead.interestService || '';
   });
+  const [contractTitle, setContractTitle] = useState('');
   const [closerNotes, setCloserNotes] = useState('');
   const [contractSignedFileUrl, setContractSignedFileUrl] = useState<string>('');
   const [contractSignedFileName, setContractSignedFileName] = useState<string>('');
+  const [paymentFileUrl, setPaymentFileUrl] = useState<string>('');
+  const [paymentFileName, setPaymentFileName] = useState<string>('');
   const [error, setError] = useState('');
 
   // Dados do Contratante e da Homenageada para Passagem de Bastão completa
@@ -169,6 +175,8 @@ export const CloseDealValueModal: React.FC<CloseDealValueModalProps> = ({
       setCloserNotes('');
       setContractSignedFileUrl('');
       setContractSignedFileName('');
+      setPaymentFileUrl('');
+      setPaymentFileName('');
       setError('');
       setUpdateExistingMode('update');
 
@@ -191,7 +199,15 @@ export const CloseDealValueModal: React.FC<CloseDealValueModalProps> = ({
           neighborhood: lead.neighborhood,
         } : (lead.contacts || []).find(c => c.role !== 'debutante')) || (lead.contacts || [])[0];
 
-      setPayerName(pDecisor?.name?.trim() || (lead as any).decisionMakerName?.trim() || (lead as any).payerName?.trim() || (lead.primaryContactRole !== 'debutante' ? lead.name : ''));
+      const pName = pDecisor?.name?.trim() || (lead as any).decisionMakerName?.trim() || (lead as any).payerName?.trim() || (lead.primaryContactRole !== 'debutante' ? lead.name?.trim() : '') || '';
+      const payer = pName || 'Contratante';
+      const eventType = (lead.eventType || '15 Anos').replace(/^15_anos$/i, '15 Anos');
+      const defaultContractTitle = bName && bName.toLowerCase() !== payer.toLowerCase()
+        ? `${payer} – ${bName} ${eventType}`
+        : `${payer} – ${eventType}`;
+      setContractTitle((lead as any).contractTitle || (lead as any).eventTitle || defaultContractTitle);
+
+      setPayerName(pName);
       setPayerPhone(pDecisor?.phone?.trim() || (lead.primaryContactRole !== 'debutante' ? lead.phone?.trim() : '') || '');
       setPayerEmail(pDecisor?.email?.trim() || lead.email?.trim() || (lead as any).payerEmail?.trim() || '');
       setPayerCpf(pDecisor?.cpf?.trim() || lead.cpf?.trim() || (lead as any).payerCpf?.trim() || '');
@@ -211,6 +227,17 @@ export const CloseDealValueModal: React.FC<CloseDealValueModalProps> = ({
     const reader = new FileReader();
     reader.onload = () => {
       setContractSignedFileUrl(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handlePaymentFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setPaymentFileName(file.name);
+    const reader = new FileReader();
+    reader.onload = () => {
+      setPaymentFileUrl(reader.result as string);
     };
     reader.readAsDataURL(file);
   };
@@ -237,11 +264,14 @@ export const CloseDealValueModal: React.FC<CloseDealValueModalProps> = ({
     const computedTerms = paymentTerms.trim() || `${downNum > 0 ? `Sinal de R$ ${downNum.toLocaleString('pt-BR')} + ` : ''}${installmentsCount}x parcelado`;
 
     onConfirmSale(lead.id, valueNum, packageSold.trim(), closerNotes.trim(), {
+      contractTitle: contractTitle.trim() || undefined,
       downPayment: isNaN(downNum) ? 0 : downNum,
       installmentsCount: Number(installmentsCount) || 10,
       hasCreditCard,
       contractSignedFileUrl: contractSignedFileUrl || undefined,
       contractSignedFileName: contractSignedFileName || undefined,
+      paymentFileUrl: paymentFileUrl || undefined,
+      paymentFileName: paymentFileName || undefined,
       guestCount: Number(guestCount) || 150,
       eventYear: eventYear || undefined,
       updateExistingClient: Boolean(existingClient ? updateExistingMode === 'update' : true),
@@ -466,6 +496,27 @@ export const CloseDealValueModal: React.FC<CloseDealValueModalProps> = ({
               </div>
             </div>
           )}
+
+          {/* Título Oficial do Contrato */}
+          <div>
+            <label style={labelStyle}>
+              Título Oficial do Contrato *
+            </label>
+            <input
+              type="text"
+              required
+              value={contractTitle}
+              onChange={(e) => {
+                setContractTitle(e.target.value);
+                setError('');
+              }}
+              placeholder="Ex: 15 Anos Manuella Albuquerque"
+              style={{
+                ...inputStyle,
+                fontWeight: 600,
+              }}
+            />
+          </div>
 
           {/* Grid: Valor do Contrato & Entrada */}
           <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '10px' }}>
@@ -830,6 +881,47 @@ export const CloseDealValueModal: React.FC<CloseDealValueModalProps> = ({
               }}>
                 <span>{contractSignedFileName ? 'Substituir' : 'Escolher Arquivo'}</span>
                 <input type="file" accept=".pdf,.doc,.docx,image/*" style={{ display: 'none' }} onChange={handleFileUpload} />
+              </label>
+            </div>
+          </div>
+
+          {/* Upload do Comprovante de Pagamento / Sinal */}
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '5px' }}>
+              <label style={{ ...labelStyle, margin: 0 }}>Anexar Comprovante de Sinal / Entrada (PDF/Foto)</label>
+              <span style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)' }}>Comprovante Pix, recibo ou transferência</span>
+            </div>
+            <div style={{
+              border: '1.5px dashed var(--adm-border)',
+              borderRadius: '10px',
+              padding: '10px 14px',
+              background: 'var(--adm-bg-input)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '10px',
+            }}>
+              <div style={{ minWidth: 0, flex: 1, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <DollarSign size={16} color="#10B981" />
+                <span style={{ fontSize: '0.74rem', color: paymentFileName ? 'var(--adm-text-title)' : 'var(--adm-text-muted)', fontWeight: paymentFileName ? 700 : 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {paymentFileName || 'Nenhum comprovante anexado ainda (opcional)'}
+                </span>
+              </div>
+              <label style={{
+                padding: '5px 10px',
+                borderRadius: '6px',
+                background: '#10B981',
+                color: '#fff',
+                fontSize: '0.70rem',
+                fontWeight: 800,
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
+                flexShrink: 0,
+              }}>
+                <span>{paymentFileName ? 'Substituir' : 'Escolher Arquivo'}</span>
+                <input type="file" accept=".pdf,.doc,.docx,image/*" style={{ display: 'none' }} onChange={handlePaymentFileUpload} />
               </label>
             </div>
           </div>

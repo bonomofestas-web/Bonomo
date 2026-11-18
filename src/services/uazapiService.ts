@@ -628,10 +628,67 @@ export const uazapiService = {
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      throw new Error(err.message || err.error || `Falha no download da mídia (HTTP ${res.status})`);
+      const downloadError: any = new Error(err.message || err.error || `Falha no download da mídia (HTTP ${res.status})`);
+      downloadError.status = res.status; // permite classificar 404 (fora da janela) x 400 (sem mídia) x 5xx
+      throw downloadError;
     }
 
     return await res.json();
+  },
+
+  /**
+   * Pede ao CELULAR uma nova cópia de uma mensagem (POST /message/reload).
+   * Só confirma o pedido: a cópia chega depois por webhook/SSE. Exige o celular online com o WhatsApp ativo.
+   * Erros: 404 = mensagem fora do histórico local (use requestHistorySync antes); 500 = sem sessão ativa.
+   */
+  async reloadMessage(instanceToken: string, id: string): Promise<{ ok: boolean; status: number; error?: string }> {
+    const baseUrl = this.getServerUrl();
+    if (!baseUrl || !instanceToken || !id) return { ok: false, status: 0, error: 'config' };
+    try {
+      const res = await fetch(`${baseUrl}/message/reload`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', token: instanceToken },
+        body: JSON.stringify({ id }),
+      });
+      if (res.ok) return { ok: true, status: res.status };
+      const err = await res.json().catch(() => ({}));
+      return { ok: false, status: res.status, error: err.error || err.message };
+    } catch (e: any) {
+      return { ok: false, status: 0, error: e?.message || 'network' };
+    }
+  },
+
+  /**
+   * Pede ao CELULAR mensagens anteriores a uma âncora (POST /message/history-sync, sync:true espera até ~25 s).
+   * Retorna o status da UAZAPI (completed | pending | timeout | blocked) para decidir se vale tentar baixar de novo.
+   */
+  async requestHistorySync(
+    instanceToken: string,
+    params: { number: string; messageid?: string; timestamp?: number; fromMe?: boolean; count?: number }
+  ): Promise<{ ok: boolean; status: string; httpStatus: number; error?: string; hasMore?: boolean | null }> {
+    const baseUrl = this.getServerUrl();
+    if (!baseUrl || !instanceToken || !params.number) return { ok: false, status: 'config', httpStatus: 0 };
+    try {
+      const res = await fetch(`${baseUrl}/message/history-sync`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', token: instanceToken },
+        body: JSON.stringify({ count: 50, sync: true, timeoutMs: 25000, ...params }),
+      });
+      const body: any = await res.json().catch(() => ({}));
+      // 200 = resposta final/pending; 202 = sem resposta no prazo; demais = falha
+      if (res.ok || res.status === 202) {
+        return {
+          ok: true,
+          status: String(body.status || (res.status === 202 ? 'timeout' : 'completed')),
+          httpStatus: res.status,
+          // has_more: false = início da conversa alcançado; null/ausente = não confirmado
+          hasMore: typeof body.has_more === 'boolean' ? body.has_more : null,
+        };
+      }
+      return { ok: false, status: 'error', httpStatus: res.status, error: body.error || body.message };
+    } catch (e: any) {
+      return { ok: false, status: 'network', httpStatus: 0, error: e?.message };
+    }
   },
 
   /**
@@ -655,7 +712,7 @@ export const uazapiService = {
 
   /**
    * Envia uma atualização de presença em tempo real para o WhatsApp (digitando, gravando áudio ou pausado)
-   * Suporta POST /send/presence e POST /message/presence
+   * Rota oficial: POST /message/presence
    */
   async sendPresence(
     instanceToken: string,
@@ -672,17 +729,16 @@ export const uazapiService = {
 
     const body: Record<string, any> = {
       number: cleanNumber,
-      phone: cleanNumber,
-      remoteJid: `${cleanNumber}@s.whatsapp.net`,
       presence: payload.presence,
     };
     if (typeof payload.delay === 'number' && payload.delay > 0) {
-      body.delay = payload.delay > 300 ? Math.min(300, Math.round(payload.delay / 1000)) : Math.min(300, Math.round(payload.delay));
+      // Delay em milissegundos conforme doc oficial (máx 5 minutos / 300000ms)
+      body.delay = payload.delay <= 300 ? payload.delay * 1000 : Math.min(300000, Math.round(payload.delay));
     }
 
     try {
-      // 1. Tenta /send/presence (padrão oficial de rotas de envio da UAZAPI)
-      let res = await fetch(`${baseUrl}/send/presence`, {
+      // Rota oficial da UAZAPI: POST /message/presence
+      let res = await fetch(`${baseUrl}/message/presence`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -692,20 +748,8 @@ export const uazapiService = {
       });
 
       if (!res.ok) {
-        // 2. Fallback para /message/presence
-        res = await fetch(`${baseUrl}/message/presence`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'token': instanceToken,
-          },
-          body: JSON.stringify(body),
-        });
-      }
-
-      if (!res.ok) {
-        // 3. Fallback para /chat/sendPresence
-        res = await fetch(`${baseUrl}/chat/sendPresence`, {
+        // Fallback defensivo para rotas legadas
+        res = await fetch(`${baseUrl}/send/presence`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -933,7 +977,60 @@ export const uazapiService = {
   },
 
   /**
-   * Busca histórico de mensagens de uma conversa específica
+   * Lista TODAS as conversas (paginando por nextOffset), do formato compacto da UAZAPI, mais recentes primeiro.
+   * Sem o teto fixo de 100 conversas; respeita 429 com uma nova tentativa e aceita cancelamento.
+   */
+  async listChatsPaged(instanceToken: string, opts: {
+    maxChats?: number;
+    signal?: AbortSignal;
+    onProgress?: (loaded: number) => void;
+  } = {}): Promise<any[]> {
+    const baseUrl = this.getServerUrl();
+    if (!baseUrl || !instanceToken) return [];
+    const max = opts.maxChats || 1000;
+    const out: any[] = [];
+    const seen = new Set<string>();
+    let offset = 0;
+
+    while (out.length < max) {
+      if (opts.signal?.aborted) break;
+      let res: Response | null = null;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        res = await fetch(`${baseUrl}/chat/find`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', token: instanceToken },
+          body: JSON.stringify({ compact: true, sort: '-wa_lastMsgTimestamp', limit: 200, offset }),
+          signal: opts.signal,
+        });
+        if (res.status !== 429) break;
+        await new Promise(r => setTimeout(r, 1200)); // rate limit: espera e tenta de novo
+      }
+      if (!res || !res.ok) {
+        // Primeira página falhou: cai no formato antigo (até 100) em vez de falhar a sincronização
+        if (offset === 0) return this.listRecentChats(instanceToken, Math.min(max, 100));
+        break;
+      }
+      const data: any = await res.json();
+      const chats: any[] = Array.isArray(data) ? data : (data.chats || data.data || []);
+      for (const c of chats) {
+        const id = c.wa_chatid || c.id || c.jid;
+        if (id && seen.has(id)) continue; // a lista pode deslocar durante a paginação
+        if (id) seen.add(id);
+        out.push(c);
+      }
+      opts.onProgress?.(out.length);
+      const p = data.pagination;
+      if (chats.length === 0 || !p?.hasMore || p?.nextOffset == null) break;
+      offset = p.nextOffset;
+    }
+    return out.slice(0, max);
+  },
+
+  /**
+   * Busca histórico de mensagens de uma conversa específica.
+   * A UAZAPI retorna mensagens do mais recente para o mais antigo (offset-based).
+   * Paginamos com pagination.nextOffset até cobrir o `limit` solicitado e
+   * reordenamos cronologicamente antes de retornar.
    */
   async fetchChatMessages(instanceToken: string, phoneOrChatId: string, limit = 50): Promise<any[]> {
     const baseUrl = this.getServerUrl();
@@ -949,29 +1046,56 @@ export const uazapiService = {
 
     for (const chatId of possibleChatIds) {
       try {
-        // Tenta primeiro /message/find (padrão UAZAPI v2)
-        const res = await fetch(`${baseUrl}/message/find`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'token': instanceToken,
-          },
-          body: JSON.stringify({
-            chatid: chatId,
-            chatId: chatId,
-            remoteJid: chatId.includes('@') ? chatId : `${chatId}@s.whatsapp.net`,
-            phone: cleanPhone,
-            limit,
-            order: 'asc',
-          }),
-        });
+        // /message/find (UAZAPI v2): retorna mais recentes primeiro com paginação por offset
+        const allMessages: any[] = [];
+        let offset = 0;
+        const pageSize = Math.min(limit, 200); // Busca em páginas de até 200
+        let hasMore = true;
 
-        if (res.ok) {
+        while (hasMore && allMessages.length < limit) {
+          const res = await fetch(`${baseUrl}/message/find`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'token': instanceToken,
+            },
+            body: JSON.stringify({
+              chatid: chatId,
+              limit: pageSize,
+              offset,
+            }),
+          });
+
+          if (!res.ok) break;
+
           const data = await res.json();
-          const messages = Array.isArray(data) ? data : (data.messages || data.data || []);
-          if (Array.isArray(messages) && messages.length > 0) {
-            return messages;
+          const messages: any[] = Array.isArray(data) ? data : (data.messages || data.data || []);
+          if (!Array.isArray(messages) || messages.length === 0) break;
+
+          allMessages.push(...messages);
+
+          // Usa pagination.nextOffset quando disponível para evitar saltos
+          const pagination = data.pagination;
+          if (pagination?.hasMore && pagination?.nextOffset != null) {
+            offset = pagination.nextOffset;
+            hasMore = true;
+          } else {
+            hasMore = false;
           }
+        }
+
+        if (allMessages.length > 0) {
+          // Reordena cronologicamente (mais antigo primeiro) para exibição correta na tela
+          allMessages.sort((a, b) => {
+            const tsA = typeof a.messageTimestamp === 'number'
+              ? (a.messageTimestamp > 1e11 ? a.messageTimestamp : a.messageTimestamp * 1000)
+              : new Date(a.timestamp || a.createdAt || 0).getTime();
+            const tsB = typeof b.messageTimestamp === 'number'
+              ? (b.messageTimestamp > 1e11 ? b.messageTimestamp : b.messageTimestamp * 1000)
+              : new Date(b.timestamp || b.createdAt || 0).getTime();
+            return tsA - tsB;
+          });
+          return allMessages.slice(-limit); // Retorna as `limit` mais recentes em ordem cronológica
         }
       } catch {
         // Tenta fallback
@@ -1014,6 +1138,13 @@ export const uazapiService = {
     startTimestamp: number;
     endTimestamp?: number;
     limitPerChat?: number;
+    /** Quando > 100, pagina a lista de conversas (/chat/find compacto) em vez do teto antigo de 100 */
+    maxChats?: number;
+    /** Restringe a recuperação a estas conversas (não lista o chip): usado para reler UMA conversa após pedir histórico ao celular */
+    onlyChats?: Array<{ wa_chatid: string; phone: string; wa_name?: string; image?: string }>;
+    signal?: AbortSignal;
+    /** Progresso real: fase 'chats' (listando) e 'messages' (conversa a conversa) */
+    onProgress?: (p: { phase: 'chats' | 'messages'; done: number; total: number; name?: string }) => void;
   }): Promise<Array<{
     instanceToken: string;
     senderPhone: string;
@@ -1026,15 +1157,35 @@ export const uazapiService = {
     fromMe?: boolean;
     rawPayload: any;
   }>> {
-    const { startTimestamp, endTimestamp = Date.now(), limitPerChat = 50 } = options;
-    const chats = await this.listRecentChats(instanceToken, 100);
+    const { startTimestamp, endTimestamp = Date.now(), limitPerChat = 50, signal, onProgress } = options;
+    const chats = options.onlyChats
+      ? options.onlyChats
+      : (options.maxChats && options.maxChats > 100)
+      ? await this.listChatsPaged(instanceToken, {
+          maxChats: options.maxChats,
+          signal,
+          onProgress: (n) => onProgress?.({ phase: 'chats', done: n, total: n }),
+        })
+      : await this.listRecentChats(instanceToken, 100);
     if (!chats || chats.length === 0) return [];
 
     const recoveredMessages: Array<any> = [];
     const seenMsgIds = new Set<string>();
+    let chatIndex = 0;
 
     for (const chat of chats) {
+      if (signal?.aborted) break;
+      chatIndex += 1;
       const rawJid = chat.wa_chatid || chat.id || chat.jid || '';
+
+      // Conversa cuja última mensagem é anterior ao período não tem nada a recuperar: não gasta chamadas
+      const chatLastRaw = Number(chat.wa_lastMsgTimestamp || chat.wa_lastMessageTimestamp || 0);
+      if (chatLastRaw > 0) {
+        const chatLastMs = chatLastRaw > 1e11 ? chatLastRaw : chatLastRaw * 1000;
+        if (chatLastMs < startTimestamp) { onProgress?.({ phase: 'messages', done: chatIndex, total: chats.length }); continue; }
+      }
+      onProgress?.({ phase: 'messages', done: chatIndex, total: chats.length, name: chat.wa_name || chat.name || chat.wa_contactName });
+
       if (rawJid.includes('@g.us') || rawJid.includes('@newsletter') || rawJid.includes('@broadcast') || rawJid === 'status@broadcast') {
         continue;
       }
@@ -1111,6 +1262,10 @@ export const uazapiService = {
 
           if (!text && !mediaUrl) continue;
 
+          // Ids da UAZAPI v2: `id` = owner:messageid (completo) e `messageid` = curto. Sem isso a mídia não pode ser baixada depois.
+          const fullWaId = typeof msg.id === 'string' ? msg.id : undefined;
+          const shortWaId = msg.messageid || msg.messageId || (fullWaId && fullWaId.includes(':') ? fullWaId.split(':').pop() : fullWaId) || msg.key?.id;
+
           recoveredMessages.push({
             instanceToken,
             senderPhone: phone,
@@ -1121,8 +1276,10 @@ export const uazapiService = {
             mediaUrl,
             timestamp: new Date(msgTime || Date.now()).toISOString(),
             fromMe: isFromMe,
+            messageId: shortWaId,
+            waId: fullWaId,
             rawPayload: msg,
-          });
+          } as any);
         }
       } else if (chat.wa_lastMessage && chat.wa_lastMessageTimestamp) {
         // Fallback: Usa o lastMessage do chat se caiu no intervalo
@@ -1343,6 +1500,34 @@ export const uazapiService = {
       return { success: true, data };
     } catch (err: any) {
       return { success: false, error: err.message || 'Falha ao consultar webhook global.' };
+    }
+  },
+
+  /**
+   * Obtém a URL de foto de perfil de um contato do WhatsApp via UAZAPI.
+   * Endpoint: GET /chat/profilePicture?phone={phone}
+   * Header: token: $INSTANCE_TOKEN
+   * Retorna a URL da foto ou null se o contato não tiver foto ou for privado.
+   */
+  async getProfilePicture(instanceToken: string, phone: string): Promise<string | null> {
+    const baseUrl = this.getServerUrl();
+    if (!baseUrl || !instanceToken || !phone) return null;
+    const cleanPhone = phone.replace(/\D/g, '');
+    if (!cleanPhone) return null;
+
+    try {
+      const res = await fetch(`${baseUrl}/chat/profilePicture?phone=${encodeURIComponent(cleanPhone)}`, {
+        method: 'GET',
+        headers: { token: instanceToken },
+      });
+      if (!res.ok) return null;
+      const data = await res.json().catch(() => null);
+      // UAZAPI retorna { profilePictureUrl: "https://..." } ou { url: "..." }
+      const url: string | null =
+        data?.profilePictureUrl || data?.url || data?.image || data?.imagePreview || null;
+      return url || null;
+    } catch {
+      return null;
     }
   },
 };

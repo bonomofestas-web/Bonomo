@@ -458,6 +458,16 @@ html.dark {
   box-shadow: 0 0 0 2px var(--adm-accent-bg, rgba(20, 169, 215, 0.2));
 }
 
+/* Foco visivel apenas para navegacao por teclado (nao afeta cliques com mouse) */
+button:focus-visible,
+[role="button"]:focus-visible,
+a:focus-visible,
+select:focus-visible,
+[tabindex]:not([tabindex="-1"]):focus-visible {
+  outline: 2px solid var(--adm-accent, #14A9D7) !important;
+  outline-offset: 2px;
+}
+
 .adm-input::placeholder {
   color: var(--adm-text-muted, #647E8C);
   opacity: 0.8;

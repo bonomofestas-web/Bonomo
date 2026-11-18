@@ -668,31 +668,46 @@ class UazapiSseManager {
           }
         }
 
-        // 4. Detecção de payload JSON cru contido em text (ex: {"URL":"https://mmg.whatsapp.net/...", "mimetype":"audio/ogg"} ou audioMessage)
-        if (text && text.startsWith('{') && (text.includes('mimetype') || text.includes('audio') || text.includes('ptt') || text.includes('directPath') || text.includes('mmg.whatsapp.net'))) {
+        // 4. Detecção de payload JSON cru contido em text (ex: {"URL":"https://mmg.whatsapp.net/...", "mimetype":"image/jpeg"} ou audioMessage)
+        if (text && text.startsWith('{') && (text.includes('mimetype') || text.includes('audio') || text.includes('image') || text.includes('document') || text.includes('video') || text.includes('ptt') || text.includes('directPath') || text.includes('mmg.whatsapp.net'))) {
           try {
             const parsed = JSON.parse(text);
             const foundUrl = parsed.URL || parsed.url || parsed.fileURL || parsed.mediaUrl || parsed.directPath;
             const mimetype = String(parsed.mimetype || parsed.mime || '').toLowerCase();
             if (foundUrl) {
               mediaUrl = mediaUrl || foundUrl;
-              if (mimetype.includes('image')) {
+              if (mimetype.includes('image') || text.includes('imageMessage')) {
                 mediaType = 'image';
                 text = '📷 Foto';
-              } else if (mimetype.includes('video')) {
+              } else if (mimetype.includes('video') || text.includes('videoMessage')) {
                 mediaType = 'video';
                 text = '🎥 Vídeo';
               } else if (mimetype.includes('audio') || parsed.ptt || text.includes('ptt') || text.includes('audioMessage')) {
                 mediaType = 'audio';
                 text = '🎵 Mensagem de voz';
+              } else if (mimetype.includes('pdf') || mimetype.includes('document') || text.includes('documentMessage')) {
+                mediaType = 'document';
+                text = '📄 Documento';
               }
             }
           } catch {
-            const urlMatch = text.match(/"URL"\s*:\s*"([^"]+)"/i) || (text.includes('audio') ? text.match(/https:\/\/mmg\.whatsapp\.net[^\s"'}]+/i) : null);
+            const urlMatch = text.match(/"URL"\s*:\s*"([^"]+)"/i) || text.match(/https:\/\/mmg\.whatsapp\.net[^\s"'}]+/i);
             if (urlMatch) {
               mediaUrl = mediaUrl || urlMatch[1] || urlMatch[0];
-              mediaType = 'audio';
-              text = '🎵 Mensagem de voz';
+              const lowerText = text.toLowerCase();
+              if (lowerText.includes('image') || /\.(jpg|jpeg|png|webp|gif)/i.test(mediaUrl)) {
+                mediaType = 'image';
+                text = '📷 Foto';
+              } else if (lowerText.includes('video') || /\.(mp4|mov|webm)/i.test(mediaUrl)) {
+                mediaType = 'video';
+                text = '🎥 Vídeo';
+              } else if (lowerText.includes('document') || lowerText.includes('pdf') || /\.(pdf|docx?|xlsx?)/i.test(mediaUrl)) {
+                mediaType = 'document';
+                text = '📄 Documento';
+              } else if (lowerText.includes('audio') || lowerText.includes('ptt') || /\.(ogg|mp3|opus|wav)/i.test(mediaUrl)) {
+                mediaType = 'audio';
+                text = '🎵 Mensagem de voz';
+              }
             }
           }
         }

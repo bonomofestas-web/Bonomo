@@ -709,8 +709,8 @@ export const AdminCrmWorkspaceView: React.FC<AdminCrmWorkspaceViewProps> = ({
                       Funcionalidade sendo desenvolvida. Aguarde.
                     </p>
 
-                    <div style={{ fontSize: '0.7rem', color: 'var(--adm-accent)', fontWeight: 700, background: 'rgba(212,175,55,0.1)', padding: '4px 10px', borderRadius: '8px' }}>
-                      ⚡ Conexão segura em implantação
+                    <div style={{ fontSize: '0.7rem', color: 'var(--adm-accent)', fontWeight: 700, background: 'rgba(212,175,55,0.1)', padding: '4px 10px', borderRadius: '8px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                      <Lock size={12} /> Conexão segura em implantação
                     </div>
                   </div>
                 </div>

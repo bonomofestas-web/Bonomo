@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { 
-  X, UserPlus, Phone, User, DollarSign, Building2, 
-  MessageSquare, Sparkles, ArrowRight, Loader2, Zap, Sliders, GitBranch, AlertTriangle 
+import {
+  X, UserPlus, Phone, User, DollarSign, Building2,
+  MessageSquare, Sparkles, ArrowRight, Loader2, Zap, Sliders, GitBranch, AlertTriangle
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import type { LeadSource, CrmStage } from '../../types/admin';
@@ -25,15 +25,15 @@ export const AdminNewLeadModal: React.FC<AdminNewLeadModalProps> = ({
   initialMode = 'quick',
   onLeadCreated,
 }) => {
-  const { 
-    venues, 
-    funnels, 
+  const {
+    venues,
+    funnels,
     allFunnels,
-    sources, 
-    activeVenueId, 
+    sources,
+    activeVenueId,
     currentUser,
     leads,
-    createLead 
+    createLead
   } = useAdminState();
 
   const funnelsPool = useMemo(() => {
@@ -48,15 +48,15 @@ export const AdminNewLeadModal: React.FC<AdminNewLeadModalProps> = ({
   const [sourceId, setSourceId] = useState<string>('');
   const [estimatedBudget, setEstimatedBudget] = useState<string>('');
   const [notes, setNotes] = useState('');
-  
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   // Localiza o funil atual em que o usuário está
   const targetFunnel = useMemo(() => {
     if (defaultFunnelId) {
-      const found = funnelsPool.find(f => 
-        f.id === defaultFunnelId || 
+      const found = funnelsPool.find(f =>
+        f.id === defaultFunnelId ||
         f.name.toLowerCase().trim() === defaultFunnelId.toLowerCase().trim()
       );
       if (found) return found;
@@ -187,7 +187,7 @@ export const AdminNewLeadModal: React.FC<AdminNewLeadModalProps> = ({
       const lp = (l.phone || '').replace(/\D/g, '');
       if (!lp) return false;
 
-      return lp === cleanDigits || 
+      return lp === cleanDigits ||
         (cleanDigits.length >= 8 && lp.endsWith(cleanDigits.slice(-8))) ||
         (lp.length >= 8 && cleanDigits.endsWith(lp.slice(-8)));
     }) || null;
@@ -241,7 +241,7 @@ export const AdminNewLeadModal: React.FC<AdminNewLeadModalProps> = ({
       // Origem legível
       const selectedSourceObj = sources.find(s => s.id === sourceId);
       const parsedBudget = (mode === 'full' && estimatedBudget)
-        ? parseFloat(estimatedBudget.replace(/\./g, '').replace(',', '.')) 
+        ? parseFloat(estimatedBudget.replace(/\./g, '').replace(',', '.'))
         : undefined;
 
       const newId = await createLead({
@@ -277,7 +277,7 @@ export const AdminNewLeadModal: React.FC<AdminNewLeadModalProps> = ({
   const fixedVenueName = venues.find(v => v.id === targetFunnel?.venueId)?.name;
 
   return (
-    <div 
+    <div
       style={{
         position: 'fixed',
         inset: 0,
@@ -294,7 +294,7 @@ export const AdminNewLeadModal: React.FC<AdminNewLeadModalProps> = ({
         if (e.target === e.currentTarget && !isSubmitting) onClose();
       }}
     >
-      <div 
+      <div
         style={{
           width: '100%',
           maxWidth: '520px',
@@ -310,7 +310,7 @@ export const AdminNewLeadModal: React.FC<AdminNewLeadModalProps> = ({
         onClick={(e) => e.stopPropagation()}
       >
         {/* ── HEADER ── */}
-        <div 
+        <div
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -321,7 +321,7 @@ export const AdminNewLeadModal: React.FC<AdminNewLeadModalProps> = ({
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <div 
+            <div
               style={{
                 width: '36px',
                 height: '36px',
@@ -340,7 +340,7 @@ export const AdminNewLeadModal: React.FC<AdminNewLeadModalProps> = ({
                 {mode === 'quick' ? 'Cadastro Rápido de Lead' : 'Cadastro Personalizado de Lead'}
               </h2>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '3px' }}>
-                <span 
+                <span
                   style={{
                     fontSize: '0.72rem',
                     fontWeight: 700,
@@ -415,7 +415,7 @@ export const AdminNewLeadModal: React.FC<AdminNewLeadModalProps> = ({
               }}
             >
               <Zap size={14} />
-              <span>⚡ Cadastro Rápido</span>
+              <span>Cadastro Rápido</span>
             </button>
             <button
               type="button"
@@ -439,7 +439,7 @@ export const AdminNewLeadModal: React.FC<AdminNewLeadModalProps> = ({
               }}
             >
               <Sliders size={14} />
-              <span>📋 Cadastro Personalizado</span>
+              <span>Cadastro Personalizado</span>
             </button>
           </div>
         </div>
@@ -447,7 +447,7 @@ export const AdminNewLeadModal: React.FC<AdminNewLeadModalProps> = ({
         {/* ── FORM BODY ── */}
         <form onSubmit={handleSubmit} style={{ padding: '16px 20px 20px 20px', display: 'flex', flexDirection: 'column', gap: '14px', background: 'var(--adm-bg-card, #FFFFFF)' }}>
           {errorMsg && (
-            <div 
+            <div
               style={{
                 padding: '10px 14px',
                 backgroundColor: 'rgba(239, 68, 68, 0.08)',
@@ -614,8 +614,8 @@ export const AdminNewLeadModal: React.FC<AdminNewLeadModalProps> = ({
                         fontWeight: 700,
                         color: (matchedExistingLead as any).status === 'archived' || (matchedExistingLead.stage as string) === 'archived' ? '#94A3B8' : '#2563EB',
                       }}>
-                        {(matchedExistingLead as any).status === 'archived' || (matchedExistingLead.stage as string) === 'archived' 
-                          ? 'Arquivado' 
+                        {(matchedExistingLead as any).status === 'archived' || (matchedExistingLead.stage as string) === 'archived'
+                          ? 'Arquivado'
                           : `${funnelsPool.find(f => f.id === matchedExistingLead.funnelId)?.name || 'Funil Comercial'} (${matchedExistingLead.stage})`}
                       </span>
                     </div>
@@ -765,7 +765,7 @@ export const AdminNewLeadModal: React.FC<AdminNewLeadModalProps> = ({
           )}
 
           {/* Informativo de Automação */}
-          <div 
+          <div
             style={{
               padding: '8px 12px',
               borderRadius: '8px',
@@ -783,7 +783,7 @@ export const AdminNewLeadModal: React.FC<AdminNewLeadModalProps> = ({
           </div>
 
           {/* ── FOOTER ACTIONS ── */}
-          <div 
+          <div
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -838,7 +838,8 @@ export const AdminNewLeadModal: React.FC<AdminNewLeadModalProps> = ({
                 </>
               ) : (
                 <>
-                  <span>{mode === 'quick' ? '⚡ Criar Lead Rápido' : 'Criar Lead Completo'}</span>
+                  {mode === 'quick' && <Zap size={14} />}
+                  <span>{mode === 'quick' ? 'Criar Lead Rápido' : 'Criar Lead Completo'}</span>
                   <ArrowRight size={15} />
                 </>
               )}

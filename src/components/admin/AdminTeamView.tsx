@@ -1,3 +1,5 @@
+import { animateList } from '../../utils/animateList';
+import { HeaderActions } from './HeaderActions';
 import React, { useState, useMemo } from 'react';
 import { 
   Users, Crown, ShieldCheck, PhoneCall, Handshake, 
@@ -92,42 +94,21 @@ export const AdminTeamView: React.FC = () => {
       animation: 'fadeIn 0.25s ease-out',
       fontFamily: "'Inter', sans-serif",
     }}>
-      {/* Page Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <Users size={22} color="var(--adm-accent)" />
-            <h1 style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--adm-text-title)', letterSpacing: '-0.3px', margin: 0 }}>
-              Equipe do Workspace
-            </h1>
-            <span style={{
-              fontSize: '0.72rem',
-              fontWeight: 700,
-              background: 'rgba(20, 169, 215, 0.12)',
-              color: '#14A9D7',
-              border: '1px solid rgba(20, 169, 215, 0.3)',
-              padding: '2px 8px',
-              borderRadius: '20px',
-            }}>
-              {sortedCollaborators.length} membros
-            </span>
-          </div>
-          <p style={{ fontSize: '0.8rem', color: 'var(--adm-text-muted)', margin: '4px 0 0 0' }}>
-            Colaboradores e atendentes da rede, ordenados por hierarquia com canal direto de contato.
-          </p>
-        </div>
-
-        {/* Filter by Venue */}
+      {/* Título no breadcrumb; contagem e filtro no menu superior */}
+      <HeaderActions>
+        <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#14A9D7', background: 'rgba(20, 169, 215, 0.12)', border: '1px solid rgba(20, 169, 215, 0.3)', padding: '3px 10px', borderRadius: '20px', whiteSpace: 'nowrap' }}>
+          {sortedCollaborators.length} membros
+        </span>
         {venues.length > 1 && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Building2 size={15} color="var(--adm-text-muted)" />
+            <Building2 size={15} color="#94A3B8" />
             <select
               value={selectedVenueFilter}
               onChange={(e) => setSelectedVenueFilter(e.target.value)}
               style={{
-                background: 'var(--adm-bg-card)',
-                border: '1px solid var(--adm-border)',
-                color: 'var(--adm-text-title)',
+                background: 'rgba(255,255,255,0.08)',
+                border: '1px solid rgba(255,255,255,0.14)',
+                color: '#E2E8F0',
                 borderRadius: '10px',
                 padding: '7px 12px',
                 fontSize: '0.8rem',
@@ -142,18 +123,22 @@ export const AdminTeamView: React.FC = () => {
             </select>
           </div>
         )}
-      </div>
+      </HeaderActions>
 
       {/* Grid of Clean Cards (5 per row on desktop) */}
-      <div style={{
+      <div ref={animateList} style={{
         display: 'grid',
         gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))',
         gap: '16px',
       }}>
+        {sortedCollaborators.length === 0 && (
+          <div style={{ gridColumn: '1 / -1', padding: '40px 16px', textAlign: 'center', color: 'var(--adm-text-muted)', border: '1px dashed var(--adm-border)', borderRadius: '14px', fontSize: '0.84rem', fontWeight: 600 }}>
+            Nenhum membro da equipe encontrado para este filtro.
+          </div>
+        )}
         {sortedCollaborators.map(collab => {
           const isMe = Boolean(currentUser && (collab.id === currentUser.id || collab.email === currentUser.email));
           const roleConfig = getRoleBadge(collab.role);
-          const RoleIcon = roleConfig.icon;
           const cleanPhone = cleanWhatsappNumber(collab.phone);
 
           const assignedVenues = (collab.venueIds || [])
@@ -255,37 +240,18 @@ export const AdminTeamView: React.FC = () => {
                   {collab.name}
                 </div>
 
-                {collab.customJobTitle && (
-                  <div style={{
-                    fontSize: '0.70rem',
-                    color: 'var(--adm-accent)',
-                    fontWeight: 600,
-                    whiteSpace: 'nowrap',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    marginTop: '2px',
-                  }}>
-                    {collab.customJobTitle}
-                  </div>
-                )}
+                <div style={{
+                  fontSize: '0.74rem',
+                  color: collab.customJobTitle ? 'var(--adm-accent)' : 'var(--adm-text-muted)',
+                  fontWeight: 600,
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  marginTop: '2px',
+                }} title={collab.customJobTitle ? undefined : 'Cargo não cadastrado. Exibindo nível de acesso.'}>
+                  {collab.customJobTitle || roleConfig.label}
+                </div>
               </div>
-
-              {/* Role Badge */}
-              <span style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '4px',
-                padding: '2px 8px',
-                borderRadius: '6px',
-                background: roleConfig.bg,
-                border: `1px solid ${roleConfig.border}`,
-                color: roleConfig.color,
-                fontSize: '0.62rem',
-                fontWeight: 700,
-              }}>
-                <RoleIcon size={10} />
-                <span>{roleConfig.label}</span>
-              </span>
 
               {/* Assigned Venues */}
               {assignedVenues.length > 0 && (

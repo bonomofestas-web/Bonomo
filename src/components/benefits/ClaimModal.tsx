@@ -1,3 +1,4 @@
+import { toast } from 'sonner';
 import React from 'react';
 import { X, Sparkles, Copy } from 'lucide-react';
 import type { Benefit } from '../../types';
@@ -13,7 +14,7 @@ export const ClaimModal: React.FC<ClaimModalProps> = ({ benefit, onClose }) => {
   const handleCopyCode = () => {
     if (benefit.voucherCode) {
       navigator.clipboard.writeText(benefit.voucherCode);
-      alert('Código do Voucher Copiado para a área de transferência!');
+      toast.warning('Código do Voucher Copiado para a área de transferência!');
     }
   };
 

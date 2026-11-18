@@ -1,3 +1,4 @@
+import { toast } from 'sonner';
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { 
   X, Calendar, Circle, Users,
@@ -556,7 +557,7 @@ export const AdminTaskDetailModal: React.FC<AdminTaskDetailModalProps> = ({
     if (!currentStatus || currentStatus.groupKey === newGroup) return;
     const groupCount = availableStatuses.filter(s => s.groupKey === currentStatus.groupKey).length;
     if (groupCount <= 1) {
-      alert('Cada categoria deve manter pelo menos 1 status.');
+      toast.warning('Cada categoria deve manter pelo menos 1 status.');
       return;
     }
     const updated = availableStatuses.map(s => s.id === statusId ? { ...s, groupKey: newGroup } : s);
@@ -581,7 +582,7 @@ export const AdminTaskDetailModal: React.FC<AdminTaskDetailModalProps> = ({
     if (!toDelete) return;
     const groupCount = availableStatuses.filter(s => s.groupKey === toDelete.groupKey).length;
     if (groupCount <= 1) {
-      alert('Não é possível excluir o único status desta categoria.');
+      toast.warning('Não é possível excluir o único status desta categoria.');
       return;
     }
     const updated = availableStatuses.filter(s => s.id !== statusId);
@@ -642,7 +643,7 @@ export const AdminTaskDetailModal: React.FC<AdminTaskDetailModalProps> = ({
 
   const toggleAssignee = (collabId: string) => {
     if (!isManagerOrAdmin && currentUser?.id && collabId === currentUser.id && assignedToIds.includes(collabId)) {
-      alert('Colaboradores não podem remover a si mesmos como responsáveis desta tarefa.');
+      toast.warning('Colaboradores não podem remover a si mesmos como responsáveis desta tarefa.');
       return;
     }
     const nextIds = assignedToIds.includes(collabId)
@@ -760,32 +761,32 @@ export const AdminTaskDetailModal: React.FC<AdminTaskDetailModalProps> = ({
 
   const handleCreateTask = () => {
     if (!title.trim()) {
-      alert(`Por favor, informe o título.`);
+      toast.warning(`Por favor, informe o título.`);
       return;
     }
 
     if (contextInfo.key === 'followup' && !selectedLeadId) {
-      alert('Por favor, selecione o Lead do CRM para este Follow-up.');
+      toast.warning('Por favor, selecione o Lead do CRM para este Follow-up.');
       return;
     }
 
     if (contextInfo.key === 'visits_tastings') {
       if (!customType.trim()) {
-        alert('Por favor, selecione o Tipo de Agendamento (Visita ou Degustação).');
+        toast.warning('Por favor, selecione o Tipo de Agendamento (Visita ou Degustação).');
         return;
       }
       if (!selectedLeadId && !selectedClientId) {
-        alert('Por favor, vincule um Lead ou Cliente para este agendamento.');
+        toast.warning('Por favor, vincule um Lead ou Cliente para este agendamento.');
         return;
       }
       if (!sdrAssigneeId) {
-        alert('Por favor, vincule o SDR Notificador responsável pelas notificações.');
+        toast.warning('Por favor, vincule o SDR Notificador responsável pelas notificações.');
         return;
       }
     }
 
     if (contextInfo.key === 'appointments' && !selectedClientId && !selectedLeadId) {
-      alert('Por favor, selecione a Debutante / Cliente para este Compromisso.');
+      toast.warning('Por favor, selecione a Debutante / Cliente para este Compromisso.');
       return;
     }
 

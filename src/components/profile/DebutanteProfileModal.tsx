@@ -136,7 +136,7 @@ export const DebutanteProfileModal: React.FC<DebutanteProfileModalProps> = ({ is
 
         <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
           <ImageUploadField
-            label="Enviar Nova Foto (Cloudflare R2)"
+            label="Enviar Nova Foto de Perfil"
             value={avatarUrl}
             onChange={(newUrl) => setAvatarUrl(newUrl)}
             aspectRatio="1:1"

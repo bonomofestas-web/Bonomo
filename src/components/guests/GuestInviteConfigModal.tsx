@@ -216,7 +216,7 @@ export const GuestInviteConfigModal: React.FC<GuestInviteConfigModalProps> = ({ 
             {useCustomPhoto && (
               <div style={{ marginTop: '12px' }}>
                 <ImageUploadField
-                  label="Foto Exclusiva do Convite (Cloudflare R2)"
+                  label="Foto Exclusiva do Convite (Mídia HD)"
                   value={customPhotoUrl}
                   onChange={(url) => setCustomPhotoUrl(url)}
                   folder="invites"

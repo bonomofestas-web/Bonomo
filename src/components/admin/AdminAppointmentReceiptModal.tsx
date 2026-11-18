@@ -9,6 +9,7 @@ import { useAdminState } from '../../context/AdminStateContext';
 import { isPhoneMatch } from '../../services/leadService';
 import { formatPhone } from '../../utils/phoneFormatter';
 import type { CommercialCommitmentType, AdminTask } from '../../types/admin';
+import { toast } from 'sonner';
 
 export interface AppointmentReceiptData {
   id?: string;
@@ -395,7 +396,7 @@ export const AdminAppointmentReceiptModal: React.FC<AdminAppointmentReceiptModal
       link.click();
     } catch (err) {
       console.error('Erro ao gerar imagem:', err);
-      alert('Não foi possível gerar a imagem idêntica do comprovante.');
+      toast.error('Não foi possível gerar a imagem idêntica do comprovante.');
     } finally {
       setIsDownloading(false);
     }
@@ -437,7 +438,7 @@ export const AdminAppointmentReceiptModal: React.FC<AdminAppointmentReceiptModal
       onClose();
     } catch (err) {
       console.error('Erro ao anexar comprovante no chat:', err);
-      alert('Não foi possível anexar o comprovante no chat.');
+      toast.error('Não foi possível anexar o comprovante no chat.');
     } finally {
       setIsSharing(false);
     }
@@ -679,10 +680,10 @@ export const AdminAppointmentReceiptModal: React.FC<AdminAppointmentReceiptModal
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px' }}>
                       <Users size={16} color={themeColor} />
                       <strong style={{ fontSize: '0.85rem', color: '#0F172A' }}>
-                        Até {receipt.pax} {receipt.pax === 1 ? 'pessoa' : 'pessoas'}
+                        {receipt.pax} {receipt.pax === 1 ? 'convidado' : 'convidados'}
                       </strong>
                     </div>
-                    <span style={{ fontSize: '0.70rem', color: '#94A3B8' }}>Limite liberado</span>
+                    <span style={{ fontSize: '0.70rem', color: '#94A3B8' }}>Confirmados na reserva</span>
                   </div>
                 </div>
 

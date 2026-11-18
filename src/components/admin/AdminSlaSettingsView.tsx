@@ -1,6 +1,8 @@
+import { toast } from 'sonner';
+import { HeaderActions } from './HeaderActions';
 import React, { useState } from 'react';
 import { 
-  Clock, CheckCircle2, Sparkles, 
+  CheckCircle2, Sparkles, 
   RotateCcw, Check
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
@@ -15,11 +17,11 @@ export const AdminSlaSettingsView: React.FC = () => {
 
   const handleSave = async () => {
     if (idealMinutes <= 0) {
-      alert('O tempo ideal deve ser maior que zero minutos.');
+      toast.warning('O tempo ideal deve ser maior que zero minutos.');
       return;
     }
     if (criticalMinutes <= idealMinutes) {
-      alert('O tempo alarmante (crítico) deve ser estritamente maior que o tempo ideal.');
+      toast.warning('O tempo alarmante (crítico) deve ser estritamente maior que o tempo ideal.');
       return;
     }
 
@@ -34,7 +36,7 @@ export const AdminSlaSettingsView: React.FC = () => {
       setTimeout(() => setSaveToast(false), 2500);
     } catch (err) {
       console.error('Erro ao salvar SLA:', err);
-      alert('Erro ao salvar as configurações.');
+      toast.error('Erro ao salvar as configurações.');
     } finally {
       setIsSaving(false);
     }
@@ -56,41 +58,8 @@ export const AdminSlaSettingsView: React.FC = () => {
       gap: '24px',
       fontFamily: "'Plus Jakarta Sans', sans-serif",
     }}>
-      {/* Header */}
-      <div style={{
-        background: 'var(--adm-bg-card, #FFFFFF)',
-        borderRadius: '16px',
-        border: '1px solid var(--adm-border, #E2E8F0)',
-        padding: '24px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        gap: '20px',
-        boxShadow: '0 2px 8px rgba(0,0,0,0.03)',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <div style={{
-            width: '48px',
-            height: '48px',
-            borderRadius: '12px',
-            background: 'rgba(20, 169, 215, 0.12)',
-            color: '#14A9D7',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            flexShrink: 0,
-          }}>
-            <Clock size={24} />
-          </div>
-          <div>
-            <h1 style={{ margin: 0, fontSize: '1.35rem', fontWeight: 900, color: 'var(--adm-text-title, #0F172A)' }}>
-              SLA de Tempo de Resposta (Atendimento)
-            </h1>
-            <p style={{ margin: '4px 0 0', fontSize: '0.84rem', color: 'var(--adm-text-muted, #64748B)' }}>
-              Configure os limites de tempo de espera para respostas a clientes no WhatsApp e Kanban.
-            </p>
-          </div>
-        </div>
+      {/* Título no breadcrumb; ações no menu superior */}
+      <HeaderActions>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <button
@@ -103,8 +72,8 @@ export const AdminSlaSettingsView: React.FC = () => {
               padding: '9px 16px',
               borderRadius: '8px',
               background: 'transparent',
-              border: '1px solid var(--adm-border, #CBD5E1)',
-              color: 'var(--adm-text-muted, #64748B)',
+              border: '1px solid rgba(255,255,255,0.14)',
+              color: '#CBD5E1',
               fontSize: '0.80rem',
               fontWeight: 700,
               cursor: 'pointer',
@@ -138,7 +107,7 @@ export const AdminSlaSettingsView: React.FC = () => {
             <span>{isSaving ? 'Salvando...' : 'Salvar Parâmetros'}</span>
           </button>
         </div>
-      </div>
+      </HeaderActions>
 
       {/* 3 Threshold Cards */}
       <div style={{

@@ -80,6 +80,7 @@ export interface AdminUser {
   primarySector?: 'comercial' | 'pos_venda' | 'gerencia' | 'financeiro';
   permissions?: string[];
   pinnedFunnelIds?: string[];
+  customJobTitle?: string; // Título / Cargo executivo personalizado
 }
 
 export interface Collaborator {
@@ -105,6 +106,7 @@ export interface Collaborator {
   pinnedFunnelIds?: string[]; // IDs dos funis fixados no menu lateral pelo usuário
   theme?: ThemeMode;
   masterId?: string; // ID da conta Master a que este colaborador está vinculado
+  goals?: CollaboratorGoals; // Meta individual
   createdAt: string;
 }
 
@@ -150,8 +152,35 @@ export interface VenueGoals {
   salesTarget: number;              // Meta de vendas/fechamentos (ex: 12)
   leadsTarget: number;              // Meta de leads captados (ex: 60)
   responseTimeTargetMinutes: number; // Meta de tempo de resposta em minutos (ex: 15 min)
+  appointmentsTarget?: number;      // Meta de agendamentos (visitas + degustações)
   period: 'monthly' | 'quarterly' | 'yearly';
   deadlineDate?: string;
+}
+
+// Meta consolidada por papel (SDRs ou Closers) em uma unidade
+export interface TeamGoals {
+  id?: string;
+  masterId: string;
+  venueId: string;
+  role: 'sdr' | 'closer';
+  period: 'monthly' | 'quarterly' | 'yearly';
+  month: number; // 1-12; 0 quando não mensal
+  year: number;
+  revenueTarget: number;
+  appointmentsTarget: number;
+  closingsTarget: number;
+  responseTimeTargetMinutes: number;
+}
+
+// Meta individual do colaborador (collaborators.goals JSONB)
+export interface CollaboratorGoals {
+  revenueTarget?: number;
+  leadsTarget?: number; // leads / agendamentos
+  closingsTarget?: number;
+  responseTimeTargetMinutes?: number;
+  cycle: 'monthly' | 'weekly';
+  validFrom?: string;  // YYYY-MM-DD
+  validUntil?: string; // YYYY-MM-DD
 }
 
 export interface CollaboratorTimeLog {
@@ -284,6 +313,7 @@ export interface AdminTask {
   createdById: string;
   createdByName: string;
   assignedToIds: string[]; // multi-collaborator assignment
+  assignedToName?: string; // Nome legível do responsável principal
   leadId?: string; // CRM Lead direct connection
   leadName?: string;
   clientId?: string; // Post-sale client direct connection
@@ -595,6 +625,8 @@ export interface Lead {
   archivedAt?: string;        // Data em que o lead foi arquivado
   lastInteractionAt?: string; // Timestamp ISO da última interação / mensagem enviada ou recebida
   lastMessageDirection?: 'incoming' | 'outgoing'; // Direção da última mensagem
+  lastMessageText?: string;   // Prévia persistida da última mensagem de chat (lista lateral do WhatsApp, sem baixar histórico)
+  lastMessageAt?: string;     // Timestamp ISO da última mensagem de chat
   createdAt: string;
   updatedAt: string;
 }
@@ -826,6 +858,9 @@ export interface Client {
   venueName: string;
 
   packageSold: string;                   // Pacote fechado (ex: Pacote Imperial Ouro)
+  contractTitle?: string;                // Título persistido do contrato ex: 'Roberto Carlos – Manuella 15 Anos'
+  contractFileUrl?: string;              // Arquivo do contrato assinado
+  paymentFileUrl?: string;               // Comprovante de entrada / sinal
   dealValue: number;                     // Valor total do contrato (R$)
   baseContractValue?: number;            // Valor base original do contrato
   contractDate: string;                  // Data de fechamento do contrato
@@ -1026,6 +1061,114 @@ export interface VenueEvent {
   updatedAt?: string;
 }
 
+export type EventScheduleStatus =
+  | 'pre_reserva'
+  | 'confirmado'
+  | 'em_andamento'
+  | 'concluido'
+  | 'cancelado';
+
+export type EventShift = 'manha' | 'tarde' | 'noite' | 'dia_inteiro';
+
+export interface EventSchedule {
+  id: string;
+  masterId: string;
+  venueId: string;
+  venueName?: string;
+  contractId: string;               // Vínculo obrigatório com o Contrato
+  contactId: string;                // Vínculo obrigatório com o Contato principal
+  contractCode?: string;
+  contactName?: string;
+  contactPhone?: string;
+  title: string;
+  eventType?: string;
+  eventDate: string;                // YYYY-MM-DD
+  shift: EventShift;
+  startTime?: string;
+  endTime?: string;
+  guestCount?: number;
+  status: EventScheduleStatus;
+  blocksVenueDay?: boolean;
+  notes?: string;
+  contract?: Contract;
+  contact?: Contact;
+  venue?: Venue;
+  createdById?: string;
+  createdByName?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface RevenueMetrics {
+  totalRevenue: number;
+  contractsCount: number;
+  averageTicket: number;
+  monthlyBreakdown: Array<{
+    month: string;
+    year: number;
+    revenue: number;
+    contractsCount: number;
+  }>;
+}
+
+export interface FunnelStageConversion {
+  stageId: string;
+  stageName: string;
+  leadsCount: number;
+  conversionToNext: number;
+  dropoffRate: number;
+  uniqueLeadsCount?: number;
+}
+
+export interface FunnelConversionMetrics {
+  funnelId?: string;
+  totalLeads: number;
+  wonLeads: number;
+  lostLeads: number;
+  overallConversionRate: number;
+  stages: FunnelStageConversion[];
+  summary?: {
+    totalLeads: number;
+    qualifiedLeads: number;
+    scheduledAppointments: number;
+    completedAppointments: number;
+    proposals: number;
+    signedContracts: number;
+  };
+}
+
+export interface GoalComparisonMetrics {
+  venueId: string;
+  venueName?: string;
+  period: 'monthly' | 'quarterly' | 'yearly';
+  month?: number;
+  year?: number;
+  revenue: {
+    target: number;
+    achieved: number;
+    percentage: number;
+    remaining: number;
+  };
+  sales: {
+    target: number;
+    achieved: number;
+    percentage: number;
+    remaining: number;
+  };
+  leads: {
+    target: number;
+    achieved: number;
+    percentage: number;
+    remaining: number;
+  };
+  pace: {
+    daysElapsed: number;
+    totalDays: number;
+    projectedRevenue: number;
+    isPaceOnTrack: boolean;
+  };
+}
+
 export interface DebutanteAccount {
   id: string;
   venueId: string;
@@ -1189,10 +1332,12 @@ export interface Contact {
   name: string;
   nickname?: string;
   primaryPhone: string;
+  whatsappPhone?: string;
   secondaryPhone?: string;
   email?: string;
   cpf?: string;
   rg?: string;
+  profession?: string;
   birthDate?: string;
   profilePictureUrl?: string;
 
@@ -1200,6 +1345,7 @@ export interface Contact {
   postalCode?: string;
   street?: string;
   number?: string;
+  streetNumber?: string;
   complement?: string;
   neighborhood?: string;
   city?: string;
@@ -1229,8 +1375,14 @@ export interface ContactDependent {
   id: string;
   masterId: string;
   parentContactId: string;
-  dependentContactId: string;
-  kinship: string;                       // ex: 'Filho(a) / Debutante', 'Cônjuge', 'Mãe', 'Pai'
+  dependentContactId?: string;
+  name?: string;
+  relationship?: string;
+  kinship?: string;                       // ex: 'Filho(a) / Debutante', 'Cônjuge', 'Mãe', 'Pai'
+  birthDate?: string;
+  cpf?: string;
+  phone?: string;
+  notes?: string;
   createdAt: string;
   dependentContact?: Contact;
 }
@@ -1258,6 +1410,7 @@ export interface Contract {
   contractCode: string;                  // Código Base36 ex: 'CTR-2026-9BK7MZ'
   contactId: string;
   originLeadId?: string;
+  leadId?: string;
   originFunnelId?: string;
   venueId: string;                       // REGRA SUPREMA: UNIDADE ÚNICA
   venueName?: string;
@@ -1265,6 +1418,10 @@ export interface Contract {
   // Dados do Evento
   eventType: string;                     // '15_anos' | 'casamento' | 'infantil' | 'corporativo'
   eventTitle: string;                    // ex: '15 Anos Manuella Albuquerque'
+  contractTitle?: string;                // Título persistido do contrato ex: 'Roberto Carlos – Manuella 15 Anos'
+  title?: string;                        // Alias de contractTitle
+  clientId?: string;                     // Vínculo com a tabela clients
+  paymentFileUrl?: string;               // Comprovante de sinal/pagamento
   eventDate?: string;
   eventTime?: string;
   guestCount?: number;
@@ -1286,6 +1443,11 @@ export interface Contract {
 
   // Valores e Condições
   totalAmount: number;
+  entryAmount?: number;
+  balanceAmount?: number;
+  contractValue?: number;
+  packageChosen?: string;
+  paymentMethod?: string;
   paymentTerms?: Record<string, any> | string;
 
   // Responsáveis Eternos (Preservados mesmo se o usuário for deletado)
@@ -1308,6 +1470,7 @@ export interface Contract {
 
   // Destino Pós-Venda (Mesma Unidade)
   targetPosSaleFunnelIds?: string[];
+  targetPostSaleFunnelIds?: string[];
   placements?: ContractFunnelPlacement[];
 
   // App de Convidados e Documentação
@@ -1339,9 +1502,48 @@ export interface ContractFunnelPlacement {
   completedAt?: string;
   notes?: string;
   orderIndex?: number;
+  contract?: Contract;
   createdAt: string;
   updatedAt: string;
 }
+
+export type AdminTabType =
+  | 'home'
+  | 'tasks'
+  | 'quick-messages'
+  | 'team-calendar'
+  | 'dashboard'
+  | 'crm'
+  | 'contacts'
+  | 'leads'
+  | 'contracts'
+  | 'followups'
+  | 'whatsapp'
+  | 'post-sale-crm'
+  | 'post-sale-clients'
+  | 'vip-journey'
+  | 'post-sale-appointments'
+  | 'post-sale-visits-tastings'
+  | 'venue-events'
+  | 'team'
+  | 'sources'
+  | 'mql'
+  | 'sla-settings'
+  | 'debutantes'
+  | 'venue-goals'
+  | 'master-dashboard'
+  | 'venues'
+  | 'benefits'
+  | 'collaborators'
+  | 'templates'
+  | 'appointments'
+  | 'notifications'
+  | 'settings'
+  | 'dev-features'
+  | 'dev-users'
+  | 'dev-announcements'
+  | 'dev-support';
+
 
 
 

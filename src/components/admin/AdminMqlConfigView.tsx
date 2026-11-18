@@ -1,3 +1,5 @@
+import { toast } from 'sonner';
+import { HeaderActions } from './HeaderActions';
 import React, { useState, useMemo } from 'react';
 import { 
   Plus, Trash2, Edit2, X, ArrowRight, ArrowLeft,
@@ -194,7 +196,7 @@ export const AdminMqlConfigView: React.FC = () => {
   const handleToggleFunnelSelection = (funnelId: string) => {
     const isAlreadyLinked = icpProfiles.some(p => p.id !== editingProfile?.id && p.funnelIds.includes(funnelId));
     if (isAlreadyLinked) {
-      alert('Regra do CRM: Cada funil comercial só pode ter 1 Formulário de ICP vinculado.');
+      toast.warning('Regra do CRM: Cada funil comercial só pode ter 1 Formulário de ICP vinculado.');
       return;
     }
 
@@ -209,7 +211,7 @@ export const AdminMqlConfigView: React.FC = () => {
     const cleanName = profileNameInput.trim() || 'Formato de Qualificação';
 
     if (selectedFunnelIdsInput.length === 0 && funnels.length > 0) {
-      alert('Selecione pelo menos 1 Funil para este formato de qualificação.');
+      toast.warning('Selecione pelo menos 1 Funil para este formato de qualificação.');
       return;
     }
 
@@ -361,13 +363,13 @@ export const AdminMqlConfigView: React.FC = () => {
   const handleSaveQuestion = (e: React.FormEvent) => {
     e.preventDefault();
     if (!questionTitle.trim()) {
-      alert('Por favor, preencha o título da pergunta.');
+      toast.warning('Por favor, preencha o título da pergunta.');
       return;
     }
 
     const filledOptions = formOptions.filter(o => o.label.trim().length > 0);
     if (filledOptions.length < 2) {
-      alert('Por favor, preencha pelo menos 2 situações para a pergunta.');
+      toast.warning('Por favor, preencha pelo menos 2 situações para a pergunta.');
       return;
     }
 
@@ -426,38 +428,8 @@ export const AdminMqlConfigView: React.FC = () => {
         gap: '24px',
         fontFamily: "'Plus Jakarta Sans', sans-serif",
       }}>
-        {/* Header Principal */}
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: '16px',
-          flexWrap: 'wrap',
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-            <div style={{
-              width: '46px',
-              height: '46px',
-              borderRadius: '14px',
-              background: 'linear-gradient(135deg, rgba(20, 169, 215, 0.2) 0%, rgba(20, 169, 215, 0.05) 100%)',
-              border: '1px solid rgba(20, 169, 215, 0.4)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#14A9D7',
-              flexShrink: 0,
-            }}>
-              <IcpTargetUserIcon size={24} />
-            </div>
-            <div>
-              <h1 style={{ fontSize: '1.35rem', fontWeight: 900, color: 'var(--adm-text-title)', margin: 0, letterSpacing: '-0.3px' }}>
-                Qualificação de Leads por Funil
-              </h1>
-              <p style={{ fontSize: '0.80rem', color: 'var(--adm-text-muted)', margin: 0, marginTop: '2px' }}>
-                Crie formatos de qualificação e vincule aos funis comerciais. Cada funil possui exatamente 1 formato ativo.
-              </p>
-            </div>
-          </div>
+        {/* Título no breadcrumb; ações no menu superior */}
+        <HeaderActions>
 
           <button
             type="button"
@@ -477,7 +449,7 @@ export const AdminMqlConfigView: React.FC = () => {
             <Plus size={16} />
             <span>Novo Formato de Qualificação</span>
           </button>
-        </div>
+        </HeaderActions>
 
         {/* Alerta de Funis sem Qualificação */}
         {unlinkedFunnels.length > 0 && (

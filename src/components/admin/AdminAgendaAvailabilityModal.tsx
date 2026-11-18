@@ -1,3 +1,4 @@
+import { toast } from 'sonner';
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
   X, Calendar, Trash2, ShieldAlert, Sparkles,
@@ -542,11 +543,11 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
   // Avançar para o Passo 2 da Criação do Bloco (Calendário Split-View do Período)
   const handleAdvanceBlockStep = () => {
     if (!newBlockStart || !newBlockEnd) {
-      alert('Selecione data de início e término para o bloco.');
+      toast.warning('Selecione data de início e término para o bloco.');
       return;
     }
     if (newBlockStart > newBlockEnd) {
-      alert('A data de início deve ser anterior ou igual à data de término.');
+      toast.warning('A data de início deve ser anterior ou igual à data de término.');
       return;
     }
 
@@ -912,7 +913,7 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
     if (activeMode === 'block' && blockViewMode === 'editor' && blockCreationStep === 2) {
       const unconfigured = blockPeriodDays.filter(d => !blockDaysConfig[d]?.isConfigured);
       if (unconfigured.length > 0) {
-        alert(`Atenção: Existem ${unconfigured.length} data(s) ainda não configuradas no período (destacadas em branco no calendário).\n\nTodas as datas precisam ser configuradas (ativas ou desativadas) antes de salvar o bloco. Você também pode clicar no botão "Configurar Restantes com Padrão" para aprovar as datas pendentes.`);
+        toast.warning(`Atenção: Existem ${unconfigured.length} data(s) ainda não configuradas no período (destacadas em branco no calendário).\n\nTodas as datas precisam ser configuradas (ativas ou desativadas) antes de salvar o bloco. Você também pode clicar no botão "Configurar Restantes com Padrão" para aprovar as datas pendentes.`);
         return;
       }
 
@@ -977,7 +978,7 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
       setIsEditingRecurring(false);
     } catch (err) {
       console.error('Erro ao salvar disponibilidade:', err);
-      alert('Erro ao salvar as configurações no servidor.');
+      toast.error('Erro ao salvar as configurações no servidor.');
     } finally {
       setIsSaving(false);
     }
@@ -1008,7 +1009,7 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
       setActiveMode('hub');
     } catch (err) {
       console.error('Erro ao salvar split de closers:', err);
-      alert('Erro ao salvar as configurações.');
+      toast.error('Erro ao salvar as configurações.');
     } finally {
       setIsSaving(false);
     }

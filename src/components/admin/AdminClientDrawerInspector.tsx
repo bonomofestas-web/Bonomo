@@ -1,12 +1,14 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import { 
-  ChevronDown, Check, Heart, 
+  ChevronDown, Check, 
   Users, Sparkles, ExternalLink, 
   FileText, Copy, Plus, Trash2, Tag,
   Shield, MessageSquare,
   Gift, Award, Star,
-  ArrowRightLeft, Compass, UserPlus, CheckCircle2, Eye, X, Building2
+  ArrowRightLeft, Compass, UserPlus, CheckCircle2, Eye, X, Building2,
+  Calendar, ChevronLeft, Palette, Music, ScrollText, DollarSign, Workflow, Clock
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { useAdminState } from '../../context/AdminStateContext';
 import { maskPhoneInput, formatPhone } from '../../utils/phoneFormatter';
 import { renderFunnelOrStageIcon } from '../../utils/funnelIconLibrary';
@@ -78,6 +80,7 @@ const POST_SALE_STAGES: { id: ClientStage; label: string; color: string; bg: str
 export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProps> = ({
   lead,
   onStageChange,
+  onToggleCollapse,
   onOpenDebutanteApp,
   readOnly = false,
 }) => {
@@ -97,7 +100,6 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
   } = useAdminState();
 
   const [activeTab, setActiveTab] = useState<'ficha' | 'debutante' | 'comercial'>('ficha');
-  const [copiedCode, setCopiedCode] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   const [previewLeadId, setPreviewLeadId] = useState<string | null>(null);
   const [isStageDropdownOpen, setIsStageDropdownOpen] = useState(false);
@@ -110,9 +112,10 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
 
   // Subcontatos Form
   const [isAddingContact, setIsAddingContact] = useState(false);
+  const [isAddContactMenuOpen, setIsAddContactMenuOpen] = useState(false);
   const [newContactName, setNewContactName] = useState('');
   const [newContactPhone, setNewContactPhone] = useState('');
-  const [newContactRole, setNewContactRole] = useState<'mother' | 'father' | 'guardian' | 'self' | 'other'>('mother');
+  const [newContactRole, setNewContactRole] = useState<'copayer' | 'mother' | 'father' | 'guardian' | 'dependent' | 'self' | 'other'>('copayer');
   const [newContactEmail, setNewContactEmail] = useState('');
   const [newContactCpf, setNewContactCpf] = useState('');
   const [newContactIsDecisor, setNewContactIsDecisor] = useState(false);
@@ -255,12 +258,20 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
   const totalUpsellValue = upsellSales.reduce((acc, s) => acc + (Number(s.value) || 0), 0);
   const totalClientValue = baseValue + totalUpsellValue;
 
-  const handleCopyCode = () => {
-    const code = client?.code || lead.code || '';
-    if (!code) return;
-    navigator.clipboard.writeText(code);
-    setCopiedCode(true);
-    setTimeout(() => setCopiedCode(false), 2000);
+  const [copiedContractCode, setCopiedContractCode] = useState(false);
+  const contractCodeDisplay = useMemo(() => {
+    const raw = client?.code || lead.code || '';
+    if (raw.startsWith('CTR-')) return raw;
+    const clean = raw.replace(/[^a-zA-Z0-9]/g, '').slice(-6).toUpperCase() || '8M2K';
+    return `CTR-2026-${clean}`;
+  }, [client?.code, lead.code]);
+
+  const handleCopyContractCode = (e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    navigator.clipboard.writeText(contractCodeDisplay);
+    setCopiedContractCode(true);
+    toast.success(`Código do contrato ${contractCodeDisplay} copiado!`);
+    setTimeout(() => setCopiedContractCode(false), 2000);
   };
 
   const handleCopyDebutanteLink = () => {
@@ -430,6 +441,27 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
     transition: 'all 0.15s ease',
   };
 
+  const customSelectStyle: React.CSSProperties = {
+    appearance: 'none',
+    WebkitAppearance: 'none',
+    MozAppearance: 'none',
+    background: 'var(--adm-bg-input)',
+    backgroundImage: `url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2394A3B8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e")`,
+    backgroundRepeat: 'no-repeat',
+    backgroundPosition: 'right 8px center',
+    backgroundSize: '12px',
+    border: '1px solid var(--adm-border)',
+    borderRadius: '6px',
+    padding: '4px 26px 4px 8px',
+    fontSize: '0.74rem',
+    fontWeight: 600,
+    color: 'var(--adm-text-title)',
+    outline: 'none',
+    width: '100%',
+    cursor: readOnly ? 'default' : 'pointer',
+    transition: 'border-color 0.15s ease, box-shadow 0.15s ease',
+  };
+
   const sectionTitleStyle: React.CSSProperties = {
     display: 'flex',
     alignItems: 'center',
@@ -461,84 +493,227 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
         gap: '8px',
         background: 'var(--adm-bg-input)',
       }}>
-        {/* Top Bar: Status Tag & Botão Fechar/Recolher */}
+        {/* Top Bar: Código do Contrato + Status + Botão Fechar/Recolher */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
-          <span style={{
-            fontSize: '0.62rem',
-            fontWeight: 700,
-            padding: '2px 7px',
-            borderRadius: '6px',
-            background: currentStage === 'completed' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(6, 182, 212, 0.12)',
-            color: currentStage === 'completed' ? '#10B981' : '#06B6D4',
-            border: `1px solid ${currentStage === 'completed' ? 'rgba(16, 185, 129, 0.35)' : 'rgba(6, 182, 212, 0.3)'}`,
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '4px',
-          }}>
-            <Shield size={10} /> {currentStage === 'completed' ? 'Festa Realizada' : 'Cliente Ativo'}
-          </span>
-        </div>
-
-        {/* Nome do Cliente / Debutante (Editável Inline) */}
-        <div>
-          <input
-            type="text"
-            disabled={readOnly}
-            value={client?.birthdayPersonName || client?.name || lead.name}
-            onChange={(e) => {
-              const newName = e.target.value;
-              if (client) {
-                updateClient(client.id, { birthdayPersonName: newName, name: newName });
-              }
-            }}
-            placeholder="Nome da debutante..."
-            title="Clique para editar o nome da debutante"
-            style={{
-              ...seamlessInputStyle,
-              fontSize: '1.08rem',
-              fontWeight: 800,
-              color: 'var(--adm-text-title)',
-              padding: '1px 2px',
-            }}
-            onFocus={(e) => { e.currentTarget.style.borderBottomColor = 'var(--adm-accent, #06B6D4)'; }}
-            onBlur={(e) => { e.currentTarget.style.borderBottomColor = 'transparent'; }}
-          />
-
-          {/* Código do Cliente logo abaixo do nome */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            {/* Código Base36 do Contrato com Cópia */}
             <div style={{
               display: 'inline-flex',
               alignItems: 'center',
               gap: '4px',
-              padding: '2px 7px',
+              padding: '3px 8px',
               borderRadius: '6px',
               background: 'rgba(6, 182, 212, 0.15)',
               border: '1px solid rgba(6, 182, 212, 0.4)',
               color: '#06B6D4',
-              fontSize: '0.70rem',
+              fontSize: '0.72rem',
               fontWeight: 800,
               letterSpacing: '0.5px',
             }}>
-              <Tag size={11} color="#06B6D4" />
-              <span>{client?.code || lead.code || 'CLI-000'}</span>
+              <FileText size={11} color="#06B6D4" />
+              <span>{contractCodeDisplay}</span>
               <button
                 type="button"
-                onClick={handleCopyCode}
-                title="Copiar código do cliente"
+                onClick={handleCopyContractCode}
+                title="Copiar código do contrato"
                 style={{
                   background: 'transparent',
                   border: 'none',
-                  color: copiedCode ? '#10B981' : '#06B6D4',
+                  color: copiedContractCode ? '#10B981' : '#06B6D4',
                   cursor: 'pointer',
                   padding: '1px',
                   display: 'inline-flex',
                   alignItems: 'center',
+                  marginLeft: '2px',
                 }}
               >
-                {copiedCode ? <Check size={11} /> : <Copy size={11} />}
+                {copiedContractCode ? <Check size={11} /> : <Copy size={11} />}
               </button>
             </div>
+
+            <span style={{
+              fontSize: '0.62rem',
+              fontWeight: 700,
+              padding: '2px 7px',
+              borderRadius: '6px',
+              background: currentStage === 'completed' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(16, 185, 129, 0.10)',
+              color: currentStage === 'completed' ? '#10B981' : '#059669',
+              border: '1px solid rgba(16, 185, 129, 0.3)',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px',
+            }}>
+              <Shield size={10} /> {currentStage === 'completed' ? 'Festa Realizada' : 'Contrato Ativo'}
+            </span>
           </div>
+
+          {onToggleCollapse && (
+            <button
+              type="button"
+              onClick={onToggleCollapse}
+              title="Recolher Ficha do Contrato"
+              style={{
+                background: 'var(--adm-bg-input)',
+                border: '1px solid var(--adm-border)',
+                color: 'var(--adm-text-muted)',
+                cursor: 'pointer',
+                padding: '4px',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderRadius: '6px',
+                transition: 'all 0.15s ease',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = 'var(--adm-accent)';
+                e.currentTarget.style.borderColor = 'var(--adm-accent)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = 'var(--adm-text-muted)';
+                e.currentTarget.style.borderColor = 'var(--adm-border)';
+              }}
+            >
+              <ChevronLeft size={15} />
+            </button>
+          )}
+        </div>
+
+        {/* ── CARD ESSENCIAL DO CONTRATO (FINANCEIRO + DATAS + PESSOAS) ── */}
+        <div style={{
+          background: 'var(--adm-bg-card)',
+          border: '1px solid var(--adm-border)',
+          borderRadius: '10px',
+          padding: '10px 12px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '8px',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+        }}>
+          {/* Linha 1: Contratante & Homenageada */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
+                <span style={{ fontSize: '0.62rem', fontWeight: 800, textTransform: 'uppercase', color: 'var(--adm-text-muted)' }}>Contratante:</span>
+                <span style={{ fontSize: '0.80rem', fontWeight: 800, color: 'var(--adm-text-title)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {client?.payerName || client?.name || lead.name}
+                </span>
+              </div>
+              <span style={{ fontSize: '0.62rem', fontWeight: 700, padding: '1px 6px', borderRadius: '4px', background: 'rgba(59, 130, 246, 0.12)', color: '#3B82F6', border: '1px solid rgba(59, 130, 246, 0.3)' }}>
+                {client?.payerRelationship || 'Responsável'}
+              </span>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, flex: 1 }}>
+                <span style={{ fontSize: '0.62rem', fontWeight: 800, textTransform: 'uppercase', color: 'var(--adm-text-muted)' }}>
+                  {client?.eventType === 'Casamento' ? 'Noivos:' : client?.eventType === '15 Anos' ? 'Debutante:' : 'Homenageado(a):'}
+                </span>
+                <input
+                  type="text"
+                  disabled={readOnly}
+                  value={client?.birthdayPersonName || ''}
+                  onChange={(e) => {
+                    const newName = e.target.value;
+                    if (client) {
+                      updateClient(client.id, { birthdayPersonName: newName });
+                    }
+                  }}
+                  placeholder={client?.eventType === 'Casamento' ? 'Nome dos noivos...' : client?.eventType === '15 Anos' ? 'Nome da aniversariante...' : 'Nome do(a) homenageado(a)...'}
+                  title={client?.eventType === 'Casamento' ? 'Clique para editar o nome dos noivos' : client?.eventType === '15 Anos' ? 'Clique para editar o nome da debutante' : 'Clique para editar o nome do(a) homenageado(a)'}
+                  style={{
+                    ...seamlessInputStyle,
+                    fontSize: '0.80rem',
+                    fontWeight: 800,
+                    color: '#EC4899',
+                    padding: '0 2px',
+                    width: '100%',
+                  }}
+                />
+              </div>
+              <span style={{ fontSize: '0.62rem', fontWeight: 700, padding: '1px 6px', borderRadius: '4px', background: 'rgba(236, 72, 153, 0.12)', color: '#EC4899', border: '1px solid rgba(236, 72, 153, 0.3)' }}>
+                {client?.eventType || lead.eventType || 'Evento'}
+              </span>
+            </div>
+          </div>
+
+          {/* Divisor */}
+          <div style={{ height: '1px', background: 'var(--adm-border)' }} />
+
+          {/* Dados Financeiros Essenciais */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px', textAlign: 'center' }}>
+            <div style={{ padding: '4px', background: 'var(--adm-bg-input)', borderRadius: '6px' }}>
+              <span style={{ fontSize: '0.60rem', color: 'var(--adm-text-muted)', fontWeight: 700, textTransform: 'uppercase', display: 'block' }}>Total</span>
+              <strong style={{ fontSize: '0.78rem', color: '#10B981', fontWeight: 900 }}>
+                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(totalClientValue || 0)}
+              </strong>
+            </div>
+
+            <div style={{ padding: '4px', background: 'var(--adm-bg-input)', borderRadius: '6px' }}>
+              <span style={{ fontSize: '0.60rem', color: 'var(--adm-text-muted)', fontWeight: 700, textTransform: 'uppercase', display: 'block' }}>Entrada</span>
+              <strong style={{ fontSize: '0.78rem', color: 'var(--adm-text-title)', fontWeight: 800 }}>
+                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(downPayment || 0)}
+              </strong>
+            </div>
+
+            <div style={{ padding: '4px', background: 'var(--adm-bg-input)', borderRadius: '6px' }}>
+              <span style={{ fontSize: '0.60rem', color: 'var(--adm-text-muted)', fontWeight: 700, textTransform: 'uppercase', display: 'block' }}>Saldo</span>
+              <strong style={{ fontSize: '0.78rem', color: '#F59E0B', fontWeight: 800 }}>
+                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(installmentsRemaining || 0)}
+              </strong>
+            </div>
+          </div>
+
+          {/* Data do Evento & Local */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px', fontSize: '0.70rem', color: 'var(--adm-text-muted)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <Calendar size={11} color="#06B6D4" />
+              <span style={{ fontWeight: 700, color: 'var(--adm-text-title)' }}>
+                {partyDateStr ? new Date(partyDateStr + 'T12:00:00').toLocaleDateString('pt-BR') : 'Data não definida'}
+              </span>
+              {countdownDays !== null && (
+                <span style={{ fontSize: '0.62rem', color: countdownDays > 0 ? '#10B981' : '#F59E0B', fontWeight: 800 }}>
+                  ({countdownDays > 0 ? `Faltam ${countdownDays} dias` : 'Hoje'})
+                </span>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <Building2 size={11} color="#D4AF37" />
+              <span style={{ fontWeight: 600, maxWidth: '110px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {venues?.find(v => v.id === (client?.venueId || lead.venueId))?.name || client?.venueName || lead.venueName || 'Unidade não definida'}
+              </span>
+            </div>
+          </div>
+
+          {/* Botão de Atalho em Destaque: Consultar Lead Comercial de Origem */}
+          <button
+            type="button"
+            onClick={() => setActiveTab(activeTab === 'comercial' ? 'ficha' : 'comercial')}
+            style={{
+              padding: '6px 10px',
+              borderRadius: '7px',
+              border: activeTab === 'comercial' ? '1.5px solid #06B6D4' : '1px solid var(--adm-border)',
+              background: activeTab === 'comercial' ? 'rgba(6, 182, 212, 0.15)' : 'var(--adm-bg-input)',
+              color: activeTab === 'comercial' ? '#06B6D4' : 'var(--adm-text-title)',
+              fontSize: '0.72rem',
+              fontWeight: 800,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '6px',
+              transition: 'all 0.15s ease',
+              marginTop: '2px',
+            }}
+          >
+            <Compass size={12} color="#06B6D4" />
+            <span>
+              {activeTab === 'comercial' 
+                ? '← Voltar à Ficha do Contrato' 
+                : `Consultar Lead Comercial de Origem (${commercialLead?.code || client?.commercialLeadCode || 'LEAD'})`
+              }
+            </span>
+          </button>
         </div>
 
         {/* ── ETAPA DO FUNIL DE PÓS-VENDA (DROPDOWN + PROGRESS BAR) ── */}
@@ -885,7 +1060,7 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
       <div style={{ flex: 1, overflowY: 'auto', padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
         
         {/* ════════════════════════════════════════════════════════════════════ */}
-        {/* ABA 1: 📋 FICHA COMPLETA DO CLIENTE                                 */}
+        {/* ABA 1: FICHA COMPLETA DO CLIENTE                                 */}
         {/* ════════════════════════════════════════════════════════════════════ */}
         {activeTab === 'ficha' && (
           <>
@@ -915,7 +1090,7 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
                 }}
               >
                 <Building2 size={11} color="#14A9D7" />
-                <span>{client?.venueName || lead.venueName || 'Unidade Física'}</span>
+                <span>{venues?.find(v => v.id === (client?.venueId || lead.venueId))?.name || client?.venueName || lead.venueName || 'Unidade não definida'}</span>
               </span>
 
               {/* Tags Ativas */}
@@ -1102,70 +1277,13 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
               )}
             </div>
 
-            {/* ── SEÇÃO: ANIVERSARIANTE & EVENTO ── */}
+            {/* ── SEÇÃO: DADOS DO EVENTO & LOCAL ── */}
             <div style={sectionTitleStyle}>
-              <Heart size={12} color="#EC4899" />
-              <span>Aniversariante & Evento</span>
+              <Calendar size={12} color="#06B6D4" />
+              <span>Dados do Evento & Local</span>
             </div>
 
             <div style={cardStyle}>
-              <div style={cardRowStyle}>
-                <span style={cardLabelStyle}>Aniversariante</span>
-                <div style={cardValueStyle}>
-                  <input
-                    type="text"
-                    disabled={readOnly}
-                    value={client?.birthdayPersonName || client?.name || lead.name}
-                    onChange={(e) => client && updateClient(client.id, { birthdayPersonName: e.target.value, name: e.target.value })}
-                    style={seamlessInputStyle}
-                    onFocus={(e) => { e.currentTarget.style.borderBottomColor = 'var(--adm-accent)'; }}
-                    onBlur={(e) => { e.currentTarget.style.borderBottomColor = 'transparent'; }}
-                  />
-                </div>
-              </div>
-
-              <div style={cardRowStyle}>
-                <span style={cardLabelStyle}>Fone Debutante</span>
-                <div style={cardValueStyle}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', width: '100%' }}>
-                    <input
-                      type="text"
-                      disabled={readOnly}
-                      value={maskPhoneInput(client?.birthdayPersonPhone || '')}
-                      placeholder="(00) 00000-0000"
-                      onChange={(e) => client && updateClient(client.id, { birthdayPersonPhone: e.target.value })}
-                      style={seamlessInputStyle}
-                      onFocus={(e) => { e.currentTarget.style.borderBottomColor = 'var(--adm-accent)'; }}
-                      onBlur={(e) => { e.currentTarget.style.borderBottomColor = 'transparent'; }}
-                    />
-                    {client?.birthdayPersonPhone && (
-                      <button
-                        type="button"
-                        onClick={() => handleDirectWhatsApp(client.birthdayPersonPhone)}
-                        title="Zap da Aniversariante"
-                        style={{
-                          background: 'rgba(16, 185, 129, 0.15)',
-                          border: '1px solid rgba(16, 185, 129, 0.4)',
-                          borderRadius: '4px',
-                          color: '#10B981',
-                          padding: '2px 5px',
-                          cursor: 'pointer',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '2px',
-                          fontSize: '0.62rem',
-                          fontWeight: 700,
-                          flexShrink: 0,
-                        }}
-                      >
-                        <MessageSquare size={9} />
-                        <span>Zap</span>
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-
               <div style={cardRowStyle}>
                 <span style={cardLabelStyle}>Tipo de Evento</span>
                 <div style={cardValueStyle}>
@@ -1179,15 +1297,7 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
                       }
                       updateLeadData(lead.id, { eventType: newType } as any);
                     }}
-                    style={{
-                      ...seamlessInputStyle,
-                      fontWeight: 700,
-                      color: 'var(--adm-text-title)',
-                      cursor: readOnly ? 'default' : 'pointer',
-                      background: 'var(--adm-bg-input)',
-                      borderRadius: '5px',
-                      padding: '2px 6px',
-                    }}
+                    style={customSelectStyle}
                   >
                     <option value="">Sem marcação</option>
                     <option value="15_anos">15 Anos (Debutante)</option>
@@ -1293,17 +1403,7 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
                         updateClient(client.id, { venueId: vId, venueName: targetVenue?.name });
                       }
                     }}
-                    style={{
-                      background: 'var(--adm-bg-input)',
-                      border: '1px solid var(--adm-border)',
-                      borderRadius: '5px',
-                      padding: '3px 6px',
-                      fontSize: '0.74rem',
-                      fontWeight: 600,
-                      color: 'var(--adm-text-title)',
-                      width: '100%',
-                      outline: 'none',
-                    }}
+                    style={customSelectStyle}
                   >
                     <option value="">Selecione a Unidade...</option>
                     {venues.map(v => (
@@ -1606,39 +1706,127 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
               </div>
             </div>
 
-            {/* ── SEÇÃO: DADOS DO PAGANTE / CONTRATANTE & DECISORES ── */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            {/* ── SEÇÃO: PARTES ENVOLVIDAS NO CONTRATO ── */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'relative' }}>
               <div style={sectionTitleStyle}>
                 <Users size={12} color="var(--adm-accent)" />
-                <span>Contratante / Pagante</span>
+                <span>Partes Envolvidas no Contrato</span>
               </div>
               {!readOnly && (
-                <button
-                  type="button"
-                  onClick={() => setIsAddingContact(!isAddingContact)}
-                  style={{
-                    padding: '2px 6px',
-                    borderRadius: '5px',
-                    border: '1px solid var(--adm-border)',
-                    background: 'var(--adm-bg-input)',
-                    color: 'var(--adm-accent, #06B6D4)',
-                    fontSize: '0.64rem',
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '3px',
-                  }}
-                >
-                  <Plus size={10} />
-                  <span>+ Outro Contato</span>
-                </button>
+                <div style={{ position: 'relative' }}>
+                  <button
+                    type="button"
+                    onClick={() => setIsAddContactMenuOpen(!isAddContactMenuOpen)}
+                    style={{
+                      padding: '3px 8px',
+                      borderRadius: '6px',
+                      border: '1px solid var(--adm-border)',
+                      background: isAddContactMenuOpen ? 'var(--adm-accent-bg)' : 'var(--adm-bg-input)',
+                      color: 'var(--adm-accent, #06B6D4)',
+                      fontSize: '0.66rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                    }}
+                  >
+                    <Plus size={11} />
+                    <span>Adicionar Pessoa</span>
+                    <ChevronDown size={11} />
+                  </button>
+
+                  {isAddContactMenuOpen && (
+                    <div style={{
+                      position: 'absolute',
+                      top: '100%',
+                      right: 0,
+                      marginTop: '4px',
+                      background: 'var(--adm-bg-card, #ffffff)',
+                      border: '1px solid var(--adm-border)',
+                      borderRadius: '8px',
+                      boxShadow: '0 8px 20px rgba(0,0,0,0.15)',
+                      padding: '4px',
+                      minWidth: '190px',
+                      zIndex: 50,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '2px',
+                    }}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setNewContactRole('copayer');
+                          setNewContactIsDecisor(true);
+                          setIsAddingContact(true);
+                          setIsAddContactMenuOpen(false);
+                        }}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          padding: '6px 10px',
+                          borderRadius: '6px',
+                          border: 'none',
+                          background: 'transparent',
+                          color: 'var(--adm-text-title)',
+                          fontSize: '0.72rem',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          textAlign: 'left',
+                          width: '100%',
+                        }}
+                      >
+                        <UserPlus size={12} color="var(--adm-accent)" />
+                        <span>Adicionar Novo Contato</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setNewContactRole('dependent');
+                          setNewContactIsDecisor(false);
+                          setIsAddingContact(true);
+                          setIsAddContactMenuOpen(false);
+                        }}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          padding: '6px 10px',
+                          borderRadius: '6px',
+                          border: 'none',
+                          background: 'transparent',
+                          color: 'var(--adm-text-title)',
+                          fontSize: '0.72rem',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          textAlign: 'left',
+                          width: '100%',
+                        }}
+                      >
+                        <Users size={12} color="#10B981" />
+                        <span>Adicionar Dependente Familiar</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
 
+            {/* 1. Card do Contratante / Pagante */}
             <div style={cardStyle}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+                <span style={{ fontSize: '0.70rem', fontWeight: 800, color: 'var(--adm-accent, #06B6D4)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                  <Shield size={11} /> Contratante / Pagante
+                </span>
+                <span style={{ fontSize: '0.58rem', fontWeight: 700, padding: '1px 5px', borderRadius: '4px', background: 'rgba(6, 182, 212, 0.12)', color: '#06B6D4' }}>
+                  Decisor Principal
+                </span>
+              </div>
+
               <div style={cardRowStyle}>
-                <span style={cardLabelStyle}>Nome Pagante</span>
+                <span style={cardLabelStyle}>Nome</span>
                 <div style={cardValueStyle}>
                   <input
                     type="text"
@@ -1654,7 +1842,7 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
               </div>
 
               <div style={cardRowStyle}>
-                <span style={cardLabelStyle}>WhatsApp / Fone</span>
+                <span style={cardLabelStyle}>WhatsApp</span>
                 <div style={cardValueStyle}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '4px', width: '100%' }}>
                     <input
@@ -1728,15 +1916,96 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
               </div>
             </div>
 
-            {/* Form Inline Adicionar Contato */}
+            {/* 2. Card do Protagonista do Evento */}
+            <div style={cardStyle}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+                <span style={{ fontSize: '0.70rem', fontWeight: 800, color: '#EC4899', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                  <Sparkles size={11} /> Protagonista do Evento
+                </span>
+                <span style={{ fontSize: '0.58rem', fontWeight: 700, padding: '1px 5px', borderRadius: '4px', background: 'rgba(236, 72, 153, 0.12)', color: '#EC4899' }}>
+                  {client?.eventType === 'Casamento' ? 'Noivos' : client?.eventType === '15 Anos' ? 'Debutante' : 'Homenageado(a)'}
+                </span>
+              </div>
+
+              <div style={cardRowStyle}>
+                <span style={cardLabelStyle}>Nome</span>
+                <div style={cardValueStyle}>
+                  <input
+                    type="text"
+                    disabled={readOnly}
+                    value={client?.birthdayPersonName || ''}
+                    placeholder={client?.eventType === 'Casamento' ? 'Nome dos noivos...' : client?.eventType === '15 Anos' ? 'Nome da aniversariante...' : 'Nome do(a) homenageado(a)...'}
+                    onChange={(e) => client && updateClient(client.id, { birthdayPersonName: e.target.value })}
+                    style={{ ...seamlessInputStyle, fontWeight: 700 }}
+                    onFocus={(e) => { e.currentTarget.style.borderBottomColor = 'var(--adm-accent)'; }}
+                    onBlur={(e) => { e.currentTarget.style.borderBottomColor = 'transparent'; }}
+                  />
+                </div>
+              </div>
+
+              <div style={cardRowStyle}>
+                <span style={cardLabelStyle}>WhatsApp</span>
+                <div style={cardValueStyle}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', width: '100%' }}>
+                    <input
+                      type="text"
+                      disabled={readOnly}
+                      value={maskPhoneInput(client?.birthdayPersonPhone || '')}
+                      placeholder="(00) 00000-0000"
+                      onChange={(e) => client && updateClient(client.id, { birthdayPersonPhone: e.target.value })}
+                      style={seamlessInputStyle}
+                      onFocus={(e) => { e.currentTarget.style.borderBottomColor = 'var(--adm-accent)'; }}
+                      onBlur={(e) => { e.currentTarget.style.borderBottomColor = 'transparent'; }}
+                    />
+                    {client?.birthdayPersonPhone && (
+                      <button
+                        type="button"
+                        onClick={() => handleDirectWhatsApp(client.birthdayPersonPhone)}
+                        title="Conversar no WhatsApp"
+                        style={{
+                          background: 'rgba(16, 185, 129, 0.15)',
+                          border: '1px solid rgba(16, 185, 129, 0.4)',
+                          borderRadius: '4px',
+                          color: '#10B981',
+                          padding: '2px 5px',
+                          cursor: 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '2px',
+                          fontSize: '0.62rem',
+                          fontWeight: 700,
+                          flexShrink: 0,
+                        }}
+                      >
+                        <MessageSquare size={9} />
+                        <span>Zap</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div style={cardRowStyle}>
+                <span style={cardLabelStyle}>{client?.eventType === 'Casamento' ? 'Papel' : 'Idade'}</span>
+                <div style={cardValueStyle}>
+                  <span style={{ fontSize: '0.74rem', fontWeight: 700, color: 'var(--adm-text-title)' }}>
+                    {client?.eventType === 'Casamento' ? 'Noivos' : (client?.birthdayPersonAge || lead.age ? `${client?.birthdayPersonAge || lead.age} Anos` : 'Não informada')}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Form Inline Adicionar Contato / Dependente */}
             {isAddingContact && !readOnly && (
               <form onSubmit={handleAddSubContact} style={{ ...cardStyle, background: 'var(--adm-bg-input)' }}>
-                <span style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>Novo Contato da Família</span>
+                <span style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
+                  {newContactRole === 'dependent' ? 'Adicionar Dependente Familiar' : 'Adicionar Novo Contato / Copagante'}
+                </span>
                 
                 <input
                   type="text"
                   required
-                  placeholder="Nome (ex: Pai Roberto)..."
+                  placeholder="Nome completo..."
                   value={newContactName}
                   onChange={(e) => setNewContactName(e.target.value)}
                   style={{
@@ -1762,10 +2031,12 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
                       color: 'var(--adm-text-title)',
                     }}
                   >
+                    <option value="copayer">Copagante</option>
                     <option value="mother">Mãe</option>
                     <option value="father">Pai</option>
                     <option value="guardian">Responsável Legal</option>
-                    <option value="other">Tio / Outro</option>
+                    <option value="dependent">Dependente Familiar</option>
+                    <option value="other">Outro Contato</option>
                   </select>
 
                   <input
@@ -1793,7 +2064,9 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
                       onChange={(e) => setNewContactIsDecisor(e.target.checked)}
                       style={{ accentColor: '#10B981' }}
                     />
-                    <span>⭐ É Decisor Financeiro (Fala sobre Upsells)</span>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                      <Star size={12} color="#F59E0B" fill="#F59E0B" /> É Decisor Financeiro (Copagante)
+                    </span>
                   </label>
                 </div>
 
@@ -1809,85 +2082,468 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
                     type="submit"
                     style={{ padding: '3px 8px', borderRadius: '4px', border: 'none', background: 'var(--adm-accent, #06B6D4)', color: '#FFF', fontSize: '0.68rem', fontWeight: 800, cursor: 'pointer' }}
                   >
-                    Salvar Contato
+                    Salvar
                   </button>
                 </div>
               </form>
             )}
 
-            {/* Lista de Contatos Adicionais */}
-            {((client?.contacts || lead.contacts || [])).filter(c => c.name !== client?.payerName).map((cnt, idx) => (
-              <div
-                key={cnt.id || idx}
-                style={{
-                  padding: '6px 10px',
-                  borderRadius: '8px',
-                  border: '1px solid var(--adm-border)',
-                  background: 'var(--adm-bg-card)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: '8px',
-                }}
-              >
-                <div style={{ minWidth: 0, flex: 1 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span style={{ fontSize: '0.76rem', fontWeight: 700, color: 'var(--adm-text-title)' }}>
-                      {cnt.name}
-                    </span>
-                    <span style={{
-                      fontSize: '0.58rem',
-                      fontWeight: 700,
-                      padding: '1px 5px',
-                      borderRadius: '4px',
-                      background: cnt.isPrimaryDecisionMaker ? 'rgba(16, 185, 129, 0.15)' : 'rgba(6, 182, 212, 0.12)',
-                      color: cnt.isPrimaryDecisionMaker ? '#10B981' : '#06B6D4',
-                    }}>
-                      {cnt.isPrimaryDecisionMaker ? '⭐ Decisor' : (cnt.role === 'mother' ? 'Mãe' : cnt.role === 'father' ? 'Pai' : 'Contato')}
-                    </span>
-                  </div>
-                  <div style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)' }}>
-                    {formatPhone(cnt.phone)}
-                  </div>
-                </div>
+            {/* 3. Lista de Copagantes e Contatos Adicionais */}
+            {((client?.contacts || lead.contacts || [])).filter(c => c.name !== client?.payerName).map((cnt, idx) => {
+              const isCopayer = cnt.role === 'copayer' || cnt.isPrimaryDecisionMaker;
+              const isDependent = cnt.role === 'dependent';
+              const roleLabel = isCopayer ? 'Copagante / Decisor' : (isDependent ? 'Dependente Familiar' : (cnt.role === 'mother' ? 'Mãe' : cnt.role === 'father' ? 'Pai' : 'Contato'));
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
-                  {cnt.phone && (
-                    <button
-                      type="button"
-                      onClick={() => handleDirectWhatsApp(cnt.phone)}
-                      title="Zap"
-                      style={{
-                        padding: '2px 5px',
-                        borderRadius: '4px',
-                        border: '1px solid rgba(16, 185, 129, 0.4)',
-                        background: 'rgba(16, 185, 129, 0.15)',
-                        color: '#10B981',
-                        fontSize: '0.62rem',
+              return (
+                <div
+                  key={cnt.id || idx}
+                  style={{
+                    padding: '6px 10px',
+                    borderRadius: '8px',
+                    border: '1px solid var(--adm-border)',
+                    background: 'var(--adm-bg-card)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '8px',
+                  }}
+                >
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ fontSize: '0.76rem', fontWeight: 700, color: 'var(--adm-text-title)' }}>
+                        {cnt.name}
+                      </span>
+                      <span style={{
+                        fontSize: '0.58rem',
                         fontWeight: 700,
-                        cursor: 'pointer',
-                        display: 'flex',
+                        padding: '1px 5px',
+                        borderRadius: '4px',
+                        background: isCopayer ? 'rgba(16, 185, 129, 0.15)' : (isDependent ? 'rgba(59, 130, 246, 0.12)' : 'rgba(6, 182, 212, 0.12)'),
+                        color: isCopayer ? '#10B981' : (isDependent ? '#3B82F6' : '#06B6D4'),
+                        display: 'inline-flex',
                         alignItems: 'center',
-                        gap: '2px',
-                      }}
-                    >
-                      <MessageSquare size={9} />
-                      <span>Zap</span>
-                    </button>
-                  )}
-                  {!readOnly && cnt.id && (
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveSubContact(cnt.id)}
-                      title="Excluir Contato"
-                      style={{ background: 'transparent', border: 'none', color: '#EF4444', cursor: 'pointer', padding: '2px' }}
-                    >
-                      <Trash2 size={11} />
-                    </button>
+                        gap: '3px',
+                      }}>
+                        {isCopayer ? <Star size={10} color="#10B981" fill="#10B981" /> : null}
+                        {roleLabel}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)' }}>
+                      {formatPhone(cnt.phone)}
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
+                    {cnt.phone && (
+                      <button
+                        type="button"
+                        onClick={() => handleDirectWhatsApp(cnt.phone)}
+                        title="Zap"
+                        style={{
+                          padding: '2px 5px',
+                          borderRadius: '4px',
+                          border: '1px solid rgba(16, 185, 129, 0.4)',
+                          background: 'rgba(16, 185, 129, 0.15)',
+                          color: '#10B981',
+                          fontSize: '0.62rem',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '2px',
+                        }}
+                      >
+                        <MessageSquare size={9} />
+                        <span>Zap</span>
+                      </button>
+                    )}
+                    {!readOnly && cnt.id && (
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveSubContact(cnt.id)}
+                        title="Excluir Contato"
+                        style={{ background: 'transparent', border: 'none', color: '#EF4444', cursor: 'pointer', padding: '2px' }}
+                      >
+                        <Trash2 size={11} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* ── SEÇÃO: FUNIS SETORIAIS & ANDAMENTO DA ENTREGA ── */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '10px' }}>
+              <div style={sectionTitleStyle}>
+                <Workflow size={12} color="#8B5CF6" />
+                <span>Funis Setoriais & Entrega</span>
+              </div>
+              <span style={{ fontSize: '0.62rem', fontWeight: 800, color: '#8B5CF6', background: 'rgba(139, 92, 246, 0.12)', padding: '2px 7px', borderRadius: '4px', border: '1px solid rgba(139, 92, 246, 0.3)' }}>
+                Visão 360° da Festa
+              </span>
+            </div>
+
+            {(() => {
+              const sectorialData = (client as any)?.sectorialDelivery || {};
+
+              // 1. Pós-Venda Geral
+              const generalProgress = Math.min(100, Math.round(((currentStageIndex + 1) / Math.max(1, activePostSaleStages.length)) * 100));
+
+              // 2. Decoração
+              const decStages = [
+                { id: 'briefing', label: 'Briefing Decorativo', pct: 25 },
+                { id: 'projeto', label: 'Projeto 3D & Paleta', pct: 50 },
+                { id: 'flores', label: 'Floral & Mobiliário', pct: 75 },
+                { id: 'montagem', label: 'Montagem Final', pct: 100 },
+              ];
+              const decStageId = sectorialData.decoracao?.stageId || (currentStageIndex >= 4 ? 'montagem' : currentStageIndex >= 3 ? 'flores' : currentStageIndex >= 2 ? 'projeto' : 'briefing');
+              const decPct = sectorialData.decoracao?.percent ?? (decStages.find(s => s.id === decStageId)?.pct || 25);
+
+              // 3. Cerimonial
+              const cerStages = [
+                { id: 'reuniao', label: 'Alinhamento Inicial', pct: 25 },
+                { id: 'roteiro', label: 'Roteiro & Cortejo', pct: 50 },
+                { id: 'ensaio', label: 'Ensaio Geral', pct: 75 },
+                { id: 'execucao', label: 'Execução do Evento', pct: 100 },
+              ];
+              const cerStageId = sectorialData.cerimonial?.stageId || (currentStageIndex >= 5 ? 'execucao' : currentStageIndex >= 4 ? 'ensaio' : currentStageIndex >= 2 ? 'roteiro' : 'reuniao');
+              const cerPct = sectorialData.cerimonial?.percent ?? (cerStages.find(s => s.id === cerStageId)?.pct || 25);
+
+              // 4. Coreografia
+              const corStages = [
+                { id: 'musica', label: 'Seleção Musical', pct: 25 },
+                { id: 'ensaios', label: 'Ensaios em Andamento', pct: 50 },
+                { id: 'figurino', label: 'Figurinos & Roupas', pct: 75 },
+                { id: 'pronta', label: 'Coreografia Pronta', pct: 100 },
+              ];
+              const corStageId = sectorialData.coreografia?.stageId || (currentStageIndex >= 5 ? 'pronta' : currentStageIndex >= 3 ? 'figurino' : currentStageIndex >= 1 ? 'ensaios' : 'musica');
+              const corPct = sectorialData.coreografia?.percent ?? (corStages.find(s => s.id === corStageId)?.pct || 25);
+
+              // 5. Financeiro
+              const finPct = totalClientValue > 0 
+                ? Math.min(100, Math.round(((totalClientValue - installmentsRemaining) / totalClientValue) * 100))
+                : 100;
+              const finLabel = installmentsRemaining <= 0 ? 'Quitado 100%' : `${installmentsCount - Math.round(installmentsRemaining / Math.max(1, parcelValue))}/${installmentsCount} Parcelas Pagas`;
+
+              const handleUpdateSector = (sectorKey: string, stageId: string, pct: number) => {
+                if (!client || readOnly) return;
+                const updated = {
+                  ...sectorialData,
+                  [sectorKey]: { stageId, percent: pct },
+                };
+                updateClient(client.id, { sectorialDelivery: updated } as any);
+                toast.success(`Andamento de ${sectorKey === 'decoracao' ? 'Decoração' : sectorKey === 'cerimonial' ? 'Cerimonial' : 'Coreografia'} atualizado para ${pct}%!`);
+              };
+
+              const averageDelivery = Math.round((generalProgress + decPct + cerPct + corPct + finPct) / 5);
+
+              const tracks = [
+                {
+                  id: 'geral',
+                  name: 'Pós-Venda Geral',
+                  icon: <CheckCircle2 size={13} color="#3B82F6" />,
+                  color: '#3B82F6',
+                  currentLabel: currentStageConfig.label,
+                  percent: generalProgress,
+                  stages: activePostSaleStages.map((s, idx) => ({
+                    id: s.id,
+                    label: s.label,
+                    pct: Math.round(((idx + 1) / activePostSaleStages.length) * 100),
+                  })),
+                  isNativeFunnel: true,
+                  readOnlyTrack: false,
+                },
+                {
+                  id: 'decoracao',
+                  name: 'Decoração & Cenografia',
+                  icon: <Palette size={13} color="#EC4899" />,
+                  color: '#EC4899',
+                  currentLabel: decStages.find(s => s.id === decStageId)?.label || 'Em Andamento',
+                  percent: decPct,
+                  stages: decStages,
+                  isNativeFunnel: false,
+                  readOnlyTrack: false,
+                },
+                {
+                  id: 'cerimonial',
+                  name: 'Cerimonial & Cronograma',
+                  icon: <ScrollText size={13} color="#8B5CF6" />,
+                  color: '#8B5CF6',
+                  currentLabel: cerStages.find(s => s.id === cerStageId)?.label || 'Em Andamento',
+                  percent: cerPct,
+                  stages: cerStages,
+                  isNativeFunnel: false,
+                  readOnlyTrack: false,
+                },
+                {
+                  id: 'coreografia',
+                  name: 'Coreografia & Atrações',
+                  icon: <Music size={13} color="#10B981" />,
+                  color: '#10B981',
+                  currentLabel: corStages.find(s => s.id === corStageId)?.label || 'Em Andamento',
+                  percent: corPct,
+                  stages: corStages,
+                  isNativeFunnel: false,
+                  readOnlyTrack: false,
+                },
+                {
+                  id: 'financeiro',
+                  name: 'Financeiro & Quitação',
+                  icon: <DollarSign size={13} color="#F59E0B" />,
+                  color: '#F59E0B',
+                  currentLabel: finLabel,
+                  percent: finPct,
+                  stages: [],
+                  isNativeFunnel: false,
+                  readOnlyTrack: true,
+                },
+              ];
+
+              return (
+                <div style={cardStyle}>
+                  {/* Resumo Geral de Entrega */}
+                  <div style={{
+                    padding: '8px 10px',
+                    borderRadius: '8px',
+                    background: 'var(--adm-bg-input)',
+                    border: '1px solid var(--adm-border)',
+                    marginBottom: '8px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Clock size={13} color="var(--adm-accent, #06B6D4)" />
+                      <span style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
+                        Progresso Médio de Entrega
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <div style={{
+                        width: '80px',
+                        height: '6px',
+                        borderRadius: '3px',
+                        background: 'var(--adm-border)',
+                        overflow: 'hidden',
+                      }}>
+                        <div style={{
+                          width: `${averageDelivery}%`,
+                          height: '100%',
+                          background: averageDelivery >= 80 ? '#10B981' : averageDelivery >= 50 ? '#F59E0B' : '#3B82F6',
+                          borderRadius: '3px',
+                          transition: 'width 0.3s ease',
+                        }} />
+                      </div>
+                      <span style={{ fontSize: '0.74rem', fontWeight: 900, color: averageDelivery >= 80 ? '#10B981' : averageDelivery >= 50 ? '#F59E0B' : '#3B82F6' }}>
+                        {averageDelivery}%
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Lista de Trilhas Setoriais */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {tracks.map((trk) => {
+                      return (
+                        <div
+                          key={trk.id}
+                          style={{
+                            padding: '8px',
+                            borderRadius: '8px',
+                            background: 'var(--adm-bg-card)',
+                            border: '1px solid var(--adm-border)',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '5px',
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              {trk.icon}
+                              <span style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
+                                {trk.name}
+                              </span>
+                            </div>
+                            <span style={{
+                              fontSize: '0.62rem',
+                              fontWeight: 800,
+                              color: trk.color,
+                              background: `${trk.color}18`,
+                              padding: '1px 6px',
+                              borderRadius: '4px',
+                              border: `1px solid ${trk.color}40`,
+                            }}>
+                              {trk.percent}%
+                            </span>
+                          </div>
+
+                          {/* Subtítulo com a etapa atual */}
+                          <div style={{ fontSize: '0.64rem', color: 'var(--adm-text-muted)', fontWeight: 600 }}>
+                            Etapa: <strong style={{ color: 'var(--adm-text-title)' }}>{trk.currentLabel}</strong>
+                          </div>
+
+                          {/* Barra de Progresso do Setor */}
+                          <div style={{
+                            width: '100%',
+                            height: '5px',
+                            borderRadius: '3px',
+                            background: 'var(--adm-border)',
+                            overflow: 'hidden',
+                          }}>
+                            <div style={{
+                              width: `${trk.percent}%`,
+                              height: '100%',
+                              background: trk.color,
+                              borderRadius: '3px',
+                              transition: 'width 0.25s ease',
+                            }} />
+                          </div>
+
+                          {/* Etapas Interativas Clicáveis (se aplicável) */}
+                          {!trk.readOnlyTrack && trk.stages.length > 0 && !readOnly && (
+                            <div style={{ display: 'flex', gap: '3px', marginTop: '2px', overflowX: 'auto', scrollbarWidth: 'none' }}>
+                              {trk.stages.map((stg) => {
+                                const isCurrent = stg.pct === trk.percent;
+                                const isDone = stg.pct <= trk.percent;
+
+                                return (
+                                  <button
+                                    key={stg.id}
+                                    type="button"
+                                    onClick={() => {
+                                      if (trk.isNativeFunnel) {
+                                        if (client) updateClient(client.id, { stage: stg.id as ClientStage });
+                                        onStageChange(stg.id as ClientStage);
+                                      } else {
+                                        handleUpdateSector(trk.id, stg.id, stg.pct);
+                                      }
+                                    }}
+                                    title={`Avançar para: ${stg.label} (${stg.pct}%)`}
+                                    style={{
+                                      flex: 1,
+                                      padding: '2px 4px',
+                                      borderRadius: '4px',
+                                      border: isCurrent 
+                                        ? `1px solid ${trk.color}` 
+                                        : '1px solid transparent',
+                                      background: isDone 
+                                        ? `${trk.color}22` 
+                                        : 'var(--adm-bg-input)',
+                                      color: isDone ? trk.color : 'var(--adm-text-muted)',
+                                      fontSize: '0.58rem',
+                                      fontWeight: isCurrent ? 800 : 600,
+                                      cursor: 'pointer',
+                                      textAlign: 'center',
+                                      whiteSpace: 'nowrap',
+                                      overflow: 'hidden',
+                                      textOverflow: 'ellipsis',
+                                      transition: 'all 0.15s ease',
+                                    }}
+                                  >
+                                    {stg.label}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Outros Funis de Pós-Venda do Sistema (Se existirem) */}
+                  {otherPostSaleFunnels.length > 0 && (
+                    <div style={{ marginTop: '10px', paddingTop: '8px', borderTop: '1px dashed var(--adm-border)' }}>
+                      <div style={{ fontSize: '0.64rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                        <ArrowRightLeft size={11} color="var(--adm-accent, #06B6D4)" />
+                        <span>Outros Funis Registrados ({otherPostSaleFunnels.length})</span>
+                      </div>
+
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        {otherPostSaleFunnels.map(f => {
+                          const isExpanded = expandedFunnelId === f.id;
+                          const targetStages = (f.stages && f.stages.length > 0) ? f.stages : [
+                            { id: 'onboarding', name: 'ONBOARDING', color: '#3B82F6', icon: 'inbox' },
+                          ];
+
+                          return (
+                            <div key={f.id} style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                              <button
+                                type="button"
+                                onClick={() => setExpandedFunnelId(prev => prev === f.id ? null : f.id)}
+                                style={{
+                                  padding: '5px 8px',
+                                  borderRadius: '6px',
+                                  border: isExpanded ? '1px solid rgba(139, 92, 246, 0.4)' : '1px solid var(--adm-border)',
+                                  background: isExpanded ? 'rgba(139, 92, 246, 0.10)' : 'var(--adm-bg-input)',
+                                  color: isExpanded ? '#8B5CF6' : 'var(--adm-text-title)',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'space-between',
+                                  cursor: 'pointer',
+                                  fontSize: '0.70rem',
+                                  fontWeight: 700,
+                                  width: '100%',
+                                }}
+                              >
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                  {renderFunnelOrStageIcon(f.icon || 'layers', 12, isExpanded ? '#8B5CF6' : 'var(--adm-text-muted)')}
+                                  <span>{f.name}</span>
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                  <span style={{ fontSize: '0.56rem', color: 'var(--adm-text-muted)' }}>{targetStages.length} etapas</span>
+                                  <ChevronDown size={11} style={{ transform: isExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s ease' }} />
+                                </div>
+                              </button>
+
+                              {isExpanded && (
+                                <div style={{ padding: '4px 0 4px 6px', display: 'flex', flexDirection: 'column', gap: '2px', borderLeft: '2px dashed #8B5CF6', marginLeft: '8px' }}>
+                                  {targetStages.map(targetStg => (
+                                    <button
+                                      key={targetStg.id}
+                                      type="button"
+                                      disabled={isTransferringFunnel}
+                                      onClick={async () => {
+                                        setIsTransferringFunnel(true);
+                                        try {
+                                          await reassignLeadFunnel(lead.id, f.id, targetStg.id);
+                                          onStageChange(targetStg.id as ClientStage);
+                                          setExpandedFunnelId(null);
+                                          toast.success(`Transferido para ${f.name} (${targetStg.name})`);
+                                        } finally {
+                                          setIsTransferringFunnel(false);
+                                        }
+                                      }}
+                                      style={{
+                                        padding: '4px 6px',
+                                        borderRadius: '4px',
+                                        border: '1px solid var(--adm-border)',
+                                        background: 'var(--adm-bg-card)',
+                                        color: targetStg.color || '#3B82F6',
+                                        fontSize: '0.64rem',
+                                        fontWeight: 700,
+                                        cursor: isTransferringFunnel ? 'wait' : 'pointer',
+                                        textAlign: 'left',
+                                        width: '100%',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'space-between',
+                                      }}
+                                    >
+                                      <span>{targetStg.name}</span>
+                                      <span style={{ fontSize: '0.56rem', opacity: 0.8 }}>Transferir</span>
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
                   )}
                 </div>
-              </div>
-            ))}
+              );
+            })()}
 
             <ClientVenueEventsCard
               client={client || undefined}
@@ -1900,7 +2556,7 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
         )}
 
         {/* ════════════════════════════════════════════════════════════════════ */}
-        {/* ABA 2: ✨ APP DA DEBUTANTE (CENTRAL DE ACOMPANHAMENTO & JORNADA)      */}
+        {/* ABA 2: APP DA DEBUTANTE (CENTRAL DE ACOMPANHAMENTO & JORNADA)      */}
         {/* ════════════════════════════════════════════════════════════════════ */}
         {activeTab === 'debutante' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -2013,9 +2669,12 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
                     fontSize: '0.74rem',
                     fontWeight: 800,
                     cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
                   }}
                 >
-                  ✨ Ativar App da Debutante Agora
+                  <Sparkles size={14} /> Ativar App da Debutante Agora
                 </button>
               </div>
             ) : (
@@ -2106,7 +2765,7 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
                       type="button"
                       onClick={() => handleDirectWhatsApp(
                         linkedDebutante?.phone || client?.birthdayPersonPhone || client?.payerPhone,
-                        `Oi ${client?.birthdayPersonName || 'linda'}! 🎉 Passando para te dar uma notícia maravilhosa do seu App F5: uma das suas amigas indicadas fechou festa com a gente e você desbloqueou um novo benefício exclusivo!`
+                        `Oi ${client?.birthdayPersonName || 'linda'}! Passando para te dar uma notícia maravilhosa do seu App F5: uma das suas amigas indicadas fechou festa com a gente e você desbloqueou um novo benefício exclusivo!`
                       )}
                       style={{
                         padding: '4px 8px',
@@ -2166,7 +2825,7 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
         )}
 
         {/* ════════════════════════════════════════════════════════════════════ */}
-        {/* ABA 3: 🧭 ORIGEM DO CLIENTE (WHATSAPP INBOX / MANUAL / VENDA NO CRM)  */}
+        {/* ABA 3: ORIGEM DO CLIENTE (WHATSAPP INBOX / MANUAL / VENDA NO CRM)  */}
         {/* ════════════════════════════════════════════════════════════════════ */}
         {activeTab === 'comercial' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>

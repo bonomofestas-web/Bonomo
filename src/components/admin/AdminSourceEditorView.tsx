@@ -4,7 +4,7 @@ import {
   Plus, Trash2, Tag,
   QrCode, RefreshCw, CheckCircle2, Smartphone, Building2,
   Check, AlertTriangle, ShieldCheck, Target, Users, Crown, Layers,
-  ChevronDown
+  ChevronDown, Lock
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { uazapiService } from '../../services/uazapiService';
@@ -259,7 +259,7 @@ export const AdminSourceEditorView: React.FC<AdminSourceEditorViewProps> = ({
           stage: initialStage as any,
         });
       }
-      setMigrationSuccessMsg(`✅ ${undefinedFunnelLeads.length} lead(s) migrado(s) com sucesso para o funil "${targetFunnel.name}"!`);
+      setMigrationSuccessMsg(`${undefinedFunnelLeads.length} lead(s) migrado(s) com sucesso para o funil "${targetFunnel.name}"!`);
       setTimeout(() => setMigrationSuccessMsg(''), 5000);
     } catch (err: any) {
       console.error('Erro ao migrar leads:', err);
@@ -619,7 +619,7 @@ export const AdminSourceEditorView: React.FC<AdminSourceEditorViewProps> = ({
               fontSize: '0.72rem',
               fontWeight: 800,
             }}>
-              🔒 Canal Definido (Tipo Fixo)
+              <Lock size={12} /> Canal Definido (Tipo Fixo)
             </span>
           )}
         </div>
@@ -1263,7 +1263,7 @@ export const AdminSourceEditorView: React.FC<AdminSourceEditorViewProps> = ({
                     {!funnelId 
                       ? 'Contatos entrarão como Sem Funil para triagem manual.'
                       : isPostSale 
-                        ? '👑 Contatos recebidos serão cadastrados diretamente como Clientes.'
+                        ? 'Contatos recebidos serão cadastrados diretamente como Clientes (Pós-Venda).'
                         : `Fluxo automático • Novos leads serão alocados na 1ª etapa do funil ${selectedF?.name || ''}.`}
                   </div>
                 </>
@@ -1576,8 +1576,8 @@ export const AdminSourceEditorView: React.FC<AdminSourceEditorViewProps> = ({
                           <ShieldCheck size={11} /> Conectado
                         </span>
                       </div>
-                      <div style={{ fontSize: '0.84rem', color: '#10B981', fontWeight: 700, marginTop: '3px' }}>
-                        📱 {formatPhone(connectedPhone) || 'Número Oficial Vinculado'}
+                      <div style={{ fontSize: '0.84rem', color: '#10B981', fontWeight: 700, marginTop: '3px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <Smartphone size={13} /> {formatPhone(connectedPhone) || 'Número Oficial Vinculado'}
                       </div>
                     </div>
                   </div>
@@ -1913,14 +1913,14 @@ export const AdminSourceEditorView: React.FC<AdminSourceEditorViewProps> = ({
                   }}
                 >
                   <option value="" disabled>Escolha o funil de destino...</option>
-                  <optgroup label="🎯 Funis Comerciais">
+                  <optgroup label="Funis Comerciais">
                     {commercialFunnels.map(f => (
-                      <option key={f.id} value={f.id}>🎯 {f.name}</option>
+                      <option key={f.id} value={f.id}>{f.name}</option>
                     ))}
                   </optgroup>
-                  <optgroup label="👑 Sucesso do Cliente (Pós-Venda)">
+                  <optgroup label="Sucesso do Cliente (Pós-Venda)">
                     {postSaleFunnels.map(f => (
-                      <option key={f.id} value={f.id}>👑 {f.name}</option>
+                      <option key={f.id} value={f.id}>{f.name}</option>
                     ))}
                   </optgroup>
                 </select>

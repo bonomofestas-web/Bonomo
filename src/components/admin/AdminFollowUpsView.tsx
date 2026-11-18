@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { HeaderActions } from './HeaderActions';
 import { 
   PhoneCall, CheckCircle2, Clock, 
   Users, Search, ExternalLink, Plus,
@@ -161,35 +162,7 @@ export const AdminFollowUpsView: React.FC<AdminFollowUpsViewProps> = ({ onOpenLe
       boxSizing: 'border-box',
       animation: 'fadeIn 0.25s ease-out',
     }}>
-      {/* Header with Title & Action */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px' }}>
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <div style={{
-              width: '38px',
-              height: '38px',
-              borderRadius: '12px',
-              background: 'rgba(20, 169, 215, 0.15)',
-              border: '1px solid var(--adm-accent)',
-              color: 'var(--adm-accent)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}>
-              <PhoneCall size={20} />
-            </div>
-            <div>
-              <h1 style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--adm-text-title)', margin: 0, letterSpacing: '-0.3px' }}>
-                Follow-up Comercial
-              </h1>
-              <p style={{ fontSize: '0.78rem', color: 'var(--adm-text-muted)', margin: '2px 0 0 0' }}>
-                Linha do tempo diária em blocos de 1 hora para recuperação e acompanhamento de leads.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Agendar Follow-up Button */}
+      <HeaderActions>
         <button
           type="button"
           onClick={() => {
@@ -211,7 +184,7 @@ export const AdminFollowUpsView: React.FC<AdminFollowUpsViewProps> = ({ onOpenLe
           <Plus size={16} />
           <span>+ Agendar Follow-up</span>
         </button>
-      </div>
+      </HeaderActions>
 
       {/* Date Navigation & Control Bar */}
       <div style={{

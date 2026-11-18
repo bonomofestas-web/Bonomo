@@ -736,7 +736,7 @@ export const AdminDevUsersManagerView: React.FC = () => {
                       )}
 
                       <div style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)', marginTop: '12px' }}>
-                        ℹ️ Por conformidade e LGPD, a gestão individual de colaboradores e acessos pertence exclusivamente à conta Master proprietária.
+                        Por conformidade e LGPD, a gestão individual de colaboradores e acessos pertence exclusivamente à conta Master proprietária.
                       </div>
                     </div>
                   )}
@@ -887,7 +887,7 @@ export const AdminDevUsersManagerView: React.FC = () => {
                 color: '#8096A8',
                 lineHeight: 1.4,
               }}>
-                ℹ️ O novo Master passará pelo fluxo de <strong>Primeiro Acesso</strong> ao tentar entrar com este e-mail, definindo sua própria senha oficial e dados da conta.
+                O novo Master passará pelo fluxo de <strong>Primeiro Acesso</strong> ao tentar entrar com este e-mail, definindo sua própria senha oficial e dados da conta.
               </div>
 
               <button

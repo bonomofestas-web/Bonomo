@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { HeaderActions } from './HeaderActions';
 import { 
   Building2, 
   Mail, Phone, Edit3, Trash2, 
@@ -36,6 +37,7 @@ export const AdminCollaboratorsView: React.FC = () => {
   const [collaboratorToEdit, setCollaboratorToEdit] = useState<Collaborator | null>(null);
   const [collabToDelete, setCollabToDelete] = useState<Collaborator | null>(null);
   const [collabForInviteModal, setCollabForInviteModal] = useState<Collaborator | null>(null);
+
   const [sendingInviteEmail, setSendingInviteEmail] = useState<string | null>(null);
   const [inviteSentEmail, setInviteSentEmail] = useState<string | null>(null);
 
@@ -971,7 +973,7 @@ export const AdminCollaboratorsView: React.FC = () => {
                     if (isSelected) {
                       setFormSectors(formSectors.filter(s => s !== 'gerencia'));
                     } else {
-                      // 🌟 Regra do F5 System: Gerência marca AUTOMATICAMENTE Pós-Venda e Comercial!
+                      // Regra do F5 System: Gerência marca AUTOMATICAMENTE Pós-Venda e Comercial!
                       setFormSectors(prev => {
                         const next: ('gerencia' | 'comercial' | 'pos_venda' | 'financeiro')[] = [...prev];
                         if (!next.includes('gerencia')) next.push('gerencia');
@@ -1165,22 +1167,8 @@ export const AdminCollaboratorsView: React.FC = () => {
       animation: 'fadeIn 0.25s ease-out',
       fontFamily: "'Plus Jakarta Sans', sans-serif",
     }}>
-      {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
-        <div>
-          <h1 style={{
-            fontSize: '1.45rem',
-            fontWeight: 800,
-            color: 'var(--adm-text-title)',
-            letterSpacing: '-0.4px',
-            margin: '0 0 4px 0',
-          }}>
-            Controle de Colaboradores & Acessos (Equipe)
-          </h1>
-          <p style={{ fontSize: '0.8rem', color: 'var(--adm-text-muted)', margin: 0 }}>
-            Gerencie SDRs, Closers e Gerentes de cada unidade com controle de visibilidade.
-          </p>
-        </div>
+      {/* Título no breadcrumb; ação primária no menu superior */}
+      <HeaderActions>
 
         <button
           onClick={handleOpenCreate}
@@ -1195,7 +1183,7 @@ export const AdminCollaboratorsView: React.FC = () => {
           <UserPlus size={16} />
           <span>Novo Colaborador</span>
         </button>
-      </div>
+      </HeaderActions>
 
       {/* Barra de Filtros, Ordenação e Alternador de Modos (Lista / Cards) */}
       <div style={{
@@ -1712,7 +1700,6 @@ export const AdminCollaboratorsView: React.FC = () => {
                               <span>Editar</span>
                             </button>
                           ) : null}
-
                           {canDelete && (
                             <button
                               type="button"

@@ -63,13 +63,13 @@ export const GuestList: React.FC = () => {
     }));
   };
 
-  const handleConvertGuestToReferral = (guest: Guest, e: React.MouseEvent) => {
+  const handleConvertGuestToReferral = async (guest: Guest, e: React.MouseEvent) => {
     e.stopPropagation();
-    const success = indicateGuestAsReferral(guest.id);
+    const success = await indicateGuestAsReferral(guest.id);
     if (success) {
       setReferralSuccessToast(`✨ ${guest.name} foi indicada com sucesso para a Casa de Festas! (+1 Ponto)`);
     } else {
-      setReferralSuccessToast(`✨ ${guest.name} já constava como indicada.`);
+      setReferralSuccessToast(`${guest.name} já constava como indicada ou não foi possível enviar agora.`);
     }
     setTimeout(() => setReferralSuccessToast(null), 3500);
   };

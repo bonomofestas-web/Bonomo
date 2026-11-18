@@ -298,9 +298,9 @@ export const AdminDebutanteDetailView: React.FC<AdminDebutanteDetailViewProps> =
             </div>
 
             <div style={{ fontSize: '0.82rem', color: 'var(--adm-text-muted)', marginTop: '8px', display: 'flex', alignItems: 'center', gap: '20px', flexWrap: 'wrap' }}>
-              <span>📅 Data da Festa: <strong style={{ color: 'var(--adm-text-title)' }}>{debutante.partyDate.split('-').reverse().join('/')}</strong> (<strong style={{ color: 'var(--adm-accent)' }}>{debutante.partyDaysLeft} dias restantes</strong>)</span>
-              <span>📱 Telefone: <strong style={{ color: 'var(--adm-text-title)' }}>{debutante.phone}</strong></span>
-              {debutante.email && <span>✉️ E-mail: <strong style={{ color: 'var(--adm-text-title)' }}>{debutante.email}</strong></span>}
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}><Calendar size={13} /> Data da Festa: <strong style={{ color: 'var(--adm-text-title)' }}>{debutante.partyDate.split('-').reverse().join('/')}</strong> (<strong style={{ color: 'var(--adm-accent)' }}>{debutante.partyDaysLeft} dias restantes</strong>)</span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}><Phone size={13} /> Telefone: <strong style={{ color: 'var(--adm-text-title)' }}>{debutante.phone}</strong></span>
+              {debutante.email && <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}><Mail size={13} /> E-mail: <strong style={{ color: 'var(--adm-text-title)' }}>{debutante.email}</strong></span>}
             </div>
           </div>
         </div>
@@ -438,7 +438,7 @@ export const AdminDebutanteDetailView: React.FC<AdminDebutanteDetailViewProps> =
               </span>
               {debutante.welcomeVideoUrl ? (
                 <span style={{ fontSize: '0.66rem', fontWeight: 800, padding: '2px 6px', borderRadius: '6px', background: 'rgba(16, 185, 129, 0.15)', color: '#10B981', border: '1px solid rgba(16, 185, 129, 0.3)' }}>
-                  Configurado (R2)
+                  Configurado (Vídeo HD)
                 </span>
               ) : (
                 <span style={{ fontSize: '0.66rem', fontWeight: 800, padding: '2px 6px', borderRadius: '6px', background: 'var(--adm-bg-input)', color: 'var(--adm-text-muted)', border: '1px solid var(--adm-border)' }}>

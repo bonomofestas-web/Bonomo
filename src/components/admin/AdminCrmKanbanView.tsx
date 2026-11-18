@@ -1,3 +1,6 @@
+import { animateList } from '../../utils/animateList';
+import { HeaderActions, headerPrimaryButtonStyle } from './HeaderActions';
+import { toast } from 'sonner';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   Kanban, List, LayoutGrid, Search, Building2,
@@ -8,10 +11,10 @@ import {
   Settings, Lock, Pin, Copy,
   Flame, PhoneCall, MessageSquare, Gift, FileText,
   Compass, ShieldCheck, Camera,
-  UserPlus, Eye, AlertTriangle,
+  Eye, AlertTriangle,
   User, SunMedium, Snowflake, Tag as TagIcon,
   MoreVertical, CheckSquare, Trash2, GitBranch, Archive,
-  Store, Link2, Check, Zap, Sliders, Flag, Utensils, Clock, UserX,
+  Store, Link2, Check, Flag, Utensils, Clock, UserX,
   ArrowRightLeft, RefreshCw, CheckCircle2
 } from 'lucide-react';
 import { AdminNewLeadModal } from './AdminNewLeadModal';
@@ -691,8 +694,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
 
   // New Lead modal state
   const [isNewLeadModalOpen, setIsNewLeadModalOpen] = useState(false);
-  const [isAddLeadMenuOpen, setIsAddLeadMenuOpen] = useState(false);
-  const [newLeadInitialMode, setNewLeadInitialMode] = useState<'quick' | 'full'>('quick');
+  const newLeadInitialMode: 'quick' | 'full' = 'quick';
 
   // Estados para Ações Rápidas do Lead Card (Referência Visual)
   const [activeLeadMenuId, setActiveLeadMenuId] = useState<string | null>(null);
@@ -703,6 +705,23 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
   const [showCardCustomTagInput, setShowCardCustomTagInput] = useState(false);
   const [activeValueLeadId, setActiveValueLeadId] = useState<string | null>(null);
   const [initialWorkspaceTab, setInitialWorkspaceTab] = useState<'whatsapp' | 'notes' | 'tasks'>('whatsapp');
+
+  useEffect(() => {
+    const handleGlobalFilter = (e: any) => {
+      if (e.detail && typeof e.detail.query === 'string') {
+        setSearch(e.detail.query);
+      }
+    };
+    const handleOpenNewLead = () => {
+      setIsNewLeadModalOpen(true);
+    };
+    window.addEventListener('f5_crm_filter_query', handleGlobalFilter);
+    window.addEventListener('f5_crm_open_new_lead', handleOpenNewLead);
+    return () => {
+      window.removeEventListener('f5_crm_filter_query', handleGlobalFilter);
+      window.removeEventListener('f5_crm_open_new_lead', handleOpenNewLead);
+    };
+  }, []);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -767,10 +786,6 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
       }, 2500);
     }
   };
-
-  // Fast Switcher Dropdown dos Funis Comerciais
-  const [isFunnelSwitcherOpen, setIsFunnelSwitcherOpen] = useState(false);
-  const funnelSwitcherRef = useRef<HTMLDivElement>(null);
 
   // Animações simétricas de recolher/expandir colunas com o fechamento como padrão de referência (isolado por funil)
   const [collapsingColumns, setCollapsingColumns] = useState<Record<string, boolean>>({});
@@ -841,11 +856,8 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
   };
 
   useEffect(() => {
-    const handleGlobalClick = (e: MouseEvent) => {
+    const handleGlobalClick = () => {
       setActiveLeadMenuId(null);
-      if (funnelSwitcherRef.current && !funnelSwitcherRef.current.contains(e.target as Node)) {
-        setIsFunnelSwitcherOpen(false);
-      }
     };
     document.addEventListener('click', handleGlobalClick);
     return () => document.removeEventListener('click', handleGlobalClick);
@@ -902,7 +914,6 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
     setComoFunnelId(undefined);
     setActiveLeadIdForWorkspace(null);
     setViewMode('kanban');
-    setIsFunnelSwitcherOpen(false);
     if (onSelectFunnel) onSelectFunnel(id);
   };
 
@@ -1092,14 +1103,6 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
   const currentFunnel = useMemo(() => {
     return funnelsList.find(f => f.id === selectedFunnelId) || funnelsList[0];
   }, [funnelsList, selectedFunnelId]);
-
-  const commercialFunnelsForSwitcher = useMemo(() => {
-    return funnelsList.filter(f => !f.isPostSale && f.category !== 'Pós-Venda');
-  }, [funnelsList]);
-
-  const postSaleFunnelsForSwitcher = useMemo(() => {
-    return funnelsList.filter(f => f.isPostSale || f.category === 'Pós-Venda' || f.category === 'pos_venda');
-  }, [funnelsList]);
 
   const isPostSaleFunnel = useMemo(() => {
     if (!currentFunnel) return false;
@@ -1359,7 +1362,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
     const targetLead = leads.find(l => l.id === leadId);
     if (targetLead && isLeadSpectator(targetLead)) {
       e.preventDefault();
-      alert('Modo Espectador: Você tem apenas permissão de visualização neste lead atribuído a outro colaborador.');
+      toast.warning('Modo Espectador: Você tem apenas permissão de visualização neste lead atribuído a outro colaborador.');
       return;
     }
     e.dataTransfer.setData('text/plain', leadId);
@@ -1388,7 +1391,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
   const handleDrop = (e: React.DragEvent, targetStage: string) => {
     e.preventDefault();
     if (isReadOnlyForPosVenda) {
-      alert('A equipe de Pós-Venda opera em modo de visualização neste funil comercial. Para gerenciar etapas e interagir, selecione um Funil de Pós-Venda.');
+      toast.warning('A equipe de Pós-Venda opera em modo de visualização neste funil comercial. Para gerenciar etapas e interagir, selecione um Funil de Pós-Venda.');
       return;
     }
 
@@ -1399,14 +1402,14 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
     if (!lead) return;
 
     if (isLeadSpectator(lead)) {
-      alert(`Modo Espectador: Este lead está sob atendimento de ${lead.assignedTo || 'outro SDR'}. Apenas o responsável ou Gerentes/Master podem alterar a etapa.`);
+      toast.warning(`Modo Espectador: Este lead está sob atendimento de ${lead.assignedTo || 'outro SDR'}. Apenas o responsável ou Gerentes/Master podem alterar a etapa.`);
       setDraggedLeadId(null);
       return;
     }
 
     const isPrivileged = currentUser?.role === 'master' || currentUser?.role === 'admin';
     if (currentUser?.role === 'sdr' && lead.sdrId && lead.sdrId !== currentUser.id && !isPrivileged) {
-      alert(`Este lead já está sendo atendido por ${lead.assignedTo || 'outro SDR'}. Apenas Gerentes ou Master podem reatribuir.`);
+      toast.warning(`Este lead já está sendo atendido por ${lead.assignedTo || 'outro SDR'}. Apenas Gerentes ou Master podem reatribuir.`);
       setDraggedLeadId(null);
       return;
     }
@@ -1425,7 +1428,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
     const isTargetEntry = (targetStage as string) === 'new_lead' || (targetStage as string) === 'onboarding' || (columns.length > 0 && targetStage === columns[0].id && (columns[0].title.toLowerCase().includes('entrada') || columns[0].title.toLowerCase().includes('novo lead')));
     const isCurrentEntry = (lead.stage as string) === 'new_lead' || (lead.stage as string) === 'onboarding' || (columns.length > 0 && getLeadMatchedColumnId(lead, columns) === columns[0].id && (columns[0].title.toLowerCase().includes('entrada') || columns[0].title.toLowerCase().includes('novo lead')));
     if (isTargetEntry && !isCurrentEntry) {
-      alert('Regra do CRM: A coluna de entrada é exclusivamente uma porta de entrada do sistema. Leads que já avançaram no pipeline não podem retornar para ela.');
+      toast.warning('Regra do CRM: A coluna de entrada é exclusivamente uma porta de entrada do sistema. Leads que já avançaram no pipeline não podem retornar para ela.');
       setDraggedLeadId(null);
       return;
     }
@@ -1517,11 +1520,14 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
     packageSold: string, 
     closerNotes?: string,
     extraOptions?: {
+      contractTitle?: string;
       downPayment?: number;
       installmentsCount?: number;
       hasCreditCard?: boolean;
       contractSignedFileUrl?: string;
       contractSignedFileName?: string;
+      paymentFileUrl?: string;
+      paymentFileName?: string;
       guestCount?: number;
       eventYear?: number | string;
       updateExistingClient?: boolean;
@@ -1721,52 +1727,24 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
         animation: 'fadeIn 0.25s ease-out',
         fontFamily: "'Plus Jakarta Sans', sans-serif"
       }}>
-        {/* Main Title & Action */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
-              <Target size={24} color="var(--adm-accent)" />
-              <h1 style={{ fontSize: '1.5rem', fontWeight: 900, color: 'var(--adm-text-title)', letterSpacing: '-0.4px', margin: 0 }}>
-                {isPostSaleView ? 'Central de Funis de Clientes (Pós-Venda)' : 'Central de Funis Comerciais'}
-              </h1>
-            </div>
-            <p style={{ fontSize: '0.82rem', color: 'var(--adm-text-muted)', margin: 0, maxWidth: '650px' }}>
-              {isPostSaleView 
-                ? 'Pipelines de pós-venda estruturados e independentes. Gerencie clientes, onboarding, visitas técnicas e degustações.'
-                : 'Pipelines comerciais estruturados e independentes. Gerencie oportunidades, mova etapas e acompanhe fechamentos.'}
-            </p>
-          </div>
-
-          {canConfigureFunnels && (
+        {/* Título e ação primária vivem no menu superior (breadcrumb + HeaderActions) */}
+        {canConfigureFunnels && (
+          <HeaderActions>
             <button
               type="button"
               onClick={() => handleOpenCreateFunnel(activeVenueId && activeVenueId !== 'all' ? activeVenueId : undefined)}
-              style={{
-                background: 'var(--adm-accent)',
-                color: '#FFFFFF',
-                borderRadius: '10px',
-                border: 'none',
-                padding: '10px 20px',
-                fontSize: '0.85rem',
-                fontWeight: 800,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                boxShadow: '0 4px 14px rgba(20, 169, 215, 0.35)',
-                transition: 'all 0.18s ease',
-              }}
+              style={headerPrimaryButtonStyle}
             >
-              <Plus size={16} color="#FFFFFF" />
+              <Plus size={15} />
               <span>{isPostSaleView ? 'Novo Funil Pós-Venda' : 'Novo Funil'}</span>
             </button>
-          )}
-        </div>
+          </HeaderActions>
+        )}
 
         {/* Overview KPIs - Clean Style */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}>
           <div style={{ padding: '16px 18px', display: 'flex', alignItems: 'center', gap: '12px', background: 'var(--adm-bg-card)', border: '1px solid var(--adm-border)', borderRadius: '12px' }}>
-            <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: 'rgba(212, 175, 55, 0.1)', border: '1px solid rgba(212, 175, 55, 0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#D4AF37', flexShrink: 0 }}>
+            <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: 'rgba(212, 175, 55, 0.1)', border: '1px solid rgba(212, 175, 55, 0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#A16207', flexShrink: 0 }}>
               <Layers size={19} />
             </div>
             <div>
@@ -2550,309 +2528,41 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
       }}>
         {/* Left Side: Active Funnel Pill + Receding Search Bar + Inline Expanding Filters + Meus Leads Pill */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: 1, minWidth: 0, flexWrap: 'nowrap' }}>
-          {/* Active Funnel Indicator Pill with Fast Dropdown */}
-          {currentFunnel && (
-            <div ref={funnelSwitcherRef} style={{ position: 'relative', display: 'inline-flex', zIndex: isFunnelSwitcherOpen ? 999 : 2 }}>
-              <div
-                onClick={() => {
-                  if (!isPostSaleView) {
-                    setIsFunnelSwitcherOpen(prev => !prev);
-                  }
-                }}
-                title={!isPostSaleView ? "Clique para alternar rapidamente entre funis comerciais" : undefined}
+          {/* Chip de Filtro de Busca Ativa (Alinhado com a Busca Global do Header) */}
+          {search.trim() && (
+            <div style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '3px 8px',
+              borderRadius: '6px',
+              background: 'var(--adm-accent-bg, rgba(99, 102, 241, 0.12))',
+              border: '1px solid var(--adm-accent)',
+              fontSize: '0.72rem',
+              color: 'var(--adm-accent)',
+              fontWeight: 600,
+            }}>
+              <Search size={11} />
+              <span>Filtro: &ldquo;{search}&rdquo;</span>
+              <button
+                type="button"
+                onClick={() => setSearch('')}
+                title="Limpar filtro de busca"
                 style={{
-                  display: 'inline-flex',
+                  background: 'none',
+                  border: 'none',
+                  padding: 0,
+                  cursor: 'pointer',
+                  display: 'flex',
                   alignItems: 'center',
-                  gap: '6px',
-                  padding: '4px 9px',
-                  borderRadius: '7px',
-                  background: `${currentFunnel.badgeColor || '#3B82F6'}18`,
-                  border: `1px solid ${currentFunnel.badgeColor || '#3B82F6'}45`,
-                  color: 'var(--adm-text-title)',
-                  fontSize: '0.74rem',
-                  fontWeight: 800,
-                  cursor: !isPostSaleView ? 'pointer' : 'default',
-                  flexShrink: 0,
-                  transition: 'all 0.15s ease',
-                  userSelect: 'none',
+                  color: 'inherit',
+                  marginLeft: '2px',
                 }}
               >
-                <span style={{ color: currentFunnel.badgeColor || '#3B82F6', display: 'inline-flex', alignItems: 'center' }}>
-                  {renderFunnelIcon(currentFunnel.icon || 'target', 13, currentFunnel.badgeColor || '#3B82F6')}
-                </span>
-                <span style={{ maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {currentFunnel.name}
-                </span>
-                {!isPostSaleView && (
-                  <ChevronDown 
-                    size={11} 
-                    style={{ 
-                      color: 'var(--adm-text-muted)', 
-                      marginLeft: '2px',
-                      transform: isFunnelSwitcherOpen ? 'rotate(180deg)' : 'none',
-                      transition: 'transform 0.15s ease',
-                    }} 
-                  />
-                )}
-              </div>
-
-              {/* Fast Dropdown Menu dos Funis Comerciais */}
-              {isFunnelSwitcherOpen && !isPostSaleView && (
-                <div style={{
-                  position: 'absolute',
-                  top: 'calc(100% + 6px)',
-                  left: 0,
-                  zIndex: 9999,
-                  background: 'var(--adm-bg-card, #1E1A29)',
-                  border: '1px solid var(--adm-border)',
-                  borderRadius: '10px',
-                  boxShadow: '0 8px 24px rgba(0,0,0,0.45)',
-                  minWidth: '220px',
-                  maxWidth: '300px',
-                  padding: '6px',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '2px',
-                  animation: 'fadeIn 0.12s ease-out',
-                }}>
-                  <div style={{ 
-                    padding: '4px 8px 6px', 
-                    fontSize: '0.66rem', 
-                    fontWeight: 800, 
-                    color: 'var(--adm-text-muted)',
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.04em',
-                    borderBottom: '1px solid var(--adm-border)',
-                    marginBottom: '2px',
-                  }}>
-                    Funis Comerciais
-                  </div>
-
-                  <div style={{ maxHeight: '240px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                    {commercialFunnelsForSwitcher.map(f => {
-                      const isActive = f.id === currentFunnel.id;
-                      return (
-                        <button
-                          key={f.id}
-                          type="button"
-                          onClick={() => {
-                            handleSelectFunnel(f.id);
-                            setIsFunnelSwitcherOpen(false);
-                          }}
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            gap: '8px',
-                            padding: '6px 10px',
-                            borderRadius: '6px',
-                            background: isActive ? 'var(--adm-accent-bg, rgba(99, 102, 241, 0.12))' : 'transparent',
-                            border: 'none',
-                            color: isActive ? 'var(--adm-accent)' : 'var(--adm-text-title)',
-                            fontSize: '0.74rem',
-                            fontWeight: isActive ? 800 : 500,
-                            cursor: 'pointer',
-                            textAlign: 'left',
-                            width: '100%',
-                            transition: 'background 0.1s ease',
-                          }}
-                          onMouseEnter={(e) => {
-                            if (!isActive) e.currentTarget.style.background = 'var(--adm-bg-input)';
-                          }}
-                          onMouseLeave={(e) => {
-                            if (!isActive) e.currentTarget.style.background = 'transparent';
-                          }}
-                        >
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
-                            <span style={{ color: f.badgeColor || '#3B82F6', display: 'inline-flex', alignItems: 'center', flexShrink: 0 }}>
-                              {renderFunnelIcon(f.icon || 'target', 12, f.badgeColor || '#3B82F6')}
-                            </span>
-                            <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                              {f.name}
-                            </span>
-                          </div>
-                          {isActive && <Check size={12} color="var(--adm-accent)" style={{ flexShrink: 0 }} />}
-                        </button>
-                      );
-                    })}
-
-                    {postSaleFunnelsForSwitcher.length > 0 && (
-                      <>
-                        <div style={{ 
-                          padding: '6px 8px 4px', 
-                          fontSize: '0.66rem', 
-                          fontWeight: 800, 
-                          color: 'var(--adm-text-muted)',
-                          textTransform: 'uppercase',
-                          letterSpacing: '0.04em',
-                          borderTop: '1px solid var(--adm-border)',
-                          marginTop: '4px',
-                          marginBottom: '2px',
-                        }}>
-                          Funis de Pós-Venda
-                        </div>
-
-                        {postSaleFunnelsForSwitcher.map(f => {
-                          const isActive = f.id === currentFunnel.id;
-                          return (
-                            <button
-                              key={f.id}
-                              type="button"
-                              onClick={() => {
-                                handleSelectFunnel(f.id);
-                                setIsFunnelSwitcherOpen(false);
-                              }}
-                              style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'space-between',
-                                gap: '8px',
-                                padding: '6px 10px',
-                                borderRadius: '6px',
-                                background: isActive ? 'var(--adm-accent-bg, rgba(99, 102, 241, 0.12))' : 'transparent',
-                                border: 'none',
-                                color: isActive ? 'var(--adm-accent)' : 'var(--adm-text-title)',
-                                fontSize: '0.74rem',
-                                fontWeight: isActive ? 800 : 500,
-                                cursor: 'pointer',
-                                textAlign: 'left',
-                                width: '100%',
-                                transition: 'background 0.1s ease',
-                              }}
-                              onMouseEnter={(e) => {
-                                if (!isActive) e.currentTarget.style.background = 'var(--adm-bg-input)';
-                              }}
-                              onMouseLeave={(e) => {
-                                if (!isActive) e.currentTarget.style.background = 'transparent';
-                              }}
-                            >
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
-                                <span style={{ color: '#10B981', display: 'inline-flex', alignItems: 'center', flexShrink: 0 }}>
-                                  {renderFunnelIcon(f.icon || 'star', 12, '#10B981')}
-                                </span>
-                                <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                  {f.name}
-                                </span>
-                                <span style={{ fontSize: '0.60rem', padding: '1px 4px', borderRadius: '4px', background: 'rgba(16, 185, 129, 0.15)', color: '#10B981', fontWeight: 800 }}>
-                                  Pós-Venda
-                                </span>
-                              </div>
-                              {isActive && <Check size={12} color="var(--adm-accent)" style={{ flexShrink: 0 }} />}
-                            </button>
-                          );
-                        })}
-                      </>
-                    )}
-                  </div>
-
-                  {/* Link para Central de Funis (Exclusivo Gerência / Master) */}
-                  {canConfigureFunnels && (
-                    <div style={{ borderTop: '1px solid var(--adm-border)', marginTop: '4px', paddingTop: '4px' }}>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          handleSelectFunnel(null);
-                          setIsFunnelSwitcherOpen(false);
-                        }}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '6px',
-                          padding: '6px 10px',
-                          borderRadius: '6px',
-                          background: 'transparent',
-                          border: 'none',
-                          color: 'var(--adm-text-muted)',
-                          fontSize: '0.70rem',
-                          fontWeight: 700,
-                          cursor: 'pointer',
-                          width: '100%',
-                          textAlign: 'left',
-                          transition: 'color 0.1s ease',
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.color = 'var(--adm-text-title)';
-                          e.currentTarget.style.background = 'var(--adm-bg-input)';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.color = 'var(--adm-text-muted)';
-                          e.currentTarget.style.background = 'transparent';
-                        }}
-                      >
-                        <Layers size={12} />
-                        <span>Ver todos os funis (Central)</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setIsFunnelSwitcherOpen(false);
-                          if (currentFunnel) handleDuplicateFunnel(currentFunnel.id);
-                        }}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '6px',
-                          padding: '6px 10px',
-                          borderRadius: '6px',
-                          background: 'transparent',
-                          border: 'none',
-                          color: 'var(--adm-text-muted)',
-                          fontSize: '0.70rem',
-                          fontWeight: 700,
-                          cursor: 'pointer',
-                          width: '100%',
-                          textAlign: 'left',
-                          transition: 'color 0.1s ease',
-                          marginTop: '2px',
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.color = 'var(--adm-accent)';
-                          e.currentTarget.style.background = 'var(--adm-bg-input)';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.color = 'var(--adm-text-muted)';
-                          e.currentTarget.style.background = 'transparent';
-                        }}
-                      >
-                        <Copy size={12} />
-                        <span>Duplicar este Funil</span>
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )}
+                <X size={12} />
+              </button>
             </div>
           )}
-
-          {/* Busca (Recolhe se filtros estiverem abertos, expande caso contrário) */}
-          <div style={{
-            position: 'relative',
-            width: isFilterBarExpanded ? '150px' : '200px',
-            transition: 'width 0.2s ease',
-            flexShrink: 0,
-          }}>
-            <Search size={13} color="var(--adm-accent)" style={{ position: 'absolute', left: '9px', top: '7px' }} />
-            <input
-              type="text"
-              placeholder={isPostSaleView ? "Buscar cliente ou telefone..." : "Buscar lead ou telefone..."}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              style={{
-                width: '100%',
-                background: 'var(--adm-bg-input)',
-                border: '1px solid var(--adm-border)',
-                borderRadius: '6px',
-                padding: '4px 8px 4px 28px',
-                color: 'var(--adm-text-title)',
-                fontSize: '0.74rem',
-                outline: 'none',
-                boxSizing: 'border-box',
-                fontFamily: "'Inter', sans-serif",
-              }}
-            />
-          </div>
 
           {/* Botão de Filtros com Popover Flutuante (Anti-quebra de linha) */}
           <div style={{ position: 'relative' }}>
@@ -3077,123 +2787,6 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
             )}
           </button>
 
-          {/* Botão + Adicionar Lead com Submenu Rápido / Personalizado */}
-          <div style={{ position: 'relative' }}>
-            <button
-              type="button"
-              onClick={() => setIsAddLeadMenuOpen(prev => !prev)}
-              style={{
-                background: isPostSaleView ? 'linear-gradient(135deg, #06B6D4, #0891B2)' : 'linear-gradient(135deg, #6366F1, #4F46E5)',
-                border: 'none',
-                borderRadius: '6px',
-                color: '#ffffff',
-                padding: '6px 12px',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                fontSize: '0.76rem',
-                fontWeight: 700,
-                boxShadow: '0 2px 6px rgba(99, 102, 241, 0.3)',
-                transition: 'all 0.15s ease',
-              }}
-            >
-              <UserPlus size={13} />
-              <span>{isPostSaleView ? 'Adicionar Cliente' : 'Adicionar Lead'}</span>
-              <ChevronDown size={12} style={{ transform: isAddLeadMenuOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s ease' }} />
-            </button>
-
-            {isAddLeadMenuOpen && (
-              <div
-                style={{
-                  position: 'absolute',
-                  top: 'calc(100% + 6px)',
-                  right: 0,
-                  zIndex: 200,
-                  minWidth: '220px',
-                  background: 'var(--adm-bg-card, #FFFFFF)',
-                  border: '1px solid var(--adm-border, #E2E8F0)',
-                  borderRadius: '10px',
-                  boxShadow: '0 10px 25px -5px rgba(0,0,0,0.15)',
-                  padding: '6px',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '4px',
-                  animation: 'fadeIn 0.15s ease-out',
-                }}
-              >
-                <button
-                  type="button"
-                  onClick={() => {
-                    setNewLeadInitialMode('quick');
-                    setIsNewLeadModalOpen(true);
-                    setIsAddLeadMenuOpen(false);
-                  }}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'flex-start',
-                    gap: '8px',
-                    padding: '8px 10px',
-                    borderRadius: '6px',
-                    border: 'none',
-                    background: 'transparent',
-                    cursor: 'pointer',
-                    textAlign: 'left',
-                    transition: 'background 0.12s ease',
-                  }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = 'var(--adm-bg-input, #F8FAFC)'}
-                  onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                >
-                  <div style={{ width: '24px', height: '24px', borderRadius: '6px', background: 'rgba(16, 185, 129, 0.12)', color: '#10B981', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    <Zap size={13} />
-                  </div>
-                  <div>
-                    <div style={{ fontSize: '0.76rem', fontWeight: 800, color: 'var(--adm-text-title, #0F172A)' }}>
-                      Cadastro Rápido
-                    </div>
-                    <div style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted, #64748B)' }}>
-                      Apenas Nome, WhatsApp e Unidade
-                    </div>
-                  </div>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setNewLeadInitialMode('full');
-                    setIsNewLeadModalOpen(true);
-                    setIsAddLeadMenuOpen(false);
-                  }}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'flex-start',
-                    gap: '8px',
-                    padding: '8px 10px',
-                    borderRadius: '6px',
-                    border: 'none',
-                    background: 'transparent',
-                    cursor: 'pointer',
-                    textAlign: 'left',
-                    transition: 'background 0.12s ease',
-                  }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = 'var(--adm-bg-input, #F8FAFC)'}
-                  onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                >
-                  <div style={{ width: '24px', height: '24px', borderRadius: '6px', background: 'rgba(99, 102, 241, 0.12)', color: '#6366F1', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    <Sliders size={13} />
-                  </div>
-                  <div>
-                    <div style={{ fontSize: '0.76rem', fontWeight: 800, color: 'var(--adm-text-title, #0F172A)' }}>
-                      Cadastro Personalizado
-                    </div>
-                    <div style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted, #64748B)' }}>
-                      Completo com orçamento e notas
-                    </div>
-                  </div>
-                </button>
-              </div>
-            )}
-          </div>
 
           {/* Seletor de Modo Minimalista (Apenas Ícones com Tooltips) */}
           <div style={{
@@ -3742,6 +3335,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
 
                     {/* Cards Container - Com scroll individual ultrafino de 4px */}
                     <div 
+                      ref={animateList}
                       className="kanban-column-scrollbar"
                       style={{
                         padding: '4px 3px 24px 0',
@@ -4313,6 +3907,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                 if (cleanLeadPhone.length >= 8) {
                                   const hasDuplicate = leads.some(l => {
                                     if (l.id === lead.id) return false;
+                                    if (l.masterId && lead.masterId && l.masterId !== lead.masterId) return false;
                                     const isLClient = Boolean(l.isClient || l.group === 'Pós-Venda');
                                     if (isTargetClient !== isLClient) return false;
                                     return isPhoneMatch(l.phone, lead.phone);
@@ -4973,7 +4568,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
 
                                   {/* Barra com os 3 Ícones Essenciais (Tarefas, WhatsApp e Agenda) */}
                                   <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
-                                    {/* 1. Tarefas (☑ CheckSquare) */}
+                                    {/* 1. Tarefas (CheckSquare) */}
                                     {(() => {
                                       const allTasks = [...(lead.tasks || []), ...(tasks || []).filter(t => t.leadId === lead.id)];
                                       const pending = allTasks.filter(t => t.status !== 'completed');

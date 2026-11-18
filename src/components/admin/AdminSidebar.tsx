@@ -1,27 +1,32 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { 
-  LayoutDashboard, Building2, Users, Target, 
-  CheckSquare, Home, Briefcase, DollarSign, SlidersHorizontal,
+import { motion } from 'motion/react';
+import {
+  LayoutDashboard, Building2, Users, Target,
+  CheckSquare, Home, DollarSign, SlidersHorizontal,
   ChevronRight, ChevronLeft,
   ChevronDown, Globe,
   Sparkles, Radio, Compass,
   ShieldCheck, Star, X, AlertTriangle, Sliders, Headset,
-  Eye, RotateCcw, Gift, Calendar, CalendarCheck2, GripVertical, UserCheck, Clock, Zap
+  Eye, RotateCcw, Gift, Calendar, CalendarCheck2, GripVertical, UserCheck, Clock, Zap,
+  Contact as ContactIcon, FileCheck2, Bell, LogOut
 } from 'lucide-react';
+import { SafeAvatar } from './SafeAvatar';
 import { IcpTargetUserIcon } from './IcpTargetUserIcon';
 import { renderFunnelOrStageIcon } from '../../utils/funnelIconLibrary';
 import { useAdminState } from '../../context/AdminStateContext';
 import { type FeatureFlagId, type Venue, type CommercialFunnel } from '../../types/admin';
 import { getLeadPendingWaitingTime } from '../../utils/leadSorting';
 
-export type AdminTabType = 
+export type AdminTabType =
   | 'home'
   | 'tasks'
   | 'quick-messages'
   | 'team-calendar'
-  | 'dashboard' 
-  | 'crm' 
+  | 'dashboard'
+  | 'crm'
+  | 'contacts'
   | 'leads'
+  | 'contracts'
   | 'followups'
   | 'whatsapp'
   | 'post-sale-crm'
@@ -34,14 +39,15 @@ export type AdminTabType =
   | 'sources'
   | 'mql'
   | 'sla-settings'
-  | 'debutantes' 
+  | 'debutantes'
   | 'venue-goals'
   | 'master-dashboard'
-  | 'venues' 
+  | 'venues'
   | 'benefits'
-  | 'collaborators' 
-  | 'templates' 
+  | 'collaborators'
+  | 'templates'
   | 'appointments'
+  | 'notifications'
   | 'settings'
   | 'dev-features'
   | 'dev-users'
@@ -80,10 +86,11 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
   isCollapsed = false,
   onToggleCollapse,
 }) => {
-  const { 
-    currentUser, 
-    venues, 
-    activeVenueId, 
+  const {
+    currentUser,
+    logout,
+    venues,
+    activeVenueId,
     setActiveVenueId,
     funnels,
     leads,
@@ -97,6 +104,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
     refreshAllData,
     userPinnedFunnelIds,
     reorderPinnedFunnels,
+    announcements,
   } = useAdminState();
 
   const [isRefreshingLogo, setIsRefreshingLogo] = useState(false);
@@ -108,7 +116,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
       if (refreshAllData) {
         await refreshAllData();
       }
-    } catch {}
+    } catch { }
     setTimeout(() => {
       setIsRefreshingLogo(false);
     }, 650);
@@ -144,6 +152,22 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
   const venueDropdownRef = useRef<HTMLDivElement>(null);
   const [draggedFunnelId, setDraggedFunnelId] = useState<string | null>(null);
   const [dragOverFunnelId, setDragOverFunnelId] = useState<string | null>(null);
+
+  // Seletor Olhos do Colaborador na Gerência
+  const [isEyeDropdownOpen, setIsEyeDropdownOpen] = useState(false);
+  const eyeDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (eyeDropdownRef.current && !eyeDropdownRef.current.contains(e.target as Node)) {
+        setIsEyeDropdownOpen(false);
+      }
+    };
+    if (isEyeDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [isEyeDropdownOpen]);
 
   // Popover / Flyout flutuante para setores quando o menu está recuado (isCollapsed)
   const [collapsedSectorFlyout, setCollapsedSectorFlyout] = useState<'comercial' | 'pos_venda' | 'gerencia' | null>(null);
@@ -263,47 +287,47 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
     { id: 'dev-support', label: 'Suporte', icon: <Headset size={15} />, roles: ['master'] },
   ];
 
-  // 1. Workspace
-  const workspaceItems: { id: AdminTabType; label: string; icon: React.ReactNode; roles: string[] }[] = [
+  // 1. Workspace (Enxuto e Direto: Início com tarefas pessoais, Notificações e Equipe)
+  const workspaceItems: { id: AdminTabType; label: string; icon: React.ReactNode; roles: string[]; alertBadge?: boolean }[] = [
     { id: 'home', label: 'Início', icon: <Home size={15} />, roles: ['master', 'admin', 'crm', 'sdr', 'closer', 'pos_venda'] },
+    { id: 'notifications', label: 'Notificações', icon: <Bell size={15} />, roles: ['master', 'admin', 'crm', 'sdr', 'closer', 'pos_venda'], alertBadge: Boolean(announcements && announcements.length > 0) },
     { id: 'team', label: 'Equipe', icon: <Users size={15} />, roles: ['master', 'admin', 'crm', 'sdr', 'closer', 'pos_venda'] },
   ];
 
-// WhatsApp Official Brand SVG Icon
-const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size = 15, color = 'currentColor' }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill={color} style={{ flexShrink: 0 }}>
-    <path d="M17.472 14.382c-.301-.15-1.78-.878-2.056-.978-.276-.1-.477-.15-.678.15-.2.301-.778.978-.954 1.179-.176.2-.351.226-.652.075-1.781-.892-2.946-1.597-4.108-3.593-.306-.527.306-.489.876-1.629.096-.192.048-.36-.024-.51-.072-.15-.678-1.636-.93-2.242-.244-.588-.493-.509-.678-.518-.176-.008-.377-.01-.578-.01s-.527.075-.803.376c-.276.301-1.055 1.03-1.055 2.511s1.08 2.913 1.231 3.114c.151.2 2.126 3.246 5.15 4.553.719.311 1.28.497 1.718.636.723.23 1.381.198 1.901.12.58-.087 1.78-.728 2.032-1.431.252-.703.252-1.305.176-1.431-.076-.126-.276-.201-.577-.351z"/>
-    <path d="M12 2C6.477 2 2 6.477 2 12c0 1.92.545 3.715 1.488 5.237L2.05 21.95l4.857-1.39A9.957 9.957 0 0 0 12 22c5.523 0 10-4.477 10-10S17.523 2 12 2zm0 18.2c-1.634 0-3.175-.483-4.472-1.314l-.321-.205-2.887.826.837-2.822-.218-.337A8.17 8.17 0 0 1 3.8 12c0-4.522 3.678-8.2 8.2-8.2 4.522 0 8.2 3.678 8.2 8.2 0 4.522-3.678 8.2-8.2 8.2z"/>
-  </svg>
-);
+  // WhatsApp Official Brand SVG Icon
+  const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size = 15, color = 'currentColor' }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill={color} style={{ flexShrink: 0 }}>
+      <path d="M17.472 14.382c-.301-.15-1.78-.878-2.056-.978-.276-.1-.477-.15-.678.15-.2.301-.778.978-.954 1.179-.176.2-.351.226-.652.075-1.781-.892-2.946-1.597-4.108-3.593-.306-.527.306-.489.876-1.629.096-.192.048-.36-.024-.51-.072-.15-.678-1.636-.93-2.242-.244-.588-.493-.509-.678-.518-.176-.008-.377-.01-.578-.01s-.527.075-.803.376c-.276.301-1.055 1.03-1.055 2.511s1.08 2.913 1.231 3.114c.151.2 2.126 3.246 5.15 4.553.719.311 1.28.497 1.718.636.723.23 1.381.198 1.901.12.58-.087 1.78-.728 2.032-1.431.252-.703.252-1.305.176-1.431-.076-.126-.276-.201-.577-.351z" />
+      <path d="M12 2C6.477 2 2 6.477 2 12c0 1.92.545 3.715 1.488 5.237L2.05 21.95l4.857-1.39A9.957 9.957 0 0 0 12 22c5.523 0 10-4.477 10-10S17.523 2 12 2zm0 18.2c-1.634 0-3.175-.483-4.472-1.314l-.321-.205-2.887.826.837-2.822-.218-.337A8.17 8.17 0 0 1 3.8 12c0-4.522 3.678-8.2 8.2-8.2 4.522 0 8.2 3.678 8.2 8.2 0 4.522-3.678 8.2-8.2 8.2z" />
+    </svg>
+  );
 
-  // Ferramentas: WhatsApp Multi-Setor, Tarefas e Mensagens Rápidas
-  const toolsItems: { id: AdminTabType; label: string; icon: React.ReactNode; roles: string[]; alertBadge?: boolean }[] = [
+  // Comunicação: WhatsApp, Mensagens Rápidas e Central de Contatos
+  const communicationItems: { id: AdminTabType; label: string; icon: React.ReactNode; roles: string[]; alertBadge?: boolean }[] = [
     { id: 'whatsapp', label: 'WhatsApp', icon: <WhatsAppBrandIcon size={15} />, roles: ['master', 'admin', 'crm', 'sdr', 'closer', 'pos_venda'] },
-    { id: 'tasks', label: 'Tarefas', icon: <CheckSquare size={15} />, roles: ['master', 'admin', 'crm', 'sdr', 'closer', 'pos_venda'] },
     { id: 'quick-messages', label: 'Mensagens Rápidas', icon: <Zap size={15} />, roles: ['master', 'admin', 'crm', 'sdr', 'closer', 'pos_venda'] },
+    { id: 'contacts', label: 'Contatos', icon: <ContactIcon size={15} />, roles: ['master', 'admin', 'crm', 'sdr', 'closer', 'pos_venda'] },
   ];
 
-  // 2. Comercial: Dashboard, Funil Comercial, Leads, Agendamentos
+  // 2. Comercial: Dashboard, Funil Comercial, Visitas & Degustações
   const commercialItems: { id: AdminTabType; label: string; icon: React.ReactNode; roles: string[]; alertBadge?: boolean }[] = [
     { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={15} />, roles: ['master', 'admin', 'crm', 'sdr', 'closer'] },
     { id: 'crm', label: 'Funil Comercial', icon: <Target size={15} />, roles: ['master', 'admin', 'crm', 'sdr', 'closer'] },
-    { id: 'leads', label: 'Leads', icon: <Users size={15} />, roles: ['master', 'admin', 'crm', 'sdr', 'closer'], alertBadge: unindexedLeadsCount > 0 },
-    { id: 'post-sale-visits-tastings', label: 'Agendamentos', icon: <Calendar size={15} />, roles: ['master', 'admin', 'crm', 'sdr', 'closer', 'pos_venda'] },
-    { id: 'venue-events', label: 'Agenda de Eventos', icon: <CalendarCheck2 size={15} />, roles: ['master', 'admin', 'crm', 'sdr', 'closer', 'pos_venda'] },
+    { id: 'post-sale-visits-tastings', label: 'Visitas & Degustações', icon: <Calendar size={15} />, roles: ['master', 'admin', 'crm', 'sdr', 'closer', 'pos_venda'] },
   ];
 
-  // 3. Pós-Venda: Funis de Pós-Venda, Clientes, App Aniversariantes, Compromissos, Agenda de Eventos
+  // 3. Pós-Venda: Funis de Pós-Venda, Contratos, App Aniversariantes, Compromissos, Agenda de Eventos
   const postSaleItems: { id: AdminTabType; label: string; icon: React.ReactNode; roles: string[] }[] = [
     { id: 'post-sale-crm', label: 'Funis de Pós-Venda', icon: <Target size={15} />, roles: ['master', 'admin', 'pos_venda'] },
-    { id: 'post-sale-clients', label: 'Clientes', icon: <UserCheck size={15} />, roles: ['master', 'admin', 'pos_venda'] },
+    { id: 'contracts', label: 'Contratos', icon: <FileCheck2 size={15} />, roles: ['master', 'admin', 'pos_venda', 'closer', 'sdr'] },
     { id: 'debutantes', label: 'App Aniversariantes', icon: <Gift size={15} />, roles: ['master', 'admin', 'pos_venda'] },
     { id: 'post-sale-appointments', label: 'Compromissos', icon: <CheckSquare size={15} />, roles: ['master', 'admin', 'pos_venda'] },
     { id: 'venue-events', label: 'Agenda de Eventos', icon: <CalendarCheck2 size={15} />, roles: ['master', 'admin', 'pos_venda'] },
   ];
 
-  // 4. Gerência: Qualificação ICP, Origens, Metas, Dashboard Gerência, Colaboradores, Casas de Festa
+  // 4. Gerência: Central de Tarefas da Rede, Qualificação ICP, Origens, Metas, Dashboard Gerência, Tempo de Resposta, Colaboradores, Casas de Festa
   const masterItems: { id: AdminTabType; label: string; icon: React.ReactNode; roles: string[]; alertBadge?: boolean }[] = [
+    { id: 'tasks', label: 'Central de Tarefas', icon: <CheckSquare size={15} />, roles: ['master', 'admin'] },
     { id: 'mql', label: 'Qualificação', icon: <IcpTargetUserIcon size={15} />, roles: ['master', 'admin'] },
     { id: 'sources', label: 'Origens', icon: <Compass size={15} />, roles: ['master', 'admin'], alertBadge: hasUnconfiguredSources },
     { id: 'venue-goals', label: 'Metas', icon: <Star size={15} />, roles: ['master', 'admin'] },
@@ -328,11 +352,11 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
 
 
   const isPostSaleFunnel = useCallback((f: CommercialFunnel) => Boolean(
-    f.isPostSale || 
-    f.category === 'Pós-Venda' || 
+    f.isPostSale ||
+    f.category === 'Pós-Venda' ||
     f.category === 'pos_venda' ||
-    f.name?.toLowerCase().includes('pós-venda') || 
-    f.name?.toLowerCase().includes('pos venda') || 
+    f.name?.toLowerCase().includes('pós-venda') ||
+    f.name?.toLowerCase().includes('pos venda') ||
     f.name?.toLowerCase().includes('sucesso')
   ), []);
 
@@ -366,7 +390,7 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
     const targetTab: AdminTabType = isPostSale ? 'post-sale-crm' : 'crm';
     const isFunnelActive = activeTab === targetTab && activeFunnelId === f.id;
     const funnelColor = isPostSale ? '#06B6D4' : (f.badgeColor || '#D4AF37');
-    
+
     if (isCollapsed && !isMobileOverlay) {
       return (
         <button
@@ -490,7 +514,7 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
           fontSize: '8px',
           padding: '1px 4px',
           borderRadius: '4px',
-          background: isPostSale 
+          background: isPostSale
             ? (isFunnelActive ? 'rgba(6, 182, 212, 0.28)' : 'rgba(6, 182, 212, 0.12)')
             : (isFunnelActive ? `${funnelColor}30` : 'rgba(255, 255, 255, 0.08)'),
           color: isPostSale ? '#06B6D4' : (isFunnelActive ? funnelColor : (f.badgeColor || 'var(--adm-text-muted)')),
@@ -620,7 +644,7 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
 
     if (sector === 'comercial') {
       accentColor = '#14A9D7';
-      isSectorActive = !isPinnedCommercialActive && ['dashboard', 'crm', 'leads', 'post-sale-visits-tastings', 'venue-events'].includes(activeTab);
+      isSectorActive = !isPinnedCommercialActive && ['dashboard', 'crm', 'contacts', 'leads', 'post-sale-visits-tastings'].includes(activeTab);
       // Ícone dinâmico do Comercial
       switch (activeTab) {
         case 'dashboard':
@@ -629,14 +653,14 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
         case 'crm':
           icon = <Target size={18} />;
           break;
+        case 'contacts':
+          icon = <ContactIcon size={18} />;
+          break;
         case 'leads':
           icon = <Users size={18} />;
           break;
         case 'post-sale-visits-tastings':
           icon = <Calendar size={18} />;
-          break;
-        case 'venue-events':
-          icon = <CalendarCheck2 size={18} />;
           break;
         default:
           icon = <DollarSign size={18} />;
@@ -644,11 +668,14 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
       }
     } else if (sector === 'pos_venda') {
       accentColor = '#06B6D4';
-      isSectorActive = !isPinnedPostSaleActive && ['post-sale-crm', 'post-sale-clients', 'debutantes', 'post-sale-appointments', 'venue-events'].includes(activeTab);
+      isSectorActive = !isPinnedPostSaleActive && ['post-sale-crm', 'contracts', 'post-sale-clients', 'debutantes', 'post-sale-appointments', 'venue-events'].includes(activeTab);
       // Ícone dinâmico do Pós-Venda
       switch (activeTab) {
         case 'post-sale-crm':
           icon = <Target size={18} />;
+          break;
+        case 'contracts':
+          icon = <FileCheck2 size={18} />;
           break;
         case 'post-sale-clients':
           icon = <UserCheck size={18} />;
@@ -663,7 +690,7 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
           icon = <CalendarCheck2 size={18} />;
           break;
         default:
-          icon = <Briefcase size={18} />;
+          icon = <ShieldCheck size={18} />;
           break;
       }
     } else if (sector === 'gerencia') {
@@ -698,7 +725,7 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
     const isFlyoutOpen = collapsedSectorFlyout === sector;
 
     return (
-      <div 
+      <div
         key={`collapsed-sector-${sector}`}
         style={{ position: 'relative', width: '100%' }}
       >
@@ -759,7 +786,7 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
   const renderSectionHeader = (title: string, sectionKey: string) => {
     const isSectionCollapsed = Boolean(collapsedSections[sectionKey]);
     return (
-      <div 
+      <div
         onClick={() => toggleSection(sectionKey)}
         title={isSectionCollapsed ? `Expandir ${title}` : `Recolher ${title}`}
         style={{
@@ -786,14 +813,14 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
         }}
       >
         <span>{title}</span>
-        <ChevronDown 
-          size={12} 
-          color="#14A9D7" 
-          style={{ 
+        <ChevronDown
+          size={12}
+          color="#14A9D7"
+          style={{
             transform: isSectionCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
             transition: 'transform 0.2s ease',
             opacity: 0.8,
-          }} 
+          }}
         />
       </div>
     );
@@ -997,11 +1024,10 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
             </span>
           )}
           {isActive && (
-            <span style={{
+            <motion.span layoutId="sb-active-bar" transition={{ type: 'spring', stiffness: 500, damping: 40 }} style={{
               position: 'absolute',
               right: '-5px',
-              top: '50%',
-              transform: 'translateY(-50%)',
+              top: 'calc(50% - 7px)',
               width: '3px',
               height: '14px',
               borderRadius: '2px',
@@ -1025,12 +1051,14 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
           gap: '8px',
           padding: isSubItem ? '5px 8px 5px 12px' : '6px 8px',
           borderRadius: '8px',
-          background: isDev 
+          position: 'relative',
+          isolation: 'isolate',
+          background: isDev
             ? (isActive ? 'rgba(20, 169, 215, 0.30)' : 'rgba(20, 169, 215, 0.08)')
-            : (isActive ? 'rgba(20, 169, 215, 0.14)' : 'transparent'),
+            : 'transparent',
           border: isDev
             ? (isActive ? '1.5px solid #38BDF8' : '1px solid rgba(20, 169, 215, 0.25)')
-            : (isActive ? '1px solid #14A9D7' : '1px solid transparent'),
+            : '1px solid transparent',
           color: isDev
             ? (isActive ? '#38BDF8' : '#E0F2FE')
             : (isActive ? '#14A9D7' : '#FFFFFF'),
@@ -1042,6 +1070,13 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
           boxShadow: isDev && isActive ? '0 0 12px rgba(56, 189, 248, 0.35)' : 'none',
         }}
       >
+        {isActive && !isDev && (
+          <motion.span
+            layoutId="sb-active-pill"
+            transition={{ type: 'spring', stiffness: 500, damping: 40 }}
+            style={{ position: 'absolute', inset: -1, zIndex: -1, borderRadius: '8px', background: 'rgba(20, 169, 215, 0.14)', border: '1px solid #14A9D7' }}
+          />
+        )}
         <span style={{ color: isDev ? '#38BDF8' : (isActive ? '#14A9D7' : '#8096A8'), display: 'flex', flexShrink: 0 }}>
           {item.icon}
         </span>
@@ -1130,96 +1165,123 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
     );
   };
 
-  const sidebarWidth = isMobileOverlay 
-    ? '100vw' 
-    : isCollapsed 
-    ? '58px' 
-    : '208px';
+  const sidebarWidth = isMobileOverlay
+    ? '100vw'
+    : isCollapsed
+      ? '58px'
+      : '208px';
 
   return (
-    <aside 
-      className="admin-sidebar-scroll"
+    <aside
       style={{
         width: sidebarWidth,
         minWidth: sidebarWidth,
         maxWidth: sidebarWidth,
         background: '#0B090E',
-      borderRight: isMobileOverlay ? 'none' : '1px solid rgba(212, 175, 55, 0.15)',
-      display: 'flex',
-      flexDirection: 'column',
-      height: '100vh',
-      position: isMobileOverlay ? 'fixed' : 'sticky',
-      top: 0,
-      left: 0,
-      right: isMobileOverlay ? 0 : undefined,
-      bottom: isMobileOverlay ? 0 : undefined,
-      padding: isMobileOverlay 
-        ? '20px 14px 30px 14px' 
-        : isCollapsed 
-        ? '14px 6px' 
-        : '14px 8px',
-      boxSizing: 'border-box',
-      overflowY: 'auto',
-      overflowX: 'hidden',
-      zIndex: isMobileOverlay ? 9999 : 50,
-      fontFamily: "'Poppins', sans-serif",
-      color: '#FFFFFF',
-      transition: 'width 0.2s cubic-bezier(0.4, 0, 0.2, 1), min-width 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-    }}>
-      {/* Brand Header: F5 System Official Logos */}
-      <div style={{
+        borderRight: isMobileOverlay ? 'none' : '1px solid rgba(212, 175, 55, 0.15)',
         display: 'flex',
-        alignItems: 'center',
-        justifyContent: isCollapsed && !isMobileOverlay ? 'center' : 'space-between',
-        paddingBottom: '10px',
-        borderBottom: '1px solid rgba(20, 169, 215, 0.2)',
-        marginBottom: '10px',
-        position: 'relative',
+        flexDirection: 'column',
+        height: '100vh',
+        position: isMobileOverlay ? 'fixed' : 'sticky',
+        top: 0,
+        left: 0,
+        right: isMobileOverlay ? 0 : undefined,
+        bottom: isMobileOverlay ? 0 : undefined,
+        padding: 0,
+        boxSizing: 'border-box',
+        overflow: 'hidden',
+        zIndex: isMobileOverlay ? 9999 : 50,
+        fontFamily: "'Poppins', sans-serif",
+        color: '#FFFFFF',
+        transition: 'width 0.2s cubic-bezier(0.4, 0, 0.2, 1), min-width 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
       }}>
-        {isCollapsed && !isMobileOverlay ? (
-          <div style={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            gap: '8px',
-            width: '100%',
-          }}>
-            {/* F5 Official Símbolo/Mark - Limpo, com Easter Egg de Refresh */}
-            <div 
-              title="F5 System • Atualizar tela"
-              onClick={handleLogoRefresh}
-              style={{
-                width: '32px',
-                height: '32px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                boxSizing: 'border-box',
-                cursor: 'pointer',
-                transition: 'transform 0.15s ease',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.transform = 'scale(1.08)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = 'scale(1)';
-              }}
-            >
-              <img
-                src="/f5_mark.png"
-                alt="F5"
+      {/* 🔒 Topo Fixo: Brand Header & Seletor de Unidades (Sempre Visível) */}
+      <div style={{
+        flexShrink: 0,
+        padding: isMobileOverlay
+          ? '20px 14px 6px 14px'
+          : isCollapsed
+            ? '14px 6px 6px 6px'
+            : '14px 10px 6px 10px',
+        boxSizing: 'border-box',
+      }}>
+        {/* Brand Header: F5 System Official Logos */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: isCollapsed && !isMobileOverlay ? 'center' : 'space-between',
+          paddingBottom: '10px',
+          borderBottom: '1px solid rgba(20, 169, 215, 0.2)',
+          marginBottom: '10px',
+          position: 'relative',
+        }}>
+          {isCollapsed && !isMobileOverlay ? (
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: '8px',
+              width: '100%',
+            }}>
+              {/* F5 Official Símbolo/Mark - Limpo, com Easter Egg de Refresh */}
+              <div
+                title="F5 System • Atualizar tela"
+                onClick={handleLogoRefresh}
                 style={{
-                  width: '28px',
-                  height: '28px',
-                  objectFit: 'contain',
-                  transform: isRefreshingLogo ? 'rotate(360deg)' : 'none',
-                  transition: 'transform 0.6s cubic-bezier(0.34, 1.56, 0.64, 1)',
+                  width: '32px',
+                  height: '32px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  boxSizing: 'border-box',
+                  cursor: 'pointer',
+                  transition: 'transform 0.15s ease',
                 }}
-              />
-            </div>
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = 'scale(1.08)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = 'scale(1)';
+                }}
+              >
+                <img
+                  src="/f5_mark.png"
+                  alt="F5"
+                  onError={(e) => {
+                    e.currentTarget.style.display = 'none';
+                    const fb = e.currentTarget.parentElement?.querySelector('.f5-mark-fallback') as HTMLElement;
+                    if (fb) fb.style.display = 'flex';
+                  }}
+                  style={{
+                    width: '28px',
+                    height: '28px',
+                    objectFit: 'contain',
+                    transform: isRefreshingLogo ? 'rotate(360deg)' : 'none',
+                    transition: 'transform 0.6s cubic-bezier(0.34, 1.56, 0.64, 1)',
+                  }}
+                />
+                <div
+                  className="f5-mark-fallback"
+                  style={{
+                    display: 'none',
+                    width: '28px',
+                    height: '28px',
+                    borderRadius: '6px',
+                    background: 'linear-gradient(135deg, #14A9D7 0%, #06B6D4 100%)',
+                    color: '#080C14',
+                    fontWeight: 900,
+                    fontSize: '0.72rem',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    boxShadow: '0 0 10px rgba(20, 169, 215, 0.5)',
+                  }}
+                >
+                  F5
+                </div>
+              </div>
 
-            {/* Expand button */}
-            <button
+              {/* Expand button */}
+              <button
               type="button"
               onClick={onToggleCollapse}
               title="Expandir Menu Lateral"
@@ -1258,80 +1320,114 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
               position: 'relative',
               minHeight: '30px',
             }}>
-            {/* Centered Logo in the Middle with Easter Egg Refresh */}
-            <div 
-              title="F5 System • Atualizar tela"
-              onClick={handleLogoRefresh}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                width: '100%',
-                cursor: 'pointer',
-                transition: 'transform 0.15s ease',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.transform = 'scale(1.04)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = 'scale(1)';
-              }}
-            >
-              <img
-                src="/f5_logo.png"
-                alt="F5 System"
+              {/* Centered Logo in the Middle with Easter Egg Refresh */}
+              <div
+                title="F5 System • Atualizar tela"
+                onClick={handleLogoRefresh}
                 style={{
-                  height: '24px',
-                  width: 'auto',
-                  maxWidth: '110px',
-                  objectFit: 'contain',
-                  display: 'block',
-                  margin: '0 auto',
-                  transform: isRefreshingLogo ? 'scale(0.96)' : 'none',
-                  opacity: isRefreshingLogo ? 0.75 : 1,
-                  filter: isRefreshingLogo ? 'drop-shadow(0 0 8px rgba(20, 169, 215, 0.6))' : 'none',
-                  transition: 'all 0.25s ease',
-                }}
-              />
-            </div>
-
-            {/* Collapse button positioned neatly on the right */}
-            {!isMobileOverlay && (
-              <button
-                type="button"
-                onClick={onToggleCollapse}
-                title="Recolher Menu Lateral"
-                style={{
-                  position: 'absolute',
-                  right: 0,
-                  top: '50%',
-                  transform: 'translateY(-50%)',
-                  width: '24px',
-                  height: '24px',
-                  borderRadius: '6px',
-                  background: 'rgba(255, 255, 255, 0.06)',
-                  border: '1px solid rgba(20, 169, 215, 0.25)',
-                  color: '#14A9D7',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
+                  width: '100%',
                   cursor: 'pointer',
-                  transition: 'all 0.15s ease',
-                  zIndex: 2,
+                  transition: 'transform 0.15s ease',
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.background = 'rgba(20, 169, 215, 0.2)';
-                  e.currentTarget.style.transform = 'translateY(-50%) scale(1.05)';
+                  e.currentTarget.style.transform = 'scale(1.04)';
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)';
-                  e.currentTarget.style.transform = 'translateY(-50%) scale(1)';
+                  e.currentTarget.style.transform = 'scale(1)';
                 }}
               >
-                <ChevronLeft size={14} />
-              </button>
-            )}
-          </div>
+                <img
+                  src="/f5_logo.png"
+                  alt="F5 System"
+                  onError={(e) => {
+                    e.currentTarget.style.display = 'none';
+                    const fb = e.currentTarget.parentElement?.querySelector('.f5-logo-fallback') as HTMLElement;
+                    if (fb) fb.style.display = 'flex';
+                  }}
+                  style={{
+                    height: '24px',
+                    width: 'auto',
+                    maxWidth: '110px',
+                    objectFit: 'contain',
+                    display: 'block',
+                    margin: '0 auto',
+                    transform: isRefreshingLogo ? 'scale(0.96)' : 'none',
+                    opacity: isRefreshingLogo ? 0.75 : 1,
+                    filter: isRefreshingLogo ? 'drop-shadow(0 0 8px rgba(20, 169, 215, 0.6))' : 'none',
+                    transition: 'all 0.25s ease',
+                  }}
+                />
+                <div
+                  className="f5-logo-fallback"
+                  style={{
+                    display: 'none',
+                    alignItems: 'center',
+                    gap: '5px',
+                    margin: '0 auto',
+                    userSelect: 'none',
+                  }}
+                >
+                  <span style={{
+                    fontSize: '1.05rem',
+                    fontWeight: 900,
+                    letterSpacing: '-0.5px',
+                    color: '#14A9D7',
+                    textShadow: '0 0 12px rgba(20, 169, 215, 0.6)',
+                  }}>
+                    F5
+                  </span>
+                  <span style={{
+                    fontSize: '0.74rem',
+                    fontWeight: 800,
+                    letterSpacing: '1.5px',
+                    color: '#FFFFFF',
+                    textTransform: 'uppercase',
+                  }}>
+                    SYSTEM
+                  </span>
+                </div>
+              </div>
+
+              {/* Collapse button positioned neatly on the right */}
+              {!isMobileOverlay && (
+                <button
+                  type="button"
+                  onClick={onToggleCollapse}
+                  title="Recolher Menu Lateral"
+                  style={{
+                    position: 'absolute',
+                    right: 0,
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    width: '24px',
+                    height: '24px',
+                    borderRadius: '6px',
+                    background: 'rgba(255, 255, 255, 0.06)',
+                    border: '1px solid rgba(20, 169, 215, 0.25)',
+                    color: '#14A9D7',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                    zIndex: 2,
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = 'rgba(20, 169, 215, 0.2)';
+                    e.currentTarget.style.transform = 'translateY(-50%) scale(1.05)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)';
+                    e.currentTarget.style.transform = 'translateY(-50%) scale(1)';
+                  }}
+                >
+                  <ChevronLeft size={14} />
+                </button>
+              )}
+            </div>
 
             {/* Mobile Close Button */}
             {isMobileOverlay && onCloseMobile && (
@@ -1581,21 +1677,21 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
                   </div>
                 </div>
               </div>
-              <ChevronDown 
-                size={12} 
-                color="#D4AF37" 
-                style={{ 
+              <ChevronDown
+                size={12}
+                color="#D4AF37"
+                style={{
                   transform: isVenueDropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)',
                   transition: 'transform 0.2s ease',
                   flexShrink: 0,
-                }} 
+                }}
               />
             </button>
           )}
 
           {/* Venue Switcher Popover Menu */}
           {isVenueDropdownOpen && (userRole === 'master' || allowedVenues.length > 1) && (
-            <div 
+            <div
               data-venue-popover="true"
               style={{
                 position: isCollapsed ? 'fixed' : 'absolute',
@@ -1680,9 +1776,29 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
           )}
         </div>
       )}
+      </div>
 
-      {/* Se não há casas de festa registradas para esta conta Master/Dev, foca exclusivamente no registro da 1ª casa */}
-      {(venues.length === 0 && userRole === 'master') ? (
+      {/* 📜 Miolo com Rolagem Suave entre o Topo e o Rodapé */}
+      <div
+        className="admin-sidebar-scroll"
+        style={{
+          flex: 1,
+          minHeight: 0,
+          overflowY: 'auto',
+          overflowX: 'hidden',
+          padding: isMobileOverlay
+            ? '0 14px 14px 14px'
+            : isCollapsed
+              ? '4px 6px 14px 6px'
+              : '4px 8px 14px 8px',
+          boxSizing: 'border-box',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: isCollapsed ? '8px' : '10px',
+        }}
+      >
+        {/* Se não há casas de festa registradas para esta conta Master/Dev, foca exclusivamente no registro da 1ª casa */}
+        {(venues.length === 0 && userRole === 'master') ? (
         <div style={{
           flex: 1,
           display: 'flex',
@@ -1861,12 +1977,12 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
 
           {isCollapsed && <div style={{ height: '1px', background: 'rgba(255, 255, 255, 0.08)', margin: '3px 4px' }} />}
 
-          {/* Ferramentas: WhatsApp */}
+          {/* Comunicação: WhatsApp, Mensagens Rápidas e Central de Contatos */}
           <div>
-            {!isCollapsed && renderSectionHeader('Ferramentas', 'tools')}
+            {!isCollapsed && renderSectionHeader('Comunicação', 'tools')}
             {(!isCollapsed ? !collapsedSections['tools'] : true) && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                {toolsItems.map(item => renderNavButton(item))}
+                {communicationItems.map(item => renderNavButton(item))}
               </div>
             )}
           </div>
@@ -1949,6 +2065,145 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
                 {!collapsedSections['gerencia'] && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                     {masterItems.map(item => renderNavButton(item))}
+
+                    {/* Botão Olhos do Colaborador (Gerência) */}
+                    {(userRole === 'master' || userRole === 'admin' || userRole === 'gerencia' || isDevUser) && (
+                      <div ref={eyeDropdownRef} style={{ position: 'relative', marginTop: '4px' }}>
+                        <button
+                          type="button"
+                          onClick={() => setIsEyeDropdownOpen(!isEyeDropdownOpen)}
+                          style={{
+                            width: '100%',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            padding: '6px 10px',
+                            borderRadius: '8px',
+                            background: viewingAsCollaborator ? 'rgba(20, 169, 215, 0.18)' : 'rgba(255, 255, 255, 0.04)',
+                            border: `1px solid ${viewingAsCollaborator ? '#14A9D7' : 'rgba(255, 255, 255, 0.08)'}`,
+                            color: viewingAsCollaborator ? '#14A9D7' : 'var(--adm-text-muted, #94A3B8)',
+                            fontSize: '0.74rem',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                            transition: 'all 0.15s ease',
+                          }}
+                          onMouseEnter={(e) => {
+                            if (!viewingAsCollaborator) {
+                              e.currentTarget.style.background = 'rgba(20, 169, 215, 0.1)';
+                              e.currentTarget.style.color = '#FFFFFF';
+                            }
+                          }}
+                          onMouseLeave={(e) => {
+                            if (!viewingAsCollaborator) {
+                              e.currentTarget.style.background = 'rgba(255, 255, 255, 0.04)';
+                              e.currentTarget.style.color = 'var(--adm-text-muted, #94A3B8)';
+                            }
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                            <Eye size={15} color="#14A9D7" />
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {viewingAsCollaborator ? `Visão: ${viewingAsCollaborator.name.split(' ')[0]}` : 'Olhos do Colaborador'}
+                            </span>
+                          </div>
+                          <ChevronDown size={12} style={{ transform: isEyeDropdownOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s ease' }} />
+                        </button>
+
+                        {/* Dropdown de Colaboradores */}
+                        {isEyeDropdownOpen && (
+                          <div
+                            style={{
+                              position: 'absolute',
+                              top: 'calc(100% + 4px)',
+                              left: 0,
+                              right: 0,
+                              background: '#141118',
+                              border: '1px solid rgba(20, 169, 215, 0.35)',
+                              borderRadius: '10px',
+                              boxShadow: '0 10px 25px rgba(0,0,0,0.75)',
+                              padding: '6px',
+                              zIndex: 9999,
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '3px',
+                            }}
+                          >
+                            <div style={{ padding: '4px 6px', fontSize: '0.64rem', fontWeight: 800, color: '#14A9D7', textTransform: 'uppercase' }}>
+                              Simular visão de:
+                            </div>
+                            <div style={{ maxHeight: '180px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                              {viewingAsCollaborator && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setViewingAsCollaborator(null);
+                                    setIsEyeDropdownOpen(false);
+                                  }}
+                                  style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    padding: '6px 8px',
+                                    borderRadius: '6px',
+                                    background: 'rgba(239, 68, 68, 0.15)',
+                                    border: '1px solid rgba(239, 68, 68, 0.3)',
+                                    color: '#EF4444',
+                                    fontSize: '0.72rem',
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                    width: '100%',
+                                    marginBottom: '4px',
+                                  }}
+                                >
+                                  <X size={12} />
+                                  <span>Sair do Modo de Visão</span>
+                                </button>
+                              )}
+                              {(collaborators || []).map(c => {
+                                const isCurrent = viewingAsCollaborator?.id === c.id;
+                                return (
+                                  <button
+                                    key={c.id}
+                                    type="button"
+                                    onClick={() => {
+                                      setViewingAsCollaborator(c);
+                                      setIsEyeDropdownOpen(false);
+                                      onSelectTab('crm');
+                                    }}
+                                    style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '8px',
+                                      padding: '6px 8px',
+                                      borderRadius: '6px',
+                                      background: isCurrent ? 'rgba(20, 169, 215, 0.2)' : 'transparent',
+                                      border: 'none',
+                                      color: isCurrent ? '#14A9D7' : '#FFFFFF',
+                                      fontSize: '0.72rem',
+                                      fontWeight: isCurrent ? 800 : 500,
+                                      cursor: 'pointer',
+                                      textAlign: 'left',
+                                      width: '100%',
+                                    }}
+                                    onMouseEnter={(e) => {
+                                      if (!isCurrent) e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)';
+                                    }}
+                                    onMouseLeave={(e) => {
+                                      if (!isCurrent) e.currentTarget.style.background = 'transparent';
+                                    }}
+                                  >
+                                    <SafeAvatar src={c.avatarUrl} name={c.name} size={20} borderRadius="50%" />
+                                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+                                      {c.name}
+                                    </span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -1977,6 +2232,120 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
             </div>
           )}
 
+        </div>
+      )}
+      </div>
+
+      {/* 🔒 Rodapé Executivo do Usuário (Foto, Nome, Cargo, Logoff e Atalho de Perfil) */}
+      {currentUser && (
+        <div style={{
+          padding: isCollapsed ? '10px 4px' : '10px 12px',
+          borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+          backgroundColor: 'rgba(10, 8, 14, 0.95)',
+          backdropFilter: 'blur(10px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: isCollapsed ? 'center' : 'space-between',
+          gap: '8px',
+          flexShrink: 0,
+          boxSizing: 'border-box',
+        }}>
+          <div
+            onClick={() => onSelectTab('settings')}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+              minWidth: 0,
+              cursor: 'pointer',
+              flex: 1,
+            }}
+            title="Abrir Configurações da Conta"
+          >
+            <div style={{
+              borderRadius: '50%',
+              padding: '1.5px',
+              background: 'linear-gradient(135deg, rgba(20, 169, 215, 0.8) 0%, rgba(212, 175, 55, 0.6) 100%)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+            }}>
+              <SafeAvatar
+                src={currentUser.avatarUrl}
+                name={currentUser.name}
+                size={32}
+                borderRadius="50%"
+                border="none"
+              />
+            </div>
+            {!isCollapsed && (
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{
+                  fontSize: '0.80rem',
+                  fontWeight: 700,
+                  color: '#FFFFFF',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                }}>
+                  {currentUser.name}
+                </div>
+                <div style={{
+                  fontSize: '0.66rem',
+                  color: '#14A9D7',
+                  fontWeight: 600,
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                }}>
+                  {currentUser.customJobTitle?.trim() || (
+                    currentUser.role === 'master' ? 'Diretoria Executiva' :
+                      currentUser.role === 'dev' ? 'Desenvolvedor' :
+                        currentUser.role === 'admin' || currentUser.role === 'gerencia' ? 'Gerência Geral' :
+                          currentUser.role === 'closer' ? 'Closer • Fechamento' :
+                            currentUser.role === 'sdr' ? 'SDR • Pré-Vendas' :
+                              currentUser.role === 'crm' || currentUser.role === 'comercial' ? 'Especialista Comercial' :
+                                currentUser.role === 'pos_venda' ? 'Pós-Venda' :
+                                  currentUser.role === 'financeiro' ? 'Financeiro' : 'Colaborador'
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {!isCollapsed && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                logout();
+              }}
+              title="Sair da Conta (Logoff)"
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: '#94A3B8',
+                padding: '6px',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                transition: 'all 0.15s ease',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = '#EF4444';
+                e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.12)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = '#94A3B8';
+                e.currentTarget.style.backgroundColor = 'transparent';
+              }}
+            >
+              <LogOut size={16} />
+            </button>
+          )}
         </div>
       )}
 

@@ -1,3 +1,4 @@
+import { toast } from 'sonner';
 import React, { useState } from 'react';
 import { 
   ArrowLeft, X, Settings2, Info, Plus, ChevronRight, 
@@ -93,7 +94,7 @@ export const AdminTaskStatusDrawer: React.FC<AdminTaskStatusDrawerProps> = ({
     // Guard: Do not leave previous group empty if it had only 1 status
     const previousGroupCount = statuses.filter(s => s.groupKey === editingStatus.groupKey).length;
     if (previousGroupCount <= 1) {
-      alert('Não é possível mover este status: cada categoria deve manter pelo menos 1 status.');
+      toast.warning('Não é possível mover este status: cada categoria deve manter pelo menos 1 status.');
       return;
     }
 
@@ -128,7 +129,7 @@ export const AdminTaskStatusDrawer: React.FC<AdminTaskStatusDrawerProps> = ({
     if (!editingStatus) return;
     const groupCount = statuses.filter(s => s.groupKey === editingStatus.groupKey).length;
     if (groupCount <= 1) {
-      alert('Cada categoria (A fazer, Em andamento, Concluídos) deve conter pelo menos 1 status.');
+      toast.warning('Cada categoria (A fazer, Em andamento, Concluídos) deve conter pelo menos 1 status.');
       return;
     }
 

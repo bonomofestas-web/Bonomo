@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { 
-  Crown, Gift, Target, Sparkles, ExternalLink, ArrowLeft,
-  Users, Award, Check, Share2, UserPlus, TrendingUp
+  Crown, Gift, Target, ExternalLink, ArrowLeft,
+  Users, Award, Check, Share2, UserPlus, TrendingUp, MapPin, Calendar, Phone
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { AdminBenefitsCatalogView } from './AdminBenefitsCatalogView';
@@ -96,57 +96,8 @@ export const AdminVipJourneyUnifiedView: React.FC<AdminVipJourneyUnifiedViewProp
       animation: 'fadeIn 0.2s ease-out',
       fontFamily: "'Inter', sans-serif",
     }}>
-      {/* Header com Navegação de Abas Unificadas */}
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        flexWrap: 'wrap',
-        gap: '16px',
-        borderBottom: '1.5px solid var(--adm-border)',
-        paddingBottom: '18px',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-          <div style={{
-            width: '48px',
-            height: '48px',
-            borderRadius: '14px',
-            background: 'var(--adm-gold-bg)',
-            border: '1.5px solid var(--adm-accent)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            boxShadow: '0 0 18px rgba(212,175,55,0.3)',
-            flexShrink: 0,
-          }}>
-            <Crown size={24} color="var(--adm-accent)" />
-          </div>
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <h1 style={{ fontSize: '1.35rem', fontWeight: 900, color: 'var(--adm-text-title)', margin: 0, letterSpacing: '-0.3px' }}>
-                Jornada VIP • Programa de Indicação
-              </h1>
-              <span style={{
-                background: 'rgba(212, 175, 55, 0.15)',
-                color: 'var(--adm-accent)',
-                border: '1px solid rgba(212, 175, 55, 0.4)',
-                borderRadius: '8px',
-                padding: '2px 8px',
-                fontSize: '0.68rem',
-                fontWeight: 800,
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '4px',
-              }}>
-                <Sparkles size={11} />
-                EXCLUSIVO 15 ANOS
-              </span>
-            </div>
-            <p style={{ fontSize: '0.8rem', color: 'var(--adm-text-muted)', margin: '4px 0 0 0' }}>
-              Gestão centralizada das debutantes com aplicativo VIP, acompanhamento de metas, prêmios e leads de amigas indicadas.
-            </p>
-          </div>
-        </div>
+      {/* Título no breadcrumb; controles em linha compacta */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
 
         {/* 3 Abas Principais */}
         <div style={{
@@ -394,9 +345,9 @@ export const AdminVipJourneyUnifiedView: React.FC<AdminVipJourneyUnifiedViewProp
                           </div>
 
                           <div style={{ fontSize: '0.82rem', color: 'var(--adm-text-muted)', display: 'flex', alignItems: 'center', gap: '14px', marginTop: '6px', flexWrap: 'wrap' }}>
-                            <span>📍 <strong>{venue?.name || 'Unidade'}</strong></span>
-                            <span>📅 Festa: <strong>{new Date(selectedDebutante.partyDate + 'T12:00:00').toLocaleDateString('pt-BR')}</strong></span>
-                            {selectedDebutante.phone && <span>📞 {formatPhone(selectedDebutante.phone)}</span>}
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}><MapPin size={12} /> <strong>{venue?.name || 'Unidade'}</strong></span>
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}><Calendar size={12} /> Festa: <strong>{new Date(selectedDebutante.partyDate + 'T12:00:00').toLocaleDateString('pt-BR')}</strong></span>
+                            {selectedDebutante.phone && <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}><Phone size={12} /> {formatPhone(selectedDebutante.phone)}</span>}
                           </div>
                         </div>
                       </div>
@@ -698,7 +649,7 @@ export const AdminVipJourneyUnifiedView: React.FC<AdminVipJourneyUnifiedViewProp
                                     )}
                                   </div>
                                   <div style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)', display: 'flex', alignItems: 'center', gap: '10px', marginTop: '2px' }}>
-                                    <span>📞 {formatPhone(ref.phone)}</span>
+                                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}><Phone size={11} /> {formatPhone(ref.phone)}</span>
                                     {ref.createdAt && <span>• {ref.createdAt.split('T')[0].split('-').reverse().join('/')}</span>}
                                   </div>
                                 </div>

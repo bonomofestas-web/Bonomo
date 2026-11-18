@@ -1,9 +1,9 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { AnimatePresence, motion } from 'motion/react';
 import {
   CalendarCheck2,
   Calendar as CalendarIcon,
-  ChevronLeft,
-  ChevronRight,
   Lock,
   Unlock,
   Plus,
@@ -16,15 +16,16 @@ import {
   Trash2,
   CheckCircle2,
   XCircle,
-  Eye,
-  ShieldCheck,
   LayoutGrid,
   List as ListIcon,
   X,
   AlertCircle,
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
-import type { VenueEvent, VenueEventStatus } from '../../types/admin';
+import type { AdminTask, VenueEvent, VenueEventStatus } from '../../types/admin';
+import { AdminCalendarMonthView } from './tasks/AdminCalendarMonthView';
+import { AdminCalendarWeekView } from './tasks/AdminCalendarWeekView';
+import { AdminCalendarDayView } from './tasks/AdminCalendarDayView';
 
 const EVENT_TYPE_OPTIONS = [
   '15 Anos / Debutante',
@@ -64,7 +65,6 @@ const STATUS_META: Record<VenueEventStatus, { label: string; bg: string; color: 
   },
 };
 
-const WEEK_DAYS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
 const formatDateBr = (dateStr?: string) => {
   if (!dateStr) return '--/--/----';
@@ -93,10 +93,44 @@ export const AdminVenueEventsView: React.FC = () => {
   }, [currentUser?.role, currentUser?.isDev]);
 
   const [viewMode, setViewMode] = useState<'calendar' | 'list'>('calendar');
-  const [currentMonth, setCurrentMonth] = useState<Date>(() => {
-    const now = new Date();
-    return new Date(now.getFullYear(), now.getMonth(), 1);
-  });
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [wideHeader, setWideHeader] = useState(() => window.innerWidth >= 1500);
+  useEffect(() => {
+    const onResize = () => setWideHeader(window.innerWidth >= 1500);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+  const [headerSlot, setHeaderSlot] = useState<HTMLElement | null>(() => document.getElementById('adm-header-actions'));
+  useEffect(() => { setHeaderSlot(document.getElementById('adm-header-actions')); }, []);
+  const [calendarScale, setCalendarScale] = useState<'month' | 'week' | 'day'>('month');
+  const [calendarDate, setCalendarDate] = useState<Date>(() => new Date());
+  useEffect(() => {
+    if (!drawerOpen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setDrawerOpen(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [drawerOpen]);
+  const navBtnStyle: React.CSSProperties = {
+    padding: '5px 8px',
+    borderRadius: '8px',
+    border: '1px solid var(--adm-border, #CBD5E1)',
+    background: 'var(--adm-bg-muted, #F8FAFC)',
+    color: 'var(--adm-text-title, #0F172A)',
+    cursor: 'pointer',
+    display: 'inline-flex',
+    alignItems: 'center',
+  };
+  const filterControlStyle: React.CSSProperties = {
+    padding: '7px 12px',
+    borderRadius: '8px',
+    border: '1px solid var(--adm-border, #CBD5E1)',
+    background: 'var(--adm-bg-surface, #FFFFFF)',
+    color: 'var(--adm-text-title, #0F172A)',
+    fontSize: '0.78rem',
+    fontWeight: 600,
+    outline: 'none',
+  };
+  const currentMonth = calendarDate;
   const [selectedDate, setSelectedDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
   const [venueFilter, setVenueFilter] = useState<string>(
     activeVenueId && activeVenueId !== 'all' && activeVenueId !== 'multi' ? activeVenueId : 'all'
@@ -177,36 +211,33 @@ export const AdminVenueEventsView: React.FC = () => {
     };
   }, [monthEvents]);
 
-  const calendarDays = useMemo(() => {
-    const year = currentMonth.getFullYear();
-    const month = currentMonth.getMonth();
-    const firstDayIdx = new Date(year, month, 1).getDay();
-    const daysInMonth = new Date(year, month + 1, 0).getDate();
-
-    const cells: Array<{
-      dateStr: string | null;
-      dayNum?: number;
-      events: VenueEvent[];
-      hasLockedDay: boolean;
-    }> = [];
-
-    for (let i = 0; i < firstDayIdx; i++) {
-      cells.push({ dateStr: null, events: [], hasLockedDay: false });
-    }
-
-    for (let d = 1; d <= daysInMonth; d++) {
-      const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-      const dayEvents = filteredEvents.filter(ev => ev.eventDate === dateStr);
-      const hasLockedDay = dayEvents.some(ev => ev.blocksVenueDay !== false && ev.status !== 'cancelled');
-      cells.push({ dateStr, dayNum: d, events: dayEvents, hasLockedDay });
-    }
-
-    return cells;
-  }, [currentMonth, filteredEvents]);
-
   const selectedDayEvents = useMemo(() => {
     return filteredEvents.filter(ev => ev.eventDate === selectedDate);
   }, [filteredEvents, selectedDate]);
+
+  const calendarTasks = useMemo<AdminTask[]>(() => filteredEvents.map(ev => ({
+    id: ev.id,
+    title: ev.title,
+    dueDate: ev.eventDate,
+    dueTime: ev.startTime,
+    endTime: ev.endTime,
+    status: ev.status === 'completed' ? 'completed' : ev.status === 'cancelled' ? 'cancelled' : 'todo',
+    priority: 'none',
+    type: 'meeting',
+    customType: ev.eventType || 'Evento',
+    createdById: ev.createdById || '',
+    createdByName: ev.createdByName || '',
+    assignedToIds: [],
+    venueId: ev.venueId,
+    createdAt: ev.createdAt || '',
+  })), [filteredEvents]);
+
+  const openEventFromCalendar = (task: AdminTask) => {
+    const ev = filteredEvents.find(e => e.id === task.id);
+    if (!ev) return;
+    setSelectedDate(ev.eventDate);
+    if (canManageEvents) openEditModal(ev); else setDrawerOpen(true);
+  };
 
   const selectableClients = useMemo(() => {
     const q = formClientSearch.trim().toLowerCase();
@@ -357,158 +388,40 @@ export const AdminVenueEventsView: React.FC = () => {
     setDeletingEvent(null);
   };
 
-  const monthLabel = currentMonth.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
-
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '18px', padding: '4px 0 28px' }}>
-      {/* Cabeçalho Principal */}
-      <div
-        style={{
-          display: 'flex',
-          flexWrap: 'wrap',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          gap: '14px',
-          padding: '18px 22px',
-          borderRadius: '14px',
-          background: 'var(--adm-bg-surface, #FFFFFF)',
-          border: '1px solid var(--adm-border, #E2E8F0)',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-          <div
-            style={{
-              width: '44px',
-              height: '44px',
-              borderRadius: '12px',
-              background: 'linear-gradient(135deg, #2563EB, #7C3AED)',
-              color: '#FFFFFF',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0,
-            }}
-          >
-            <CalendarCheck2 size={22} />
-          </div>
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-              <h2
-                style={{
-                  margin: 0,
-                  fontSize: '1.18rem',
-                  fontWeight: 800,
-                  color: 'var(--adm-text-title, #0F172A)',
-                }}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', padding: '16px 20px 28px' }}>
+      {headerSlot && createPortal(
+        <>
+        <div style={{ display: 'inline-flex', padding: '3px', borderRadius: '10px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)' }}>
+          {([['month', 'Mês', CalendarIcon], ['week', 'Semana', LayoutGrid], ['day', 'Dia', Clock], ['list', 'Lista', ListIcon]] as const).map(([mode, label, Icon]) => {
+            const active = mode === 'list' ? viewMode === 'list' : viewMode === 'calendar' && calendarScale === mode;
+            return (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => { if (mode === 'list') { setViewMode('list'); } else { setViewMode('calendar'); setCalendarScale(mode); } setDrawerOpen(false); }}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '5px 12px', borderRadius: '8px', border: 'none', background: active ? '#FFFFFF' : 'transparent', color: active ? '#2563EB' : 'rgba(255,255,255,0.72)', fontSize: '0.76rem', fontWeight: 700, cursor: 'pointer' }}
+                title={label}
+                aria-label={label}
               >
-                Agenda de Eventos da Unidade
-              </h2>
-              <span
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '5px',
-                  padding: '3px 10px',
-                  borderRadius: '999px',
-                  fontSize: '0.70rem',
-                  fontWeight: 700,
-                  background: canManageEvents ? 'rgba(16, 185, 129, 0.12)' : 'rgba(59, 130, 246, 0.12)',
-                  color: canManageEvents ? '#059669' : '#2563EB',
-                  border: canManageEvents
-                    ? '1px solid rgba(16, 185, 129, 0.30)'
-                    : '1px solid rgba(59, 130, 246, 0.30)',
-                }}
-              >
-                {canManageEvents ? <ShieldCheck size={12} /> : <Eye size={12} />}
-                {canManageEvents ? 'Administração Pós-Venda' : 'Visualização Comercial'}
-              </span>
-            </div>
-            <p
-              style={{
-                margin: '4px 0 0',
-                fontSize: '0.80rem',
-                color: 'var(--adm-text-muted, #64748B)',
-              }}
-            >
-              Eventos cadastrados com trava bloqueiam automaticamente o dia da casa na agenda de visitas e degustações do Comercial.
-            </p>
-          </div>
+                <Icon size={14} /> {wideHeader && <span>{label}</span>}
+              </button>
+            );
+          })}
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-          <div
-            style={{
-              display: 'inline-flex',
-              padding: '3px',
-              borderRadius: '10px',
-              background: 'var(--adm-bg-muted, #F1F5F9)',
-              border: '1px solid var(--adm-border, #E2E8F0)',
-            }}
+        {canManageEvents && (
+          <button
+            type="button"
+            onClick={() => openCreateModal(selectedDate)}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 14px', borderRadius: '10px', border: 'none', background: 'linear-gradient(135deg, #2563EB, #1D4ED8)', color: '#FFFFFF', fontSize: '0.80rem', fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 12px rgba(37, 99, 235, 0.25)', whiteSpace: 'nowrap' }}
           >
-            <button
-              type="button"
-              onClick={() => setViewMode('calendar')}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                padding: '6px 12px',
-                borderRadius: '7px',
-                border: 'none',
-                cursor: 'pointer',
-                fontSize: '0.76rem',
-                fontWeight: 700,
-                background: viewMode === 'calendar' ? 'var(--adm-bg-surface, #FFFFFF)' : 'transparent',
-                color: viewMode === 'calendar' ? '#2563EB' : 'var(--adm-text-muted, #64748B)',
-              }}
-            >
-              <LayoutGrid size={14} /> Calendário
-            </button>
-            <button
-              type="button"
-              onClick={() => setViewMode('list')}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                padding: '6px 12px',
-                borderRadius: '7px',
-                border: 'none',
-                cursor: 'pointer',
-                fontSize: '0.76rem',
-                fontWeight: 700,
-                background: viewMode === 'list' ? 'var(--adm-bg-surface, #FFFFFF)' : 'transparent',
-                color: viewMode === 'list' ? '#2563EB' : 'var(--adm-text-muted, #64748B)',
-              }}
-            >
-              <ListIcon size={14} /> Lista
-            </button>
-          </div>
-
-          {canManageEvents && (
-            <button
-              type="button"
-              onClick={() => openCreateModal()}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '7px',
-                padding: '9px 16px',
-                borderRadius: '10px',
-                border: 'none',
-                background: 'linear-gradient(135deg, #2563EB, #1D4ED8)',
-                color: '#FFFFFF',
-                fontSize: '0.80rem',
-                fontWeight: 700,
-                cursor: 'pointer',
-                boxShadow: '0 4px 12px rgba(37, 99, 235, 0.25)',
-              }}
-            >
-              <Plus size={15} /> Novo Evento / Trava
-            </button>
-          )}
-        </div>
-      </div>
+            <Plus size={15} /> Novo Evento
+          </button>
+        )}
+        </>,
+        headerSlot
+      )}
 
       {/* Aviso de Somente Leitura para Comercial */}
       {!canManageEvents && (
@@ -533,389 +446,136 @@ export const AdminVenueEventsView: React.FC = () => {
         </div>
       )}
 
-      {/* KPIs do Mês */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-          gap: '12px',
-        }}
-      >
-        {[
-          { label: 'Eventos no Mês', value: kpis.totalMonth, icon: CalendarIcon, color: '#2563EB' },
-          { label: 'Dias Travados', value: kpis.lockedDays, icon: Lock, color: '#DC2626' },
-          { label: 'Com Cliente Vinculado', value: kpis.linked, icon: UserCheck, color: '#059669' },
-          { label: 'Sem Vínculo (Avulsos)', value: kpis.unlinked, icon: Building2, color: '#7C3AED' },
-        ].map((item, i) => {
-          const IconComp = item.icon;
-          return (
-            <div
-              key={i}
-              style={{
-                padding: '14px 16px',
-                borderRadius: '12px',
-                background: 'var(--adm-bg-surface, #FFFFFF)',
-                border: '1px solid var(--adm-border, #E2E8F0)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '12px',
-              }}
-            >
-              <div
-                style={{
-                  width: '36px',
-                  height: '36px',
-                  borderRadius: '9px',
-                  background: `${item.color}18`,
-                  color: item.color,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  flexShrink: 0,
-                }}
-              >
-                <IconComp size={18} />
-              </div>
-              <div>
-                <div style={{ fontSize: '0.70rem', fontWeight: 700, color: 'var(--adm-text-muted, #64748B)', textTransform: 'uppercase' }}>
-                  {item.label}
-                </div>
-                <div style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--adm-text-title, #0F172A)' }}>
-                  {item.value}
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Barra de Filtros */}
-      <div
-        style={{
-          display: 'flex',
-          flexWrap: 'wrap',
-          gap: '10px',
-          alignItems: 'center',
-          padding: '12px 16px',
-          borderRadius: '12px',
-          background: 'var(--adm-bg-surface, #FFFFFF)',
-          border: '1px solid var(--adm-border, #E2E8F0)',
-        }}
-      >
-        <div style={{ position: 'relative', flex: '1 1 240px', minWidth: '200px' }}>
+      {/* Filtros e resumo do mes em uma unica linha */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'center' }}>
+        <div style={{ position: 'relative', flex: '1 1 220px', minWidth: '180px', maxWidth: '340px' }}>
           <Search size={14} color="#94A3B8" style={{ position: 'absolute', left: '11px', top: '10px' }} />
           <input
             type="text"
-            placeholder="Buscar evento, cliente, tipo ou observação..."
+            placeholder="Buscar evento, cliente ou tipo..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            style={{
-              width: '100%',
-              padding: '8px 12px 8px 34px',
-              borderRadius: '8px',
-              border: '1px solid var(--adm-border, #CBD5E1)',
-              background: 'var(--adm-bg-muted, #F8FAFC)',
-              color: 'var(--adm-text-title, #0F172A)',
-              fontSize: '0.78rem',
-              outline: 'none',
-            }}
+            style={{ ...filterControlStyle, width: '100%', paddingLeft: '34px' }}
           />
         </div>
-
         <select
           value={effectiveVenueFilter}
           disabled={Boolean(activeVenueId && activeVenueId !== 'all' && activeVenueId !== 'multi')}
           onChange={(e) => setVenueFilter(e.target.value)}
-          style={{
-            padding: '8px 12px',
-            borderRadius: '8px',
-            border: '1px solid var(--adm-border, #CBD5E1)',
-            background: 'var(--adm-bg-muted, #F8FAFC)',
-            color: 'var(--adm-text-title, #0F172A)',
-            fontSize: '0.78rem',
-            fontWeight: 600,
-          }}
+          style={filterControlStyle}
         >
           <option value="all">Todas as Unidades</option>
-          {scopedVenues.map(v => (
-            <option key={v.id} value={v.id}>
-              {v.name}
-            </option>
-          ))}
+          {scopedVenues.map(v => (<option key={v.id} value={v.id}>{v.name}</option>))}
         </select>
-
-        <select
-          value={linkFilter}
-          onChange={(e) => setLinkFilter(e.target.value as 'all' | 'linked' | 'unlinked')}
-          style={{
-            padding: '8px 12px',
-            borderRadius: '8px',
-            border: '1px solid var(--adm-border, #CBD5E1)',
-            background: 'var(--adm-bg-muted, #F8FAFC)',
-            color: 'var(--adm-text-title, #0F172A)',
-            fontSize: '0.78rem',
-            fontWeight: 600,
-          }}
-        >
+        <select value={linkFilter} onChange={(e) => setLinkFilter(e.target.value as 'all' | 'linked' | 'unlinked')} style={filterControlStyle}>
           <option value="all">Todos os Vínculos</option>
           <option value="linked">Com Cliente Vinculado</option>
           <option value="unlinked">Sem Cliente (Avulso)</option>
         </select>
-
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value as 'all' | VenueEventStatus)}
-          style={{
-            padding: '8px 12px',
-            borderRadius: '8px',
-            border: '1px solid var(--adm-border, #CBD5E1)',
-            background: 'var(--adm-bg-muted, #F8FAFC)',
-            color: 'var(--adm-text-title, #0F172A)',
-            fontSize: '0.78rem',
-            fontWeight: 600,
-          }}
-        >
+        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as 'all' | VenueEventStatus)} style={filterControlStyle}>
           <option value="all">Todos os Status</option>
           <option value="scheduled">Agendados</option>
           <option value="confirmed">Confirmados</option>
           <option value="completed">Realizados</option>
           <option value="cancelled">Cancelados</option>
         </select>
+
+        <div style={{ flex: 1 }} />
+
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+          {[
+            { label: 'no mês', value: kpis.totalMonth, icon: CalendarIcon, color: '#2563EB' },
+            { label: 'dias travados', value: kpis.lockedDays, icon: Lock, color: '#DC2626' },
+            { label: 'com cliente', value: kpis.linked, icon: UserCheck, color: '#059669' },
+            { label: 'avulsos', value: kpis.unlinked, icon: Building2, color: '#7C3AED' },
+          ].map(item => {
+            const IconComp = item.icon;
+            return (
+              <span key={item.label} style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '5px 10px', borderRadius: '999px', background: 'var(--adm-bg-surface, #FFFFFF)', border: '1px solid var(--adm-border, #E2E8F0)', fontSize: '0.74rem', color: 'var(--adm-text-muted, #64748B)', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                <IconComp size={12} color={item.color} />
+                <strong style={{ color: 'var(--adm-text-title, #0F172A)', fontWeight: 800 }}>{item.value}</strong> {item.label}
+              </span>
+            );
+          })}
+        </div>
       </div>
 
-      {/* Conteúdo Principal: Calendário + Painel do Dia OR Lista */}
+
       {viewMode === 'calendar' ? (
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.85fr) minmax(300px, 1fr)', gap: '16px', alignItems: 'start' }}>
-          {/* Calendário Mensal */}
-          <div
-            style={{
-              padding: '16px',
-              borderRadius: '14px',
-              background: 'var(--adm-bg-surface, #FFFFFF)',
-              border: '1px solid var(--adm-border, #E2E8F0)',
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-              <h3
-                style={{
-                  margin: 0,
-                  fontSize: '0.98rem',
-                  fontWeight: 800,
-                  textTransform: 'capitalize',
-                  color: 'var(--adm-text-title, #0F172A)',
-                }}
-              >
-                {monthLabel}
-              </h3>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <button
-                  type="button"
-                  onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1))}
-                  style={{
-                    padding: '6px 9px',
-                    borderRadius: '8px',
-                    border: '1px solid var(--adm-border, #CBD5E1)',
-                    background: 'var(--adm-bg-muted, #F8FAFC)',
-                    color: 'var(--adm-text-title, #0F172A)',
-                    cursor: 'pointer',
-                  }}
-                >
-                  <ChevronLeft size={15} />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const now = new Date();
-                    setCurrentMonth(new Date(now.getFullYear(), now.getMonth(), 1));
-                    setSelectedDate(now.toISOString().split('T')[0]);
-                  }}
-                  style={{
-                    padding: '6px 12px',
-                    borderRadius: '8px',
-                    border: '1px solid var(--adm-border, #CBD5E1)',
-                    background: 'var(--adm-bg-muted, #F8FAFC)',
-                    color: 'var(--adm-text-title, #0F172A)',
-                    fontSize: '0.74rem',
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                  }}
-                >
-                  Hoje
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1))}
-                  style={{
-                    padding: '6px 9px',
-                    borderRadius: '8px',
-                    border: '1px solid var(--adm-border, #CBD5E1)',
-                    background: 'var(--adm-bg-muted, #F8FAFC)',
-                    color: 'var(--adm-text-title, #0F172A)',
-                    cursor: 'pointer',
-                  }}
-                >
-                  <ChevronRight size={15} />
-                </button>
-              </div>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '6px', marginBottom: '6px' }}>
-              {WEEK_DAYS.map(day => (
-                <div
-                  key={day}
-                  style={{
-                    textAlign: 'center',
-                    fontSize: '0.70rem',
-                    fontWeight: 800,
-                    color: 'var(--adm-text-muted, #64748B)',
-                    padding: '4px 0',
-                  }}
-                >
-                  {day}
-                </div>
-              ))}
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '6px' }}>
-              {calendarDays.map((cell, idx) => {
-                if (!cell.dateStr) {
-                  return <div key={`empty-${idx}`} style={{ minHeight: '86px', borderRadius: '10px', opacity: 0.25 }} />;
-                }
-                const isSelected = selectedDate === cell.dateStr;
-                const isToday = cell.dateStr === new Date().toISOString().split('T')[0];
-
-                return (
-                  <div
-                    key={cell.dateStr}
-                    onClick={() => setSelectedDate(cell.dateStr!)}
-                    onDoubleClick={() => canManageEvents && openCreateModal(cell.dateStr!)}
-                    style={{
-                      minHeight: '88px',
-                      padding: '6px',
-                      borderRadius: '10px',
-                      cursor: 'pointer',
-                      border: isSelected
-                        ? '2px solid #2563EB'
-                        : cell.hasLockedDay
-                        ? '1px solid rgba(220, 38, 38, 0.45)'
-                        : '1px solid var(--adm-border, #E2E8F0)',
-                      background: cell.hasLockedDay
-                        ? 'rgba(239, 68, 68, 0.05)'
-                        : isSelected
-                        ? 'rgba(37, 99, 235, 0.06)'
-                        : 'var(--adm-bg-muted, #F8FAFC)',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '4px',
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span
-                        style={{
-                          fontSize: '0.74rem',
-                          fontWeight: 800,
-                          color: isToday ? '#2563EB' : 'var(--adm-text-title, #0F172A)',
-                        }}
-                      >
-                        {cell.dayNum}
-                      </span>
-                      {cell.hasLockedDay && (
-                        <span
-                          title="Dia travado na agenda comercial"
-                          style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '2px',
-                            padding: '1px 5px',
-                            borderRadius: '5px',
-                            background: 'rgba(220, 38, 38, 0.14)',
-                            color: '#DC2626',
-                            fontSize: '0.62rem',
-                            fontWeight: 800,
-                          }}
-                        >
-                          <Lock size={9} /> Travado
-                        </span>
-                      )}
-                    </div>
-
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                      {cell.events.slice(0, 2).map(ev => {
-                        const meta = STATUS_META[ev.status] || STATUS_META.scheduled;
-                        return (
-                          <div
-                            key={ev.id}
-                            style={{
-                              padding: '2px 5px',
-                              borderRadius: '5px',
-                              fontSize: '0.64rem',
-                              fontWeight: 700,
-                              background: meta.bg,
-                              color: meta.color,
-                              whiteSpace: 'nowrap',
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                              borderLeft: `2px solid ${meta.color}`,
-                            }}
-                          >
-                            {ev.title}
-                          </div>
-                        );
-                      })}
-                      {cell.events.length > 2 && (
-                        <div style={{ fontSize: '0.62rem', fontWeight: 700, color: 'var(--adm-text-muted, #64748B)' }}>
-                          +{cell.events.length - 2} evento(s)
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', ...(calendarScale === 'month' ? { minHeight: 'calc(100vh - 220px)' } : { height: 'calc(100vh - 220px)', minHeight: '520px' }), margin: '-16px -24px' }}>
+            {calendarScale === 'month' && (
+              <AdminCalendarMonthView
+                tasks={calendarTasks}
+                currentDate={calendarDate}
+                onDateChange={setCalendarDate}
+                onOpenTask={openEventFromCalendar}
+                onSelectDay={(d) => { setCalendarDate(d); setSelectedDate(d.toLocaleDateString('en-CA')); setCalendarScale('day'); }}
+              />
+            )}
+            {calendarScale === 'week' && (
+              <AdminCalendarWeekView
+                tasks={calendarTasks}
+                currentDate={calendarDate}
+                onDateChange={setCalendarDate}
+                onOpenTask={openEventFromCalendar}
+                onNewTaskForDate={canManageEvents ? (dateStr) => openCreateModal(dateStr) : undefined}
+              />
+            )}
+            {calendarScale === 'day' && (
+              <AdminCalendarDayView
+                tasks={calendarTasks}
+                currentDate={calendarDate}
+                onDateChange={setCalendarDate}
+                onOpenTask={openEventFromCalendar}
+                onNewTaskForDate={canManageEvents ? (dateStr) => openCreateModal(dateStr) : undefined}
+              />
+            )}
           </div>
 
-          {/* Painel Lateral do Dia Selecionado */}
-          <div
+          {/* Gaveta lateral do dia selecionado */}
+          <AnimatePresence>
+          {drawerOpen && (
+          <motion.aside
+            key="day-drawer"
+            initial={{ x: 40, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            exit={{ x: 40, opacity: 0 }}
+            transition={{ duration: 0.18, ease: 'easeOut' }}
             style={{
+              position: 'fixed',
+              top: '64px',
+              right: 0,
+              bottom: 0,
+              width: 'min(400px, 100vw)',
+              zIndex: 60,
+              overflowY: 'auto',
               padding: '16px',
-              borderRadius: '14px',
               background: 'var(--adm-bg-surface, #FFFFFF)',
-              border: '1px solid var(--adm-border, #E2E8F0)',
+              borderLeft: '1px solid var(--adm-border, #E2E8F0)',
+              boxShadow: '-12px 0 32px rgba(15, 23, 42, 0.12)',
               display: 'flex',
               flexDirection: 'column',
               gap: '12px',
             }}
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
               <div>
                 <div style={{ fontSize: '0.70rem', fontWeight: 700, color: 'var(--adm-text-muted, #64748B)', textTransform: 'uppercase' }}>
-                  Data Selecionada
+                  {new Date(selectedDate + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long' })}
                 </div>
-                <div style={{ fontSize: '1.02rem', fontWeight: 800, color: 'var(--adm-text-title, #0F172A)' }}>
+                <div style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--adm-text-title, #0F172A)' }}>
                   {formatDateBr(selectedDate)}
                 </div>
               </div>
-              {canManageEvents && (
-                <button
-                  type="button"
-                  onClick={() => openCreateModal(selectedDate)}
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '5px',
-                    padding: '7px 12px',
-                    borderRadius: '8px',
-                    border: 'none',
-                    background: '#2563EB',
-                    color: '#FFFFFF',
-                    fontSize: '0.74rem',
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                  }}
-                >
-                  <Plus size={14} /> Agendar Aqui
-                </button>
-              )}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                {canManageEvents && (
+                  <button type="button" onClick={() => openCreateModal(selectedDate)} style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '7px 12px', borderRadius: '8px', border: 'none', background: '#2563EB', color: '#FFFFFF', fontSize: '0.74rem', fontWeight: 700, cursor: 'pointer' }}>
+                    <Plus size={14} /> Neste dia
+                  </button>
+                )}
+                <button type="button" aria-label="Fechar" onClick={() => setDrawerOpen(false)} style={{ ...navBtnStyle, padding: '6px' }}><X size={16} /></button>
+              </div>
             </div>
 
             {selectedDayEvents.length === 0 ? (
@@ -1106,7 +766,9 @@ export const AdminVenueEventsView: React.FC = () => {
                 })}
               </div>
             )}
-          </div>
+          </motion.aside>
+          )}
+          </AnimatePresence>
         </div>
       ) : (
         /* Visualização em Lista Completa */

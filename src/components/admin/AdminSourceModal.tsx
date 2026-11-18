@@ -636,19 +636,19 @@ export const AdminSourceModal: React.FC<AdminSourceModalProps> = ({
               >
                 <option value="">-- Sem Funil Vinculado (Definir Depois) --</option>
                 {commercialFunnels.length > 0 && (
-                  <optgroup label="💼 Funis Comerciais (Vendas)">
+                  <optgroup label="Funis Comerciais (Vendas)">
                     {commercialFunnels.map(f => (
                       <option key={f.id} value={f.id}>{f.name}</option>
                     ))}
                   </optgroup>
                 )}
-                <optgroup label="🌟 Pós-Venda (Sucesso do Cliente)">
+                <optgroup label="Pós-Venda (Sucesso do Cliente)">
                   {postSaleFunnels.length > 0 ? (
                     postSaleFunnels.map(f => (
                       <option key={f.id} value={f.id}>{f.name}</option>
                     ))
                   ) : (
-                    <option value="post_sale_default">👑 Sucesso do Cliente (Pós-Venda Padrão)</option>
+                    <option value="post_sale_default">Sucesso do Cliente (Pós-Venda Padrão)</option>
                   )}
                 </optgroup>
               </select>
@@ -760,8 +760,9 @@ export const AdminSourceModal: React.FC<AdminSourceModalProps> = ({
                       <div style={{ fontSize: '0.92rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
                         {connectedProfileName || name || 'Sessão WhatsApp Ativa'}
                       </div>
-                      <div style={{ fontSize: '0.8rem', color: '#10B981', fontWeight: 700, marginTop: '2px' }}>
-                        📱 {formatPhone(connectedPhone || whatsappInstanceId) || 'Número Conectado'}
+                      <div style={{ fontSize: '0.8rem', color: '#10B981', fontWeight: 700, marginTop: '2px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <Smartphone size={13} />
+                        {formatPhone(connectedPhone || whatsappInstanceId) || 'Número Conectado'}
                       </div>
                     </div>
                   </div>
@@ -1177,19 +1178,19 @@ export const AdminSourceModal: React.FC<AdminSourceModalProps> = ({
                     >
                       <option value="">Funil Padrão ({commercialFunnels.find(f => f.id === funnelId)?.name || postSaleFunnels.find(f => f.id === funnelId)?.name || 'Padrão'})</option>
                       {commercialFunnels.length > 0 && (
-                        <optgroup label="💼 Funis Comerciais">
+                        <optgroup label="Funis Comerciais">
                           {commercialFunnels.map(f => (
                             <option key={f.id} value={f.id}>{f.name}</option>
                           ))}
                         </optgroup>
                       )}
-                      <optgroup label="🌟 Pós-Venda (Sucesso do Cliente)">
+                      <optgroup label="Pós-Venda (Sucesso do Cliente)">
                         {postSaleFunnels.length > 0 ? (
                           postSaleFunnels.map(f => (
                             <option key={f.id} value={f.id}>{f.name}</option>
                           ))
                         ) : (
-                          <option value="post_sale_default">👑 Sucesso do Cliente</option>
+                          <option value="post_sale_default">Sucesso do Cliente</option>
                         )}
                       </optgroup>
                     </select>

@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { 
   X, User, Calendar, Phone, Mail, Building2, 
-  Users, Trash2, Loader2, PartyPopper, DollarSign, Crown
+  Users, Trash2, Loader2, PartyPopper, DollarSign, Crown,
+  Link, Sparkles, Heart, HeartHandshake, GraduationCap
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { maskPhoneInput, formatPhone } from '../../utils/phoneFormatter';
@@ -16,15 +17,15 @@ interface AdminDebutanteModalProps {
   debutanteToEdit?: DebutanteAccount | null;
 }
 
-const EVENT_TYPES: { id: EventType; label: string; icon: string }[] = [
-  { id: 'debutante_15', label: '15 Anos / Debutante', icon: '👑' },
-  { id: 'birthday_kids', label: 'Aniversário Infantil', icon: '🎈' },
-  { id: 'birthday_adult', label: 'Aniversário Adulto', icon: '🎉' },
-  { id: 'baby_shower', label: 'Chá de Bebê / Revelação', icon: '🍼' },
-  { id: 'wedding_anniversary', label: 'Bodas / Casamento', icon: '💍' },
-  { id: 'graduation', label: 'Formatura', icon: '🎓' },
-  { id: 'corporate', label: 'Corporativo', icon: '🏢' },
-  { id: 'other', label: 'Outro Evento', icon: '✨' },
+const EVENT_TYPES: { id: EventType; label: string; icon: React.ComponentType<{ size?: number }> }[] = [
+  { id: 'debutante_15', label: '15 Anos / Debutante', icon: Crown },
+  { id: 'birthday_kids', label: 'Aniversário Infantil', icon: PartyPopper },
+  { id: 'birthday_adult', label: 'Aniversário Adulto', icon: PartyPopper },
+  { id: 'baby_shower', label: 'Chá de Bebê / Revelação', icon: Heart },
+  { id: 'wedding_anniversary', label: 'Bodas / Casamento', icon: HeartHandshake },
+  { id: 'graduation', label: 'Formatura', icon: GraduationCap },
+  { id: 'corporate', label: 'Corporativo', icon: Building2 },
+  { id: 'other', label: 'Outro Evento', icon: Sparkles },
 ];
 
 export const AdminDebutanteModal: React.FC<AdminDebutanteModalProps> = ({
@@ -295,7 +296,7 @@ export const AdminDebutanteModal: React.FC<AdminDebutanteModalProps> = ({
               gap: '6px',
             }}>
               <label style={{ fontSize: '0.76rem', fontWeight: 700, color: 'var(--adm-text-title)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span>🔗</span> Vincular a Cliente de Pós-Venda (Opcional)
+                <Link size={14} /> Vincular a Cliente de Pós-Venda (Opcional)
               </label>
               <select
                 value={selectedClientId}
@@ -350,7 +351,7 @@ export const AdminDebutanteModal: React.FC<AdminDebutanteModalProps> = ({
                         transition: 'all 0.15s ease',
                       }}
                     >
-                      <span style={{ fontSize: '1rem' }}>{cat.icon}</span>
+                      <cat.icon size={16} />
                       <span style={{ textAlign: 'left', lineHeight: 1.2 }}>{cat.label}</span>
                     </button>
                   );
@@ -584,7 +585,7 @@ export const AdminDebutanteModal: React.FC<AdminDebutanteModalProps> = ({
                         background: 'var(--adm-bg-card)',
                       }}
                     >
-                      <option value="pending">⏳ Definir Depois (Jornada Pendente)</option>
+                      <option value="pending">Definir Depois (Jornada Pendente)</option>
                       {templates.map(t => (
                         <option key={t.id} value={t.id}>{t.name}</option>
                       ))}

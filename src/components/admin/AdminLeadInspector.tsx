@@ -9,7 +9,7 @@ import {
   User, UserCheck, Calendar as CalendarIcon, Utensils,
   Lock, Unlock, AlertTriangle, Send, Edit3,
   ArrowRightLeft, GitBranch, UserX, Repeat,
-  Route, MapPin, Trophy, History
+  Route, MapPin, Trophy, History, Crown
 } from 'lucide-react';
 import { WhatsAppBrandIcon } from './WhatsAppBrandIcon';
 import { CRM_STAGE_LABELS } from '../../utils/leadUtils';
@@ -23,6 +23,7 @@ import { AdminAppointmentReceiptModal } from './AdminAppointmentReceiptModal';
 import type { AppointmentReceiptData } from './AdminAppointmentReceiptModal';
 import { CloseDealValueModal } from './CloseDealValueModal';
 import { AdminLeadMissingFieldsModal } from './AdminLeadMissingFieldsModal';
+import { toast } from 'sonner';
 import { AdminTransferLeadVenueModal } from './AdminTransferLeadVenueModal';
 import { AdminDuplicateLeadModal } from './AdminDuplicateLeadModal';
 import { canChangeLeadVenue } from '../../utils/accessPermissions';
@@ -1304,13 +1305,13 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
 
     // Trava de segurança: Colaboradores sem autorização para a etapa não podem mover o lead para ela
     if (!isManagerOrMaster && !funnelStages.some(s => s.id === newStageId)) {
-      alert('Acesso Restrito: Você não possui autorização para mover leads para esta etapa.');
+      toast.error('Acesso Restrito: Você não possui autorização para mover leads para esta etapa.');
       return;
     }
 
     const isBlockedEntry = (newStageId === 'new_lead' || newStageId === 'onboarding') && lead.stage !== 'new_lead' && (lead.stage as string) !== 'onboarding';
     if (isBlockedEntry) {
-      alert('Regra do CRM: A etapa "NOVO LEAD" é exclusivamente para entrada. Leads que avançaram não podem retornar para ela.');
+      toast.warning('Regra do CRM: A etapa "NOVO LEAD" é exclusivamente para entrada. Leads que avançaram não podem retornar para ela.');
       return;
     }
 
@@ -1645,7 +1646,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
   // Designation of Decisor does NOT overwrite the Aniversariante's name or phone!
   const handleSetPrimaryDecisor = (contact: LeadContact) => {
     if (contact.role === 'debutante') {
-      alert('Atenção: A Debutante (15 Anos) não pode ser classificada como decisora legal do contrato.');
+      toast.warning('Atenção: A Debutante (15 Anos) não pode ser classificada como decisora legal do contrato.');
       return;
     }
 
@@ -1682,7 +1683,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
 
   const handleSetLeadAsDecisor = () => {
     if (lead.primaryContactRole === 'debutante') {
-      alert('Atenção: A Debutante (15 Anos) não pode ser classificada como decisora legal do contrato.');
+      toast.warning('Atenção: A Debutante (15 Anos) não pode ser classificada como decisora legal do contrato.');
       return;
     }
 
@@ -2084,6 +2085,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
 
               const hasDuplicate = leads.some(l => {
                 if (l.id === lead.id) return false;
+                if (l.masterId && lead.masterId && l.masterId !== lead.masterId) return false;
                 const isLClient = Boolean(l.isClient || l.group === 'Pós-Venda');
                 if (isTargetClient !== isLClient) return false;
                 return isPhoneMatch(l.phone, lead.phone);
@@ -2600,7 +2602,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                       onMouseDown={(e) => e.stopPropagation()}
                       onClick={(e) => {
                         e.stopPropagation();
-                        alert('Regra do CRM: Não é permitido retornar para "NOVO LEAD" após o lead já ter avançado no funil.');
+                        toast.warning('Regra do CRM: Não é permitido retornar para "NOVO LEAD" após o lead já ter avançado no funil.');
                       }}
                       style={{
                         padding: '8px 10px',
@@ -3492,7 +3494,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
       <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
 
         {/* ════════════════════════════════════════════════════════════════════ */}
-        {/* ABA 1: 📋 PRINCIPAL                                                  */}
+        {/* ABA 1: PRINCIPAL                                                     */}
         {/* ════════════════════════════════════════════════════════════════════ */}
         {activeTab === 'principal' && (
           <div style={{ padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -3535,7 +3537,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
               </div>
             )}
 
-            {/* ── SEÇÃO 1: ⭐ DADOS PRIORITÁRIOS UNIFICADOS (16 CAMPOS ESSENCIAIS) ── */}
+            {/* ── SEÇÃO 1: DADOS PRIORITÁRIOS UNIFICADOS (16 CAMPOS ESSENCIAIS) ── */}
             <div style={sectionTitleStyle}>
               <Sparkles size={13} color="var(--adm-accent)" />
               <span>Dados Prioritários</span>
@@ -4525,7 +4527,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
               {renderCustomFieldsForSection('event')}
             </div>
 
-            {/* ── SEÇÃO 2: 👤 ANIVERSARIANTE & CONTATOS VINCULADOS ── */}
+            {/* ── SEÇÃO 2: ANIVERSARIANTE & CONTATOS VINCULADOS ── */}
             <div style={{ ...sectionTitleStyle, marginTop: '6px' }}>
               <Users size={13} color="var(--adm-accent)" />
               <span>Aniversariante & Contatos Vinculados</span>
@@ -5406,7 +5408,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
               {renderCustomFieldsForSection('contact')}
             </div>
 
-            {/* ── SEÇÃO 3: 📅 COMPROMISSOS COMERCIAIS (VISITA & DEGUSTAÇÃO) ── */}
+            {/* ── SEÇÃO 3: COMPROMISSOS COMERCIAIS (VISITA & DEGUSTAÇÃO) ── */}
             <div style={{ ...sectionTitleStyle, marginTop: '6px' }}>
               <CalendarIcon size={13} color="var(--adm-accent)" />
               <span>Compromissos Comerciais</span>
@@ -5781,7 +5783,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
         )}
 
         {/* ════════════════════════════════════════════════════════════════════ */}
-        {/* ABA 2: 🌐 ORIGEM & RASTREAMENTO                                       */}
+        {/* ABA 2: ORIGEM & RASTREAMENTO                                          */}
         {/* ════════════════════════════════════════════════════════════════════ */}
         {activeTab === 'origem' && (
           <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
@@ -5976,7 +5978,9 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                                 width: '100%',
                               }}
                             >
-                              <span>{f.name} {f.isPostSale ? '👑' : ''}</span>
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                {f.name} {f.isPostSale && <Crown size={12} color="#D4AF37" />}
+                              </span>
                               {isCurrent && <Check size={12} color="var(--adm-accent)" />}
                             </button>
                           );
@@ -6337,7 +6341,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
         )}
 
         {/* ════════════════════════════════════════════════════════════════════ */}
-        {/* ABA: 🧭 JORNADA DO LEAD (MARCOS CRÍTICOS & PERMANÊNCIA POR ESTÁGIO)   */}
+        {/* ABA: JORNADA DO LEAD (MARCOS CRÍTICOS & PERMANÊNCIA POR ESTÁGIO)      */}
         {/* ════════════════════════════════════════════════════════════════════ */}
         {activeTab === 'jornada' && (
           <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -6787,7 +6791,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
         )}
 
         {/* ════════════════════════════════════════════════════════════════════ */}
-        {/* ABA 3: 🎯 MQL (MARKETING QUALIFIED LEAD)                             */}
+        {/* ABA 3: MQL (MARKETING QUALIFIED LEAD)                                */}
         {/* ════════════════════════════════════════════════════════════════════ */}
         {activeTab === 'mql' && (
           <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -6990,7 +6994,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
         )}
 
         {/* ════════════════════════════════════════════════════════════════════ */}
-        {/* ABA 4: 💼 HISTÓRICO COMERCIAL (LEAD ORIGINAL)                        */}
+        {/* ABA 4: HISTÓRICO COMERCIAL (LEAD ORIGINAL)                           */}
         {/* ════════════════════════════════════════════════════════════════════ */}
         {activeTab === 'comercial' && (
           <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '14px' }}>

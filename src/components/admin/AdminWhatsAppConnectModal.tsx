@@ -467,7 +467,7 @@ export const AdminWhatsAppConnectModal: React.FC<AdminWhatsAppConnectModalProps>
                 textAlign: 'left',
                 lineHeight: '1.4',
               }}>
-                📌 <strong>Regra de Unidade:</strong> Se você alternar a unidade da origem existente, os leads que já entraram por ela permanecem na unidade antiga. Apenas os novos contatos passarão a fazer parte da nova unidade.
+                <strong>Regra de Unidade:</strong> Se você alternar a unidade da origem existente, os leads que já entraram por ela permanecem na unidade antiga. Apenas os novos contatos passarão a fazer parte da nova unidade.
               </div>
 
               <div style={{ display: 'flex', gap: '10px', width: '100%', marginTop: '6px' }}>
@@ -564,8 +564,8 @@ export const AdminWhatsAppConnectModal: React.FC<AdminWhatsAppConnectModalProps>
                 <h3 style={{ fontSize: '1.15rem', fontWeight: 900, color: 'var(--adm-text-title)', margin: 0 }}>
                   {connectedProfileName || source.name}
                 </h3>
-                <div style={{ fontSize: '0.88rem', color: '#10B981', fontWeight: 800, marginTop: '4px' }}>
-                  📱 {formatPhone(connectedPhone) || 'Número Oficial Conectado'}
+                <div style={{ fontSize: '0.88rem', color: '#10B981', fontWeight: 800, marginTop: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px' }}>
+                  <Smartphone size={15} /> {formatPhone(connectedPhone) || 'Número Oficial Conectado'}
                 </div>
               </div>
 

@@ -656,7 +656,7 @@ export const AdminForgotPasswordModal: React.FC<AdminForgotPasswordModalProps> =
                 textAlign: 'center',
                 lineHeight: 1.4,
               }}>
-                💡 Se não encontrar o e-mail na caixa de entrada ou spam, solicite ao <strong>Administrador da sua unidade</strong> o <strong>Link Direto de Redefinição</strong> gerado no Painel de Colaboradores.
+                Se não encontrar o e-mail na caixa de entrada ou spam, solicite ao <strong>Administrador da sua unidade</strong> o <strong>Link Direto de Redefinição</strong> gerado no Painel de Colaboradores.
               </div>
             </div>
 

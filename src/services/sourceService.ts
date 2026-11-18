@@ -2,6 +2,7 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { isUuid, generateUuid } from '../utils/uuid';
 import type { Source, SourceEventType } from '../types/sources';
 import type { Venue, CommercialFunnel } from '../types/admin';
+import { uazapiService } from './uazapiService';
 
 export const sourceService = {
   /**
@@ -107,7 +108,8 @@ export const sourceService = {
   },
 
   /**
-   * Salva ou atualiza uma origem no Supabase
+   * Salva ou atualiza uma origem no Supabase com garantia estrita de unicidade 1:N
+   * Regra Arquitetural: Cada Origem pertence a no máximo 1 único Funil Comercial (1:N)
    */
   async upsert(source: Partial<Source> & { name: string; venueId: string; funnelId?: string; type: Source['type'] }): Promise<Source | null> {
     if (!isSupabaseConfigured) return null;
@@ -129,12 +131,15 @@ export const sourceService = {
         ? { ...(source.configuration || {}), systemManaged: true }
         : (source.configuration || {});
 
+      // UNICIDADE 1:N: Se funnelId for informado, valida formato UUID ou anula
+      const targetFunnelId = (source.funnelId && isUuid(source.funnelId)) ? source.funnelId : null;
+
       const payload: any = {
         id: sourceId,
         venue_id: safeVenueId,
         name: source.name,
         type: effectiveType,
-        funnel_id: (source.funnelId && isUuid(source.funnelId)) ? source.funnelId : null,
+        funnel_id: targetFunnelId,
         whatsapp_instance_id: effectiveWhatsappInstance,
         status: effectiveStatus,
         slug: effectiveType === 'form' && source.slug ? source.slug.trim().toLowerCase() : null,
@@ -173,11 +178,67 @@ export const sourceService = {
   },
 
   /**
-   * Exclui uma origem
+   * Busca todas as origens vinculadas exclusivamente a um determinado funil comercial (1:N)
+   */
+  async getByFunnel(funnelId: string): Promise<Source[]> {
+    if (!isSupabaseConfigured || !funnelId) return [];
+    try {
+      const { data, error } = await supabase
+        .from('sources')
+        .select('*')
+        .eq('funnel_id', funnelId)
+        .order('created_at', { ascending: false });
+
+      if (error || !data) return [];
+
+      return data.map(row => ({
+        id: row.id,
+        venueId: row.venue_id,
+        name: row.name,
+        type: row.type as Source['type'],
+        funnelId: row.funnel_id,
+        whatsappInstanceId: row.whatsapp_instance_id || undefined,
+        status: (row.status as 'active' | 'inactive') || 'active',
+        slug: row.slug || undefined,
+        configuration: row.configuration || {},
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      }));
+    } catch (err) {
+      console.error('Falha em sourceService.getByFunnel:', err);
+      return [];
+    }
+  },
+
+  /**
+   * Exclui uma origem e encerra a instância UAZAPI vinculada (se houver)
    */
   async delete(id: string): Promise<boolean> {
     if (!isSupabaseConfigured) return false;
     try {
+      // Busca a origem antes de deletar para obter o token da instância UAZAPI
+      const { data: sourceRow } = await supabase
+        .from('sources')
+        .select('type, whatsapp_instance_id, configuration')
+        .eq('id', id)
+        .single();
+
+      // Encerra a instância UAZAPI antes de remover do banco para não deixar órfã
+      if (sourceRow && sourceRow.type === 'whatsapp_api') {
+        const instanceToken =
+          sourceRow.whatsapp_instance_id ||
+          (sourceRow.configuration as any)?.token ||
+          (sourceRow.configuration as any)?.instanceToken ||
+          (sourceRow.configuration as any)?.instanceKey;
+        if (instanceToken) {
+          try {
+            await uazapiService.deleteInstance(instanceToken);
+          } catch (uazErr) {
+            console.warn('[sourceService.delete] Falha ao encerrar instância UAZAPI (prosseguindo com exclusão local):', uazErr);
+          }
+        }
+      }
+
       const { error } = await supabase.from('sources').delete().eq('id', id);
       if (error) {
         console.error('Erro ao deletar origem:', error);

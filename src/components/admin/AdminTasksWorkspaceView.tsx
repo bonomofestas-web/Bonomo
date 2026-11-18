@@ -15,6 +15,7 @@ import { AdminAppointmentReceiptModal } from './AdminAppointmentReceiptModal';
 import type { AppointmentReceiptData } from './AdminAppointmentReceiptModal';
 import { AdminTasksKanbanView } from './tasks/AdminTasksKanbanView';
 import { AdminTasksTableView } from './tasks/AdminTasksTableView';
+import { AdminVisitsTastingsView } from './tasks/AdminVisitsTastingsView';
 import { AdminCalendarDayView } from './tasks/AdminCalendarDayView';
 import { AdminCalendarWeekView } from './tasks/AdminCalendarWeekView';
 import { AdminCalendarMonthView } from './tasks/AdminCalendarMonthView';
@@ -582,6 +583,15 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
     setVenueFilter('all');
     setSearchTerm('');
   };
+
+  if ((workspaceContext as any) === 'visits_tastings') {
+    return (
+      <AdminVisitsTastingsView
+        onOpenLead={onOpenLead}
+        onNavigateTab={onNavigateTab}
+      />
+    );
+  }
 
   return (
     <div style={{

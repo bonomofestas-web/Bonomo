@@ -104,6 +104,21 @@ export const cloudflareR2Service = {
     // Step 3: Return the permanent public URL
     return publicUrl;
   },
-};
 
-export const isCloudflareR2Configured = true;
+  /** Remove um objeto do R2 pelo key (via /api/r2-delete). */
+  async deleteFile(key: string): Promise<void> {
+    // A API exige o JWT do usuário logado
+    const { supabase } = await import('./supabase');
+    const { data: sessionData } = await supabase.auth.getSession();
+    const accessToken = sessionData?.session?.access_token;
+    const res = await fetch('/api/r2-delete', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+      },
+      body: JSON.stringify({ key }),
+    });
+    if (!res.ok) throw new Error(`Falha ao excluir ${key} do R2 (HTTP ${res.status})`);
+  },
+};

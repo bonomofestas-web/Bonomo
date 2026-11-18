@@ -1,3 +1,4 @@
+import { toast } from 'sonner';
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { 
   X, Check, Building2, Calendar, User, Phone, DollarSign, Clock, 
@@ -175,7 +176,7 @@ export const AdminNewClientModal: React.FC<AdminNewClientModalProps> = ({
     const effectivePhone = payerPhone.trim();
 
     if (!effectivePayerName || !effectivePhone) {
-      alert('Por favor informe o Nome do Responsável / Contratante e o WhatsApp.');
+      toast.warning('Por favor informe o Nome do Responsável / Contratante e o WhatsApp.');
       return;
     }
 

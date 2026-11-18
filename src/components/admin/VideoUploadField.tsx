@@ -233,7 +233,7 @@ export const VideoUploadField: React.FC<VideoUploadFieldProps> = ({
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <Loader2 size={18} className="animate-spin" color="#D4AF37" />
               <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#FFFFFF' }}>
-                Enviando vídeo para o Cloudflare R2...
+                Enviando vídeo com alta segurança...
               </span>
             </div>
             <span style={{ fontSize: '0.84rem', fontWeight: 800, color: '#D4AF37' }}>
@@ -326,7 +326,7 @@ export const VideoUploadField: React.FC<VideoUploadFieldProps> = ({
 
             <div style={{ fontSize: '0.72rem', color: 'var(--adm-green)', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}>
               <Check size={13} />
-              <span>{justUploaded ? 'Upload 100% concluído no Cloudflare R2!' : 'Vídeo salvo e pronto para reprodução'}</span>
+              <span>{justUploaded ? 'Upload 100% concluído com sucesso!' : 'Vídeo salvo e pronto para reprodução'}</span>
             </div>
 
             <div style={{ display: 'flex', gap: '8px', marginTop: '6px' }}>

@@ -29,10 +29,11 @@ Nenhuma tarefa deve ser executada sem levar em conta a visão do produto, a arqu
 - Execute sempre `npm run build` para garantir que não existem erros de TypeScript ou quebras no Vite bundle.
 - Nunca insira mocks estáticos em código de produção: use o Supabase e os serviços em `src/services/`.
 
-## Regra Fundamental 6: Testes Visuais e de Interface Conduzidos pelo Usuário
-- **PROIBIDO** o agente abrir o navegador de forma autônoma (via subagente de browser) para testar telas sem solicitação expressa do usuário.
-- O fluxo de testes de tela, responsividade e formulários é **sempre conduzido pelo USUÁRIO**.
-- O agente deve fornecer as orientações detalhadas (URL local, credenciais de acesso, fluxo passo a passo) e aguardar o feedback do usuário.
+## Regra Fundamental 6: Validação Visual e de Usabilidade pela Lily (Frontend) via Navegador Interno
+- A **Lily Aldrin** (Frontend Engineer & UI/UX) é a encarregada direta de testar a interface e a usabilidade de cada tela desenvolvida ou alterada. Quem desenvolve o frontend deve ver e testar o resultado final no navegador para garantir que a experiência está fluida e correta.
+- O squad possui autorização explícita para abrir e operar o navegador interno do OpenBot (`openbot_browser`) de forma 100% autônoma e não-supervisionada para inspecionar telas, validar layouts, conferir fluxos e homologar entregas.
+- Prints comprobatórios (`openbot_browser.screenshot` com `save: true`) devem ser capturados e anexados no chat para comprovar o resultado visual real.
+- O usuário é acionado apenas quando houver necessidade de validação em hardware externo ou aprovação de decisões estratégicas de negócio.
 
 ## Regra Fundamental 7: Isolamento Seguro do Cloudflare R2
 - Todo upload em ambiente local de desenvolvimento é prefixado automaticamente com `local_dev/` (via middleware do Vite em `vite.config.ts`).
@@ -44,7 +45,48 @@ Nenhuma tarefa deve ser executada sem levar em conta a visão do produto, a arqu
 - Toda e qualquer sinalização visual deve utilizar exclusivamente ícones modernos e elegantes da biblioteca `lucide-react`.
 - O uso de emojis só é permitido se expressamente solicitado pelo usuário para um caso pontual.
 
-## Regra Fundamental 9: Registro Público de Grandes Atualizações (/atualizacoes)
-- Toda atualização considerada uma **Grande Atualização** deve ter seu deploy registrado cronologicamente no arquivo `src/data/changelogData.ts` para exibição na página pública `/atualizacoes` (ou `/changelog`).
-- O histórico deve conter a data, versão, tipo de atualização, descrição e lista detalhada dos recursos adicionados, aprimorados ou descontinuados.
-- Antes de realizar qualquer push/deploy de grandes entregas ou pacotes de funcionalidades, o agente deve verificar e confirmar com o usuário se a entrega se enquadra como Grande Atualização para ser devidamente catalogada no changelog público.
+## Regra Fundamental 9: Changelog em Staging e Publicação Apenas no Deploy Real
+- O arquivo público de changelog (`src/data/changelogData.ts`, exibido na rota pública `/atualizacoes`) **SÓ deve ser modificado no momento do commit e deploy oficial para produção**.
+- **Staging de Alterações:** Enquanto o squad estiver em fase de desenvolvimento, testes locais e simulações E2E, todas as notas de release e melhorias devem ser acumuladas no arquivo [docs/CHANGELOG_STAGING.md](file:///c:/Users/--/OneDrive/Documents/Codex%20Projetos/Bonomo%20Festas%202/docs/CHANGELOG_STAGING.md) pela **Robin Scherbatsky**.
+- No momento em que o usuário aprovar e for executado o deploy de produção, a Robin compilará todas as alterações acumuladas no staging em uma única Grande Atualização no changelog público.
+
+## Regra Fundamental 10: Liberdade Total para Testes E2E com Dados Fictícios (Caça a Bugs de Banco e Fluxo)
+- Sempre que adicionarmos ou alterarmos funcionalidades que envolvam banco de dados, regras de negócio ou esteiras do CRM, o squad tem **liberdade total** para entrar no sistema e executar processos completos de ponta a ponta.
+- Isso inclui: cadastrar leads fictícios, avançar cards pelas etapas do Kanban comercial, agendar visitas/degustações, preencher propostas, finalizar vendas e validar a entrada na Mesa de Homologação de Contratos.
+- Essa simulação real de ponta a ponta é mandatória para identificar e eliminar antecipadamente qualquer bug de estado, concorrência ou persistência no Supabase.
+
+## Regra Fundamental 11: Permanência Ativa do Servidor Local (Porta 5173 Sempre Aberta)
+- O servidor Vite de desenvolvimento (`npm run dev -- --host`) e o Supabase Docker (`54321`/`54323`) devem permanecer **sempre ativos e em execução** durante toda a operação do squad.
+- É terminantemente proibido deixar o servidor local fechado. Se qualquer manutenção, teste ou build interromper a execução na porta 5173, o agente DEVE religar o Vite imediatamente (`npm run dev -- --host`) como processo daemon persistente e validar a resposta da porta antes de encerrar o turno.
+
+## Regra Fundamental 12: Criação Direta em React (Sem Protótipos HTML)
+- Victoria foi descontinuada da operação. Não crie protótipos estáticos em HTML; desenvolva diretamente em componentes React 19 estilizados com Tailwind CSS e ícones Lucide React.
+
+## Regra Fundamental 13: Economia Máxima e Blindagem do Supabase Free Tier (Custos Zero)
+- O backend do F5 System opera na camada gratuita do Supabase. Toda funcionalidade, query e fluxo de dados DEVE ser desenhado para respeitar estritamente as quotas gratuitas:
+  * **Tráfego de Saída (Egress < 5 GB/mês):** Proibido `select(*)` irrestrito em loops ou listagens massivas. Projetar apenas colunas necessárias e adotar paginação ou limites de registros.
+  * **Armazenamento de Banco (Database Storage < 500 MB):** Nenhuma mídia, foto ou documento pode ser salva como Base64 no banco relacional. Todos os binários devem residir no Cloudflare R2 com retenção automatizada.
+  * **Mensagens e Canais Realtime (< 2M msgs/mês):** Canais do Postgres Changes devem ser filtrados estritamente por `master_id` para não disparar eventos a instâncias não interessadas.
+  * **Cache Inteligente:** Evitar refetch completo a cada navegação de tela através de cache local/stale-while-revalidate.
+- O **Barney Stinson** é o guardião responsável por auditar preventivamente e otimizar queries e tráfego para manter o app 100% gratuito e rápido.
+
+## Regra Fundamental 14: Governança Inteligente & Delegação Cirúrgica (Ted Mosby)
+- Ted Mosby é o Tech Lead e Orquestrador Geral.
+- Para tarefas complexas ou de domínio exclusivo, ele delega cirurgicamente para UM especialista responsável (Lily no Frontend, Barney no Backend, Brad em APIs).
+- Para correções pontuais, ajustes rápidos ou para estancar consumo excessivo de tokens e contexto, o Ted tem autorização para intervir diretamente sem deflagrar cascatas de mensagens entre agentes.
+
+## Regra Fundamental 15: Proibição Absoluta de Controle do Desktop do Usuário (Uso Exclusivo do OpenBot Browser)
+- É TERMINANTEMENTE PROIBIDO a qualquer agente do squad (Lily, Barney, Marshall, Ted, etc.) acionar ferramentas de controle de desktop ou da área de trabalho do sistema operacional (`computer_use`, `move_cursor`, cliques em coordenadas da tela do host).
+- O usuário utiliza seu computador para trabalho simultâneo; nenhuma ação de agente pode roubar foco de janelas, mover o ponteiro do mouse ou abrir janelas sobre o trabalho dele.
+- Toda validação visual, navegação em telas, simulação de funil e testes E2E DEVE ser realizada **exclusivamente através do `openbot_browser`** (navegador interno e isolado do OpenBot via CDP/run_script).
+- Capturas de evidências para o usuário devem ser geradas unicamente por `openbot_browser.screenshot` com `save: true` e anexadas na conversa com `openbot.attach_files_to_response`.
+
+## Regra Fundamental 16: PROTOCOLO DE ECONOMIA EXTREMA DE TOKENS (ZERO DESPERDÍCIO DE CONTEXTO)
+- **Fim do Fan-out em Cascata:** Uma solicitação NUNCA deve acionar o squad inteiro em cadeia. Cada tarefa deve ser resolvida com o menor número possível de agentes (idealmente 1 agente direto).
+- **Briefings Cirúrgicos (Token-Budgeted):** Mensagens entre agentes NUNCA devem reenviar históricos de conversas anteriores, regras gerais ou resumos longos. O briefing deve conter estritamente:
+  1. O arquivo alvo exato;
+  2. As linhas ou bloco a alterar;
+  3. O que entra e o que sai;
+  4. O contexto passado consolidado já reside em `docs/CHANGELOG_STAGING.md`.
+- **Proibido Ler o Repositório Inteiro:** Nunca faça varreduras globais ou leituras de arquivos completos sem necessidade. Use `StartLine`/`EndLine` e buscas direcionadas por termos específicos (`grep`/`ripgrep`).
+- **Eliminação de Cerimônias Desnecessárias:** Não convoque o Marshall para revisões de texto se o `npm run build` já valida tipos e integridade. Não convoque a Robin a cada alteração pontual (a Robin atua apenas na consolidação final de deploy).

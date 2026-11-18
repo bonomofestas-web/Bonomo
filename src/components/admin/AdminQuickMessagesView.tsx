@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
+import { HeaderActions } from './HeaderActions';
 import {
-  Zap, Plus, Search, Edit3, Trash2, CheckCircle2,
+  Plus, Search, Edit3, Trash2, CheckCircle2,
   XCircle, User, Calendar, MessageSquare, LayoutGrid, List as ListIcon, CheckCheck
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
@@ -83,67 +84,7 @@ export const AdminQuickMessagesView: React.FC = () => {
         gap: '20px',
       }}
     >
-      {/* ── TOPO / CABEÇALHO UNIFICADO ── */}
-      <div
-        style={{
-          display: 'flex',
-          flexWrap: 'wrap',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: '16px',
-          background: 'var(--adm-bg-card, #1e293b)',
-          padding: '20px 24px',
-          borderRadius: '14px',
-          border: '1px solid var(--adm-border, rgba(255, 255, 255, 0.1))',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div
-            style={{
-              width: '42px',
-              height: '42px',
-              borderRadius: '12px',
-              background: 'rgba(20, 169, 215, 0.15)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#14A9D7',
-            }}
-          >
-            <Zap size={22} />
-          </div>
-          <div>
-            <h1
-              style={{
-                fontSize: '1.25rem',
-                fontWeight: 700,
-                color: 'var(--adm-text-title, #f8fafc)',
-                margin: 0,
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-              }}
-            >
-              Mensagens Rápidas
-              <span
-                style={{
-                  fontSize: '0.72rem',
-                  fontWeight: 600,
-                  padding: '2px 8px',
-                  borderRadius: '12px',
-                  background: 'rgba(20, 169, 215, 0.15)',
-                  color: '#14A9D7',
-                }}
-              >
-                {quickMessages.length} cadastradas
-              </span>
-            </h1>
-            <p style={{ margin: '4px 0 0', fontSize: '0.80rem', color: 'var(--adm-text-muted, #94a3b8)' }}>
-              Defina atalhos de barra (/) para disparar mensagens e respostas prontas com agilidade no WhatsApp.
-            </p>
-          </div>
-        </div>
-
+      <HeaderActions>
         <button
           type="button"
           onClick={handleOpenNewModal}
@@ -168,7 +109,7 @@ export const AdminQuickMessagesView: React.FC = () => {
           <Plus size={16} />
           <span>Nova Mensagem Rápida</span>
         </button>
-      </div>
+      </HeaderActions>
 
       {/* ── BARRA DE BUSCA E FILTROS ── */}
       <div

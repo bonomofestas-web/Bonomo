@@ -1,10 +1,195 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
+import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL || '';
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || '';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+// ── Política de armazenamento de mídia (R2 Free: 10 GB) ───────────────────────
+// Mantenha em sincronia com src/utils/mediaStoragePolicy.ts (funções serverless não importam de src/).
+const MB = 1024 * 1024;
+const AUTO_UPLOAD_MAX_BYTES: Record<string, number> = { image: 2 * MB, video: 10 * MB, audio: 15 * MB, document: 5 * MB, other: 5 * MB };
+const MIME_EXT: Record<string, string> = {
+  'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif',
+  'video/mp4': 'mp4', 'video/quicktime': 'mov', 'video/webm': 'webm', 'video/3gpp': '3gp',
+  'audio/ogg': 'ogg', 'audio/mpeg': 'mp3', 'audio/mp4': 'm4a', 'audio/aac': 'aac',
+  'application/pdf': 'pdf', 'application/zip': 'zip', 'text/plain': 'txt',
+};
+
+function mediaKindOf(mediaType: string, mimetype?: string): string {
+  const t = (mediaType || '').toLowerCase();
+  const m = (mimetype || '').toLowerCase();
+  if (t === 'image' || m.startsWith('image/')) return 'image';
+  if (t === 'video' || m.startsWith('video/')) return 'video';
+  if (t === 'audio' || m.startsWith('audio/')) return 'audio';
+  if (t === 'document' || m.startsWith('application/') || m.startsWith('text/')) return 'document';
+  return 'other';
+}
+
+interface WebhookMediaContext {
+  activityId: string;
+  leadId: string;
+  masterId?: string | null;
+  venueId?: string | null;
+  sourceId?: string;
+  instanceToken?: string;
+  baseUrl?: string;
+  /** ids da UAZAPI em ordem de preferência (completo owner:messageid, depois curto) */
+  messageIds: string[];
+  mediaType: string;
+  storedText: string;
+  /** false = histórico: não baixa agora (fica pendente para a tela de migração/usuário decidir) */
+  ingestNow: boolean;
+}
+
+/**
+ * Aplica a política de peso: mídia leve vai para o R2 imediatamente (mesmo com o navegador fechado);
+ * pesada ou com falha fica "pendente" com peso/motivo. Sempre registra em whatsapp_media e nunca derruba o webhook.
+ */
+async function handleWebhookMedia(ctx: WebhookMediaContext): Promise<void> {
+  const accountId = process.env.CLOUDFLARE_R2_ACCOUNT_ID || '';
+  const accessKeyId = process.env.CLOUDFLARE_R2_ACCESS_KEY_ID || '';
+  const secretAccessKey = process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY || '';
+  const bucketName = process.env.CLOUDFLARE_R2_BUCKET_NAME || '';
+  const publicUrl = (process.env.CLOUDFLARE_R2_PUBLIC_URL || '').replace(/\/$/, '');
+
+  let status: 'stored' | 'pending' | 'unavailable' = 'pending';
+  let failureReason: string | undefined;
+  let sizeBytes: number | undefined;
+  let mimetype: string | undefined;
+  let fileName: string | undefined;
+  let r2Key: string | undefined;
+  let finalUrl: string | undefined;
+
+  try {
+    const ready = ctx.ingestNow && ctx.instanceToken && ctx.baseUrl && ctx.messageIds.length > 0 && accountId && accessKeyId && secretAccessKey && bucketName && publicUrl;
+    if (!ready) {
+      failureReason = ctx.ingestNow ? 'config' : 'history_pending';
+    } else {
+      const abort = new AbortController();
+      const timer = setTimeout(() => abort.abort(), 7000);
+      try {
+        let fileURL = '';
+        for (const id of ctx.messageIds) {
+          const dl = await fetch(`${ctx.baseUrl}/message/download`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', token: ctx.instanceToken! },
+            body: JSON.stringify({ id, generate_mp3: true }),
+            signal: abort.signal,
+          });
+          if (dl.ok) {
+            const body: any = await dl.json();
+            fileURL = body.fileURL || '';
+            mimetype = body.mimetype;
+            fileName = body.fileName;
+            break;
+          }
+          if (dl.status !== 404 && dl.status !== 400) { failureReason = dl.status >= 500 ? 'server' : 'unknown'; break; }
+          failureReason = dl.status === 404 ? 'not_found' : 'no_media';
+        }
+
+        if (fileURL) {
+          const kind = mediaKindOf(ctx.mediaType, mimetype);
+          const head = await fetch(fileURL, { method: 'HEAD', signal: abort.signal }).catch(() => null);
+          const len = Number(head?.headers.get('content-length'));
+          sizeBytes = Number.isFinite(len) && len > 0 ? len : undefined;
+          const limit = AUTO_UPLOAD_MAX_BYTES[kind] ?? AUTO_UPLOAD_MAX_BYTES.other;
+          // Peso desconhecido: áudio/documento passam (limite duro abaixo); foto/vídeo esperam decisão
+          const unknownHeavy = sizeBytes === undefined && (kind === 'image' || kind === 'video');
+
+          if (unknownHeavy || (sizeBytes !== undefined && sizeBytes > limit)) {
+            failureReason = 'heavy';
+          } else {
+            const file = await fetch(fileURL, { signal: abort.signal });
+            if (!file.ok) throw new Error(`HTTP ${file.status}`);
+            const buf = Buffer.from(await file.arrayBuffer());
+            if (buf.length > limit) {
+              sizeBytes = buf.length;
+              failureReason = 'heavy';
+            } else {
+              sizeBytes = buf.length;
+              const ext = MIME_EXT[(mimetype || '').split(';')[0].toLowerCase()] || 'bin';
+              const safeId = ctx.messageIds[0].replace(/[^A-Za-z0-9_-]/g, '_');
+              const ym = new Date().toISOString().slice(0, 7);
+              r2Key = `whatsapp/${ctx.sourceId || 'default'}/${ym}/${safeId}_${Date.now()}.${ext}`;
+              const s3 = new S3Client({
+                region: 'auto',
+                endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
+                credentials: { accessKeyId, secretAccessKey },
+              });
+              await s3.send(new PutObjectCommand({
+                Bucket: bucketName,
+                Key: r2Key,
+                Body: buf,
+                ContentType: mimetype || 'application/octet-stream',
+              }));
+              finalUrl = `${publicUrl}/${r2Key}`;
+              status = 'stored';
+            }
+          }
+        } else if (!failureReason) {
+          failureReason = 'no_media';
+        }
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+  } catch (err: any) {
+    failureReason = err?.name === 'AbortError' ? 'timeout' : 'network';
+    console.warn('[Webhook][media] falha ao ingerir mídia:', err?.message || err);
+  }
+
+  // Atualiza a atividade: R2 substitui o link temporário; senão fica marcada para download manual com peso/motivo
+  try {
+    const { data: row } = await supabase.from('lead_activities').select('metadata, text').eq('id', ctx.activityId).maybeSingle();
+    const meta = { ...((row?.metadata as any) || {}) };
+    let text = row?.text ?? ctx.storedText;
+    if (status === 'stored' && finalUrl) {
+      text = String(text).replace(/^\[media:[^\]]*\]/, `[media:${finalUrl}|${ctx.mediaType}]`);
+      meta.needsManualDownload = false;
+      meta.permanentR2Url = finalUrl;
+    } else {
+      meta.needsManualDownload = true;
+      if (sizeBytes) meta.mediaSizeBytes = sizeBytes;
+      if (failureReason && failureReason !== 'heavy' && failureReason !== 'history_pending') meta.mediaError = failureReason;
+    }
+    meta.mediaSizeBytes = sizeBytes ?? meta.mediaSizeBytes;
+    await supabase.from('lead_activities').update({ metadata: meta, text }).eq('id', ctx.activityId);
+  } catch (err) {
+    console.warn('[Webhook][media] falha ao atualizar atividade:', err);
+  }
+
+  // Registro de controle (whatsapp_media): base do medidor de uso e da limpeza sazonal
+  if (ctx.masterId) {
+    try {
+      const row = {
+        master_id: ctx.masterId,
+        venue_id: ctx.venueId && /^[0-9a-f-]{36}$/i.test(ctx.venueId) ? ctx.venueId : null,
+        source_id: ctx.sourceId || null,
+        lead_id: ctx.leadId,
+        activity_id: ctx.activityId,
+        message_id: ctx.messageIds[ctx.messageIds.length - 1] || null,
+        kind: mediaKindOf(ctx.mediaType, mimetype),
+        mimetype: mimetype || null,
+        file_name: fileName || null,
+        size_bytes: sizeBytes ?? null,
+        r2_key: r2Key || null,
+        public_url: finalUrl || null,
+        status,
+        failure_reason: status === 'stored' ? null : (failureReason || null),
+      };
+      const { data: existing } = row.message_id
+        ? await supabase.from('whatsapp_media').select('id').eq('master_id', ctx.masterId).eq('message_id', row.message_id).maybeSingle()
+        : { data: null as any };
+      if (existing?.id) await supabase.from('whatsapp_media').update(row).eq('id', existing.id);
+      else await supabase.from('whatsapp_media').insert([row]);
+    } catch (err) {
+      console.warn('[Webhook][media] falha ao registrar whatsapp_media:', err);
+    }
+  }
+}
 
 function isLidIdentifier(id?: string): boolean {
   if (!id) return false;
@@ -103,6 +288,14 @@ function extractSenderName(msg: any, payload?: any): string {
   return '';
 }
 
+// Prévia curta da última mensagem para a lista lateral (mídia vira marcador legível pelo front)
+function lastMessagePreview(text: string, mediaUrl?: string, mediaType?: string): string {
+  const label: Record<string, string> = { image: '[Foto]', video: '[Vídeo]', audio: '[Áudio]', document: '[Documento]' };
+  const base = (text || '').trim();
+  const prefix = mediaUrl ? (label[mediaType || ''] || '[Documento]') : '';
+  return `${prefix} ${base}`.trim().slice(0, 200);
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -198,9 +391,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return;
     }
 
+    // ── 1.5 HISTÓRICO (sincronização de pareamento / history-sync) ───────────
+    // Só mensagens (`event: "messages"`) são importadas; lotes de chats/status apenas registram progresso.
+    const isHistory = eventType === 'history';
+    if (isHistory && String(payload.event || '').toLowerCase() !== 'messages') {
+      console.log(`[Webhook][history] lote ${payload.batchNumber ?? '?'}/${payload.batchTotal ?? '?'} evento=${payload.event} status=${payload.batchHistoryStatus ?? '-'} request=${payload.request_id ?? '-'}`);
+      return res.status(200).json({ success: true, history: payload.event || 'ignored' });
+    }
+
     // ── 2. PROCESSAMENTO DE MENSAGENS RECEBIDAS ──────────────────────────────
-    if (eventType === 'messages' || eventType === 'messages.upsert' || !eventType) {
-      const messagesList = Array.isArray(payload.messages) 
+    if (eventType === 'messages' || eventType === 'messages.upsert' || !eventType || isHistory) {
+      const messagesList = Array.isArray(payload.messages)
         ? payload.messages 
         : Array.isArray(payload.data) 
           ? payload.data 
@@ -242,19 +443,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         let mediaType = 'text';
 
         const msgType = String(msg.messageType || msg.type || payload?.messageType || '').toLowerCase();
-        if (msgType === 'image') {
+        if (msgType.includes('image')) {
           mediaType = 'image';
           text = msg.text || msg.caption || '📷 Foto';
-        } else if (msgType === 'video') {
+        } else if (msgType.includes('video') || msgType.includes('ptv')) {
           mediaType = 'video';
           text = msg.text || msg.caption || '🎥 Vídeo';
-        } else if (msgType === 'audio' || msgType === 'myaudio') {
+        } else if (msgType.includes('audio') || msgType.includes('myaudio') || msgType.includes('ptt') || msgType.includes('voice')) {
           mediaType = 'audio';
           text = '🎵 Mensagem de voz';
-        } else if (msgType === 'document') {
+        } else if (msgType.includes('document')) {
           mediaType = 'document';
           text = msg.fileName ? `📄 Documento: ${msg.fileName}` : (msg.text || '📄 Documento');
-        } else if (msgType === 'sticker') {
+        } else if (msgType.includes('sticker')) {
           mediaType = 'image';
           text = '✨ Figurinha';
         }
@@ -334,6 +535,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           else if (typeof payload?.data?.message?.extendedTextMessage?.text === 'string') text = payload.data.message.extendedTextMessage.text;
         }
 
+        // Se tiver mídia mas o tipo for texto, resolve por extensão da URL
+        if (mediaUrl && mediaType === 'text') {
+          const lowerUrl = mediaUrl.toLowerCase();
+          if (/\.(jpg|jpeg|png|webp|gif)(\?.*)?$/i.test(lowerUrl)) {
+            mediaType = 'image';
+          } else if (/\.(mp4|mov|avi|webm)(\?.*)?$/i.test(lowerUrl)) {
+            mediaType = 'video';
+          } else if (/\.(pdf|docx?|xlsx?|pptx?|txt|zip)(\?.*)?$/i.test(lowerUrl)) {
+            mediaType = 'document';
+          } else if (/\.(ogg|mp3|opus|wav|m4a|aac)(\?.*)?$/i.test(lowerUrl)) {
+            mediaType = 'audio';
+          }
+        }
+
         // Se tiver mídia mas nenhum texto foi extraído, define rótulo descritivo
         if (!text && mediaUrl) {
           if (mediaType === 'audio') text = '🎵 Mensagem de voz';
@@ -384,6 +599,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           );
         }
 
+        // DEDUPLICAÇÃO DE MENSAGEM: o mesmo wamid só é duplicata se já foi gravado POR ESTA MESMA ORIGEM/INSTÂNCIA.
+        // Nunca descarta mensagem só porque o contato é lead em outro funil.
+        const waMessageId = msg.key?.id || msg.id || msg.messageid || payload?.messageId || payload?.id;
+        if (waMessageId) {
+          const { data: dupRows } = await supabase
+            .from('lead_activities')
+            .select('id, lead_id, metadata')
+            .or(`metadata->>messageId.eq.${waMessageId},metadata->>message_id.eq.${waMessageId}`)
+            .limit(5);
+          const isDup = (dupRows || []).some((r: any) => {
+            const srcId = r?.metadata?.senderSourceId;
+            return !matchedSource?.id || !srcId || srcId === matchedSource.id;
+          });
+          if (isDup) {
+            console.log(`[Webhook Deduplicação] Mensagem ${waMessageId} já gravada para esta origem. Ignorando duplicata.`);
+            continue;
+          }
+        }
+
         // 2. Busca se já existe um Lead com esse telefone ou LID no sistema (Escopo do Tenant / Rede)
         const isLid = isLidIdentifier(cleanPhone) || cleanPhone.length >= 14 || remoteJid.includes('@lid');
         let existingLead: any = null;
@@ -421,9 +655,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
           if (lidMatches && lidMatches.length > 0) {
             // Prioriza o lead no funil da origem se houver, caso contrário pega o mais recente no sistema
-            existingLead = (matchedSource?.funnel_id 
-              ? lidMatches.find((l: any) => l.funnel_id === matchedSource.funnel_id) 
-              : null) || lidMatches[0];
+            // REGRA: duplicado = mesmo contato 2x no MESMO funil. Em outro funil é um lead distinto.
+            existingLead = matchedSource?.funnel_id
+              ? (lidMatches.find((l: any) => l.funnel_id === matchedSource.funnel_id) || null)
+              : lidMatches[0];
           }
 
           // Se não encontrou por LID gravado, tenta extrair o telefone real dos campos do payload ou UAZAPI
@@ -494,9 +729,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           if (phoneLeads && phoneLeads.length > 0) {
             // REGRA: Se houver lead já alocado no funil desta origem, prioriza ele;
             // Caso contrário, aproveita o lead existente no sistema para NÃO gerar duplicidade!
-            existingLead = (matchedSource?.funnel_id 
-              ? phoneLeads.find((l: any) => l.funnel_id === matchedSource.funnel_id) 
-              : null) || phoneLeads[0];
+            // REGRA: só reaproveita lead do MESMO funil da origem; em outro funil cria lead novo naquele funil.
+            existingLead = matchedSource?.funnel_id
+              ? (phoneLeads.find((l: any) => l.funnel_id === matchedSource.funnel_id) || null)
+              : phoneLeads[0];
 
             // Vincula o LID ao lead encontrado para que as próximas mensagens batam de primeira!
             if (isLid) {
@@ -512,14 +748,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
         const isAudio = mediaType === 'audio' || (typeof text === 'string' && text.includes('🎵'));
 
+        // Histórico usa a data real da mensagem (ms ou s); mensagem ao vivo usa o instante do recebimento
+        const rawMsgTs = Number(msg.messageTimestamp || msg.timestamp || 0);
+        const activityIso = isHistory && rawMsgTs > 0
+          ? new Date(rawMsgTs > 1e11 ? rawMsgTs : rawMsgTs * 1000).toISOString()
+          : new Date().toISOString();
+        // Ids para baixar a mídia depois (completo owner:messageid e curto) e origem do chip (nunca o token)
+        const fullWaId = typeof msg.id === 'string' ? msg.id : undefined;
+        const shortWaId = msg.messageid || (fullWaId && fullWaId.includes(':') ? fullWaId.split(':').pop() : undefined);
+        const waIdsMeta = { waId: fullWaId, shortId: shortWaId, sourceId: matchedSource?.id };
+        const mediaMessageIds = [fullWaId, shortWaId, waMessageId].filter((v, i, a) => !!v && a.indexOf(v) === i) as string[];
+        const hasMedia = mediaType !== 'text';
+        const mediaBaseUrl = String(payload.BaseUrl || process.env.UAZAPI_SERVER_URL || process.env.VITE_UAZAPI_SERVER_URL || '').replace(/\/$/, '');
+
         if (existingLead) {
           // Atualiza o Lead existente com a nova atividade de mensagem na tabela lead_activities
           let storedText = text.trim();
           if (mediaUrl && !storedText.startsWith('[media:')) {
-            storedText = `[media:${mediaUrl}|${mediaType || 'audio'}] ${storedText}`.trim();
+            storedText = `[media:${mediaUrl}|${mediaType !== 'text' ? mediaType : 'document'}] ${storedText}`.trim();
           }
-
-          const waMessageId = msg.key?.id || msg.id || payload?.messageId || payload?.id;
 
           // DEDUPLICAÇÃO ESTRITA: Checa por ID único da mensagem do WhatsApp (wamid)
           if (waMessageId) {
@@ -532,6 +779,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
             if (existingByMsgId && existingByMsgId.length > 0) {
               console.log(`[Webhook] Mensagem com messageId ${waMessageId} já gravada no lead ${existingLead.id}, ignorando duplicata.`);
+              // A atividade já existe (ex.: gravada pelo navegador antes do eco do webhook), mas o lead
+              // ainda precisa refletir hora/direção/prévia da última mensagem.
+              const dupPreview = lastMessagePreview(text, mediaUrl, mediaType);
+              if (dupPreview && !isHistory) {
+                const dupNowIso = new Date().toISOString();
+                await supabase
+                  .from('leads')
+                  .update({
+                    last_interaction_at: dupNowIso,
+                    last_message_direction: isFromMe ? 'outgoing' : 'incoming',
+                    last_message_text: dupPreview,
+                    last_message_at: dupNowIso,
+                  })
+                  .eq('id', existingLead.id);
+              }
               continue;
             }
           } else {
@@ -554,14 +816,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           }
 
           const activityId = crypto.randomUUID();
+          const previewText = lastMessagePreview(text, mediaUrl, mediaType);
           const newActivityRecord = {
             id: activityId,
             lead_id: existingLead.id,
-            timestamp: new Date().toISOString(),
+            timestamp: activityIso,
             type: 'contact',
             title: isFromMe 
-              ? (isAudio ? 'Mensagem de voz enviada (Celular/Web)' : 'Mensagem enviada via WhatsApp (Celular/Web)')
-              : (isAudio ? 'Mensagem de voz recebida' : 'Mensagem recebida no WhatsApp'),
+              ? (isAudio ? 'Mensagem de voz enviada (Celular/Web)' : mediaType === 'image' ? 'Foto enviada (Celular/Web)' : mediaType === 'video' ? 'Vídeo enviado (Celular/Web)' : mediaType === 'document' ? 'Documento enviado (Celular/Web)' : 'Mensagem enviada via WhatsApp (Celular/Web)')
+              : (isAudio ? 'Mensagem de voz recebida' : mediaType === 'image' ? 'Foto recebida' : mediaType === 'video' ? 'Vídeo recebido' : mediaType === 'document' ? 'Documento recebido' : 'Mensagem recebida no WhatsApp'),
             text: storedText,
             author_name: isFromMe ? 'WhatsApp App / Web' : (senderName || 'Cliente (WhatsApp)'),
             author_id: null,
@@ -569,23 +832,42 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             status: isFromMe ? 'sent' : 'delivered',
             metadata: {
               messageId: waMessageId || undefined,
+              ...waIdsMeta,
               senderSourceId: matchedSource?.id,
               senderSourceName: matchedSource?.name,
               senderPhone: (matchedSource?.configuration as any)?.connectedPhone || (matchedSource?.configuration as any)?.whatsappNumber,
               senderAvatar: (matchedSource?.configuration as any)?.connectedAvatar || (matchedSource?.configuration as any)?.profilePicUrl,
+              // Preserva o nome original do arquivo de documentos para renderização no frontend
+              ...(mediaType === 'document' && (msg.fileName || msg.message?.documentMessage?.fileName) ? {
+                fileName: msg.fileName || msg.message?.documentMessage?.fileName,
+              } : {}),
             },
           };
 
           const { error: actErr } = await supabase.from('lead_activities').insert([newActivityRecord]);
           if (actErr) {
             console.error('[Webhook] Erro ao inserir lead_activity para lead existente:', actErr);
+          } else if (hasMedia) {
+            await handleWebhookMedia({
+              activityId, leadId: existingLead.id, masterId: existingLead.master_id || tenantMasterId, venueId: existingLead.venue_id,
+              sourceId: matchedSource?.id, instanceToken, baseUrl: mediaBaseUrl, messageIds: mediaMessageIds,
+              mediaType, storedText, ingestNow: !isHistory,
+            });
           }
+
+          // Histórico antigo só grava a mensagem: não mexe em não-lidas, prévia nem horário do lead
+          if (isHistory) continue;
 
           const updatePayload: Record<string, any> = {
             updated_at: new Date().toISOString(),
             last_interaction_at: new Date().toISOString(),
             last_message_direction: isFromMe ? 'outgoing' : 'incoming',
           };
+
+          if (previewText) {
+            updatePayload.last_message_text = previewText;
+            updatePayload.last_message_at = updatePayload.last_interaction_at;
+          }
 
           if (!isFromMe) {
             updatePayload.unread_count = (existingLead.unread_count || 0) + 1;
@@ -601,6 +883,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             .update(updatePayload)
             .eq('id', existingLead.id);
         } else {
+          // Histórico de conversas desconhecidas só cria lead quando a origem está em modo migração (configuration.historyImport);
+          // caso contrário um pareamento criaria leads de todo o passado sem o usuário revisar.
+          if (isHistory && !(matchedSource?.configuration as any)?.historyImport) continue;
+
           // Cria um novo Lead automaticamente com telefone real na casa da instância do WhatsApp
           const finalPhone = resolvedPhone || cleanPhone;
           const searchDigits = (finalPhone || cleanPhone).replace(/\D/g, '');
@@ -608,10 +894,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           // Dupla checagem defensiva contra concorrência: verifica se algum processo acabou de criar o lead
           if (searchDigits.length >= 8) {
             const last8 = searchDigits.slice(-8);
-            const { data: doubleCheck } = await supabase
+            let doubleCheckQuery = supabase
               .from('leads')
               .select('id, name, phone, unread_count, venue_id, funnel_id, master_id')
-              .or(`phone.ilike.%${last8}%,custom_field_values->>whatsappLid.eq.${searchDigits}`)
+              .or(`phone.ilike.%${last8}%,custom_field_values->>whatsappLid.eq.${searchDigits}`);
+            // Concorrência só conta se for no MESMO funil da origem
+            if (matchedSource?.funnel_id) doubleCheckQuery = doubleCheckQuery.eq('funnel_id', matchedSource.funnel_id);
+            const { data: doubleCheck } = await doubleCheckQuery
               .order('created_at', { ascending: false })
               .limit(1);
 
@@ -620,33 +909,52 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               if (!tenantMasterId || !matchedLead.master_id || matchedLead.master_id === tenantMasterId) {
                 console.log(`[Webhook] Lead concorrente detectado (${matchedLead.id} - ${matchedLead.name}), vinculando mensagem a ele.`);
                 const activityId = crypto.randomUUID();
+                // `storedText` só existe no ramo de lead existente: aqui o texto armazenado é montado novamente
+                let concStoredText = text.trim();
+                if (mediaUrl && !concStoredText.startsWith('[media:')) {
+                  concStoredText = `[media:${mediaUrl}|${mediaType !== 'text' ? mediaType : 'document'}] ${concStoredText}`.trim();
+                }
                 const newActivityRecord = {
                   id: activityId,
                   lead_id: matchedLead.id,
-                  timestamp: new Date().toISOString(),
+                  timestamp: activityIso,
                   type: 'contact',
                   title: isFromMe 
-                    ? (isAudio ? 'Mensagem de voz enviada (Celular/Web)' : 'Mensagem enviada via WhatsApp (Celular/Web)')
-                    : (isAudio ? 'Mensagem de voz recebida' : 'Mensagem recebida no WhatsApp'),
-                  text: storedText,
+                    ? (isAudio ? 'Mensagem de voz enviada (Celular/Web)' : mediaType === 'image' ? 'Foto enviada (Celular/Web)' : mediaType === 'video' ? 'Vídeo enviado (Celular/Web)' : mediaType === 'document' ? 'Documento enviado (Celular/Web)' : 'Mensagem enviada via WhatsApp (Celular/Web)')
+                    : (isAudio ? 'Mensagem de voz recebida' : mediaType === 'image' ? 'Foto recebida' : mediaType === 'video' ? 'Vídeo recebido' : mediaType === 'document' ? 'Documento recebido' : 'Mensagem recebida no WhatsApp'),
+                  text: concStoredText,
                   author_name: isFromMe ? 'WhatsApp App / Web' : (senderName || 'Cliente (WhatsApp)'),
                   author_id: null,
                   author_avatar_url: isFromMe ? 'whatsapp_brand' : '',
                   status: isFromMe ? 'sent' : 'delivered',
                   metadata: {
                     messageId: waMessageId || undefined,
+                    ...waIdsMeta,
                     senderSourceId: matchedSource?.id,
                     senderSourceName: matchedSource?.name,
                     senderPhone: (matchedSource?.configuration as any)?.connectedPhone || (matchedSource?.configuration as any)?.whatsappNumber,
                     senderAvatar: (matchedSource?.configuration as any)?.connectedAvatar || (matchedSource?.configuration as any)?.profilePicUrl,
+                    // Preserva o nome original do arquivo de documentos para renderização no frontend
+                    ...(mediaType === 'document' && (msg.fileName || msg.message?.documentMessage?.fileName) ? {
+                      fileName: msg.fileName || msg.message?.documentMessage?.fileName,
+                    } : {}),
                   },
                 };
-                await supabase.from('lead_activities').insert([newActivityRecord]);
-                await supabase.from('leads').update({
-                  updated_at: new Date().toISOString(),
-                  last_interaction_at: new Date().toISOString(),
-                  unread_count: isFromMe ? (matchedLead.unread_count || 0) : (matchedLead.unread_count || 0) + 1,
-                }).eq('id', matchedLead.id);
+                const { error: concActErr } = await supabase.from('lead_activities').insert([newActivityRecord]);
+                if (!concActErr && hasMedia) {
+                  await handleWebhookMedia({
+                    activityId, leadId: matchedLead.id, masterId: matchedLead.master_id || tenantMasterId, venueId: matchedLead.venue_id,
+                    sourceId: matchedSource?.id, instanceToken, baseUrl: mediaBaseUrl, messageIds: mediaMessageIds,
+                    mediaType, storedText: concStoredText, ingestNow: !isHistory,
+                  });
+                }
+                if (!isHistory) {
+                  await supabase.from('leads').update({
+                    updated_at: new Date().toISOString(),
+                    last_interaction_at: new Date().toISOString(),
+                    unread_count: isFromMe ? (matchedLead.unread_count || 0) : (matchedLead.unread_count || 0) + 1,
+                  }).eq('id', matchedLead.id);
+                }
                 continue;
               }
             }
@@ -689,10 +997,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
           let creationStoredText = text.trim();
           if (mediaUrl && !creationStoredText.startsWith('[media:')) {
-            creationStoredText = `[media:${mediaUrl}|${mediaType || 'audio'}] ${creationStoredText}`.trim();
+            creationStoredText = `[media:${mediaUrl}|${mediaType !== 'text' ? mediaType : 'document'}] ${creationStoredText}`.trim();
           }
           if (!creationStoredText) {
-            creationStoredText = isAudio ? '🎵 Mensagem de voz' : 'Mensagem recebida no WhatsApp';
+            creationStoredText = isAudio ? '🎵 Mensagem de voz' : mediaType === 'image' ? '📷 Foto' : mediaType === 'video' ? '🎥 Vídeo' : mediaType === 'document' ? '📄 Documento' : 'Mensagem recebida no WhatsApp';
           }
 
           const initialNoteText = text.trim() || (isAudio ? 'Mensagem de voz' : 'Mensagem no WhatsApp');
@@ -736,12 +1044,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             group: isPostSaleTarget ? 'Pós-Venda' : 'WhatsApp',
             is_client: isPostSaleTarget,
             tags: isPostSaleTarget ? ['Cliente'] : [],
-            unread_count: isFromMe ? 0 : 1,
+            unread_count: (isFromMe || isHistory) ? 0 : 1,
             notes: isFromMe ? `Conversa iniciada via WhatsApp: "${initialNoteText}"` : `Primeira mensagem via WhatsApp: "${initialNoteText}"`,
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
-            last_interaction_at: new Date().toISOString(),
+            last_interaction_at: activityIso,
             last_message_direction: isFromMe ? 'outgoing' : 'incoming',
+            last_message_text: lastMessagePreview(text, mediaUrl, mediaType) || null,
+            last_message_at: activityIso,
             custom_field_values: isLid ? { whatsappLid: cleanPhone, whatsapp_lid: cleanPhone } : {},
           };
 
@@ -750,27 +1060,39 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             console.error('[Webhook] Erro ao inserir novo lead:', leadErr);
           }
 
+          const newLeadActivityId = crypto.randomUUID();
           const { error: actErr } = await supabase.from('lead_activities').insert([{
-            id: crypto.randomUUID(),
+            id: newLeadActivityId,
             lead_id: leadId,
-            timestamp: new Date().toISOString(),
+            timestamp: activityIso,
             type: 'contact',
             title: isFromMe 
-              ? (isAudio ? 'Mensagem de voz enviada (Celular/Web)' : 'Mensagem enviada via WhatsApp (Celular/Web)') 
-              : (isAudio ? 'Mensagem de voz recebida' : 'Mensagem recebida no WhatsApp'),
+              ? (isAudio ? 'Mensagem de voz enviada (Celular/Web)' : mediaType === 'image' ? 'Foto enviada (Celular/Web)' : mediaType === 'video' ? 'Vídeo enviado (Celular/Web)' : mediaType === 'document' ? 'Documento enviado (Celular/Web)' : 'Mensagem enviada via WhatsApp (Celular/Web)') 
+              : (isAudio ? 'Mensagem de voz recebida' : mediaType === 'image' ? 'Foto recebida' : mediaType === 'video' ? 'Vídeo recebido' : mediaType === 'document' ? 'Documento recebido' : 'Mensagem recebida no WhatsApp'),
             text: creationStoredText,
             author_name: isFromMe ? 'WhatsApp App / Web' : (senderName || 'Cliente (WhatsApp)'),
             status: isFromMe ? 'sent' : 'delivered',
             metadata: {
               messageId: waMessageId || undefined,
+              ...waIdsMeta,
               senderSourceId: matchedSource?.id,
               senderSourceName: matchedSource?.name,
               senderPhone: (matchedSource?.configuration as any)?.connectedPhone || (matchedSource?.configuration as any)?.whatsappNumber,
               senderAvatar: (matchedSource?.configuration as any)?.connectedAvatar || (matchedSource?.configuration as any)?.profilePicUrl,
+              // Preserva o nome original do arquivo de documentos para renderização no frontend
+              ...(mediaType === 'document' && (msg.fileName || msg.message?.documentMessage?.fileName) ? {
+                fileName: msg.fileName || msg.message?.documentMessage?.fileName,
+              } : {}),
             },
           }]);
           if (actErr) {
             console.error('[Webhook] Erro ao inserir lead_activity para novo lead:', actErr);
+          } else if (hasMedia) {
+            await handleWebhookMedia({
+              activityId: newLeadActivityId, leadId, masterId: venueMasterId, venueId,
+              sourceId: matchedSource?.id, instanceToken, baseUrl: mediaBaseUrl, messageIds: mediaMessageIds,
+              mediaType, storedText: creationStoredText, ingestNow: !isHistory,
+            });
           }
 
           if (matchedSource?.id) {

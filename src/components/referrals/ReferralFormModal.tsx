@@ -32,6 +32,8 @@ export const ReferralFormModal: React.FC<ReferralFormModalProps> = ({ isOpen, on
   const [group, setGroup] = useState<ReferralGroup>('Escola');
   const [notes, setNotes] = useState('');
   const [submitted, setSubmitted] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [selectedContactName, setSelectedContactName] = useState<string | null>(null);
   const [isIosHintVisible, setIsIosHintVisible] = useState(false);
   
@@ -132,17 +134,31 @@ export const ReferralFormModal: React.FC<ReferralFormModalProps> = ({ isOpen, on
     reader.readAsText(file);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim() || !phone.trim()) return;
+    if (sending || !name.trim() || !phone.trim()) return;
 
-    addReferral({
+    const digits = phone.replace(/\D/g, '');
+    if (digits.length < 10 || digits.length > 13) {
+      setErrorMsg('Informe o telefone com DDD, por exemplo (21) 99999-0000.');
+      return;
+    }
+
+    setSending(true);
+    setErrorMsg(null);
+    const result = await addReferral({
       name: name.trim(),
       phone: phone.trim(),
       age: Number(age) || 14,
       group,
       notes: notes.trim()
     });
+    setSending(false);
+
+    if (!result.ok) {
+      setErrorMsg(result.error || 'Não foi possível enviar a indicação. Tente novamente.');
+      return;
+    }
 
     setSubmitted(true);
     confetti({
@@ -609,9 +625,19 @@ export const ReferralFormModal: React.FC<ReferralFormModalProps> = ({ isOpen, on
               </div>
             </div>
 
+            {errorMsg && (
+              <div role="alert" style={{
+                padding: '10px 12px', borderRadius: '10px', fontSize: '0.82rem', fontWeight: 600,
+                color: '#FCA5A5', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.4)',
+              }}>
+                {errorMsg}
+              </div>
+            )}
+
             <button
               type="submit"
               className="btn-primary"
+              disabled={sending}
               style={{
                 width: '100%',
                 padding: '14px',
@@ -624,7 +650,7 @@ export const ReferralFormModal: React.FC<ReferralFormModalProps> = ({ isOpen, on
               }}
             >
               <Sparkles size={18} />
-              <span>Enviar Indicação (+1 Ponto)</span>
+              <span>{sending ? 'Enviando...' : 'Enviar Indicação (+1 Ponto)'}</span>
             </button>
           </form>
         )}

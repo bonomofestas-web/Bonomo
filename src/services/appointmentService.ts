@@ -203,9 +203,50 @@ export const appointmentService = {
     leadId?: string;
     venueId?: string;
     appointment: Omit<Appointment, 'id'>;
-  }): Promise<Appointment | null> {
+  }, masterId?: string): Promise<Appointment | null> {
     if (!isSupabaseConfigured) return null;
     try {
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+      // Blindagem estrita de Tenant: Resolve e valida master_id
+      let effectiveMasterId = (masterId && uuidRegex.test(masterId))
+        ? masterId
+        : (((data as any).masterId && uuidRegex.test((data as any).masterId))
+            ? (data as any).masterId
+            : (((data.appointment as any).masterId && uuidRegex.test((data.appointment as any).masterId))
+                ? (data.appointment as any).masterId
+                : null));
+
+      if (!effectiveMasterId && data.venueId && uuidRegex.test(data.venueId)) {
+        const { data: v } = await supabase.from('venues').select('master_id').eq('id', data.venueId).maybeSingle();
+        if (v?.master_id && uuidRegex.test(v.master_id)) {
+          effectiveMasterId = v.master_id;
+        }
+      }
+
+      if (!effectiveMasterId && data.leadId && uuidRegex.test(data.leadId)) {
+        const { data: l } = await supabase.from('leads').select('master_id').eq('id', data.leadId).maybeSingle();
+        if (l?.master_id && uuidRegex.test(l.master_id)) {
+          effectiveMasterId = l.master_id;
+        }
+      }
+
+      if (!effectiveMasterId && data.debutanteId && uuidRegex.test(data.debutanteId)) {
+        const { data: d } = await supabase.from('debutantes').select('venue_id').eq('id', data.debutanteId).maybeSingle();
+        if (d?.venue_id && uuidRegex.test(d.venue_id)) {
+          const { data: v } = await supabase.from('venues').select('master_id').eq('id', d.venue_id).maybeSingle();
+          if (v?.master_id && uuidRegex.test(v.master_id)) {
+            effectiveMasterId = v.master_id;
+          }
+        }
+      }
+
+      // REGRA SUPREMA DE BLINDAGEM MULTI-TENANT: Bloqueia criação de agendamento sem tenant
+      if (!effectiveMasterId) {
+        console.error('❌ Bloqueio de Segurança Multi-Tenant: Tentativa de criar agendamento sem master_id válido.');
+        return null;
+      }
+
       const payload: Record<string, any> = {
         title: data.appointment.title,
         category: data.appointment.category,
@@ -290,9 +331,27 @@ export const appointmentService = {
     }
   },
 
-  async update(id: string, updates: Partial<Appointment>): Promise<boolean> {
+  async update(id: string, updates: Partial<Appointment>, masterId?: string): Promise<boolean> {
     if (!isSupabaseConfigured || !id) return false;
     try {
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (masterId && uuidRegex.test(masterId)) {
+        // Validação defensiva de tenant do agendamento
+        const { data: existingApp } = await supabase
+          .from('appointments')
+          .select('venue_id, lead_id')
+          .eq('id', id)
+          .maybeSingle();
+
+        if (existingApp?.venue_id && uuidRegex.test(existingApp.venue_id)) {
+          const { data: v } = await supabase.from('venues').select('master_id').eq('id', existingApp.venue_id).maybeSingle();
+          if (v?.master_id && v.master_id !== masterId) {
+            console.warn('Tentativa de atualização de agendamento de outro tenant ignorada.');
+            return false;
+          }
+        }
+      }
+
       const payload: Record<string, any> = {};
       if (updates.title !== undefined) payload.title = updates.title;
       if (updates.category !== undefined) payload.category = updates.category;
@@ -338,9 +397,26 @@ export const appointmentService = {
     }
   },
 
-  async delete(id: string): Promise<boolean> {
+  async delete(id: string, masterId?: string): Promise<boolean> {
     if (!isSupabaseConfigured || !id) return false;
     try {
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (masterId && uuidRegex.test(masterId)) {
+        const { data: existingApp } = await supabase
+          .from('appointments')
+          .select('venue_id')
+          .eq('id', id)
+          .maybeSingle();
+
+        if (existingApp?.venue_id && uuidRegex.test(existingApp.venue_id)) {
+          const { data: v } = await supabase.from('venues').select('master_id').eq('id', existingApp.venue_id).maybeSingle();
+          if (v?.master_id && v.master_id !== masterId) {
+            console.warn('Tentativa de exclusão de agendamento de outro tenant ignorada.');
+            return false;
+          }
+        }
+      }
+
       const { error } = await supabase
         .from('appointments')
         .delete()

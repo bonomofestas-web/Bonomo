@@ -1,7 +1,7 @@
+import { motion } from 'motion/react';
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
-import { createMonogramAvatar } from '../../utils/avatarUtils';
 import { AdminSidebar, type AdminTabType } from './AdminSidebar';
 import { AdminHomeView } from './AdminHomeView';
 import { AdminDashboardView } from './AdminDashboardView';
@@ -40,50 +40,16 @@ import { AdminPostSaleKanbanView } from './AdminPostSaleKanbanView';
 import { AdminVipJourneyUnifiedView } from './AdminVipJourneyUnifiedView';
 import { AdminLeadsListView } from './AdminLeadsListView';
 import { AdminClientsListView } from './AdminClientsListView';
-import { SafeAvatar } from './SafeAvatar';
-import { Menu, X, Building2, Headset, Megaphone, Sparkles, Clock, Target, ShieldCheck, Crown, Settings, LogOut, Eye } from 'lucide-react';
-import { type FeatureFlagId, type Venue, type DebutanteAccount, type Lead, type Collaborator, type AdminTask, type SystemAnnouncement } from '../../types/admin';
+import { AdminContactsView } from './AdminContactsView';
+import { AdminContractsView } from './AdminContractsView';
+import { AdminGlobalSearch } from './AdminGlobalSearch';
+import { Toaster } from 'sonner';
+import { Menu, X, Eye, Plus, Megaphone, Bell, Sparkles, Clock, Headset, ChevronDown, Check, Layers } from 'lucide-react';
+import { type FeatureFlagId, type Lead, type AdminTask, type SystemAnnouncement } from '../../types/admin';
 
 interface AdminPortalProps {
   onOpenDebutanteApp: (slug?: string) => void;
 }
-
-const getCollaboratorDisplayJobTitle = (collab: Collaborator): string => {
-  if (collab.customJobTitle && collab.customJobTitle.trim()) {
-    return collab.customJobTitle.trim();
-  }
-  switch (collab.role) {
-    case 'master':
-      return 'Diretoria Executiva';
-    case 'dev':
-      return 'Desenvolvedor';
-    case 'admin':
-    case 'gerencia':
-      return 'Gerência Geral';
-    case 'closer':
-      return 'Closer • Fechamento Comercial';
-    case 'sdr':
-      return 'SDR • Pré-Vendas';
-    case 'crm':
-    case 'comercial':
-      return 'Especialista Comercial';
-    case 'pos_venda':
-      return 'Pós-Venda & Sucesso do Cliente';
-    case 'financeiro':
-      return 'Financeiro';
-    default:
-      return 'Colaborador';
-  }
-};
-
-const ROLE_LABELS: Record<string, string> = {
-  dev: 'Desenvolvedor',
-  master: 'Master',
-  admin: 'Gerente',
-  crm: 'CRM',
-  sdr: 'SDR',
-  closer: 'Closer',
-};
 
 const TAB_FEATURE_FLAG: Partial<Record<AdminTabType, FeatureFlagId>> = {
   'master-dashboard': 'master_dashboard',
@@ -95,18 +61,16 @@ import { useActiveTimeTracker } from '../../hooks/useActiveTimeTracker';
 export const AdminPortal: React.FC<AdminPortalProps> = ({
   onOpenDebutanteApp,
 }) => {
-  const { 
-    currentUser, 
-    logout,
+  const {
+    currentUser,
     viewingAsCollaborator,
     setViewingAsCollaborator,
-    theme, 
-    leads, 
-    tasks, 
-    venues, 
-    debutantes, 
-    collaborators, 
-    funnels, 
+    theme,
+    leads,
+    tasks,
+    venues,
+    collaborators,
+    funnels,
     getFeatureStatus,
     featureDescriptions,
     announcements,
@@ -116,7 +80,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     updateCollaborator,
     isRefreshing,
   } = useAdminState();
-  
+
   // Track active focus time for collaborators
   useActiveTimeTracker(currentUser);
   const [activeTab, setActiveTab] = useState<AdminTabType>(() => {
@@ -129,7 +93,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       }
       const saved = localStorage.getItem('bonomo_admin_active_tab') as AdminTabType | null;
       if (saved) return saved;
-    } catch {}
+    } catch { }
     return 'home';
   });
   const [isSplashDismissed, setIsSplashDismissed] = useState(false);
@@ -141,7 +105,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         if (urlFunnel) return urlFunnel;
       }
       return localStorage.getItem('f5_active_funnel_id');
-    } catch {}
+    } catch { }
     return null;
   });
   const [activeWhatsAppLeadId, setActiveWhatsAppLeadId] = useState<string | null>(() => {
@@ -152,7 +116,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         if (urlLead) return urlLead;
       }
       return localStorage.getItem('f5_wa_active_lead_id');
-    } catch {}
+    } catch { }
     return null;
   });
   const [activeWhatsAppSearchQuery, setActiveWhatsAppSearchQuery] = useState<string>('');
@@ -164,19 +128,26 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         if (urlLead) return urlLead;
       }
       return localStorage.getItem('f5_crm_active_lead_id') || undefined;
-    } catch {}
+    } catch { }
     return undefined;
   });
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
-  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
-  const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
-  const profileMenuRef = useRef<HTMLDivElement>(null);
-  const notificationsMenuRef = useRef<HTMLDivElement>(null);
 
-  // Estados do Botão Expansível de Olho ("Ver com os olhos de um colaborador")
-  const [isEyeExpanded, setIsEyeExpanded] = useState(false);
-  const [isEyeHovered, setIsEyeHovered] = useState(false);
-  const eyeMenuRef = useRef<HTMLDivElement>(null);
+  // Dropdown de Funis no Breadcrumb Superior (Comercial / Pós-Venda)
+  const [isBreadcrumbFunnelDropdownOpen, setIsBreadcrumbFunnelDropdownOpen] = useState(false);
+  const breadcrumbFunnelDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (breadcrumbFunnelDropdownRef.current && !breadcrumbFunnelDropdownRef.current.contains(e.target as Node)) {
+        setIsBreadcrumbFunnelDropdownOpen(false);
+      }
+    };
+    if (isBreadcrumbFunnelDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [isBreadcrumbFunnelDropdownOpen]);
 
   // Sincroniza tema dark/light no body e html
   useEffect(() => {
@@ -193,39 +164,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     }
   }, [theme]);
 
-  // Close popovers on click outside
-  useEffect(() => {
-    const handleDocumentClick = (e: MouseEvent) => {
-      if (profileMenuRef.current && !profileMenuRef.current.contains(e.target as Node)) {
-        setIsProfileMenuOpen(false);
-      }
-      if (notificationsMenuRef.current && !notificationsMenuRef.current.contains(e.target as Node)) {
-        setIsNotificationsOpen(false);
-      }
-      if (eyeMenuRef.current && !eyeMenuRef.current.contains(e.target as Node)) {
-        setIsEyeExpanded(false);
-      }
-    };
-    document.addEventListener('mousedown', handleDocumentClick);
-    return () => document.removeEventListener('mousedown', handleDocumentClick);
-  }, []);
-
   const [isSupportModalOpen, setIsSupportModalOpen] = useState(false);
-  const [globalSearch, setGlobalSearch] = useState('');
-  const [isSearchFocused, setIsSearchFocused] = useState(false);
-  const [isSearchHovered, setIsSearchHovered] = useState(false);
-
-  // Permissão para modo de visualização com os olhos de um colaborador
-  const canSimulateView = currentUser?.role === 'master' || currentUser?.role === 'admin' || currentUser?.role === 'gerencia' || currentUser?.isDev;
-
-  const viewableCollaborators = useMemo(() => {
-    return collaborators.filter(c => {
-      if (!c.active) return false;
-      if (c.id === currentUser?.id) return false;
-      if (c.role === 'dev') return false;
-      return true;
-    });
-  }, [collaborators, currentUser?.id]);
 
   // Support notifications state (Audio 1 & 2: badge quando suporte responde)
   const [lastSupportReadAt, setLastSupportReadAt] = useState<number>(() => {
@@ -263,12 +202,12 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         setLastSupportReadAt(now);
         try {
           localStorage.setItem('bonomo_last_support_read_at', String(now));
-        } catch {}
+        } catch { }
       }
       return next;
     });
   };
-  
+
   // Fast creation and settings modals
   const [isNewVenueModalOpen, setIsNewVenueModalOpen] = useState(false);
   const [isNewDebutanteModalOpen, setIsNewDebutanteModalOpen] = useState(false);
@@ -290,20 +229,20 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     if (currentCollab?.permissions && currentCollab.permissions.length > 0) {
       const hasDbCollapsed = Boolean(currentCollab.permissions.includes('ui:sidebar_collapsed'));
       setIsSidebarCollapsed(hasDbCollapsed);
-      try { localStorage.setItem('bonomo_admin_sidebar_collapsed', String(hasDbCollapsed)); } catch {}
+      try { localStorage.setItem('bonomo_admin_sidebar_collapsed', String(hasDbCollapsed)); } catch { }
     }
   }, [currentUser?.id, collaborators]);
 
   const toggleSidebarCollapse = () => {
     setIsSidebarCollapsed(prev => {
       const next = !prev;
-      try { localStorage.setItem('bonomo_admin_sidebar_collapsed', String(next)); } catch {}
+      try { localStorage.setItem('bonomo_admin_sidebar_collapsed', String(next)); } catch { }
 
       // Persiste no Supabase na coluna permissions
       if (isSupabaseConfigured && currentUser?.id) {
         const currentCollab = collaborators.find(c => c.id === currentUser.id);
         const perms = Array.isArray(currentCollab?.permissions) ? [...currentCollab.permissions] : [];
-        const nextPerms = next 
+        const nextPerms = next
           ? Array.from(new Set([...perms, 'ui:sidebar_collapsed']))
           : perms.filter(p => p !== 'ui:sidebar_collapsed');
         void supabase.from('collaborators').update({ permissions: nextPerms }).eq('id', currentUser.id);
@@ -332,13 +271,13 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         }
         window.history.replaceState({}, '', url.toString());
       }
-    } catch {}
+    } catch { }
     if (tab === 'crm' || tab === 'post-sale-crm') {
       setActiveFunnelId(funnelId !== undefined ? funnelId : null);
       if (funnelId) {
-        try { localStorage.setItem('f5_active_funnel_id', funnelId); } catch {}
+        try { localStorage.setItem('f5_active_funnel_id', funnelId); } catch { }
       } else {
-        try { localStorage.removeItem('f5_active_funnel_id'); } catch {}
+        try { localStorage.removeItem('f5_active_funnel_id'); } catch { }
       }
     }
     if (tab === 'whatsapp') {
@@ -366,11 +305,20 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         if (section) url.searchParams.set('section', section);
         window.history.replaceState({}, '', url.toString());
       }
-    } catch {}
+    } catch { }
   };
 
   const handleOpenLeadFromTask = (leadId: string, section: 'followup' | 'tasks' = 'followup') => {
     handleOpenLeadInWhatsApp(leadId, section);
+  };
+
+  const handleOpenLeadInFunnel = (leadId: string, funnelId?: string) => {
+    const targetLead = leads.find(l => l.id === leadId);
+    const targetFunnelId = funnelId || targetLead?.funnelId || activeFunnelId;
+    const isPostSale = Boolean(targetLead?.isClient || targetLead?.group === 'Pós-Venda');
+    if (targetFunnelId) setActiveFunnelId(targetFunnelId);
+    setCrmOpenLeadId(leadId);
+    handleSelectTab(isPostSale ? 'post-sale-crm' : 'crm', targetFunnelId);
   };
 
   // Dynamic First Available Tab calculation (Audio 1 & 2)
@@ -460,7 +408,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         const fallback = getFirstAvailableTab();
         if (fallback !== activeTab) {
           setActiveTab(fallback);
-          try { localStorage.setItem('bonomo_admin_active_tab', fallback); } catch {}
+          try { localStorage.setItem('bonomo_admin_active_tab', fallback); } catch { }
         }
       }
     }
@@ -474,7 +422,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
           handleOpenLeadInWhatsApp(e.detail.leadId);
         } else {
           setActiveTab(e.detail.tab);
-          try { localStorage.setItem('bonomo_admin_active_tab', e.detail.tab); } catch {}
+          try { localStorage.setItem('bonomo_admin_active_tab', e.detail.tab); } catch { }
         }
       }
     };
@@ -513,14 +461,6 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   const userAnnouncements = useMemo<SystemAnnouncement[]>(() => announcements.filter(isUserTargetedByAnnouncement), [announcements, isUserTargetedByAnnouncement]);
   const totalNotificationsCount = dueTodayTasks.length + newUnassignedLeads.length + (unreadAnnouncement ? 1 : 0);
 
-  // Global search filtering
-  const cleanSearch = globalSearch.trim().toLowerCase();
-  const matchedVenues = useMemo<Venue[]>(() => cleanSearch ? venues.filter((v: Venue) => (v.name && v.name.toLowerCase().includes(cleanSearch)) || (v.address && v.address.toLowerCase().includes(cleanSearch))) : [], [venues, cleanSearch]);
-  const matchedDebutantes = useMemo<DebutanteAccount[]>(() => cleanSearch ? debutantes.filter((d: DebutanteAccount) => (d.name && d.name.toLowerCase().includes(cleanSearch)) || (d.phone && d.phone.includes(cleanSearch))) : [], [debutantes, cleanSearch]);
-  const matchedLeads = useMemo<Lead[]>(() => cleanSearch ? leads.filter((l: Lead) => (l.name && l.name.toLowerCase().includes(cleanSearch)) || (l.phone && l.phone.includes(cleanSearch)) || (l.debutanteName && l.debutanteName.toLowerCase().includes(cleanSearch))) : [], [leads, cleanSearch]);
-  const matchedCollaborators = useMemo<Collaborator[]>(() => cleanSearch ? collaborators.filter((c: Collaborator) => (c.name && c.name.toLowerCase().includes(cleanSearch)) || (c.email && c.email.toLowerCase().includes(cleanSearch)) || (c.role && c.role.toLowerCase().includes(cleanSearch))) : [], [collaborators, cleanSearch]);
-  const totalSearchMatches = matchedVenues.length + matchedDebutantes.length + matchedLeads.length + matchedCollaborators.length;
-
   // Removido handleOpenLeadFromTask redundante
 
   // If not authenticated, show login view
@@ -549,13 +489,13 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       if (status === 'coming_soon') {
         const fallback = getFirstAvailableTab();
         return (
-          <ComingSoonOverlay 
-            featureTitle={activeTab.toUpperCase()} 
+          <ComingSoonOverlay
+            featureTitle={activeTab.toUpperCase()}
             description={featureDescriptions[flagId]}
             onBack={() => {
               setActiveTab(fallback);
-              try { localStorage.setItem('bonomo_admin_active_tab', fallback); } catch {}
-            }} 
+              try { localStorage.setItem('bonomo_admin_active_tab', fallback); } catch { }
+            }}
           />
         );
       }
@@ -564,7 +504,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         if (activeTab !== fallback) {
           setTimeout(() => {
             setActiveTab(fallback);
-            try { localStorage.setItem('bonomo_admin_active_tab', fallback); } catch {}
+            try { localStorage.setItem('bonomo_admin_active_tab', fallback); } catch { }
           }, 0);
         }
         // Fallback imediato para evitar tela preta ou nula
@@ -602,6 +542,189 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         );
       case 'tasks':
         return <AdminTasksWorkspaceView onOpenLead={handleOpenLeadFromTask} workspaceContext="all" />;
+      case 'notifications':
+        return (
+          <div style={{ padding: '24px', maxWidth: '1000px', margin: '0 auto', width: '100%' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
+              <div>
+                <h1 style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--adm-text-title, #FFFFFF)', margin: 0 }}>
+                  Central de Notificações
+                </h1>
+                <p style={{ margin: '4px 0 0 0', color: 'var(--adm-text-muted, #94A3B8)', fontSize: '0.85rem' }}>
+                  Comunicados globais, prazos de tarefas e pendências da sua equipe.
+                </p>
+              </div>
+              <span style={{
+                backgroundColor: 'rgba(59, 130, 246, 0.15)',
+                color: '#60A5FA',
+                padding: '4px 12px',
+                borderRadius: '6px',
+                fontSize: '0.78rem',
+                fontWeight: 700,
+              }}>
+                {totalNotificationsCount} notificações
+              </span>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              {/* Comunicados Gerais da Gestão */}
+              {userAnnouncements.length > 0 && (
+                <div style={{
+                  backgroundColor: 'var(--adm-bg-card, #111C2E)',
+                  border: '1px solid var(--adm-border, rgba(255, 255, 255, 0.08))',
+                  borderRadius: '10px',
+                  padding: '18px 20px',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px', color: '#14A9D7', fontWeight: 700, fontSize: '0.9rem' }}>
+                    <Megaphone size={16} />
+                    Comunicados da Gestão
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {userAnnouncements.map(ann => (
+                      <div
+                        key={ann.id}
+                        onClick={() => setSelectedAnnouncementDetail(ann)}
+                        style={{
+                          padding: '12px 14px',
+                          borderRadius: '8px',
+                          backgroundColor: 'rgba(20, 169, 215, 0.08)',
+                          border: '1px solid rgba(20, 169, 215, 0.25)',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <div style={{ fontSize: '0.86rem', fontWeight: 700, color: '#14A9D7' }}>
+                          {ann.title}
+                        </div>
+                        <div style={{ fontSize: '0.80rem', color: 'var(--adm-text-muted, #94A3B8)', marginTop: '4px' }}>
+                          {ann.content}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Mensagens de Suporte */}
+              {unreadSupportCount > 0 && (
+                <div
+                  onClick={handleToggleSupport}
+                  style={{
+                    backgroundColor: 'rgba(239, 68, 68, 0.08)',
+                    border: '1px solid rgba(239, 68, 68, 0.25)',
+                    borderRadius: '10px',
+                    padding: '16px 20px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '12px',
+                  }}
+                >
+                  <Headset size={20} color="#EF4444" />
+                  <div>
+                    <div style={{ fontWeight: 700, color: '#EF4444', fontSize: '0.88rem' }}>
+                      Nova resposta no Suporte Técnico
+                    </div>
+                    <div style={{ fontSize: '0.80rem', color: 'var(--adm-text-muted, #94A3B8)', marginTop: '2px' }}>
+                      Você possui {unreadSupportCount} mensagem(ns) não lida(s). Clique para abrir a central.
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Tarefas com Prazo Hoje */}
+              {dueTodayTasks.length > 0 && (
+                <div style={{
+                  backgroundColor: 'var(--adm-bg-card, #111C2E)',
+                  border: '1px solid var(--adm-border, rgba(255, 255, 255, 0.08))',
+                  borderRadius: '10px',
+                  padding: '18px 20px',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px', color: '#F59E0B', fontWeight: 700, fontSize: '0.9rem' }}>
+                    <Clock size={16} />
+                    Tarefas com Vencimento Hoje ({dueTodayTasks.length})
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {dueTodayTasks.map(t => (
+                      <div
+                        key={t.id}
+                        onClick={() => handleSelectTab('home')}
+                        style={{
+                          padding: '10px 12px',
+                          borderRadius: '6px',
+                          backgroundColor: 'rgba(255, 255, 255, 0.02)',
+                          border: '1px solid rgba(255, 255, 255, 0.06)',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                        }}
+                      >
+                        <span style={{ fontSize: '0.84rem', fontWeight: 600, color: 'var(--adm-text-title, #FFFFFF)' }}>
+                          {t.title}
+                        </span>
+                        <span style={{ fontSize: '0.74rem', color: '#F59E0B', fontWeight: 600 }}>
+                          {t.dueTime ? `Às ${t.dueTime}` : 'Hoje'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Novas Indicações / Leads */}
+              {newUnassignedLeads.length > 0 && (
+                <div style={{
+                  backgroundColor: 'var(--adm-bg-card, #111C2E)',
+                  border: '1px solid var(--adm-border, rgba(255, 255, 255, 0.08))',
+                  borderRadius: '10px',
+                  padding: '18px 20px',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px', color: '#10B981', fontWeight: 700, fontSize: '0.9rem' }}>
+                    <Sparkles size={16} />
+                    Novos Leads Recebidos ({newUnassignedLeads.length})
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {newUnassignedLeads.map(l => (
+                      <div
+                        key={l.id}
+                        onClick={() => {
+                          handleSelectTab('crm', l.funnelId);
+                          handleOpenLeadInWhatsApp(l.id);
+                        }}
+                        style={{
+                          padding: '10px 12px',
+                          borderRadius: '6px',
+                          backgroundColor: 'rgba(255, 255, 255, 0.02)',
+                          border: '1px solid rgba(255, 255, 255, 0.06)',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                        }}
+                      >
+                        <span style={{ fontSize: '0.84rem', fontWeight: 600, color: 'var(--adm-text-title, #FFFFFF)' }}>
+                          {l.name}
+                        </span>
+                        <span style={{ fontSize: '0.74rem', color: '#10B981', fontWeight: 600 }}>
+                          Atender no Funil
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {totalNotificationsCount === 0 && (
+                <div style={{ padding: '60px 20px', textAlign: 'center', color: 'var(--adm-text-muted, #94A3B8)' }}>
+                  <Bell size={36} style={{ margin: '0 auto 12px auto', opacity: 0.3 }} />
+                  <p style={{ margin: 0, fontSize: '0.9rem', fontWeight: 600 }}>
+                    Nenhuma notificação ou comunicado pendente!
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        );
       case 'quick-messages':
         return <AdminQuickMessagesView />;
       case 'team-calendar':
@@ -610,9 +733,6 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         return (
           <AdminDashboardView
             onNavigateTab={(tab) => handleSelectTab(tab)}
-            onOpenNewDebutanteModal={() => setIsNewDebutanteModalOpen(true)}
-            onOpenNewVenueModal={() => setIsNewVenueModalOpen(true)}
-            onOpenLead={handleOpenLeadFromTask}
           />
         );
       case 'crm':
@@ -625,13 +745,44 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
             onOpenLeadInWhatsApp={handleOpenLeadInWhatsApp}
           />
         );
+      case 'contacts':
+        return (
+          <AdminContactsView
+            onNavigateTab={(tab, params) => {
+              if (tab === 'whatsapp' && params?.phone) {
+                setActiveWhatsAppSearchQuery(params.phone);
+                handleSelectTab('whatsapp');
+              } else {
+                handleSelectTab(tab);
+              }
+            }}
+            onOpenLead={(leadId, funnelId) => {
+              handleOpenLeadInFunnel(leadId, funnelId);
+            }}
+          />
+        );
       case 'leads':
         return (
           <AdminLeadsListView
-            onOpenLead={(leadId) => handleOpenLeadInWhatsApp(leadId)}
+            onOpenLead={(leadId) => handleOpenLeadInFunnel(leadId)}
             onNavigateFunnel={(funnelId) => {
               setActiveFunnelId(funnelId);
               handleSelectTab('crm', funnelId);
+            }}
+          />
+        );
+      case 'contracts':
+        return (
+          <AdminContractsView
+            onNavigateTab={(tab, params) => handleSelectTab(tab, params)}
+            onOpenLead={(leadId, funnelId) => {
+              if (funnelId) setActiveFunnelId(funnelId);
+              setCrmOpenLeadId(leadId);
+              handleSelectTab('crm', funnelId);
+            }}
+            onOpenContractKanban={(_contractId, funnelId) => {
+              if (funnelId) setActiveFunnelId(funnelId);
+              handleSelectTab('post-sale-crm', funnelId);
             }}
           />
         );
@@ -658,7 +809,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                   url.searchParams.delete('lead_id');
                   window.history.replaceState({}, '', url.toString());
                 }
-              } catch {}
+              } catch { }
             }}
           />
         );
@@ -669,7 +820,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
             onSelectFunnel={(id) => {
               setActiveFunnelId(id);
               if (id) {
-                try { localStorage.setItem('f5_active_funnel_id', id); } catch {}
+                try { localStorage.setItem('f5_active_funnel_id', id); } catch { }
               }
             }}
             onOpenDebutanteApp={(slug) => onOpenDebutanteApp(slug)}
@@ -679,7 +830,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       case 'post-sale-clients':
         return (
           <AdminClientsListView
-            onOpenLead={(id) => handleOpenLeadInWhatsApp(id)}
+            onOpenLead={(id) => handleOpenLeadInFunnel(id)}
             onNavigateFunnel={(funnelId) => {
               setActiveFunnelId(funnelId);
               handleSelectTab('post-sale-crm', funnelId);
@@ -804,7 +955,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
             if (flag && getFeatureStatus(flag) === 'disabled') {
               const fallback = getFirstAvailableTab();
               setActiveTab(fallback);
-              try { localStorage.setItem('bonomo_admin_active_tab', fallback); } catch {}
+              try { localStorage.setItem('bonomo_admin_active_tab', fallback); } catch { }
             }
             setIsSplashDismissed(true);
           }}
@@ -910,26 +1061,30 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
             {/* Dynamic Breadcrumbs */}
             {(() => {
               const activeFunnel = funnels.find(f => f.id === activeFunnelId);
-              let category = 'Central';
-              let title = 'Meu Dia • Início';
+              let category = 'Workspace';
+              let title = 'Início';
 
               if (venues.length === 0 && activeTab !== 'dev-features' && activeTab !== 'dev-users' && activeTab !== 'settings') {
                 category = 'Inicialização';
                 title = 'Registrar Primeira Casa de Festas';
-              } else if (activeTab === 'tasks') { category = 'Ferramentas'; title = 'Central de Tarefas'; }
-              else if (activeTab === 'quick-messages') { category = 'Ferramentas'; title = 'Mensagens Rápidas'; }
-              else if (activeTab === 'team-calendar') { category = 'Workspace'; title = 'Agenda'; }
+              } else if (activeTab === 'home') { category = 'Workspace'; title = 'Início'; }
+              else if (activeTab === 'tasks') { category = 'Workspace'; title = 'Tarefas'; }
+              else if (activeTab === 'notifications') { category = 'Workspace'; title = 'Notificações'; }
               else if (activeTab === 'team') { category = 'Workspace'; title = 'Equipe'; }
-              else if (activeTab === 'dashboard') { category = 'Comercial'; title = 'Dashboard'; }
-              else if (activeTab === 'whatsapp') { category = 'Ferramentas'; title = 'WhatsApp'; }
+              else if (activeTab === 'team-calendar') { category = 'Workspace'; title = 'Agenda'; }
+              else if (activeTab === 'contacts') { category = 'Comercial'; title = 'Central de Contatos'; }
               else if (activeTab === 'crm') { category = 'Comercial'; title = activeFunnel ? `Funil • ${activeFunnel.name}` : 'Funil Comercial'; }
+              else if (activeTab === 'dashboard') { category = 'Comercial'; title = 'Dashboard'; }
+              else if (activeTab === 'contracts') { category = 'Pós-Venda'; title = 'Central de Contratos'; }
+              else if (activeTab === 'whatsapp') { category = 'Ferramentas'; title = 'WhatsApp'; }
+              else if (activeTab === 'quick-messages') { category = 'Ferramentas'; title = 'Mensagens Rápidas'; }
               else if (activeTab === 'followups') { category = 'Ferramentas'; title = 'Central de Tarefas'; }
               else if (activeTab === 'post-sale-crm') { category = 'Pós-Venda'; title = 'Funis de Pós-Venda'; }
               else if (activeTab === 'debutantes') { category = 'Pós-Venda'; title = 'App Aniversariantes'; }
               else if (activeTab === 'vip-journey') { category = 'Pós-Venda'; title = 'Jornada VIP'; }
               else if (activeTab === 'post-sale-visits-tastings') { category = 'Comercial'; title = 'Agendamentos'; }
               else if (activeTab === 'post-sale-appointments') { category = 'Pós-Venda'; title = 'Compromissos'; }
-              else if (activeTab === 'venue-events') { category = currentUser?.role === 'pos_venda' ? 'Pós-Venda' : 'Comercial'; title = 'Agenda de Eventos'; }
+              else if (activeTab === 'venue-events') { category = 'Pós-Venda'; title = 'Agenda de Eventos'; }
               else if (activeTab === 'master-dashboard') { category = 'Gerência'; title = 'Dashboard Gerência'; }
               else if (activeTab === 'collaborators') { category = 'Gerência'; title = 'Colaboradores'; }
               else if (activeTab === 'venues') { category = 'Gerência'; title = 'Casas de Festa'; }
@@ -943,6 +1098,176 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               else if (activeTab === 'dev-users') { category = 'Desenvolvedor'; title = 'Gestão de Usuários'; }
               else if (activeTab === 'dev-announcements') { category = 'Desenvolvedor'; title = 'Comunicados Globais'; }
               else if (activeTab === 'dev-support') { category = 'Desenvolvedor'; title = 'Central de Suporte'; }
+
+              if (activeTab === 'crm' || activeTab === 'post-sale-crm') {
+                const isCrm = activeTab === 'crm';
+                const catLabel = isCrm ? 'COMERCIAL' : 'PÓS-VENDA';
+                const currentFunnelObj = activeFunnelId
+                  ? funnels.find(f => f.id === activeFunnelId)
+                  : null;
+                const displayTitle = currentFunnelObj?.name || 'Central de Funis';
+                const listFunnels = isCrm
+                  ? funnels.filter(f => !f.isPostSale)
+                  : funnels.filter(f => f.isPostSale);
+
+                return (
+                  <div ref={breadcrumbFunnelDropdownRef} style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '8px', whiteSpace: 'nowrap' }}>
+                    <span style={{ fontSize: '0.72rem', color: '#14A9D7', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                      {catLabel}
+                    </span>
+                    <span style={{ color: 'rgba(255, 255, 255, 0.3)', fontSize: '0.8rem' }}>/</span>
+                    <button
+                      type="button"
+                      onClick={() => setIsBreadcrumbFunnelDropdownOpen(!isBreadcrumbFunnelDropdownOpen)}
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        padding: '2px 6px',
+                        borderRadius: '6px',
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        color: '#FFFFFF',
+                        transition: 'background 0.15s ease',
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)'}
+                      onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                    >
+                      <h1 style={{ fontSize: '0.96rem', fontWeight: 900, color: '#FFFFFF', margin: 0, letterSpacing: '-0.2px' }}>
+                        {displayTitle}
+                      </h1>
+                      <ChevronDown
+                        size={14}
+                        style={{
+                          color: '#14A9D7',
+                          transform: isBreadcrumbFunnelDropdownOpen ? 'rotate(180deg)' : 'none',
+                          transition: 'transform 0.15s ease',
+                        }}
+                      />
+                    </button>
+
+                    {/* Popover Dropdown de Seleção de Funil */}
+                    {isBreadcrumbFunnelDropdownOpen && (
+                      <div
+                        style={{
+                          position: 'absolute',
+                          top: 'calc(100% + 10px)',
+                          left: '0',
+                          zIndex: 99999,
+                          minWidth: '240px',
+                          maxWidth: '300px',
+                          background: '#141118',
+                          border: '1px solid rgba(20, 169, 215, 0.35)',
+                          borderRadius: '12px',
+                          boxShadow: '0 16px 40px rgba(0,0,0,0.85), 0 0 20px rgba(20, 169, 215, 0.15)',
+                          padding: '6px',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '3px',
+                          animation: 'fadeIn 0.12s ease-out',
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <div style={{
+                          padding: '4px 8px 6px',
+                          fontSize: '0.66rem',
+                          fontWeight: 800,
+                          color: '#14A9D7',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.04em',
+                          borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+                          marginBottom: '2px',
+                        }}>
+                          {isCrm ? 'Funis Comerciais' : 'Funis de Pós-Venda'}
+                        </div>
+
+                        <div style={{ maxHeight: '220px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                          {listFunnels.map(f => {
+                            const isActive = currentFunnelObj?.id === f.id;
+                            return (
+                              <button
+                                key={f.id}
+                                type="button"
+                                onClick={() => {
+                                  setActiveFunnelId(f.id);
+                                  handleSelectTab(isCrm ? 'crm' : 'post-sale-crm', f.id);
+                                  setIsBreadcrumbFunnelDropdownOpen(false);
+                                }}
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'space-between',
+                                  gap: '8px',
+                                  padding: '7px 10px',
+                                  borderRadius: '7px',
+                                  background: isActive ? 'rgba(20, 169, 215, 0.18)' : 'transparent',
+                                  border: 'none',
+                                  color: isActive ? '#14A9D7' : '#FFFFFF',
+                                  fontSize: '0.76rem',
+                                  fontWeight: isActive ? 800 : 500,
+                                  cursor: 'pointer',
+                                  textAlign: 'left',
+                                  width: '100%',
+                                  transition: 'background 0.1s ease',
+                                }}
+                                onMouseEnter={(e) => {
+                                  if (!isActive) e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)';
+                                }}
+                                onMouseLeave={(e) => {
+                                  if (!isActive) e.currentTarget.style.background = 'transparent';
+                                }}
+                              >
+                                <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                  {f.name}
+                                </span>
+                                {isActive && <Check size={13} color="#14A9D7" style={{ flexShrink: 0 }} />}
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        <div style={{ borderTop: '1px solid rgba(255, 255, 255, 0.08)', marginTop: '4px', paddingTop: '4px' }}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setActiveFunnelId(null);
+                              handleSelectTab(isCrm ? 'crm' : 'post-sale-crm', null);
+                              setIsBreadcrumbFunnelDropdownOpen(false);
+                            }}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                              padding: '6px 10px',
+                              borderRadius: '7px',
+                              background: 'transparent',
+                              border: 'none',
+                              color: 'rgba(255, 255, 255, 0.65)',
+                              fontSize: '0.72rem',
+                              fontWeight: 700,
+                              cursor: 'pointer',
+                              width: '100%',
+                              textAlign: 'left',
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.color = '#FFFFFF';
+                              e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.color = 'rgba(255, 255, 255, 0.65)';
+                              e.currentTarget.style.background = 'transparent';
+                            }}
+                          >
+                            <Layers size={13} />
+                            <span>Ver todos os funis (Central)</span>
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              }
 
               if (activeTab === 'benefits' || activeTab === 'templates') {
                 const subTitle = activeTab === 'benefits' ? 'Catálogo de Prêmios' : 'Jornadas VIP';
@@ -994,1037 +1319,214 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
             })()}
           </div>
 
-          {/* Right Header Actions: Impersonation Banner + Expandable Search + Notification Bell + Profile */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginLeft: 'auto' }}>
-            {/* Botão Expansível de Modo de Visualização ("Ver com os olhos de um colaborador") */}
-            {canSimulateView && (
+          {/* Center: Barra de Busca Centralizada com Largura e Posição Fixa */}
+          <div style={{
+            position: 'absolute',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            width: '340px',
+            display: 'flex',
+            justifyContent: 'center',
+            zIndex: 10,
+          }}>
+            <AdminGlobalSearch
+              activeTab={activeTab}
+              activeFunnelId={activeFunnelId}
+              onNavigateTab={(tab, funnelId, params) => {
+                if (funnelId) setActiveFunnelId(funnelId);
+                handleSelectTab(tab, funnelId);
+                if (tab === 'whatsapp' && params?.phone) {
+                  setActiveWhatsAppSearchQuery(params.phone);
+                }
+              }}
+              onOpenLead={(leadId, funnelId) => {
+                handleOpenLeadInFunnel(leadId, funnelId);
+              }}
+              onOpenContact={(contactId) => {
+                try {
+                  localStorage.setItem('f5_selected_contact_id', contactId);
+                } catch { }
+                setActiveTab('contacts');
+              }}
+              onFilterFunnelLeads={(query) => {
+                if (typeof window !== 'undefined') {
+                  const evt = new CustomEvent('f5_crm_filter_query', { detail: { query } });
+                  window.dispatchEvent(evt);
+                }
+              }}
+            />
+          </div>
+
+          {/* Right Header Actions: Priorização das Ações do Funil Ativo */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: '180px', justifyContent: 'flex-end', flexShrink: 0, zIndex: 11 }}>
+            {/* Indicador de Visualização como Colaborador Ativo (com botão de saída rápida) */}
+            {viewingAsCollaborator && (
               <div
-                ref={eyeMenuRef}
-                className="admin-header-eye-view"
-                style={{ position: 'relative', zIndex: isEyeExpanded ? 10000 : 'auto' }}
-                onMouseEnter={() => setIsEyeHovered(true)}
-                onMouseLeave={() => setIsEyeHovered(false)}
+                onClick={() => setViewingAsCollaborator(null)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  background: 'rgba(20, 169, 215, 0.18)',
+                  border: '1px solid #14A9D7',
+                  borderRadius: '20px',
+                  padding: '4px 10px',
+                  cursor: 'pointer',
+                  boxShadow: '0 0 10px rgba(20, 169, 215, 0.3)',
+                  transition: 'all 0.15s ease',
+                }}
+                title={`Visualizando como: ${viewingAsCollaborator.name}. Clique para sair da visão.`}
               >
-                <div
+                <Eye size={13} color="#14A9D7" />
+                <span style={{ fontSize: '0.74rem', color: '#FFFFFF', fontWeight: 700 }}>
+                  {viewingAsCollaborator.name.split(' ')[0]}
+                </span>
+                <X size={12} color="#14A9D7" />
+              </div>
+            )}
+
+            {/* Ponto de encaixe: as telas injetam aqui suas ações (createPortal) */}
+            <div id="adm-header-actions" style={{ display: 'flex', alignItems: 'center', gap: '10px' }} />
+
+            {/* Ação Primária do Funil Comercial: + Adicionar Lead */}
+            {activeTab === 'crm' && (() => {
+              const activeFunnel = funnels.find(f => f.id === activeFunnelId);
+              return (
+                <button
+                  type="button"
+                  onClick={() => {
+                    window.dispatchEvent(new CustomEvent('f5_crm_open_new_lead'));
+                  }}
                   style={{
                     display: 'flex',
                     alignItems: 'center',
-                    justifyContent: (isEyeExpanded || viewingAsCollaborator) ? 'flex-start' : 'center',
-                    gap: '8px',
-                    background: viewingAsCollaborator
-                      ? 'rgba(20, 169, 215, 0.18)'
-                      : (isEyeExpanded ? '#141118' : 'rgba(255, 255, 255, 0.06)'),
-                    border: `1px solid ${
-                      viewingAsCollaborator
-                        ? '#14A9D7'
-                        : (isEyeExpanded || isEyeHovered ? '#14A9D7' : 'rgba(255, 255, 255, 0.12)')
-                    }`,
-                    borderRadius: '50px',
-                    padding: (isEyeExpanded || viewingAsCollaborator) ? '3px 10px 3px 4px' : '0',
-                    width: viewingAsCollaborator ? 'auto' : (isEyeExpanded ? '180px' : '36px'),
-                    maxWidth: '220px',
-                    height: '36px',
-                    boxSizing: 'border-box',
-                    transition: 'all 0.25s cubic-bezier(0.16, 1, 0.3, 1)',
+                    gap: '6px',
+                    backgroundColor: '#10B981',
+                    color: '#FFFFFF',
+                    border: 'none',
+                    borderRadius: '6px',
+                    padding: '7px 14px',
+                    fontSize: '0.80rem',
+                    fontWeight: 700,
                     cursor: 'pointer',
-                    boxShadow: viewingAsCollaborator ? '0 0 14px rgba(20, 169, 215, 0.35)' : 'none',
+                    whiteSpace: 'nowrap',
+                    transition: 'background-color 0.15s ease',
+                    boxShadow: '0 2px 8px rgba(16, 185, 129, 0.25)',
                   }}
-                  onClick={() => {
-                    if (viewingAsCollaborator) {
-                      // Clique na foto/olho quando ativo -> Sai imediatamente
-                      setViewingAsCollaborator(null);
-                    } else {
-                      setIsEyeExpanded(!isEyeExpanded);
-                    }
-                  }}
-                  title={
-                    viewingAsCollaborator
-                      ? `Visualizando como: ${viewingAsCollaborator.name} (Clique para sair da visão)`
-                      : 'Visualizar sistema com os olhos de um colaborador'
-                  }
+                  onMouseEnter={e => e.currentTarget.style.backgroundColor = '#059669'}
+                  onMouseLeave={e => e.currentTarget.style.backgroundColor = '#10B981'}
+                  title={activeFunnel ? `Adicionar Lead ao ${activeFunnel.name}` : 'Adicionar Lead ao Funil'}
                 >
-                  {viewingAsCollaborator ? (
-                    // Círculo com a Foto/Avatar do Colaborador selecionado + Mini Ícone de Olho
-                    <div style={{ position: 'relative', width: 28, height: 28, flexShrink: 0 }}>
-                      <SafeAvatar
-                        src={viewingAsCollaborator.avatarUrl}
-                        name={viewingAsCollaborator.name}
-                        size={28}
-                        borderRadius="50%"
-                      />
-                      <span style={{
-                        position: 'absolute',
-                        bottom: -2,
-                        right: -2,
-                        width: 12,
-                        height: 12,
-                        borderRadius: '50%',
-                        background: '#14A9D7',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        color: '#080C14',
-                        boxShadow: '0 0 4px #14A9D7',
-                      }}>
-                        <Eye size={8} />
-                      </span>
-                    </div>
-                  ) : (
-                    // Ícone de Olho redondo padrão (igual à lupa da busca)
-                    <span style={{
-                      color: isEyeExpanded || isEyeHovered ? '#14A9D7' : '#FFFFFF',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      width: '16px',
-                      height: '16px',
-                      lineHeight: 0,
-                      flexShrink: 0,
-                      transition: 'color 0.2s ease',
-                    }}>
-                      <Eye size={17} />
+                  <Plus size={15} />
+                  <span>Adicionar Lead</span>
+                  {activeFunnel && (
+                    <span style={{ fontSize: '0.70rem', opacity: 0.85, fontWeight: 600 }}>
+                      • {activeFunnel.name}
                     </span>
                   )}
+                </button>
+              );
+            })()}
 
-                  {/* Texto expandido quando o seletor está aberto */}
-                  {isEyeExpanded && !viewingAsCollaborator && (
-                    <span style={{
-                      fontSize: '0.74rem',
-                      color: '#FFFFFF',
-                      whiteSpace: 'nowrap',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      fontWeight: 600,
-                    }}>
-                      Ver como...
+            {/* Ação Primária do Funil de Pós-Venda: + Adicionar Cliente */}
+            {activeTab === 'post-sale-crm' && (() => {
+              const activeFunnel = funnels.find(f => f.id === activeFunnelId);
+              return (
+                <button
+                  type="button"
+                  onClick={() => {
+                    window.dispatchEvent(new CustomEvent('f5_open_new_client'));
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    backgroundColor: '#06B6D4',
+                    color: '#FFFFFF',
+                    border: 'none',
+                    borderRadius: '6px',
+                    padding: '7px 14px',
+                    fontSize: '0.80rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap',
+                    transition: 'background-color 0.15s ease',
+                    boxShadow: '0 2px 8px rgba(6, 182, 212, 0.25)',
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.backgroundColor = '#0891B2'}
+                  onMouseLeave={e => e.currentTarget.style.backgroundColor = '#06B6D4'}
+                  title={activeFunnel ? `Adicionar Cliente ao ${activeFunnel.name}` : 'Adicionar Cliente ao Pós-Venda'}
+                >
+                  <Plus size={15} />
+                  <span>Adicionar Cliente</span>
+                  {activeFunnel && (
+                    <span style={{ fontSize: '0.70rem', opacity: 0.85, fontWeight: 600 }}>
+                      • {activeFunnel.name}
                     </span>
                   )}
+                </button>
+              );
+            })()}
 
-                  {/* Informações do colaborador ativo no modo visão */}
-                  {viewingAsCollaborator && (
-                    <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
-                      <span style={{
-                        fontSize: '0.72rem',
-                        color: '#FFFFFF',
-                        whiteSpace: 'nowrap',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        fontWeight: 700,
-                        lineHeight: 1.1,
-                      }}>
-                        {viewingAsCollaborator.name.split(' ')[0]}
-                      </span>
-                      <span style={{
-                        fontSize: '0.56rem',
-                        color: '#14A9D7',
-                        fontWeight: 700,
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.3px',
-                        lineHeight: 1.1,
-                      }}>
-                        Clique p/ sair
-                      </span>
-                    </div>
-                  )}
-                </div>
-
-                {/* Popover Expansível de Seleção de Colaboradores */}
-                {isEyeExpanded && !viewingAsCollaborator && (
-                  <div
-                    style={{
-                      position: 'absolute',
-                      top: 'calc(100% + 8px)',
-                      left: 0,
-                      width: '260px',
-                      background: '#141118',
-                      border: '1px solid rgba(20, 169, 215, 0.35)',
-                      borderRadius: '16px',
-                      boxShadow: '0 16px 40px rgba(0,0,0,0.75), 0 0 20px rgba(20, 169, 215, 0.15)',
-                      padding: '10px',
-                      zIndex: 10000,
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '8px',
-                      animation: 'fadeIn 0.15s ease-out',
-                    }}
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <div style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
-                      paddingBottom: '6px',
-                    }}>
-                      <div style={{ fontSize: '0.76rem', fontWeight: 800, color: '#14A9D7', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <Eye size={13} />
-                        <span>Ver com os olhos de:</span>
-                      </div>
-                      <span style={{ fontSize: '0.62rem', color: '#8096A8' }}>
-                        {viewableCollaborators.length} disponíveis
-                      </span>
-                    </div>
-
-                    <div style={{
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '4px',
-                      maxHeight: '260px',
-                      overflowY: 'auto',
-                    }}>
-                      {viewableCollaborators.length === 0 ? (
-                        <div style={{ padding: '16px', textAlign: 'center', color: '#8096A8', fontSize: '0.74rem' }}>
-                          Nenhum colaborador encontrado na equipe.
-                        </div>
-                      ) : (
-                        viewableCollaborators.map(c => (
-                          <div
-                            key={c.id}
-                            onClick={() => {
-                              setViewingAsCollaborator(c);
-                              setIsEyeExpanded(false);
-                              // Retoma imediatamente para a tela inicial / CRM do colaborador
-                              const targetTab = getFirstAvailableTab() || 'crm';
-                              handleSelectTab(targetTab);
-                            }}
-                            style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '10px',
-                              padding: '6px 8px',
-                              borderRadius: '10px',
-                              cursor: 'pointer',
-                              background: 'transparent',
-                              border: '1px solid transparent',
-                              transition: 'all 0.12s ease',
-                            }}
-                            onMouseEnter={(e) => {
-                              e.currentTarget.style.background = 'rgba(20, 169, 215, 0.12)';
-                              e.currentTarget.style.borderColor = 'rgba(20, 169, 215, 0.3)';
-                            }}
-                            onMouseLeave={(e) => {
-                              e.currentTarget.style.background = 'transparent';
-                              e.currentTarget.style.borderColor = 'transparent';
-                            }}
-                          >
-                            <SafeAvatar
-                              src={c.avatarUrl}
-                              name={c.name}
-                              size={28}
-                              borderRadius="50%"
-                            />
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#FFFFFF', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                {c.name}
-                              </div>
-                              <div style={{ fontSize: '0.64rem', color: '#14A9D7', fontWeight: 600 }}>
-                                {getCollaboratorDisplayJobTitle(c)}
-                              </div>
-                            </div>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Expandable Search Capsule (Audio 3: Centralização milimétrica da lupa) */}
-            <div
-              className="admin-header-search"
-              style={{ position: 'relative' }}
-              onMouseEnter={() => setIsSearchHovered(true)}
-              onMouseLeave={() => setIsSearchHovered(false)}
-            >
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: isSearchFocused || globalSearch ? 'flex-start' : 'center',
-                gap: '8px',
-                background: isSearchFocused || globalSearch ? '#141118' : 'rgba(255, 255, 255, 0.06)',
-                border: `1px solid ${isSearchFocused || globalSearch || isSearchHovered ? '#14A9D7' : 'rgba(255, 255, 255, 0.12)'}`,
-                borderRadius: '50px',
-                padding: isSearchFocused || globalSearch ? '5px 12px' : '0',
-                width: isSearchFocused || globalSearch ? '280px' : '36px',
-                height: '36px',
-                boxSizing: 'border-box',
-                transition: 'all 0.25s cubic-bezier(0.16, 1, 0.3, 1)',
-                cursor: isSearchFocused || globalSearch ? 'text' : 'pointer',
-              }}
-              onClick={() => setIsSearchFocused(true)}
-              >
-                <span style={{
-                  color: isSearchFocused || globalSearch || isSearchHovered ? '#14A9D7' : '#FFFFFF',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  width: '16px',
-                  height: '16px',
-                  lineHeight: 0,
-                  flexShrink: 0,
-                  margin: 0,
-                  padding: 0,
-                  transition: 'color 0.2s ease',
-                }}>
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block' }}>
-                    <circle cx="11" cy="11" r="8"></circle>
-                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-                  </svg>
-                </span>
-                {(isSearchFocused || globalSearch) && (
-                  <input
-                    type="text"
-                    placeholder="Buscar no sistema..."
-                    value={globalSearch}
-                    onChange={(e) => setGlobalSearch(e.target.value)}
-                    onFocus={() => setIsSearchFocused(true)}
-                    onBlur={() => setTimeout(() => setIsSearchFocused(false), 250)}
-                    autoFocus
-                    style={{
-                      background: 'transparent',
-                      border: 'none',
-                      outline: 'none',
-                      color: 'var(--adm-text-title)',
-                      fontSize: '0.8rem',
-                      width: '100%',
-                      fontFamily: 'inherit',
-                    }}
-                  />
-                )}
-                {globalSearch && (
-                  <button
-                    type="button"
-                    onClick={(e) => { e.stopPropagation(); setGlobalSearch(''); }}
-                    style={{ background: 'transparent', border: 'none', color: 'var(--adm-text-muted)', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center' }}
-                  >
-                    <X size={12} />
-                  </button>
-                )}
-              </div>
-
-              {/* Live Search Results Popover */}
-              {isSearchFocused && globalSearch.trim() && (
-                <div style={{
-                  position: 'absolute',
-                  top: 'calc(100% + 8px)',
-                  left: 0,
-                  right: 0,
-                  background: 'var(--adm-bg-card)',
-                  border: '1px solid var(--adm-border)',
-                  borderRadius: '16px',
-                  boxShadow: '0 16px 40px rgba(0,0,0,0.35)',
-                  padding: '12px',
-                  zIndex: 9999,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '12px',
-                  maxHeight: '360px',
-                  overflowY: 'auto',
-                }}>
-                  {totalSearchMatches === 0 ? (
-                    <div style={{ padding: '16px', textAlign: 'center', color: 'var(--adm-text-muted)', fontSize: '0.78rem' }}>
-                      Nenhum resultado encontrado para "{globalSearch}"
-                    </div>
-                  ) : (
-                    <>
-                      {/* Casas de Festa */}
-                      {matchedVenues.length > 0 && (
-                        <div>
-                          <div style={{ fontSize: '0.66rem', fontWeight: 600, color: 'var(--adm-accent)', textTransform: 'uppercase', marginBottom: '4px', paddingLeft: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <Building2 size={12} color="var(--adm-accent)" /> Casas de Festa ({matchedVenues.length})
-                          </div>
-                          {matchedVenues.map(v => (
-                            <div
-                              key={v.id}
-                              onClick={() => {
-                                setActiveTab('venues');
-                                setGlobalSearch('');
-                              }}
-                              style={{
-                                padding: '6px 8px',
-                                borderRadius: '8px',
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '8px',
-                                background: 'transparent',
-                                transition: 'all 0.12s ease',
-                              }}
-                              onMouseEnter={(e) => e.currentTarget.style.background = 'var(--adm-bg-input)'}
-                              onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                            >
-                              <Building2 size={14} color="var(--adm-accent)" />
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--adm-text-title)' }}>{v.name}</div>
-                                <div style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v.address}</div>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-
-                      {/* Debutantes */}
-                      {matchedDebutantes.length > 0 && (
-                        <div>
-                          <div style={{ fontSize: '0.66rem', fontWeight: 600, color: '#F472B6', textTransform: 'uppercase', marginBottom: '4px', paddingLeft: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <Crown size={12} color="#F472B6" /> Aniversariantes ({matchedDebutantes.length})
-                          </div>
-                          {matchedDebutantes.map(d => {
-                            const canAccessDebutantesTab = currentUser?.role === 'master' || currentUser?.role === 'admin' || currentUser?.role === 'crm';
-                            return (
-                              <div
-                                key={d.id}
-                                onClick={() => {
-                                  if (canAccessDebutantesTab) {
-                                    setActiveTab('debutantes');
-                                  } else {
-                                    // SDR or Closer: Redirect to CRM tab
-                                    setActiveTab('crm');
-                                    // Find first lead belonging to this debutante or switch to CRM
-                                    const debLead = leads.find(l => l.debutanteId === d.id);
-                                    if (debLead) {
-                                      handleOpenLeadFromTask(debLead.id);
-                                    }
-                                  }
-                                  setGlobalSearch('');
-                                }}
-                                style={{
-                                  padding: '6px 8px',
-                                  borderRadius: '8px',
-                                  cursor: 'pointer',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: '8px',
-                                  background: 'transparent',
-                                  transition: 'all 0.12s ease',
-                                }}
-                                onMouseEnter={(e) => e.currentTarget.style.background = 'var(--adm-bg-input)'}
-                                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                              >
-                                <div style={{ width: 20, height: 20, borderRadius: '50%', background: 'rgba(244,114,182,0.2)', color: '#F472B6', fontSize: '0.6rem', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                  {d.name.charAt(0)}
-                                </div>
-                                <div style={{ flex: 1, minWidth: 0 }}>
-                                  <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--adm-text-title)' }}>{d.name}</div>
-                                  <div style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)' }}>{d.phone} • Festa: {d.partyDate || 'Data a definir'}</div>
-                                </div>
-                                {!canAccessDebutantesTab && (
-                                  <span style={{ fontSize: '0.62rem', color: '#818cf8', fontWeight: 600 }}>Ver Leads</span>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-
-                      {/* Leads do CRM */}
-                      {matchedLeads.length > 0 && (
-                        <div>
-                          <div style={{ fontSize: '0.66rem', fontWeight: 600, color: '#3B82F6', textTransform: 'uppercase', marginBottom: '4px', paddingLeft: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <Target size={12} color="#3B82F6" /> Leads do CRM ({matchedLeads.length})
-                          </div>
-                          {matchedLeads.map(l => (
-                            <div
-                              key={l.id}
-                              onClick={() => {
-                                handleOpenLeadFromTask(l.id);
-                                setGlobalSearch('');
-                              }}
-                              style={{
-                                padding: '6px 8px',
-                                borderRadius: '8px',
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '8px',
-                                background: 'transparent',
-                                transition: 'all 0.12s ease',
-                              }}
-                              onMouseEnter={(e) => e.currentTarget.style.background = 'var(--adm-bg-input)'}
-                              onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                            >
-                              <div style={{ width: 20, height: 20, borderRadius: '50%', background: 'rgba(59,130,246,0.2)', color: '#3B82F6', fontSize: '0.6rem', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                {l.name.charAt(0)}
-                              </div>
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--adm-text-title)' }}>{l.name}</div>
-                                <div style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)' }}>Indicada por {l.debutanteName} • {l.phone}</div>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-
-                      {/* Colaboradores */}
-                      {matchedCollaborators.length > 0 && (
-                        <div>
-                          <div style={{ fontSize: '0.66rem', fontWeight: 600, color: '#8B5CF6', textTransform: 'uppercase', marginBottom: '4px', paddingLeft: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <ShieldCheck size={12} color="#8B5CF6" /> Equipe & Colaboradores ({matchedCollaborators.length})
-                          </div>
-                          {matchedCollaborators.map(c => (
-                            <div
-                              key={c.id}
-                              onClick={() => {
-                                setActiveTab('collaborators');
-                                setGlobalSearch('');
-                              }}
-                              style={{
-                                padding: '6px 8px',
-                                borderRadius: '8px',
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '8px',
-                                background: 'transparent',
-                                transition: 'all 0.12s ease',
-                              }}
-                              onMouseEnter={(e) => e.currentTarget.style.background = 'var(--adm-bg-input)'}
-                              onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                            >
-                              {c.avatarUrl ? (
-                                <img src={c.avatarUrl} alt={c.name} style={{ width: 20, height: 20, borderRadius: '50%', objectFit: 'cover' }} />
-                              ) : (
-                                <div style={{ width: 20, height: 20, borderRadius: '50%', background: 'rgba(139,92,246,0.2)', color: '#8B5CF6', fontSize: '0.6rem', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                  {c.name.charAt(0)}
-                                </div>
-                              )}
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--adm-text-title)' }}>{c.name} ({c.role.toUpperCase()})</div>
-                                <div style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)' }}>{c.email}</div>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </>
-                  )}
-                </div>
-              )}
-            </div>
-            {/* Support / Help Center Button (Audio 1, 2 & 3: Floating widget & unread badge - Oculto para desenvolvedor) */}
-            {!currentUser?.isDev && (
-              <button
-                type="button"
-                onClick={handleToggleSupport}
-                style={{
-                  width: '38px',
-                  height: '38px',
-                  borderRadius: '50%',
-                  background: isSupportModalOpen ? 'rgba(20, 169, 215, 0.2)' : '#141118',
-                  border: `1px solid ${isSupportModalOpen ? '#14A9D7' : 'rgba(20, 169, 215, 0.25)'}`,
-                  color: isSupportModalOpen ? '#14A9D7' : '#9E988D',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  cursor: 'pointer',
-                  position: 'relative',
-                  transition: 'all 0.15s ease',
-                }}
-                title="Central de Suporte & Report de Bugs"
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.color = '#14A9D7';
-                  e.currentTarget.style.borderColor = '#14A9D7';
-                }}
-                onMouseLeave={(e) => {
-                  if (!isSupportModalOpen) {
-                    e.currentTarget.style.color = '#9E988D';
-                    e.currentTarget.style.borderColor = 'rgba(20, 169, 215, 0.25)';
-                  }
-                }}
-              >
-                <Headset size={17} />
-                {unreadSupportCount > 0 && (
-                  <span
-                    style={{
-                      position: 'absolute',
-                      top: '-3px',
-                      right: '-3px',
-                      minWidth: '17px',
-                      height: '17px',
-                      padding: '0 4px',
-                      borderRadius: '10px',
-                      background: '#EF4444',
-                      color: '#FFFFFF',
-                      fontSize: '0.62rem',
-                      fontWeight: 700,
-                      fontFamily: "'Poppins', sans-serif",
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      boxShadow: '0 0 8px rgba(239, 68, 68, 0.6)',
-                      border: '1.5px solid #090814',
-                    }}
-                  >
-                    {unreadSupportCount}
-                  </span>
-                )}
-              </button>
-            )}
-
-            {/* 1. Notification Bell & Dropdown */}
-            <div ref={notificationsMenuRef} style={{ position: 'relative' }}>
+            {/* Ação Contextual Rápida: Nova Tarefa */}
+            {(activeTab === 'home' || activeTab === 'tasks') && (
               <button
                 type="button"
                 onClick={() => {
-                  setIsNotificationsOpen(!isNotificationsOpen);
-                  setIsProfileMenuOpen(false);
+                  window.dispatchEvent(new CustomEvent('f5_open_new_task'));
                 }}
                 style={{
-                  width: '38px',
-                  height: '38px',
-                  borderRadius: '50%',
-                  background: isNotificationsOpen ? 'rgba(212, 175, 55, 0.18)' : '#141118',
-                  border: `1px solid ${isNotificationsOpen ? '#D4AF37' : 'rgba(212, 175, 55, 0.25)'}`,
-                  color: isNotificationsOpen ? '#D4AF37' : '#9E988D',
                   display: 'flex',
                   alignItems: 'center',
-                  justifyContent: 'center',
+                  gap: '6px',
+                  backgroundColor: '#2563EB',
+                  color: '#FFFFFF',
+                  border: 'none',
+                  borderRadius: '6px',
+                  padding: '7px 14px',
+                  fontSize: '0.80rem',
+                  fontWeight: 700,
                   cursor: 'pointer',
-                  position: 'relative',
-                  transition: 'all 0.15s ease',
+                  whiteSpace: 'nowrap',
+                  transition: 'background-color 0.15s ease',
                 }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.color = '#D4AF37';
-                  e.currentTarget.style.borderColor = '#D4AF37';
-                  e.currentTarget.style.background = 'rgba(212, 175, 55, 0.14)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.color = isNotificationsOpen ? '#D4AF37' : '#9E988D';
-                  e.currentTarget.style.borderColor = isNotificationsOpen ? '#D4AF37' : 'rgba(212, 175, 55, 0.25)';
-                  e.currentTarget.style.background = isNotificationsOpen ? 'rgba(212, 175, 55, 0.18)' : '#141118';
-                }}
-                title="Notificações"
+                onMouseEnter={e => e.currentTarget.style.backgroundColor = '#1D4ED8'}
+                onMouseLeave={e => e.currentTarget.style.backgroundColor = '#2563EB'}
               >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
-                  <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
-                </svg>
-                {totalNotificationsCount > 0 && (
-                  <span style={{
-                    position: 'absolute',
-                    top: '4px',
-                    right: '4px',
-                    width: '8px',
-                    height: '8px',
-                    borderRadius: '50%',
-                    background: '#EF4444',
-                    border: '1.5px solid var(--adm-bg-header)',
-                  }} />
-                )}
+                <Plus size={15} />
+                <span>Nova Tarefa</span>
               </button>
+            )}
 
-              {/* Notification Popover Dropdown */}
-              {isNotificationsOpen && (
-                <div style={{
-                  position: 'absolute',
-                  top: 'calc(100% + 8px)',
-                  right: 0,
-                  width: '320px',
-                  background: 'var(--adm-bg-card)',
-                  border: '1px solid var(--adm-border)',
-                  borderRadius: '16px',
-                  boxShadow: '0 16px 40px rgba(0,0,0,0.35)',
-                  padding: '14px',
-                  zIndex: 9999,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '10px',
-                  animation: 'fadeIn 0.15s ease-out',
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--adm-border)', paddingBottom: '8px' }}>
-                    <div style={{ fontSize: '0.84rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
-                      Notificações do Sistema
-                    </div>
-                    <span style={{ background: 'var(--adm-accent-bg)', color: 'var(--adm-accent)', fontSize: '0.66rem', fontWeight: 800, padding: '2px 8px', borderRadius: '12px' }}>
-                      {totalNotificationsCount} ativas
-                    </span>
-                  </div>
-
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '300px', overflowY: 'auto' }}>
-                    {/* Avisos e Comunicados Gerais salvos */}
-                    {userAnnouncements.slice(0, 2).map(ann => (
-                      <div
-                        key={ann.id}
-                        onClick={() => {
-                          setSelectedAnnouncementDetail(ann);
-                          setIsNotificationsOpen(false);
-                        }}
-                        style={{
-                          padding: '8px 10px',
-                          borderRadius: '10px',
-                          background: 'rgba(20, 169, 215, 0.12)',
-                          border: '1px solid rgba(20, 169, 215, 0.35)',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          gap: '2px',
-                        }}
-                      >
-                        <div style={{ fontSize: '0.78rem', fontWeight: 600, color: '#14A9D7', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}><Megaphone size={13} color="#14A9D7" /> {ann.title}</span>
-                          <span style={{ fontSize: '0.62rem', color: '#8096A8' }}>Clique para ler</span>
-                        </div>
-                        <div style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {ann.content}
-                        </div>
-                      </div>
-                    ))}
-
-                    {/* Alerta de Suporte Respondido (Audio 1 & 2) */}
-                    {unreadSupportCount > 0 && (
-                      <div
-                        onClick={() => {
-                          setIsNotificationsOpen(false);
-                          handleToggleSupport();
-                        }}
-                        style={{
-                          padding: '8px 10px',
-                          borderRadius: '10px',
-                          background: 'rgba(239, 68, 68, 0.08)',
-                          border: '1px solid rgba(239, 68, 68, 0.25)',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          gap: '2px',
-                        }}
-                      >
-                        <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#EF4444', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                          <Headset size={12} color="#EF4444" />
-                          <span>{currentUser?.isDev ? 'Novos Chamados de Suporte' : 'Nova Resposta no Suporte'}</span>
-                        </div>
-                        <div style={{ fontSize: '0.72rem', color: 'var(--adm-text-title)' }}>
-                          Você possui {unreadSupportCount} mensagem(ns) não lida(s) no Suporte Técnico.
-                        </div>
-                      </div>
-                    )}
-
-                    {totalNotificationsCount === 0 && userAnnouncements.length === 0 ? (
-                      <div style={{ padding: '24px 10px', textAlign: 'center', color: 'var(--adm-text-muted)', fontSize: '0.78rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
-                        <Sparkles size={14} color="#10B981" /> Nenhuma pendência ou comunicado no momento!
-                      </div>
-                    ) : (
-                      <>
-                        {newUnassignedLeads.slice(0, 3).map(lead => (
-                          <div
-                            key={lead.id}
-                            onClick={() => {
-                              handleOpenLeadFromTask(lead.id);
-                              setIsNotificationsOpen(false);
-                            }}
-                            style={{
-                              padding: '8px 10px',
-                              borderRadius: '10px',
-                              background: 'var(--adm-accent-bg)',
-                              border: '1px solid rgba(212, 175, 55, 0.3)',
-                              cursor: 'pointer',
-                              display: 'flex',
-                              flexDirection: 'column',
-                              gap: '2px',
-                            }}
-                          >
-                            <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--adm-accent)', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                              <Sparkles size={12} color="var(--adm-accent)" /> Nova Indicação Recebida
-                            </div>
-                            <div style={{ fontSize: '0.74rem', color: 'var(--adm-text-title)' }}>
-                              {lead.name} • Indicada por {lead.debutanteName}
-                            </div>
-                            <div style={{ fontSize: '0.64rem', color: 'var(--adm-text-muted)' }}>
-                              Clique para atender no CRM
-                            </div>
-                          </div>
-                        ))}
-
-                        {dueTodayTasks.slice(0, 3).map(task => (
-                          <div
-                            key={task.id}
-                            onClick={() => {
-                              setActiveTab('home');
-                              setIsNotificationsOpen(false);
-                            }}
-                            style={{
-                              padding: '8px 10px',
-                              borderRadius: '10px',
-                              background: 'var(--adm-bg-input)',
-                              border: '1px solid var(--adm-border)',
-                              cursor: 'pointer',
-                              display: 'flex',
-                              flexDirection: 'column',
-                              gap: '2px',
-                            }}
-                          >
-                            <div style={{ fontSize: '0.78rem', fontWeight: 600, color: '#F59E0B', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                              <Clock size={12} color="#F59E0B" /> Tarefa com Prazo Hoje ({task.dueTime || 'Hoje'})
-                            </div>
-                            <div style={{ fontSize: '0.74rem', color: 'var(--adm-text-title)' }}>
-                              {task.title}
-                            </div>
-                            <div style={{ fontSize: '0.64rem', color: 'var(--adm-text-muted)' }}>
-                              {task.leadName ? `Lead: ${task.leadName}` : 'Tarefa geral da equipe'}
-                            </div>
-                          </div>
-                        ))}
-                      </>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* 2. User Profile Trigger & Popover Dropdown */}
-            <div ref={profileMenuRef} style={{ position: 'relative' }}>
+            {/* Ação Contextual Rápida: Novo Contato */}
+            {activeTab === 'contacts' && (
               <button
                 type="button"
                 onClick={() => {
-                  setIsProfileMenuOpen(!isProfileMenuOpen);
-                  setIsNotificationsOpen(false);
+                  window.dispatchEvent(new CustomEvent('f5_open_new_contact'));
                 }}
                 style={{
-                  width: '38px',
-                  height: '38px',
-                  borderRadius: '50%',
-                  background: isProfileMenuOpen ? 'rgba(20, 169, 215, 0.18)' : '#141118',
-                  border: `1px solid ${isProfileMenuOpen ? '#14A9D7' : (viewingAsCollaborator ? 'rgba(100, 116, 139, 0.4)' : 'rgba(20, 169, 215, 0.35)')}`,
-                  filter: viewingAsCollaborator ? 'grayscale(100%) opacity(0.45)' : 'none',
                   display: 'flex',
                   alignItems: 'center',
-                  justifyContent: 'center',
+                  gap: '6px',
+                  backgroundColor: '#2563EB',
+                  color: '#FFFFFF',
+                  border: 'none',
+                  borderRadius: '6px',
+                  padding: '7px 14px',
+                  fontSize: '0.80rem',
+                  fontWeight: 700,
                   cursor: 'pointer',
-                  position: 'relative',
-                  transition: 'border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease, filter 0.25s ease',
-                  padding: 0,
-                  overflow: 'hidden',
-                  boxShadow: isProfileMenuOpen ? '0 0 12px rgba(20, 169, 215, 0.35)' : 'none',
+                  whiteSpace: 'nowrap',
+                  transition: 'background-color 0.15s ease',
                 }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.borderColor = '#14A9D7';
-                  e.currentTarget.style.boxShadow = '0 0 10px rgba(20, 169, 215, 0.35)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.borderColor = isProfileMenuOpen ? '#14A9D7' : (viewingAsCollaborator ? 'rgba(100, 116, 139, 0.4)' : 'rgba(20, 169, 215, 0.35)');
-                  e.currentTarget.style.boxShadow = isProfileMenuOpen ? '0 0 12px rgba(20, 169, 215, 0.35)' : 'none';
-                }}
-                title={
-                  viewingAsCollaborator
-                    ? `Visualizando com os olhos de ${viewingAsCollaborator.name} (${ROLE_LABELS[viewingAsCollaborator.role] || viewingAsCollaborator.role})`
-                    : `${currentUser?.name || 'Administrador'} (${ROLE_LABELS[currentUser?.role || 'master'] || currentUser?.role})`
-                }
+                onMouseEnter={e => e.currentTarget.style.backgroundColor = '#1D4ED8'}
+                onMouseLeave={e => e.currentTarget.style.backgroundColor = '#2563EB'}
               >
-                {(() => {
-                  const displayUser = viewingAsCollaborator || currentUser;
-                  const avatarSrc = (displayUser?.avatarUrl && !displayUser.avatarUrl.includes('unsplash.com'))
-                    ? displayUser.avatarUrl
-                    : createMonogramAvatar(displayUser?.name || 'Administrador');
-                  return (
-                    <img
-                      src={avatarSrc}
-                      alt={displayUser?.name || 'Perfil'}
-                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                    />
-                  );
-                })()}
+                <Plus size={15} />
+                <span>Novo Contato</span>
               </button>
-
-              {/* Profile Popover Dropdown */}
-              {isProfileMenuOpen && (
-                <div style={{
-                  position: 'absolute',
-                  top: 'calc(100% + 8px)',
-                  right: 0,
-                  width: '230px',
-                  background: '#141118',
-                  border: '1px solid rgba(20, 169, 215, 0.25)',
-                  borderRadius: '14px',
-                  boxShadow: '0 16px 40px rgba(0,0,0,0.75), 0 0 20px rgba(20, 169, 215, 0.1)',
-                  padding: '10px',
-                  zIndex: 9999,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '8px',
-                  animation: 'fadeIn 0.15s ease-out',
-                }}>
-                  {/* User Header Summary (aligned vertically, without duplicate photo) */}
-                  {(() => {
-                    const displayUser = viewingAsCollaborator || currentUser;
-                    return (
-                      <div style={{
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '4px',
-                        padding: '2px 4px 8px 4px',
-                        borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
-                      }}>
-                        {viewingAsCollaborator && (
-                          <div style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '5px',
-                            background: 'rgba(20, 169, 215, 0.15)',
-                            border: '1px solid rgba(20, 169, 215, 0.4)',
-                            borderRadius: '6px',
-                            padding: '3px 6px',
-                            marginBottom: '4px',
-                          }}>
-                            <Eye size={11} color="#14A9D7" />
-                            <span style={{ fontSize: '0.62rem', fontWeight: 700, color: '#14A9D7' }}>
-                              Modo Olhar do Colaborador
-                            </span>
-                          </div>
-                        )}
-                        <div style={{
-                          fontSize: '0.82rem',
-                          fontWeight: 700,
-                          color: '#FFFFFF',
-                          whiteSpace: 'nowrap',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          lineHeight: 1.2,
-                        }}>
-                          {displayUser?.name || 'Administrador'}
-                        </div>
-                        <div style={{
-                          fontSize: '0.68rem',
-                          color: '#8096A8',
-                          whiteSpace: 'nowrap',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          lineHeight: 1.2,
-                        }}>
-                          {displayUser?.email}
-                        </div>
-                        <div style={{ marginTop: '2px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <span style={{
-                            display: 'inline-block',
-                            fontSize: '0.52rem',
-                            fontWeight: 800,
-                            textTransform: 'uppercase',
-                            padding: '2px 6px',
-                            borderRadius: '4px',
-                            background: 'rgba(212, 175, 55, 0.15)',
-                            color: '#D4AF37',
-                            border: '1px solid rgba(212, 175, 55, 0.3)',
-                            letterSpacing: '0.4px',
-                          }}>
-                            {ROLE_LABELS[displayUser?.role || 'master'] || displayUser?.role}
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  })()}
-
-                  {/* Menu Actions */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                    {viewingAsCollaborator && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsProfileMenuOpen(false);
-                          setViewingAsCollaborator(null);
-                        }}
-                        style={{
-                          width: '100%',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '8px',
-                          padding: '7px 8px',
-                          borderRadius: '8px',
-                          background: 'rgba(20, 169, 215, 0.12)',
-                          border: '1px solid rgba(20, 169, 215, 0.35)',
-                          color: '#14A9D7',
-                          fontSize: '0.76rem',
-                          fontWeight: 700,
-                          cursor: 'pointer',
-                          textAlign: 'left',
-                          transition: 'all 0.12s ease',
-                          marginBottom: '2px',
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.background = 'rgba(20, 169, 215, 0.22)';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.background = 'rgba(20, 169, 215, 0.12)';
-                        }}
-                      >
-                        <Eye size={15} color="#14A9D7" />
-                        <span>Sair da Visão ({viewingAsCollaborator.name.split(' ')[0]})</span>
-                      </button>
-                    )}
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsProfileMenuOpen(false);
-                        handleSelectTab('settings');
-                      }}
-                      style={{
-                        width: '100%',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        padding: '7px 8px',
-                        borderRadius: '8px',
-                        background: 'transparent',
-                        border: '1px solid transparent',
-                        color: '#FFFFFF',
-                        fontSize: '0.76rem',
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                        textAlign: 'left',
-                        transition: 'all 0.12s ease',
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.background = 'rgba(20, 169, 215, 0.12)';
-                        e.currentTarget.style.borderColor = 'rgba(20, 169, 215, 0.3)';
-                        e.currentTarget.style.color = '#14A9D7';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.background = 'transparent';
-                        e.currentTarget.style.borderColor = 'transparent';
-                        e.currentTarget.style.color = '#FFFFFF';
-                      }}
-                    >
-                      <Settings size={15} color="#14A9D7" />
-                      <span>Configurações & Tema</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsProfileMenuOpen(false);
-                        logout();
-                      }}
-                      style={{
-                        width: '100%',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        padding: '7px 8px',
-                        borderRadius: '8px',
-                        background: 'transparent',
-                        border: '1px solid transparent',
-                        color: '#EF4444',
-                        fontSize: '0.76rem',
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                        textAlign: 'left',
-                        transition: 'all 0.12s ease',
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.background = 'rgba(239, 68, 68, 0.12)';
-                        e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.3)';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.background = 'transparent';
-                        e.currentTarget.style.borderColor = 'transparent';
-                      }}
-                    >
-                      <LogOut size={15} color="#EF4444" />
-                      <span>Sair do Sistema</span>
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
+            )}
           </div>
         </header>
 
@@ -2044,7 +1546,15 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
           }}
         >
           <AdminErrorBoundary fallbackTab="home" onResetTab={() => setActiveTab('home')}>
-            {renderContent()}
+            <motion.div
+              key={activeTab}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.16, ease: 'easeOut' }}
+              style={{ flex: 1, minHeight: 0, minWidth: 0, display: 'flex', flexDirection: 'column' }}
+            >
+              {renderContent()}
+            </motion.div>
           </AdminErrorBoundary>
         </div>
       </main>
@@ -2069,10 +1579,12 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
             setLastSupportReadAt(now);
             try {
               localStorage.setItem('bonomo_last_support_read_at', String(now));
-            } catch {}
+            } catch { }
           }}
         />
       )}
+
+      <Toaster richColors position="top-right" theme={theme === 'light' ? 'light' : 'dark'} closeButton />
 
       <style>{`
         @media (max-width: 900px) {

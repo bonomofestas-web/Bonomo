@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { 
   Headphones, X, Plus, Clock, CheckCircle2, AlertCircle, 
   Send, Image as ImageIcon, Video, ExternalLink, ArrowLeft,
-  MessageSquare, ChevronRight
+  MessageSquare, ChevronRight, Home, Target, Crown, Building2, Shield, Settings, HelpCircle, Zap
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { ImageUploadField } from './ImageUploadField';
@@ -13,14 +13,14 @@ interface AdminSupportModalProps {
   onClose: () => void;
 }
 
-const MODULE_OPTIONS: { id: SupportTicketModule; label: string; icon: string }[] = [
-  { id: 'home', label: 'Início', icon: '🏠' },
-  { id: 'crm', label: 'Funil de Vendas / CRM', icon: '🎯' },
-  { id: 'debutantes', label: 'Central de Debutantes', icon: '👑' },
-  { id: 'venues', label: 'Casas de Festa', icon: '🏢' },
-  { id: 'collaborators', label: 'Equipe & Colaboradores', icon: '🛡️' },
-  { id: 'whatsapp', label: 'WhatsApp & Atendimento', icon: '💬' },
-  { id: 'other', label: 'Outro Setor', icon: '⚙️' },
+const MODULE_OPTIONS: { id: SupportTicketModule; label: string; icon: React.ComponentType<{ size?: number; color?: string }> }[] = [
+  { id: 'home', label: 'Início', icon: Home },
+  { id: 'crm', label: 'Funil de Vendas / CRM', icon: Target },
+  { id: 'debutantes', label: 'Central de Debutantes', icon: Crown },
+  { id: 'venues', label: 'Casas de Festa', icon: Building2 },
+  { id: 'collaborators', label: 'Equipe & Colaboradores', icon: Shield },
+  { id: 'whatsapp', label: 'WhatsApp & Atendimento', icon: MessageSquare },
+  { id: 'other', label: 'Outro Setor', icon: Settings },
 ];
 
 export const AdminSupportModal: React.FC<AdminSupportModalProps> = ({ isOpen, onClose }) => {
@@ -477,8 +477,8 @@ export const AdminSupportModal: React.FC<AdminSupportModalProps> = ({ isOpen, on
                           }}
                         >
                           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '3px' }}>
-                            <span style={{ fontSize: '0.7rem', fontWeight: 800, color: isDev ? '#D4AF37' : '#14A9D7' }}>
-                              {m.senderName} {isDev && '⚡ (Desenvolvedor)'}
+                            <span style={{ fontSize: '0.7rem', fontWeight: 800, color: isDev ? '#D4AF37' : '#14A9D7', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              {m.senderName} {isDev && <span style={{ display: 'inline-flex', alignItems: 'center', gap: '2px' }}><Zap size={11} /> (Desenvolvedor)</span>}
                             </span>
                             <span style={{ fontSize: '0.62rem', color: '#8096A8' }}>
                               {new Date(m.createdAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
@@ -581,7 +581,7 @@ export const AdminSupportModal: React.FC<AdminSupportModalProps> = ({ isOpen, on
                           transition: 'all 0.12s ease',
                         }}
                       >
-                        <span style={{ fontSize: '1rem' }}>{m.icon}</span>
+                        <m.icon size={16} />
                         <span>{m.label}</span>
                       </button>
                     );
@@ -646,7 +646,7 @@ export const AdminSupportModal: React.FC<AdminSupportModalProps> = ({ isOpen, on
                   marginBottom: '8px',
                   lineHeight: '1.4',
                 }}>
-                  💡 <strong style={{ color: '#14A9D7' }}>Dica para envio de vídeo:</strong> Suba o vídeo no seu <strong>Google Drive</strong> ou no <strong>YouTube (como Não Listado)</strong> e cole o link público abaixo.
+                  <HelpCircle size={14} style={{ display: 'inline', verticalAlign: '-2px', marginRight: '4px', color: '#14A9D7' }} /> <strong style={{ color: '#14A9D7' }}>Dica para envio de vídeo:</strong> Suba o vídeo no seu <strong>Google Drive</strong> ou no <strong>YouTube (como Não Listado)</strong> e cole o link público abaixo.
                 </div>
                 <input
                   type="url"
@@ -745,7 +745,9 @@ export const AdminSupportModal: React.FC<AdminSupportModalProps> = ({ isOpen, on
                   borderRadius: '14px',
                   border: '1px dashed rgba(255, 255, 255, 0.1)',
                 }}>
-                  <div style={{ fontSize: '2rem', marginBottom: '8px' }}>✨</div>
+                  <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '12px' }}>
+                    <CheckCircle2 size={32} color="#10B981" />
+                  </div>
                   <h4 style={{ fontSize: '0.9rem', fontWeight: 800, color: '#FFFFFF', margin: 0 }}>
                     Nenhuma solicitação aberta recentemente
                   </h4>

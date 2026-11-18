@@ -1,5 +1,6 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { isUuid, generateUuid } from '../utils/uuid';
+import { generateBase36Code } from './contactService';
 import { isLidIdentifier } from './uazapiSseService';
 import type { Lead, LeadActivity, LeadParticipant } from '../types/admin';
 
@@ -56,6 +57,10 @@ function mapLeadToDatabase(lead: Partial<Lead>): Record<string, any> {
   if (lead.debutanteName !== undefined) payload.debutante_name = lead.debutanteName;
   if (lead.debutanteSlug !== undefined) payload.debutante_slug = lead.debutanteSlug;
   if (lead.masterId !== undefined) payload.master_id = isUuid(lead.masterId) ? lead.masterId : null;
+  if (lead.contactId !== undefined) payload.contact_id = (lead.contactId && isUuid(lead.contactId)) ? lead.contactId : null;
+  if ((lead as any).contact_id !== undefined) payload.contact_id = ((lead as any).contact_id && isUuid((lead as any).contact_id)) ? (lead as any).contact_id : null;
+  if (lead.commercialCode !== undefined) payload.commercial_code = lead.commercialCode;
+  if (lead.customFieldsData !== undefined) payload.custom_fields_data = lead.customFieldsData;
 
   if (lead.email !== undefined) payload.email = lead.email;
   if (lead.neighborhood !== undefined) payload.neighborhood = lead.neighborhood;
@@ -99,6 +104,8 @@ function mapLeadToDatabase(lead: Partial<Lead>): Record<string, any> {
   if (lead.unreadCount !== undefined) payload.unread_count = lead.unreadCount;
   if (lead.lastInteractionAt !== undefined) payload.last_interaction_at = lead.lastInteractionAt;
   if (lead.lastMessageDirection !== undefined) payload.last_message_direction = lead.lastMessageDirection;
+  if (lead.lastMessageText !== undefined) payload.last_message_text = lead.lastMessageText;
+  if (lead.lastMessageAt !== undefined) payload.last_message_at = lead.lastMessageAt;
 
   // Preserva dualmente em custom_field_values para compatibilidade total
   payload.custom_field_values = {
@@ -253,6 +260,9 @@ export function formatLeadFromDb(row: any, leadActivities: LeadActivity[] = [], 
     id: row.id,
     masterId: row.master_id || undefined,
     code: row.code,
+    commercialCode: row.commercial_code || undefined,
+    contactId: row.contact_id || undefined,
+    customFieldsData: row.custom_fields_data || {},
     funnelId: row.funnel_id,
     venueId: row.venue_id,
     venueName: row.venue_name || undefined,
@@ -328,6 +338,8 @@ export function formatLeadFromDb(row: any, leadActivities: LeadActivity[] = [], 
     unreadCount: row.unread_count !== undefined && row.unread_count !== null ? Number(row.unread_count) : 0,
     lastInteractionAt: row.last_interaction_at || undefined,
     lastMessageDirection: row.last_message_direction || undefined,
+    lastMessageText: row.last_message_text || undefined,
+    lastMessageAt: row.last_message_at || undefined,
     participants: leadParticipants,
     tasks: [],
     activities: leadActivities,
@@ -337,13 +349,19 @@ export function formatLeadFromDb(row: any, leadActivities: LeadActivity[] = [], 
 }
 
 export const leadService = {
-  async getAll(options?: { messageDays?: number; includeActivities?: boolean }): Promise<Lead[]> {
+  async getAll(options?: { messageDays?: number; includeActivities?: boolean; masterId?: string }): Promise<Lead[]> {
     if (!isSupabaseConfigured) return [];
     try {
-      const { data: leadsData, error: leadsError } = await supabase
+      let query = supabase
         .from('leads')
         .select('*')
         .order('created_at', { ascending: false });
+
+      if (options?.masterId) {
+        query = query.eq('master_id', options.masterId);
+      }
+
+      const { data: leadsData, error: leadsError } = await query;
 
       if (leadsError) {
         console.error('Erro ao buscar leads:', leadsError);
@@ -520,22 +538,31 @@ export const leadService = {
     }
   },
 
-  async update(id: string, updates: Partial<Lead>): Promise<boolean> {
+  async update(id: string, updates: Partial<Lead>, masterId?: string): Promise<boolean> {
     if (!isSupabaseConfigured) return false;
     try {
       const payload = mapLeadToDatabase(updates);
       if (Object.keys(payload).length === 0) return true;
+
+      const effectiveMasterId = (updates.masterId && isUuid(updates.masterId))
+        ? updates.masterId
+        : (masterId && isUuid(masterId) ? masterId : (payload.master_id && isUuid(payload.master_id) ? payload.master_id : null));
+
+      if (effectiveMasterId) {
+        payload.master_id = effectiveMasterId;
+      }
 
       // 1. Tenta atualizar diretamente por ID se for UUID
       if (isUuid(id)) {
         // Preserva e mescla custom_field_values com o que já existe no banco para nunca perder campos
         if (payload.custom_field_values) {
           try {
-            const { data: existingRow } = await supabase
+            let checkQ = supabase
               .from('leads')
-              .select('custom_field_values')
-              .eq('id', id)
-              .maybeSingle();
+              .select('custom_field_values, master_id')
+              .eq('id', id);
+            if (effectiveMasterId) checkQ = checkQ.eq('master_id', effectiveMasterId);
+            const { data: existingRow } = await checkQ.maybeSingle();
 
             if (existingRow?.custom_field_values && typeof existingRow.custom_field_values === 'object') {
               payload.custom_field_values = {
@@ -543,12 +570,19 @@ export const leadService = {
                 ...payload.custom_field_values,
               };
             }
+            if (!effectiveMasterId && existingRow?.master_id) {
+              payload.master_id = existingRow.master_id;
+            }
           } catch {
             // Continua normalmente se a consulta falhar
           }
         }
 
-        let { data, error } = await supabase.from('leads').update(payload).eq('id', id).select('id');
+        let query = supabase.from('leads').update(payload).eq('id', id);
+        if (effectiveMasterId || payload.master_id) {
+          query = query.eq('master_id', effectiveMasterId || payload.master_id);
+        }
+        let { data, error } = await query.select('id');
         if (!error && data && data.length > 0) return true;
 
         if (error) {
@@ -563,7 +597,11 @@ export const leadService = {
           delete fallbackPayload.installment_value;
           delete fallbackPayload.decision_makers;
           delete fallbackPayload.contacts;
-          const { data: retryData, error: retryErr } = await supabase.from('leads').update(fallbackPayload).eq('id', id).select('id');
+          let retryQ = supabase.from('leads').update(fallbackPayload).eq('id', id);
+          if (effectiveMasterId || payload.master_id) {
+            retryQ = retryQ.eq('master_id', effectiveMasterId || payload.master_id);
+          }
+          const { data: retryData, error: retryErr } = await retryQ.select('id');
           if (!retryErr && retryData && retryData.length > 0) return true;
         }
       }
@@ -571,7 +609,11 @@ export const leadService = {
       // 2. Tenta por code
       const targetCode = (!isUuid(id) ? id : updates.code) || updates.code;
       if (targetCode) {
-        const { data, error } = await supabase.from('leads').update(payload).eq('code', targetCode).select('id');
+        let codeQ = supabase.from('leads').update(payload).eq('code', targetCode);
+        if (effectiveMasterId || payload.master_id) {
+          codeQ = codeQ.eq('master_id', effectiveMasterId || payload.master_id);
+        }
+        const { data, error } = await codeQ.select('id');
         if (!error && data && data.length > 0) return true;
       }
 
@@ -580,7 +622,8 @@ export const leadService = {
         const cleanPhone = updates.phone.replace(/\D/g, '');
         if (cleanPhone.length >= 8) {
           let query = supabase.from('leads').update(payload).ilike('phone', `%${cleanPhone.slice(-8)}%`);
-          if (payload.master_id) query = query.eq('master_id', payload.master_id);
+          const targetMaster = effectiveMasterId || payload.master_id;
+          if (targetMaster) query = query.eq('master_id', targetMaster);
           const { data, error } = await query.select('id');
           if (!error && data && data.length > 0) return true;
         }
@@ -593,14 +636,120 @@ export const leadService = {
     }
   },
 
-  async upsert(lead: Partial<Lead> & { id: string }): Promise<boolean> {
+  async upsert(lead: Partial<Lead> & { id: string }, masterId?: string): Promise<boolean> {
     if (!isSupabaseConfigured) return false;
     try {
       const payload = mapLeadToDatabase(lead);
 
+      // Blindagem estrita de Tenant: Resolve e valida master_id
+      let effectiveMasterId = (lead.masterId && isUuid(lead.masterId))
+        ? lead.masterId
+        : ((lead as any).master_id && isUuid((lead as any).master_id)
+            ? (lead as any).master_id
+            : (masterId && isUuid(masterId) ? masterId : (payload.master_id && isUuid(payload.master_id) ? payload.master_id : null)));
+
+      if (!effectiveMasterId && payload.venue_id && isUuid(payload.venue_id)) {
+        const { data: v } = await supabase.from('venues').select('master_id').eq('id', payload.venue_id).maybeSingle();
+        if (v?.master_id && isUuid(v.master_id)) {
+          effectiveMasterId = v.master_id;
+        }
+      }
+
+      if (!effectiveMasterId && isUuid(lead.id)) {
+        const { data: existingLead } = await supabase.from('leads').select('master_id').eq('id', lead.id).maybeSingle();
+        if (existingLead?.master_id && isUuid(existingLead.master_id)) {
+          effectiveMasterId = existingLead.master_id;
+        }
+      }
+
+      if (effectiveMasterId) {
+        payload.master_id = effectiveMasterId;
+      }
+
+      // -----------------------------------------------------------------------
+      // INGESTÃO LEAD + CONTATO (Regra 2):
+      // Ao receber/criar qualquer lead, verificar se o telefone já existe na tabela contacts
+      // sob o mesmo master_id. Se não existir, criar o Contact automaticamente e atrelar contactId ao Lead.
+      // -----------------------------------------------------------------------
+      const rawLeadPhone = String(payload.phone || lead.phone || '').trim();
+      const cleanPhone = rawLeadPhone.replace(/\D/g, '');
+
+      if (effectiveMasterId && cleanPhone.length >= 8) {
+        try {
+          let resolvedContactId: string | null = payload.contact_id || (lead as any).contactId || null;
+
+          if (!resolvedContactId) {
+            // Busca contato existente na Central de Contatos
+            const { data: existingContacts } = await supabase
+              .from('contacts')
+              .select('id, name')
+              .eq('master_id', effectiveMasterId)
+              .is('deleted_at', null)
+              .or(`primary_phone.eq.${cleanPhone},primary_phone.ilike.%${cleanPhone.slice(-8)}%`)
+              .limit(1);
+
+            if (existingContacts && existingContacts.length > 0) {
+              resolvedContactId = existingContacts[0].id;
+            } else {
+              // Se não existir, cria o Contact automaticamente com código Base36
+              const newContactCode = generateBase36Code('CONT', 8);
+              const contactPayload: Record<string, any> = {
+                master_id: effectiveMasterId,
+                code: newContactCode,
+                name: payload.name || lead.name || 'Sem nome',
+                primary_phone: cleanPhone || rawLeadPhone,
+                email: payload.email || lead.email || null,
+                relationship_role: 'Titular',
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+              };
+
+              const { data: newContact, error: newContactErr } = await supabase
+                .from('contacts')
+                .insert(contactPayload)
+                .select('id')
+                .single();
+
+              if (!newContactErr && newContact) {
+                resolvedContactId = newContact.id;
+              } else {
+                console.warn('⚠️ Não foi possível auto-criar contato na ingestão do lead:', newContactErr?.message);
+              }
+            }
+          }
+
+          if (resolvedContactId) {
+            payload.contact_id = resolvedContactId;
+            (lead as any).contactId = resolvedContactId;
+
+            // Vincula acesso à casa de festas (contact_venue_access)
+            if (payload.venue_id && isUuid(payload.venue_id)) {
+              await supabase
+                .from('contact_venue_access')
+                .upsert({
+                  master_id: effectiveMasterId,
+                  contact_id: resolvedContactId,
+                  venue_id: payload.venue_id,
+                  last_interaction_at: new Date().toISOString(),
+                }, { onConflict: 'contact_id,venue_id' })
+                .maybeSingle();
+            }
+          }
+        } catch (contactIngestErr) {
+          console.warn('⚠️ Erro na ingestão automática de Contato para Lead:', contactIngestErr);
+        }
+      }
+
+      // Garante commercial_code no formato LEAD-XXXXXXXX
+      if (!payload.commercial_code) {
+        payload.commercial_code = (lead as any).commercialCode || generateBase36Code('LEAD', 8);
+      }
+
       // 1. Tenta por ID
       if (isUuid(lead.id)) {
-        let { data, error } = await supabase.from('leads').update(payload).eq('id', lead.id).select('id');
+        let updateQ = supabase.from('leads').update(payload).eq('id', lead.id);
+        if (payload.master_id) updateQ = updateQ.eq('master_id', payload.master_id);
+        let { data, error } = await updateQ.select('id');
         if (!error && data && data.length > 0) return true;
 
         if (error) {
@@ -615,7 +764,9 @@ export const leadService = {
           delete fallbackPayload.installment_value;
           delete fallbackPayload.decision_makers;
           delete fallbackPayload.contacts;
-          const { data: retryData, error: retryErr } = await supabase.from('leads').update(fallbackPayload).eq('id', lead.id).select('id');
+          let retryQ = supabase.from('leads').update(fallbackPayload).eq('id', lead.id);
+          if (payload.master_id) retryQ = retryQ.eq('master_id', payload.master_id);
+          const { data: retryData, error: retryErr } = await retryQ.select('id');
           if (!retryErr && retryData && retryData.length > 0) return true;
         }
       }
@@ -623,7 +774,9 @@ export const leadService = {
       // 2. Tenta por code
       const targetCode = lead.code || (!isUuid(lead.id) ? lead.id : undefined);
       if (targetCode) {
-        const { data, error } = await supabase.from('leads').update(payload).eq('code', targetCode).select('id');
+        let codeQ = supabase.from('leads').update(payload).eq('code', targetCode);
+        if (payload.master_id) codeQ = codeQ.eq('master_id', payload.master_id);
+        const { data, error } = await codeQ.select('id');
         if (!error && data && data.length > 0) return true;
       }
 
@@ -657,16 +810,30 @@ export const leadService = {
             if (existingRecord.stage && (!lead.stage || !payload.stage)) {
               safePayload.stage = existingRecord.stage;
             }
-            const { error: updErr } = await supabase
-              .from('leads')
-              .update(safePayload)
-              .eq('id', existingRecord.id);
+            if (existingRecord.master_id && !safePayload.master_id) {
+              safePayload.master_id = existingRecord.master_id;
+            }
+            if (payload.contact_id) {
+              safePayload.contact_id = payload.contact_id;
+            }
+            if (payload.commercial_code) {
+              safePayload.commercial_code = payload.commercial_code;
+            }
+            let updQ = supabase.from('leads').update(safePayload).eq('id', existingRecord.id);
+            if (safePayload.master_id) updQ = updQ.eq('master_id', safePayload.master_id);
+            const { error: updErr } = await updQ;
             if (!updErr) return true;
           }
         }
       }
 
       // 4. Se não encontrou registro existente, cria novo
+      // REGRA SUPREMA DE BLINDAGEM MULTI-TENANT: Bloqueia inserção de novo lead sem master_id
+      if (!payload.master_id || !isUuid(payload.master_id)) {
+        console.error('❌ Bloqueio de Segurança Multi-Tenant: Tentativa de inserção de lead sem master_id válido.');
+        return false;
+      }
+
       payload.id = isUuid(lead.id) ? lead.id : generateUuid();
       if (!payload.code) payload.code = lead.code || (!isUuid(lead.id) ? lead.id : `LEAD-${Math.random().toString(36).substring(2, 8).toUpperCase()}`);
       if (!payload.name) payload.name = lead.name || 'Sem nome';
@@ -674,25 +841,31 @@ export const leadService = {
       if (!payload.stage) payload.stage = lead.stage || 'new_lead';
 
       if (!payload.venue_id) {
-        const { data: v } = await supabase.from('venues').select('id').eq('is_active', true).limit(1).maybeSingle();
+        let venueQ = supabase.from('venues').select('id').eq('is_active', true);
+        if (payload.master_id) venueQ = venueQ.eq('master_id', payload.master_id);
+        const { data: v } = await venueQ.limit(1).maybeSingle();
         if (v?.id) payload.venue_id = v.id;
       }
       if (!payload.funnel_id && payload.venue_id) {
-        const { data: f } = await supabase
+        let funnelQ = supabase
           .from('commercial_funnels')
           .select('id')
           .eq('venue_id', payload.venue_id)
-          .eq('is_post_sale', false)
+          .eq('is_post_sale', false);
+        if (payload.master_id) funnelQ = funnelQ.eq('master_id', payload.master_id);
+        const { data: f } = await funnelQ
           .order('is_primary', { ascending: false })
           .limit(1)
           .maybeSingle();
         if (f?.id) payload.funnel_id = f.id;
       }
       if (!payload.funnel_id) {
-        const { data: f } = await supabase
+        let funnelQ = supabase
           .from('commercial_funnels')
           .select('id')
-          .eq('is_post_sale', false)
+          .eq('is_post_sale', false);
+        if (payload.master_id) funnelQ = funnelQ.eq('master_id', payload.master_id);
+        const { data: f } = await funnelQ
           .order('is_primary', { ascending: false })
           .limit(1)
           .maybeSingle();
@@ -702,7 +875,9 @@ export const leadService = {
       const { error: insertErr } = await supabase.from('leads').insert(payload);
       if (insertErr) {
         if (insertErr.code === '23505') {
-          const { error: finalUpdErr } = await supabase.from('leads').update(payload).eq('id', payload.id);
+          let finalUpdQ = supabase.from('leads').update(payload).eq('id', payload.id);
+          if (payload.master_id) finalUpdQ = finalUpdQ.eq('master_id', payload.master_id);
+          const { error: finalUpdErr } = await finalUpdQ;
           if (!finalUpdErr) return true;
         }
         console.error('❌ Erro ao inserir novo lead no Supabase:', insertErr);
@@ -802,6 +977,55 @@ export const leadService = {
     }
   },
 
+  /**
+   * Insere várias atividades de uma vez (sincronização de histórico), em lotes de 100.
+   * NÃO checa duplicatas mensagem a mensagem: o chamador já comparou com o banco (plano de sincronização).
+   * Retorna quantas foram gravadas.
+   */
+  async addActivitiesBatch(leadId: string, activities: LeadActivity[]): Promise<number> {
+    if (!isSupabaseConfigured || !isUuid(leadId) || activities.length === 0) return 0;
+    const rows = activities.map(activity => {
+      let storedText = activity.text || '';
+      if (activity.mediaUrl && !storedText.startsWith('[media:')) {
+        storedText = `[media:${activity.mediaUrl}|${activity.mediaType || 'document'}] ${storedText}`.trim();
+      }
+      const row: Record<string, any> = {
+        id: ('id' in activity && activity.id && isUuid(activity.id)) ? activity.id : generateUuid(),
+        lead_id: leadId,
+        type: activity.type,
+        title: activity.title,
+        text: storedText,
+        author_name: activity.authorName || 'Administrador',
+        author_id: isUuid(activity.authorId) ? activity.authorId : null,
+        author_avatar_url: activity.authorAvatarUrl || '',
+        timestamp: activity.timestamp || new Date().toISOString(),
+        metadata: {
+          ...((activity as any).metadata || {}),
+          ...(activity.messageId ? { messageId: activity.messageId } : {}),
+        },
+      };
+      if (activity.status) row.status = activity.status;
+      return row;
+    });
+
+    let saved = 0;
+    for (let i = 0; i < rows.length; i += 100) {
+      const chunk = rows.slice(i, i + 100);
+      const { error } = await supabase.from('lead_activities').insert(chunk);
+      if (error) {
+        console.error('Erro ao gravar lote de atividades:', error.message);
+        // Falha do lote não derruba a sincronização inteira: tenta uma a uma só este lote
+        for (const row of chunk) {
+          const { error: singleErr } = await supabase.from('lead_activities').insert(row);
+          if (!singleErr) saved += 1;
+        }
+      } else {
+        saved += chunk.length;
+      }
+    }
+    return saved;
+  },
+
   async updateActivity(activityId: string, updates: Partial<LeadActivity>): Promise<boolean> {
     if (!isSupabaseConfigured || !isUuid(activityId)) return false;
     try {
@@ -888,6 +1112,53 @@ export const leadService = {
   },
 
   /**
+   * Presenca por colaborador: soma, por dia, de (ultima - primeira) atividade em lead_activities.
+   * `authorIds` ja vem escopado por Master (colaboradores do contexto). Paginado (1000/pagina, max. 60 paginas).
+   */
+  async getAuthorActivityPresence(
+    authorIds: string[],
+    startISO: string,
+    endISO: string
+  ): Promise<{ presence: Record<string, { minutes: number; days: number }>; truncated: boolean }> {
+    const presence: Record<string, { minutes: number; days: number }> = {};
+    if (!isSupabaseConfigured || authorIds.length === 0) return { presence, truncated: false };
+    const PAGE = 1000;
+    const MAX_PAGES = 60;
+    const perDay = new Map<string, { first: number; last: number }>();
+    let truncated = false;
+    for (let page = 0; page < MAX_PAGES; page++) {
+      const { data, error } = await supabase
+        .from('lead_activities')
+        .select('author_id,timestamp')
+        .in('author_id', authorIds)
+        .gte('timestamp', startISO)
+        .lte('timestamp', endISO)
+        .order('timestamp', { ascending: false })
+        .range(page * PAGE, page * PAGE + PAGE - 1);
+      if (error) throw error;
+      const rows = data || [];
+      rows.forEach(row => {
+        const t = new Date(row.timestamp as string).getTime();
+        if (!row.author_id || !Number.isFinite(t)) return;
+        const key = `${row.author_id}|${new Date(t).toLocaleDateString('sv-SE')}`;
+        const cur = perDay.get(key);
+        if (!cur) perDay.set(key, { first: t, last: t });
+        else { cur.first = Math.min(cur.first, t); cur.last = Math.max(cur.last, t); }
+      });
+      if (rows.length < PAGE) break;
+      if (page === MAX_PAGES - 1) truncated = true;
+    }
+    perDay.forEach((v, key) => {
+      const id = key.split('|')[0];
+      const row = presence[id] || { minutes: 0, days: 0 };
+      row.minutes += (v.last - v.first) / 60000;
+      row.days += 1;
+      presence[id] = row;
+    });
+    return { presence, truncated };
+  },
+
+  /**
    * Helpers para salvar e recuperar atividades recentes do lead no LocalStorage
    * para exibição instantânea (0ms) no WhatsApp Workspace
    */
@@ -948,7 +1219,7 @@ export const leadService = {
   async getLeadConversationDays(
     leadId: string, 
     days: number = 3
-  ): Promise<{ activities: LeadActivity[]; hasOlder: boolean; oldestTimestamp?: string }> {
+  ): Promise<{ activities: LeadActivity[]; hasOlder: boolean; oldestTimestamp?: string; error?: boolean }> {
     if (!isSupabaseConfigured || !leadId) return { activities: [], hasOlder: false };
     try {
       let finalLeadId = leadId;
@@ -961,7 +1232,8 @@ export const leadService = {
       // Otimização de Performance Extrema:
       // Busca em UMA ÚNICA chamada rápida ao Supabase as mensagens mais recentes (limite proporcional aos dias solicitados),
       // retornando instantaneamente (<300ms) sem múltiplos round-trips sequenciais bloqueantes
-      const fetchLimit = Math.max(60, (days || 3) * 35);
+      // Piso de 100: notas/auditorias dividem a janela com as mensagens de chat.
+      const fetchLimit = Math.max(100, (days || 3) * 35);
       const { data: acts, error: actsErr } = await supabase
         .from('lead_activities')
         .select('*')
@@ -969,7 +1241,11 @@ export const leadService = {
         .order('timestamp', { ascending: false })
         .limit(fetchLimit);
 
-      if (actsErr || !acts || acts.length === 0) {
+      if (actsErr) {
+        console.warn('Erro ao carregar histórico da conversa:', actsErr.message);
+        return { activities: [], hasOlder: false, error: true };
+      }
+      if (!acts || acts.length === 0) {
         return { activities: [], hasOlder: false };
       }
 
@@ -987,7 +1263,7 @@ export const leadService = {
       };
     } catch (err) {
       console.error('Falha em getLeadConversationDays:', err);
-      return { activities: [], hasOlder: false };
+      return { activities: [], hasOlder: false, error: true };
     }
   },
 
@@ -1026,15 +1302,34 @@ export const leadService = {
     }
   },
 
-  async delete(id: string): Promise<boolean> {
+  async delete(id: string, masterId?: string): Promise<boolean> {
     if (!isSupabaseConfigured) return false;
     try {
+      if (masterId && isUuid(masterId)) {
+        // Valida se o lead pertence ao master antes de deletar dependências
+        const { data: leadCheck } = await supabase
+          .from('leads')
+          .select('id')
+          .eq('id', id)
+          .eq('master_id', masterId)
+          .maybeSingle();
+
+        if (!leadCheck) {
+          console.warn('Tentativa de exclusão de lead de outro tenant ou inexistente ignorada.');
+          return false;
+        }
+      }
+
       await supabase.from('lead_activities').delete().eq('lead_id', id);
       await supabase.from('lead_participants').delete().eq('lead_id', id);
       await supabase.from('admin_tasks').delete().eq('lead_id', id);
       await supabase.from('appointments').delete().eq('lead_id', id);
 
-      const { error } = await supabase.from('leads').delete().eq('id', id);
+      let deleteQ = supabase.from('leads').delete().eq('id', id);
+      if (masterId && isUuid(masterId)) {
+        deleteQ = deleteQ.eq('master_id', masterId);
+      }
+      const { error } = await deleteQ;
       if (error) {
         console.error('❌ Erro ao deletar lead no Supabase:', error);
         return false;
@@ -1046,15 +1341,30 @@ export const leadService = {
     }
   },
 
-  async deleteMultiple(ids: string[]): Promise<boolean> {
+  async deleteMultiple(ids: string[], masterId?: string): Promise<boolean> {
     if (!isSupabaseConfigured || ids.length === 0) return false;
     try {
-      await supabase.from('lead_activities').delete().in('lead_id', ids);
-      await supabase.from('lead_participants').delete().in('lead_id', ids);
-      await supabase.from('admin_tasks').delete().in('lead_id', ids);
-      await supabase.from('appointments').delete().in('lead_id', ids);
+      let targetIds = ids;
+      if (masterId && isUuid(masterId)) {
+        const { data: validLeads } = await supabase
+          .from('leads')
+          .select('id')
+          .in('id', ids)
+          .eq('master_id', masterId);
+        targetIds = (validLeads || []).map(l => l.id);
+        if (targetIds.length === 0) return true;
+      }
 
-      const { error } = await supabase.from('leads').delete().in('id', ids);
+      await supabase.from('lead_activities').delete().in('lead_id', targetIds);
+      await supabase.from('lead_participants').delete().in('lead_id', targetIds);
+      await supabase.from('admin_tasks').delete().in('lead_id', targetIds);
+      await supabase.from('appointments').delete().in('lead_id', targetIds);
+
+      let deleteQ = supabase.from('leads').delete().in('id', targetIds);
+      if (masterId && isUuid(masterId)) {
+        deleteQ = deleteQ.eq('master_id', masterId);
+      }
+      const { error } = await deleteQ;
       if (error) {
         console.error('❌ Erro ao deletar múltiplos leads no Supabase:', error);
         return false;
@@ -1066,22 +1376,27 @@ export const leadService = {
     }
   },
 
-  async archive(id: string): Promise<boolean> {
+  async archive(id: string, masterId?: string): Promise<boolean> {
     if (!isSupabaseConfigured) return false;
     try {
       const now = new Date().toISOString();
-      const { error } = await supabase.from('leads').update({
+      let query = supabase.from('leads').update({
         is_archived: true,
         archived_at: now,
         funnel_id: null,
       }).eq('id', id);
+      if (masterId && isUuid(masterId)) query = query.eq('master_id', masterId);
+
+      const { error } = await query;
 
       if (error) {
         // Fallback para custom_field_values caso a coluna direta ainda não tenha sido aplicada
-        await supabase.from('leads').update({
+        let fallbackQ = supabase.from('leads').update({
           funnel_id: null,
           custom_field_values: { is_archived: true, archived_at: now }
         }).eq('id', id);
+        if (masterId && isUuid(masterId)) fallbackQ = fallbackQ.eq('master_id', masterId);
+        await fallbackQ;
       }
       return true;
     } catch (err) {
@@ -1090,22 +1405,27 @@ export const leadService = {
     }
   },
 
-  async unarchive(id: string, funnelId?: string, stageId?: string): Promise<boolean> {
+  async unarchive(id: string, funnelId?: string, stageId?: string, masterId?: string): Promise<boolean> {
     if (!isSupabaseConfigured) return false;
     try {
-      const { error } = await supabase.from('leads').update({
+      let query = supabase.from('leads').update({
         is_archived: false,
         archived_at: null,
         funnel_id: funnelId || null,
         stage: stageId || 'new_lead',
       }).eq('id', id);
+      if (masterId && isUuid(masterId)) query = query.eq('master_id', masterId);
+
+      const { error } = await query;
 
       if (error) {
-        await supabase.from('leads').update({
+        let fallbackQ = supabase.from('leads').update({
           funnel_id: funnelId || null,
           stage: stageId || 'new_lead',
           custom_field_values: { is_archived: false, archived_at: null }
         }).eq('id', id);
+        if (masterId && isUuid(masterId)) fallbackQ = fallbackQ.eq('master_id', masterId);
+        await fallbackQ;
       }
       return true;
     } catch (err) {

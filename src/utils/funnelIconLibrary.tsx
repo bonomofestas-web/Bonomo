@@ -148,6 +148,24 @@ FUNNEL_AND_STAGE_ICONS.forEach(item => {
   ICON_MAP.set(item.id, item);
 });
 
+// Garante contraste de ícones coloridos sobre fundos claros: escurece tons de alta luminância
+// (amarelo, laranja claro, ciano) mantendo o matiz. No tema escuro a cor original é preservada.
+const readableIconColor = (color?: string): string | undefined => {
+  if (!color || typeof document === 'undefined') return color;
+  if (document.body.classList.contains('admin-theme-dark') || document.documentElement.classList.contains('dark')) return color;
+  const m = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(color.trim());
+  if (!m) return color;
+  const hex = m[1].length === 3 ? m[1].split('').map(c => c + c).join('') : m[1];
+  let rgb = [0, 2, 4].map(i => parseInt(hex.slice(i, i + 2), 16));
+  const lum = (c: number[]) => {
+    const [r, g, b] = c.map(v => { const x = v / 255; return x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4); });
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  };
+  // 0.20 de luminância relativa ~ 4:1 de contraste contra branco
+  for (let i = 0; i < 12 && lum(rgb) > 0.20; i++) rgb = rgb.map(v => Math.round(v * 0.9));
+  return '#' + rgb.map(v => v.toString(16).padStart(2, '0')).join('');
+};
+
 // Helper universal de renderização de ícone com aliases de estágios e fallbacks inteligentes
 export const renderFunnelOrStageIcon = (
   iconName?: string,
@@ -155,7 +173,7 @@ export const renderFunnelOrStageIcon = (
   color?: string,
   fallback = 'target'
 ): React.ReactNode => {
-  const iconColor = color || 'currentColor';
+  const iconColor = readableIconColor(color) || 'currentColor';
   if (!iconName) {
     const FallbackComp = ICON_MAP.get(fallback)?.icon || Target;
     return <FallbackComp size={size} color={iconColor} />;

@@ -48,6 +48,7 @@ export const collaboratorService = {
           permissions: rawPerms,
           pinnedFunnelIds: Array.isArray(row.pinned_funnel_ids) ? row.pinned_funnel_ids : [],
           theme: row.theme || 'light',
+          goals: row.goals && typeof row.goals === 'object' ? row.goals : undefined,
           createdAt: row.created_at || new Date().toISOString(),
         };
       });
@@ -82,6 +83,7 @@ export const collaboratorService = {
       if (collab.activatedAt !== undefined) payload.activated_at = collab.activatedAt;
       if (collab.lastLoginAt !== undefined) payload.last_login_at = collab.lastLoginAt;
       if (collab.pinnedFunnelIds !== undefined) payload.pinned_funnel_ids = collab.pinnedFunnelIds;
+      if (collab.goals !== undefined) payload.goals = collab.goals;
 
       // Preserva metadados de setores e cargo na coluna permissions (que é array no Supabase)
       if (collab.sectors || collab.department || collab.permissions || collab.customJobTitle !== undefined) {
@@ -106,6 +108,7 @@ export const collaboratorService = {
       const stripOptionalColumns = (obj: Record<string, any>) => {
         const safe = { ...obj };
         delete safe.pinned_funnel_ids;
+        delete safe.goals;
         delete safe.custom_job_title;
         delete safe.sectors;
         delete safe.department;

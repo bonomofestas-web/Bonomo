@@ -1,3 +1,5 @@
+import { toast } from 'sonner';
+import { HeaderActions } from './HeaderActions';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Building2, Calendar, Plus, MapPin, 
@@ -240,7 +242,7 @@ export const AdminVenuesView: React.FC<AdminVenuesViewProps> = ({ onNavigateToFu
       setTimeout(() => setUploadSuccessField(null), 2500);
     } catch (err) {
       console.error('Erro ao fazer upload de mídia:', field, err);
-      alert('Não foi possível enviar o arquivo. Verifique sua conexão e tente novamente.');
+      toast.warning('Não foi possível enviar o arquivo. Verifique sua conexão e tente novamente.');
     } finally {
       setUploadingField(null);
     }
@@ -2257,22 +2259,8 @@ export const AdminVenuesView: React.FC<AdminVenuesViewProps> = ({ onNavigateToFu
       animation: 'fadeIn 0.25s ease-out',
       fontFamily: "'Plus Jakarta Sans', sans-serif",
     }}>
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '14px' }}>
-        <div>
-          <h1 style={{
-            fontSize: '1.6rem',
-            fontWeight: 900,
-            color: 'var(--adm-text-title)',
-            margin: '0 0 4px 0',
-            letterSpacing: '-0.5px',
-          }}>
-            Casas de Festas
-          </h1>
-          <p style={{ margin: 0, fontSize: '0.84rem', color: 'var(--adm-text-muted)' }}>
-            Gerencie as unidades e salões exclusivos da rede F5 System.
-          </p>
-        </div>
+      {/* Título no breadcrumb; ação primária no menu superior */}
+      <HeaderActions>
 
         {currentUser?.role === 'master' && (
           <button
@@ -2293,7 +2281,7 @@ export const AdminVenuesView: React.FC<AdminVenuesViewProps> = ({ onNavigateToFu
             <span>Cadastrar Nova Casa</span>
           </button>
         )}
-      </div>
+      </HeaderActions>
 
       {/* Grid of Venues or Empty State */}
       {venues.length === 0 ? (

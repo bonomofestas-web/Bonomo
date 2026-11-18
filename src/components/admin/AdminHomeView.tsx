@@ -1204,7 +1204,7 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
                     >
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, flex: 1 }}>
                         {typeConf.icon}
-                        <span style={{ fontSize: '0.76rem', fontWeight: 700, color: '#FFFFFF', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        <span style={{ fontSize: '0.76rem', fontWeight: 700, color: 'var(--adm-text-title)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                           {task.title}
                         </span>
                         {leadName && (
@@ -1354,7 +1354,7 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
                             }}>
                               {app.time || hour}
                             </span>
-                            <span style={{ fontSize: '0.76rem', fontWeight: 800, color: '#FFFFFF', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            <span style={{ fontSize: '0.76rem', fontWeight: 800, color: 'var(--adm-text-title)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                               {app.title}
                             </span>
                             {app.debutanteName && (
@@ -1420,7 +1420,7 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
                             }}>
                               {task.dueTime}
                             </span>
-                            <span style={{ fontSize: '0.76rem', fontWeight: 700, color: '#FFFFFF', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            <span style={{ fontSize: '0.76rem', fontWeight: 700, color: 'var(--adm-text-title)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                               {task.title}
                             </span>
                             {leadName && (

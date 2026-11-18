@@ -391,7 +391,7 @@ export const PublicChangelogView: React.FC = () => {
         gap: '6px',
       }}>
         <span>F5 System • Plataforma Oficial de Gestão para Redes de Casas de Festas</span>
-        <span>Isolamento Multi-Tenant Garantido • Tecnologia Cloudflare R2 & Supabase</span>
+        <span>Isolamento Multi-Tenant Garantido • Alta Segurança e Performance</span>
       </footer>
     </div>
   );
