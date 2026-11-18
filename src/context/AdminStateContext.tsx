@@ -4646,6 +4646,9 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     await funnelService.reorderFunnels(withUpdatedOrder);
   };
 
+  // Recibos de visualizacao ja reservados (lead|usuario|ciclo): trava imediata contra chamadas em sequencia
+  const viewReceiptKeysRef = React.useRef<Set<string>>(new Set());
+
   const markLeadAsRead = (leadId: string) => {
     const targetLead = leads.find(l => l.id === leadId);
     if (!targetLead) return;
@@ -4691,8 +4694,12 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       const isChat = a.type === 'contact' || (a.type === 'creation' && !!a.text?.trim());
       return isChat ? Math.max(max, tsOf(a)) : max;
     }, 0);
+    // Ciclo = desde a ultima mensagem do lead. Usa tambem o horario da ultima mensagem gravado no proprio lead, que
+    // sempre vem carregado (as atividades antigas podem ainda nao ter chegado quando a conversa abre).
+    const leadLastMsgTs = new Date((targetLead as any).lastMessageAt || targetLead.lastInteractionAt || 0).getTime() || 0;
+    const cycleTs = Math.max(lastChatTs, leadLastMsgTs);
     const alreadyViewedByMe = !!currentUser?.id && recentActs.some(a =>
-      isViewAuditAct(a) && a.authorId === currentUser.id && tsOf(a) >= lastChatTs
+      isViewAuditAct(a) && a.authorId === currentUser.id && tsOf(a) >= cycleTs
     );
     if (alreadyViewedByMe) {
       if (hasUnread) {
@@ -4707,6 +4714,21 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       }
       return;
     }
+
+    // Reserva o recibo deste usuario neste ciclo na hora: a 2a chamada (ex.: clique na lista + abertura da conversa) sai aqui
+    const receiptKey = `${leadId}|${currentUser?.id || author}|${cycleTs}`;
+    if (viewReceiptKeysRef.current.has(receiptKey)) {
+      if (hasUnread) {
+        setLeads(prev => {
+          const updated = prev.map(l => l.id === leadId ? { ...l, unreadCount: 0 } : l);
+          safeLocalStorageSet(STORAGE_KEY_LEADS, JSON.stringify(updated));
+          return updated;
+        });
+        if (isSupabaseConfigured) leadService.update(leadId, { unreadCount: 0 }).catch(() => {});
+      }
+      return;
+    }
+    viewReceiptKeysRef.current.add(receiptKey);
 
     const now = new Date();
     const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -4725,25 +4747,39 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       metadata: { isViewAudit: true },
     } as any;
 
-    setLeads(prev => {
-      const updated = prev.map(l => {
-        if (l.id === leadId) {
-          const merged = mergeAndSortActivities(l.activities || [], [newAct], leadId);
-          return { ...l, unreadCount: 0, activities: merged };
-        }
-        return l;
+    const commitReceipt = () => {
+      setLeads(prev => {
+        const updated = prev.map(l => {
+          if (l.id === leadId) {
+            const merged = mergeAndSortActivities(l.activities || [], [newAct], leadId);
+            return { ...l, unreadCount: 0, activities: merged };
+          }
+          return l;
+        });
+        safeLocalStorageSet(STORAGE_KEY_LEADS, JSON.stringify(updated));
+        return updated;
       });
-      safeLocalStorageSet(STORAGE_KEY_LEADS, JSON.stringify(updated));
-      return updated;
-    });
+      if (isSupabaseConfigured) {
+        leadService.addActivity(leadId, newAct).catch(err => {
+          console.warn('Erro ao salvar auditoria de visualização no Supabase:', err);
+        });
+      }
+    };
 
+    // O contador de nao lidas zera na hora; o recibo so e gravado se o banco confirmar que este usuario ainda nao viu neste ciclo
     if (isSupabaseConfigured) {
       leadService.update(leadId, { unreadCount: 0 }).catch(err => {
         console.warn('Erro ao zerar unreadCount no Supabase:', err);
       });
-      leadService.addActivity(leadId, newAct).catch(err => {
-        console.warn('Erro ao salvar auditoria de visualização no Supabase:', err);
+      void leadService.hasViewReceiptSince(leadId, currentUser?.id || '', cycleTs).then(already => {
+        if (already) {
+          setLeads(prev => prev.map(l => (l.id === leadId ? { ...l, unreadCount: 0 } : l)));
+        } else {
+          commitReceipt();
+        }
       });
+    } else {
+      commitReceipt();
     }
   };
 

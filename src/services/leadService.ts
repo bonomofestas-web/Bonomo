@@ -1149,6 +1149,28 @@ export const leadService = {
   },
 
   /** Jornada do lead em ordem cronologica (escopada por master_id). */
+  /**
+   * O colaborador ja gravou recibo de visualizacao deste lead depois de `sinceMs` (ultima mensagem do ciclo)?
+   * Consulta o banco porque as mensagens antigas podem nao estar carregadas na tela (evita recibos repetidos).
+   */
+  async hasViewReceiptSince(leadId: string, authorId: string, sinceMs: number): Promise<boolean> {
+    if (!isSupabaseConfigured || !isUuid(leadId) || !isUuid(authorId)) return false;
+    try {
+      const { data, error } = await supabase
+        .from('lead_activities')
+        .select('id')
+        .eq('lead_id', leadId)
+        .eq('author_id', authorId)
+        .eq('title', 'Mensagem Visualizada')
+        .gte('timestamp', new Date(sinceMs).toISOString())
+        .limit(1);
+      if (error) return false;
+      return (data || []).length > 0;
+    } catch {
+      return false;
+    }
+  },
+
   async getStageHistory(leadId: string, masterId: string): Promise<Array<{
     stageId: string; stageName?: string; funnelId?: string; enteredAt: string; leftAt?: string; movedByName?: string;
   }>> {
