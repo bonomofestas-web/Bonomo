@@ -446,7 +446,12 @@ export interface FunnelStageConfig {
   hints?: string;     // Dicas de negociação da etapa (estilo Como CRM)
   triggers?: FunnelStageTrigger[]; // Gatilhos de automação da etapa
   allowedCollaboratorIds?: string[]; // IDs de colaboradores autorizados a visualizar esta etapa (se vazio, todos veem)
+  visibility?: StageVisibility; // Quem enxerga a etapa (padrao: 'all'). Lista especifica em allowedCollaboratorIds tem precedencia
+  responsibility?: StageResponsibility; // De quem e o lead nesta etapa (padrao: 'both' = responsabilidade mutua)
 }
+
+export type StageVisibility = 'all' | 'sdr' | 'closer' | 'specific';
+export type StageResponsibility = 'sdr' | 'closer' | 'both';
 
 export type FunnelCustomFieldSection = 'commercial' | 'contact' | 'event' | 'priority' | 'party_data' | 'contractor' | 'custom';
 export type FunnelFieldType = 'text' | 'date' | 'number' | 'todo' | 'select' | 'multi_select';

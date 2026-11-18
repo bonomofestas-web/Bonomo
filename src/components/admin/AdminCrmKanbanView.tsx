@@ -1,4 +1,5 @@
 import { animateList } from '../../utils/animateList';
+import { canCollaboratorSeeStage } from '../../utils/funnelResponsibility';
 import { HeaderActions, headerPrimaryButtonStyle } from './HeaderActions';
 import { toast } from 'sonner';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
@@ -1171,10 +1172,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
     // Delimitação de Acesso por Colaborador: se a etapa tiver allowedCollaboratorIds configurado,
     // apenas os colaboradores autorizados visualizam a etapa (Gerentes e Master têm acesso total irrestrito)
     if (!isManagerOrMaster && effectiveUser?.id) {
-      rawStages = rawStages.filter(st => {
-        if (!st.allowedCollaboratorIds || st.allowedCollaboratorIds.length === 0) return true;
-        return st.allowedCollaboratorIds.includes(effectiveUser.id);
-      });
+      rawStages = rawStages.filter(st => canCollaboratorSeeStage(currentFunnel, st, effectiveUser));
     }
 
     return rawStages.map((st, idx) => ({

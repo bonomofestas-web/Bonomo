@@ -26,7 +26,9 @@ import type {
   FunnelFieldType,
   MqlQuestion,
   MqlOption,
-  MqlOptionSituation 
+  MqlOptionSituation,
+  StageResponsibility,
+  StageVisibility
 } from '../../types/admin';
 
 interface AdminFunnelSettingsViewProps {
@@ -222,6 +224,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
   const [teamMemberIds, setTeamMemberIds] = useState<string[]>([]);
   const [funnelCloserIds, setFunnelCloserIds] = useState<string[]>([]);
   const [teamMemberSearch, setTeamMemberSearch] = useState('');
+  const [isAddingTeamMember, setIsAddingTeamMember] = useState(false);
   const [venueDistributionConfig, setVenueDistributionConfig] = useState<Record<string, {
     distributionMode?: 'manual' | 'round_robin' | 'inherit';
     assignedSdrIds?: string[];
@@ -2341,11 +2344,29 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                     Equipe Atuante neste Funil
                   </div>
                   <div style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)', marginTop: '2px' }}>
-                    Define exatamente quem atua nas vendas deste funil (filtra seletores de SDR e Closer nos cards). Se vazio, usa toda a equipe comercial da unidade.
+                    Define quem atua nas vendas deste funil e com qual papel (SDR, Closer ou ambos). Se vazio, usa a equipe comercial da unidade.
                   </div>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => { setIsAddingTeamMember(v => !v); setTeamMemberSearch(''); }}
+                  style={{
+                    flexShrink: 0,
+                    padding: '5px 10px',
+                    borderRadius: '7px',
+                    border: '1px solid var(--adm-accent)',
+                    background: isAddingTeamMember ? 'var(--adm-accent)' : 'var(--adm-accent-bg)',
+                    color: isAddingTeamMember ? '#FFFFFF' : 'var(--adm-accent)',
+                    fontSize: '0.68rem',
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                  }}
+                >
+                  {isAddingTeamMember ? 'Concluir' : 'Adicionar colaborador'}
+                </button>
               </div>
 
+              {isAddingTeamMember && (
               <input
                 type="text"
                 placeholder="Buscar colaborador por nome..."
@@ -2363,11 +2384,18 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                   boxSizing: 'border-box',
                 }}
               />
+              )}
 
               <div style={{ maxHeight: '220px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                {!isAddingTeamMember && teamMemberIds.length === 0 && funnelCloserIds.length === 0 && (
+                  <span style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)' }}>
+                    Nenhum colaborador definido. Use "Adicionar colaborador" para escolher SDRs e Closers deste funil.
+                  </span>
+                )}
                 {funnelCollaborators
                   .filter(c => !(c as any).isDev && c.role !== 'financeiro' && c.department !== 'financeiro')
-                  .filter(c => !teamMemberSearch.trim() || c.name.toLowerCase().includes(teamMemberSearch.toLowerCase()))
+                  .filter(c => isAddingTeamMember || teamMemberIds.includes(c.id) || funnelCloserIds.includes(c.id))
+                  .filter(c => !isAddingTeamMember || !teamMemberSearch.trim() || c.name.toLowerCase().includes(teamMemberSearch.toLowerCase()))
                   .map(c => {
                     const isSdr = teamMemberIds.includes(c.id);
                     const isCloser = funnelCloserIds.includes(c.id);
@@ -2720,6 +2748,51 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                           </p>
                         )}
                       </div>
+
+                      {/* Responsabilidade e visibilidade por papel (SDR / Closer) */}
+                      {(!stage.isLoss) && (
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                          {([
+                            {
+                              label: 'Responsável',
+                              value: stage.responsibility || 'both',
+                              options: [['both', 'SDR e Closer'], ['sdr', 'Só SDR'], ['closer', 'Só Closer']],
+                              onChange: (v: string) => setStages(prev => prev.map(s => s.id === stage.id ? { ...s, responsibility: v as StageResponsibility } : s)),
+                            },
+                            {
+                              label: 'Quem vê',
+                              value: (stage.allowedCollaboratorIds && stage.allowedCollaboratorIds.length > 0) ? 'specific' : (stage.visibility && stage.visibility !== 'specific' ? stage.visibility : 'all'),
+                              options: [['all', 'Livre'], ['sdr', 'Só SDRs'], ['closer', 'Só Closers'], ['specific', 'Pessoas (abaixo)']],
+                              onChange: (v: string) => setStages(prev => prev.map(s => s.id === stage.id ? {
+                                ...s,
+                                visibility: v as StageVisibility,
+                                allowedCollaboratorIds: v === 'specific' ? (s.allowedCollaboratorIds || []) : undefined,
+                              } : s)),
+                            },
+                          ] as const).map(f => (
+                            <label key={f.label} style={{ display: 'flex', flexDirection: 'column', gap: '3px', fontSize: '0.60rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase' }}>
+                              {f.label}
+                              <select
+                                value={f.value}
+                                onChange={(e) => f.onChange(e.target.value)}
+                                style={{
+                                  padding: '4px 6px',
+                                  borderRadius: '6px',
+                                  background: 'var(--adm-bg-input)',
+                                  border: '1px solid var(--adm-border)',
+                                  color: 'var(--adm-text-title)',
+                                  fontSize: '0.68rem',
+                                  fontWeight: 600,
+                                  textTransform: 'none',
+                                  outline: 'none',
+                                }}
+                              >
+                                {f.options.map(([val, text]) => <option key={val} value={val}>{text}</option>)}
+                              </select>
+                            </label>
+                          ))}
+                        </div>
+                      )}
 
                       {/* Permissões de Visualização da Etapa por Colaborador */}
                       {(() => {
