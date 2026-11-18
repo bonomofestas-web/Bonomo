@@ -154,7 +154,7 @@ export const sourceService = {
         .single();
 
       if (error) {
-        console.error('Erro ao salvar origem:', error);
+        console.error('Erro ao salvar origem:', error.code, error.message, error.details, error.hint);
         return null;
       }
 
