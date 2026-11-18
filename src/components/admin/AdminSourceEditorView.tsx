@@ -211,6 +211,18 @@ export const AdminSourceEditorView: React.FC<AdminSourceEditorViewProps> = ({
     });
   }, [funnels, venueId]);
 
+  // Funis em que o numero pode ENVIAR alem do de origem: somente os da casa desta origem, sem repetir o funil de origem
+  const senderFunnelOptions = useMemo(
+    () => availableVenueFunnels.filter(f => f.id !== funnelId).map(f => ({ id: f.id, name: f.name })),
+    [availableVenueFunnels, funnelId],
+  );
+
+  // Trocar a casa (ou o funil de origem) descarta marcacoes que nao pertencem mais as opcoes validas
+  useEffect(() => {
+    const valid = new Set(senderFunnelOptions.map(o => o.id));
+    setSenderFunnelIds(prev => (prev.every(id => valid.has(id)) ? prev : prev.filter(id => valid.has(id))));
+  }, [senderFunnelOptions]);
+
   // Leads captados por esta origem específica
   const originLeads = useMemo(() => {
     if (!currentSourceId) return [];
@@ -370,7 +382,7 @@ export const AdminSourceEditorView: React.FC<AdminSourceEditorViewProps> = ({
           connectedAvatar,
           subSources,
           // O funil de origem sempre pode enviar; aqui ficam so os OUTROS funis autorizados
-          senderFunnelIds: senderFunnelIds.filter(id => id !== funnelId),
+          senderFunnelIds: senderFunnelIds.filter(id => senderFunnelOptions.some(o => o.id === id)),
         } : {}),
         ...(type === 'form' ? { title: formTitle, description: formDescription, fields: formFields, successMessage, buttonText } : {}),
       };
@@ -1281,16 +1293,20 @@ export const AdminSourceEditorView: React.FC<AdminSourceEditorViewProps> = ({
                 Funis que também podem enviar mensagens por este número
               </label>
               <div style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)', marginBottom: '8px' }}>
-                O funil de origem sempre pode enviar. Marque os outros funis (etapas do atendimento) que vão responder o cliente por este mesmo número. Dentro de cada funil dá para desabilitar o envio deste número.
+                O funil de origem acima sempre pode enviar. Aqui aparecem só os outros funis desta casa (comerciais e de pós-venda) que também podem responder o cliente por este número. Dentro de cada funil dá para desabilitar o envio dele.
               </div>
-              <FunnelMultiSelect
-                options={availableVenueFunnels.map(f => ({ id: f.id, name: f.name }))}
-                value={senderFunnelIds}
-                onChange={setSenderFunnelIds}
-                lockedIds={funnelId ? [funnelId] : []}
-                lockedLabel="Origem"
-                placeholder="Selecionar funis"
-              />
+              {senderFunnelOptions.length === 0 ? (
+                <div style={{ fontSize: '0.76rem', color: 'var(--adm-text-muted)' }}>
+                  {venueId ? 'Esta casa não tem outros funis além do de origem.' : 'Escolha a casa de festa para ver os funis disponíveis.'}
+                </div>
+              ) : (
+                <FunnelMultiSelect
+                  options={senderFunnelOptions}
+                  value={senderFunnelIds}
+                  onChange={setSenderFunnelIds}
+                  placeholder="Selecionar funis"
+                />
+              )}
             </div>
           )}
 
