@@ -6578,8 +6578,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
     // Procura a Origem do WhatsApp (pelo ID específico ou da casa de festa)
     const waSource = (data.sourceId ? sources.find(s => s.id === data.sourceId) : null)
-      || sources.find(s => s.venueId === data.venueId && s.type === 'whatsapp_api' && s.status === 'active')
-      || sources.find(s => s.type === 'whatsapp_api' && s.status === 'active');
+      || sources.find(s => s.venueId === data.venueId && s.type === 'whatsapp_api' && s.status === 'active');
 
     const incomingVenueId = data.venueId || waSource?.venueId;
     const incomingFunnelId = data.initialFunnelId || waSource?.funnelId;
@@ -7032,15 +7031,15 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         const incomingOwner = (incoming.rawPayload?.owner || incoming.rawPayload?.phone || incoming.rawPayload?.fromMePhone || '').replace(/\D/g, '');
         const incomingInstName = (incoming.rawPayload?.instance || incoming.rawPayload?.instanceName || '').toLowerCase();
 
-        const matchedSource = currentSources.find(s => {
-          const tok = (s.whatsappInstanceId || (s.configuration as any)?.token || (s.configuration as any)?.instanceToken || (s.configuration as any)?.instanceKey || '').trim();
-          if (tok && incomingToken && tok === incomingToken) return true;
-          const connectedPhone = ((s.configuration as any)?.connectedPhone || '').replace(/\D/g, '');
-          if (connectedPhone && incomingToken && connectedPhone === incomingToken.replace(/\D/g, '')) return true;
-          if (connectedPhone && incomingOwner && connectedPhone === incomingOwner) return true;
-          if (incomingInstName && s.name.toLowerCase().includes(incomingInstName)) return true;
-          return false;
-        });
+        // Cascata por precisao: 1) token exato, 2) telefone conectado, 3) nome EXATO da instancia. O primeiro criterio que
+        // acha uma origem vence (antes, qualquer criterio em OR deixava um chip de nome parecido ganhar do token exato).
+        const tokenOf = (s: any) => String(s.whatsappInstanceId || s.configuration?.token || s.configuration?.instanceToken || s.configuration?.instanceKey || '').trim();
+        const phoneOf = (s: any) => String(s.configuration?.connectedPhone || '').replace(/\D/g, '');
+        const matchedSource =
+          (incomingToken ? currentSources.find(s => tokenOf(s) && tokenOf(s) === incomingToken) : undefined) ||
+          (incomingToken ? currentSources.find(s => phoneOf(s) && phoneOf(s) === incomingToken.replace(/\D/g, '')) : undefined) ||
+          (incomingOwner ? currentSources.find(s => phoneOf(s) && phoneOf(s) === incomingOwner) : undefined) ||
+          (incomingInstName ? currentSources.find(s => s.name.toLowerCase() === incomingInstName) : undefined);
 
         // REGRA SUPREMA MULTI-TENANT: O navegador do usuário logado NUNCA processa mensagens de instâncias de outro Master!
         if (!matchedSource) {
@@ -7230,7 +7229,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             metadata: {
               messageId: incoming.messageId,
               // Origem (chip) da mensagem: necessária para baixar a mídia depois com o token certo (nunca grava o token)
-              sourceId: sourcesRef.current.find(s => s.whatsappInstanceId === incoming.instanceToken)?.id,
+              sourceId: matchedSource?.id,
+              fromPhone: cleanPhone,
               quotedMessage: incoming.quotedMessage,
             },
           };
@@ -7264,7 +7264,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
           // Ingestão assíncrona de mídia transitória recebida (áudios, imagens, docs) para o Cloudflare R2
           if (incoming.messageId && incoming.instanceToken && incoming.mediaType && incoming.mediaType !== 'text') {
-            const sseSourceId = sourcesRef.current.find(s => s.whatsappInstanceId === incoming.instanceToken)?.id;
+            const sseSourceId = matchedSource?.id;
             const sseMasterId = currentUserRef.current?.masterId || currentUserRef.current?.id;
             whatsappMediaService.ingestTransientMedia({
               instanceToken: incoming.instanceToken,

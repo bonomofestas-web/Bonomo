@@ -599,6 +599,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           );
         }
 
+        // Instância sem origem cadastrada: ignora. Nunca busca nem cria lead "no sistema inteiro" (isolamento por Master).
+        if (!matchedSource) {
+          console.warn(`[Webhook] Mensagem de instância sem origem cadastrada (token ${candidateToken ? '***' + candidateToken.slice(-4) : 'ausente'}). Ignorada.`);
+          continue;
+        }
+
         // DEDUPLICAÇÃO DE MENSAGEM: o mesmo wamid só é duplicata se já foi gravado POR ESTA MESMA ORIGEM/INSTÂNCIA.
         // Nunca descarta mensagem só porque o contato é lead em outro funil.
         const waMessageId = msg.key?.id || msg.id || msg.messageid || payload?.messageId || payload?.id;
@@ -638,11 +644,33 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           }
         }
 
+        if (!tenantMasterId && !targetVenueId) {
+          console.warn(`[Webhook] Origem ${matchedSource.id} sem casa/Master definidos. Mensagem ignorada para não misturar tenants.`);
+          continue;
+        }
+
+        // Tipo da origem (comercial ou pós-venda): define que lead pode ser reaproveitado
+        let sourceIsPostSale = false;
+        if (matchedSource?.funnel_id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(matchedSource.funnel_id))) {
+          const { data: sf } = await supabase.from('commercial_funnels').select('is_post_sale, category, name').eq('id', matchedSource.funnel_id).maybeSingle();
+          sourceIsPostSale = Boolean(sf?.is_post_sale || sf?.category === 'Pós-Venda' || sf?.category === 'pos_venda' || (sf?.name || '').toLowerCase().includes('pós-venda'));
+        }
+        // Mesma regra do navegador (SSE): 1º lead do funil da origem; senão o mesmo contato já existente do mesmo tipo
+        // (ex.: lead transferido de funil), sem duplicar.
+        const pickLeadForSource = (list: any[] | null | undefined) => {
+          if (!list || list.length === 0) return null;
+          if (matchedSource?.funnel_id) {
+            const inFunnel = list.find((l: any) => l.funnel_id === matchedSource.funnel_id);
+            if (inFunnel) return inFunnel;
+          }
+          return list.find((l: any) => Boolean(l.is_client) === sourceIsPostSale) || null;
+        };
+
         // 2a. Se for LID, procura primeiro por correspondência de whatsappLid salva em custom_field_values
         if (isLid) {
           let lidQuery = supabase
             .from('leads')
-            .select('id, name, phone, unread_count, venue_id, funnel_id, custom_field_values, master_id')
+            .select('id, name, phone, unread_count, venue_id, funnel_id, custom_field_values, master_id, is_client')
             .or(`custom_field_values->>whatsappLid.eq.${cleanPhone},custom_field_values->>whatsapp_lid.eq.${cleanPhone}`);
           
           if (tenantMasterId) {
@@ -656,9 +684,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           if (lidMatches && lidMatches.length > 0) {
             // Prioriza o lead no funil da origem se houver, caso contrário pega o mais recente no sistema
             // REGRA: duplicado = mesmo contato 2x no MESMO funil. Em outro funil é um lead distinto.
-            existingLead = matchedSource?.funnel_id
-              ? (lidMatches.find((l: any) => l.funnel_id === matchedSource.funnel_id) || null)
-              : lidMatches[0];
+            existingLead = pickLeadForSource(lidMatches);
           }
 
           // Se não encontrou por LID gravado, tenta extrair o telefone real dos campos do payload ou UAZAPI
@@ -713,29 +739,49 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           const last8 = digitsOnly.slice(-8);
           const part1 = last8.slice(0, 4);
           const part2 = last8.slice(4);
-          let phoneQuery = supabase
-            .from('leads')
-            .select('id, name, phone, unread_count, venue_id, funnel_id, custom_field_values, master_id')
-            .or(`phone.ilike.%${last8}%,phone.ilike.%${part1}%${part2}%`);
-
+          const leadSelect = 'id, name, phone, unread_count, venue_id, funnel_id, custom_field_values, master_id, is_client';
+          // Busca no telefone principal E nos contatos do lead (2º/3º número, mãe, pai...) via função do banco; sem ela, cai na busca antiga
+          let phoneLeads: any[] | null = null;
           if (tenantMasterId) {
-            phoneQuery = phoneQuery.or(`master_id.eq.${tenantMasterId},venue_id.in.(${tenantVenueIds.join(',')})`);
-          } else if (targetVenueId) {
-            phoneQuery = phoneQuery.eq('venue_id', targetVenueId);
+            const { data: idRows, error: rpcErr } = await supabase.rpc('f5_find_lead_ids_by_phone', {
+              p_master: tenantMasterId,
+              p_venues: tenantVenueIds,
+              p_tail: last8,
+            });
+            if (!rpcErr && Array.isArray(idRows)) {
+              const ids = idRows.map((r: any) => (typeof r === 'string' ? r : (r?.f5_find_lead_ids_by_phone ?? r?.id))).filter(Boolean);
+              if (ids.length > 0) {
+                const { data: rows } = await supabase.from('leads').select(leadSelect).in('id', ids).order('last_interaction_at', { ascending: false, nullsFirst: false });
+                phoneLeads = rows || [];
+              } else {
+                phoneLeads = [];
+              }
+            }
           }
+          if (phoneLeads === null) {
+            let phoneQuery = supabase
+              .from('leads')
+              .select(leadSelect)
+              .or(`phone.ilike.%${last8}%,phone.ilike.%${part1}%${part2}%`);
 
-          const { data: phoneLeads } = await phoneQuery.order('last_interaction_at', { ascending: false, nullsFirst: false });
+            if (tenantMasterId) {
+              phoneQuery = phoneQuery.or(`master_id.eq.${tenantMasterId},venue_id.in.(${tenantVenueIds.join(',')})`);
+            } else if (targetVenueId) {
+              phoneQuery = phoneQuery.eq('venue_id', targetVenueId);
+            }
+
+            const { data: legacyLeads } = await phoneQuery.order('last_interaction_at', { ascending: false, nullsFirst: false });
+            phoneLeads = legacyLeads || [];
+          }
 
           if (phoneLeads && phoneLeads.length > 0) {
             // REGRA: Se houver lead já alocado no funil desta origem, prioriza ele;
             // Caso contrário, aproveita o lead existente no sistema para NÃO gerar duplicidade!
             // REGRA: só reaproveita lead do MESMO funil da origem; em outro funil cria lead novo naquele funil.
-            existingLead = matchedSource?.funnel_id
-              ? (phoneLeads.find((l: any) => l.funnel_id === matchedSource.funnel_id) || null)
-              : phoneLeads[0];
+            existingLead = pickLeadForSource(phoneLeads);
 
             // Vincula o LID ao lead encontrado para que as próximas mensagens batam de primeira!
-            if (isLid) {
+            if (isLid && existingLead) {
               const updatedCustom = {
                 ...(existingLead.custom_field_values || {}),
                 whatsappLid: cleanPhone,
@@ -834,6 +880,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               messageId: waMessageId || undefined,
               ...waIdsMeta,
               senderSourceId: matchedSource?.id,
+              fromPhone: resolvedPhone || cleanPhone,
               senderSourceName: matchedSource?.name,
               senderPhone: (matchedSource?.configuration as any)?.connectedPhone || (matchedSource?.configuration as any)?.whatsappNumber,
               senderAvatar: (matchedSource?.configuration as any)?.connectedAvatar || (matchedSource?.configuration as any)?.profilePicUrl,

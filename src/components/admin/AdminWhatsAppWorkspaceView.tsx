@@ -2453,6 +2453,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       noPhone?: boolean;
     }> = [];
     const seenPhones = new Set<string>();
+    const normPhone = (p?: string) => (p || '').replace(/\D/g, '').slice(-9);
     const leadAny = selectedLead as any;
 
     const translateRole = (r?: string) => {
@@ -2487,8 +2488,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     if (selectedLead.contacts && selectedLead.contacts.length > 0) {
       selectedLead.contacts.forEach((c, idx) => {
         const clean = c.phone?.trim();
-        if (clean && !seenPhones.has(clean)) {
-          seenPhones.add(clean);
+        if (clean && !seenPhones.has(normPhone(clean))) {
+          seenPhones.add(normPhone(clean));
           const isDec = Boolean(c.isPrimaryDecisionMaker || leadAny.decisionMaker === c.role || leadAny.decisionMaker === c.name || (leadAny.decisionMaker === 'mae' && c.role?.toLowerCase().includes('m')));
           const rBadge = translateRole(c.role);
           const rawName = c.name || selectedLead.name || 'Contato';
@@ -2518,8 +2519,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     const rawContractorName = leadAny.payerName || selectedLead.name || 'Contratante';
     const cleanMainName = cleanRoleLabel(rawContractorName);
 
-    if (mainPhone && !seenPhones.has(mainPhone)) {
-      seenPhones.add(mainPhone);
+    if (mainPhone && !seenPhones.has(normPhone(mainPhone))) {
+      seenPhones.add(normPhone(mainPhone));
       const isDec = Boolean(leadAny.isDecisionMaker || !list.some(l => l.isDecisor));
       list.push({
         key: `contractor-main-${mainPhone}`,
@@ -2549,8 +2550,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     }
 
     const debutantePhone = (leadAny.birthdayPersonPhone || leadAny.debutantePhone || leadAny.debutante_phone)?.trim();
-    if (debutantePhone && !seenPhones.has(debutantePhone)) {
-      seenPhones.add(debutantePhone);
+    if (debutantePhone && !seenPhones.has(normPhone(debutantePhone))) {
+      seenPhones.add(normPhone(debutantePhone));
       list.push({
         key: `protagonist-${debutantePhone}`,
         phone: debutantePhone,
@@ -2582,8 +2583,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     // duplicava o mesmo numero em todos os leads e podia enviar a mensagem para a pessoa errada.)
 
     const motherPhone = leadAny.motherPhone?.trim();
-    if (motherPhone && !seenPhones.has(motherPhone)) {
-      seenPhones.add(motherPhone);
+    if (motherPhone && !seenPhones.has(normPhone(motherPhone))) {
+      seenPhones.add(normPhone(motherPhone));
       const cleanMomName = cleanRoleLabel(leadAny.motherName) || 'Mãe';
       list.push({
         key: `mother-${motherPhone}`,
@@ -2599,8 +2600,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     }
 
     const fatherPhone = leadAny.fatherPhone?.trim();
-    if (fatherPhone && !seenPhones.has(fatherPhone)) {
-      seenPhones.add(fatherPhone);
+    if (fatherPhone && !seenPhones.has(normPhone(fatherPhone))) {
+      seenPhones.add(normPhone(fatherPhone));
       const cleanDadName = cleanRoleLabel(leadAny.fatherName) || 'Pai';
       list.push({
         key: `father-${fatherPhone}`,
@@ -2624,6 +2625,19 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   const availableRecipients = useMemo(() => allRecipientsWithInfo.filter(r => !r.noPhone), [allRecipientsWithInfo]);
 
   const [selectedRecipientKey, setSelectedRecipientKey] = useState<string>('');
+  // Quando o usuario escolhe um contato manualmente nesta conversa, a escolha dele prevalece sobre o "ultimo que escreveu"
+  const recipientTouchedRef = useRef<string | null>(null);
+  const lastInboundPhone = useMemo(() => {
+    let best: { at: number; phone: string } | null = null;
+    for (const a of selectedLead?.activities || []) {
+      if (a.type !== 'contact' || !/recebid/i.test(a.title || '')) continue;
+      const ph = (a.metadata as any)?.fromPhone as string | undefined;
+      if (!ph) continue;
+      const at = new Date(a.timestamp || 0).getTime();
+      if (!best || at > best.at) best = { at, phone: ph };
+    }
+    return best?.phone;
+  }, [selectedLead?.activities]);
   const [selectedRecipientPhone, setSelectedRecipientPhone] = useState<string>('');
 
   const activeRecipient = useMemo(() => {
@@ -2642,14 +2656,19 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
 
   useEffect(() => {
     if (availableRecipients.length > 0) {
+      const touched = recipientTouchedRef.current === selectedLead?.id;
       // Preserva a pessoa escolhida se ela continua na lista (evita voltar ao 1o item a cada atualizacao do lead)
       const keep = selectedRecipientKey ? availableRecipients.find(r => r.key === selectedRecipientKey) : undefined;
-      if (keep) {
+      if (keep && touched) {
         setSelectedRecipientPhone(keep.phone);
         return;
       }
-      setSelectedRecipientKey(availableRecipients[0].key);
-      setSelectedRecipientPhone(availableRecipients[0].phone);
+      // Padrao: o contato pelo qual o cliente escreveu por ultimo; senao o que ja estava; senao o primeiro (decisor)
+      const tail = (p?: string) => (p || '').replace(/\D/g, '').slice(-9);
+      const byLast = lastInboundPhone ? availableRecipients.find(r => tail(r.phone) && tail(r.phone) === tail(lastInboundPhone)) : undefined;
+      const pick = byLast || keep || availableRecipients[0];
+      setSelectedRecipientKey(pick.key);
+      setSelectedRecipientPhone(pick.phone);
     } else if (selectedLead?.phone) {
       setSelectedRecipientKey('lead-main');
       setSelectedRecipientPhone(selectedLead.phone);
@@ -2657,7 +2676,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       setSelectedRecipientKey('');
       setSelectedRecipientPhone('');
     }
-  }, [selectedLead?.id, availableRecipients]);
+  }, [selectedLead?.id, availableRecipients, lastInboundPhone]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Ref para garantir que o gatilho de visualização ocorra exclusivamente na ABERTURA da conversa e não fique marcando repetidamente
   const openedLeadForViewRef = useRef<string | null>(null);
@@ -3235,6 +3254,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     return {
       sentFromApp: true,
       instanceId: effectiveSender?.id,
+      recipientPhone: selectedRecipientPhone || selectedLead?.phone,
       senderSourceId: effectiveSender?.id,
       senderSourceName: senderName,
       senderPhone: rawPhone,
@@ -3243,7 +3263,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       channelId: (activePostSaleChannelId !== 'geral') ? activePostSaleChannelId : undefined,
       channelName: isChannelActive ? activePostSaleChannel?.name : undefined,
     };
-  }, [activeSenderSource, getSourceCleanLabel, getSourceAvatar, activePostSaleChannel, activePostSaleChannelId]);
+  }, [activeSenderSource, selectedRecipientPhone, selectedLead?.phone, getSourceCleanLabel, getSourceAvatar, activePostSaleChannel, activePostSaleChannelId]);
 
   // Envio do anexo pendente no chat (ex: comprovante de agendamento compartilhado)
   const handleSendPendingAttachment = async (customCaption?: string) => {
@@ -6820,7 +6840,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
             )}
 
             {/* ── BARRA DE CANAIS DE CONTATO CONECTADOS (PÓS-VENDA) ── */}
-            {isPostSaleWorkspace && (
+            {(isPostSaleWorkspace || allRecipientsWithInfo.length > 1) && (
                 <div style={{
                   padding: '7px 20px',
                   borderBottom: '1px solid var(--adm-border)',
@@ -6873,6 +6893,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                         disabled={rec.noPhone}
                         onClick={() => {
                           if (rec.noPhone) return;
+                          recipientTouchedRef.current = selectedLead?.id || null;
                           if (rec.key) setSelectedRecipientKey(rec.key);
                           if (rec.phone) setSelectedRecipientPhone(rec.phone);
                         }}
@@ -12432,6 +12453,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                         <div
                                           key={rec.key || rec.phone}
                                           onClick={() => {
+                                            recipientTouchedRef.current = selectedLead?.id || null;
                                             if (rec.key) setSelectedRecipientKey(rec.key);
                                             if (rec.phone) setSelectedRecipientPhone(rec.phone);
                                             setIsRecipientDropdownOpen(false);
