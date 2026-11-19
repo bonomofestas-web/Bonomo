@@ -4893,9 +4893,14 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         return prev.map(lead => {
           if (lead.id !== leadId) return lead;
           const currentActs = lead.activities || [];
-          const existingIds = new Set(currentActs.map(a => a.id));
-          const hasNew = res.activities.some(a => !existingIds.has(a.id));
-          if (!hasNew) return lead;
+          const existingById = new Map(currentActs.map(a => [a.id, a]));
+          const hasNew = res.activities.some(a => !existingById.has(a.id));
+          // A carga leve da lista traz atividades sem metadados (telefone de quem falou etc.): precisa completar mesmo sem mensagem nova
+          const needsEnrich = res.activities.some(a => {
+            const e = existingById.get(a.id);
+            return Boolean(e && (!e.metadata || Object.keys(e.metadata).length === 0) && a.metadata && Object.keys(a.metadata).length > 0);
+          });
+          if (!hasNew && !needsEnrich) return lead;
 
           const merged = mergeAndSortActivities(currentActs, res.activities, lead.id);
           return {

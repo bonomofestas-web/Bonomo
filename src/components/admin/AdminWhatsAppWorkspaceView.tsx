@@ -4470,10 +4470,34 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       );
     });
 
+    // Chats separados por contato (um lugar so, varias conversas): cada mensagem pertence ao numero com quem foi trocada.
+    // So divide quando a ficha tem 2+ numeros diferentes. Mensagem de numero desconhecido/antigo fica no chat do contato principal.
+    const phoneDigits = (v: unknown) => String(v || '').replace(/\D/g, '');
+    const knownRecipients = (availableRecipients || []).filter(r => !r.noPhone && phoneDigits(r.phone).length >= 8);
+    const distinctRecipientPhones: string[] = [];
+    knownRecipients.forEach(r => { if (!distinctRecipientPhones.some(p => isPhoneMatch(p, r.phone))) distinctRecipientPhones.push(r.phone); });
+    const splitByContact = distinctRecipientPhones.length > 1;
+    const selectedChatPhone = activeRecipient?.phone || '';
+    const primaryChatPhone = (knownRecipients.find(r => r.isMain) || knownRecipients[0])?.phone || '';
+    const activityContactPhone = (a: any): string => phoneDigits(
+      a.recipientPhone || a.metadata?.recipientPhone || a.metadata?.fromPhone || a.metadata?.remoteJid ||
+      a.metadata?.phone || a.metadata?.senderPhone || a.metadata?.to || a.metadata?.from || ''
+    );
+
     // Filtra pelo canal setorial selecionado (Comercial) ou bilateralidade multi-decisor (Pós-Venda)
     const filteredByChannel = chatOnly.filter(a => {
       const isSessionMarker = Boolean((a as any).metadata?.isSessionEnd || (a as any).metadata?.isViewAudit || (a.title || '').toLowerCase().includes('conversa encerrada'));
       if (isSessionMarker) return true;
+
+      if (splitByContact && selectedChatPhone) {
+        const ap = activityContactPhone(a);
+        const ownerPhone = ap.length >= 8 ? distinctRecipientPhones.find(p => isPhoneMatch(p, ap)) : undefined;
+        if (ownerPhone) {
+          if (!isPhoneMatch(ownerPhone, selectedChatPhone)) return false;
+        } else if (!isPhoneMatch(primaryChatPhone, selectedChatPhone)) {
+          return false;
+        }
+      }
 
       // No Pós-Venda: abas nominais multi-decisor com histórico bilateral (sem aba Geral)
       if (isPostSaleChat) {
@@ -4482,6 +4506,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
           const actPhone = (
             (a as any).recipientPhone ||
             (a as any).metadata?.recipientPhone ||
+            (a as any).metadata?.fromPhone ||
             (a as any).metadata?.remoteJid ||
             (a as any).metadata?.phone ||
             (a as any).metadata?.senderPhone ||
@@ -4566,7 +4591,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     }
 
     return deduped;
-  }, [effectiveLeadActivities, isPostSaleChat, activePostSaleChannelId]);
+  }, [effectiveLeadActivities, isPostSaleChat, activePostSaleChannelId, availableRecipients, activeRecipient]);
 
   // Função para carregar lote anterior de mensagens do histórico (rolagem para o passado)
   const loadOlderMessages = useCallback(async () => {

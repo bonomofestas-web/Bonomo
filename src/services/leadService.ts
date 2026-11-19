@@ -1915,7 +1915,7 @@ export function mergeAndSortActivities(acts1: LeadActivity[] = [], acts2: LeadAc
   const uniqueActs: LeadActivity[] = [];
 
   for (const act of allActs) {
-    const isDuplicate = uniqueActs.some(existing => {
+    const duplicateOf = uniqueActs.find(existing => {
       if (existing.id && act.id && existing.id === act.id) return true;
 
       // Identificação por código único da mensagem no WhatsApp (wamid / messageId da API)
@@ -1949,8 +1949,18 @@ export function mergeAndSortActivities(acts1: LeadActivity[] = [], acts2: LeadAc
 
       return false;
     });
-    if (!isDuplicate) {
+    if (!duplicateOf) {
       uniqueActs.push(act);
+    } else if (duplicateOf.id && act.id && duplicateOf.id === act.id) {
+      // A carga leve da lista traz a atividade SEM metadados (telefone de quem falou, canal, instancia...).
+      // Ao abrir o chat, a versao completa e a mesma atividade: completa a versao pobre em vez de descartar a rica.
+      const meta = (duplicateOf.metadata || {}) as Record<string, unknown>;
+      if (Object.keys(meta).length === 0 && act.metadata && Object.keys(act.metadata).length > 0) duplicateOf.metadata = act.metadata;
+      if (!duplicateOf.messageId && act.messageId) duplicateOf.messageId = act.messageId;
+      if (!duplicateOf.channelId && act.channelId) duplicateOf.channelId = act.channelId;
+      if (!duplicateOf.channelName && act.channelName) duplicateOf.channelName = act.channelName;
+      if (!duplicateOf.instanceId && act.instanceId) duplicateOf.instanceId = act.instanceId;
+      if (!duplicateOf.mediaUrl && act.mediaUrl) { duplicateOf.mediaUrl = act.mediaUrl; duplicateOf.mediaType = act.mediaType; }
     }
   }
 

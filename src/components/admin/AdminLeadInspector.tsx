@@ -26,6 +26,7 @@ import type { AppointmentReceiptData } from './AdminAppointmentReceiptModal';
 import { CloseDealValueModal } from './CloseDealValueModal';
 import { AdminLeadMissingFieldsModal } from './AdminLeadMissingFieldsModal';
 import { toast } from 'sonner';
+import { isDependentRole, linkDependentFromFicha } from '../../utils/familyLinkSync';
 import { AdminTransferLeadVenueModal } from './AdminTransferLeadVenueModal';
 import { AdminDuplicateLeadModal } from './AdminDuplicateLeadModal';
 import { canChangeLeadVenue } from '../../utils/accessPermissions';
@@ -92,6 +93,7 @@ const CONTACT_ROLE_LABELS: Record<string, string> = {
   mother: 'Mãe',
   father: 'Pai',
   responsavel: 'Responsável Legal',
+  dependent: 'Dependente Familiar',
   decision_maker: 'Responsável / Decisor',
   noivo: 'Noivo(a)',
   tio: 'Tio(a)',
@@ -641,6 +643,8 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
     mqlQuestions,
     updateLeadStage,
     updateLeadData, 
+    clients,
+    updateClient,
     deleteLead,
     removeLeadFromFunnel,
     restoreLeadToFunnel,
@@ -1563,6 +1567,28 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
     }
 
     handleUpdate(updates);
+
+    // Dependente: vira contato (ou reconhece o existente), entra no grupo familiar nos dois sentidos
+    // e aparece tambem nas fichas de pos-venda geradas deste lead
+    if (isDependentRole(contactData.role) && contact.phone) {
+      void linkDependentFromFicha({
+        masterId: currentUser?.masterId || currentUser?.id,
+        parentContactId: lead.contactId,
+        parentPhone: lead.phone,
+        member: contact,
+        venueId: lead.venueId,
+      }).then(outcome => {
+        if (outcome === 'created') toast.success('Dependente criado como contato e vinculado ao grupo familiar.');
+        else if (outcome === 'existing') toast.success('Contato já existente reconhecido e vinculado ao grupo familiar (nos dois sentidos).');
+      });
+      (clients || [])
+        .filter(c => c.commercialLeadId === lead.id || c.originalLeadId === lead.id)
+        .forEach(c => {
+          if ((c.contacts || []).some(x => x.phone && isPhoneMatch(x.phone, contact.phone))) return;
+          updateClient(c.id, { contacts: [...(c.contacts || []), { ...contact, role: 'dependent' }] });
+        });
+    }
+
     setNewContactName('');
     setNewContactPhone('');
     setNewContactEmail('');
@@ -4830,6 +4856,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                       <option value="mother">Mãe</option>
                       <option value="father">Pai</option>
                       <option value="responsavel">Responsável Legal</option>
+                      <option value="dependent">Dependente Familiar</option>
                       <option value="noivo">Noivo(a)</option>
                       <option value="tio">Tio(a)</option>
                       <option value="outro">Outro</option>
@@ -5298,6 +5325,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                       <option value="mother">Mãe</option>
                       <option value="father">Pai</option>
                       <option value="responsavel">Responsável Legal</option>
+                      <option value="dependent">Dependente Familiar</option>
                       <option value="noivo">Noivo(a)</option>
                       <option value="tio">Tio(a)</option>
                       <option value="outro">Outro</option>

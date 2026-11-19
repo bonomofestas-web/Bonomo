@@ -410,39 +410,30 @@ export const AdminContactsView: React.FC<AdminContactsViewProps> = ({
     }
 
     try {
-      const depPhone = dependentForm.phone && dependentForm.phone.trim()
-        ? dependentForm.phone.replace(/\D/g, '')
-        : `${selectedContact.primaryPhone}#${Date.now().toString().slice(-4)}`;
-
-      const newContact = await contactService.createContact({
+      const linked = await contactService.linkFamilyMember({
         masterId: scopedMasterId,
-        name: dependentForm.name.trim(),
-        primaryPhone: depPhone,
+        parentContactId: selectedContact.id,
+        name: dependentForm.name,
+        phone: dependentForm.phone,
+        cpf: dependentForm.cpf,
         birthDate: dependentForm.birthDate || undefined,
-        cpf: dependentForm.cpf.trim() || undefined,
-        relationshipRole: dependentForm.relationship,
         notes: dependentForm.notes.trim() || undefined,
+        kinship: dependentForm.relationship,
+        fallbackPhone: `${selectedContact.primaryPhone}#${Date.now().toString().slice(-4)}`,
       });
 
-      if (newContact) {
-        const newDep = await contactService.addContactDependent({
-          masterId: scopedMasterId,
-          parentContactId: selectedContact.id,
-          dependentContactId: newContact.id,
-          kinship: dependentForm.relationship,
-        });
-
-        const depItem: ContactDependent = newDep || {
+      if (linked) {
+        const depItem: ContactDependent = linked.dependent || {
           id: generateUuid(),
           masterId: scopedMasterId,
           parentContactId: selectedContact.id,
-          dependentContactId: newContact.id,
+          dependentContactId: linked.contact.id,
           kinship: dependentForm.relationship,
           createdAt: new Date().toISOString(),
-          dependentContact: newContact,
+          dependentContact: linked.contact,
         };
 
-        toast.success('Familiar cadastrado com sucesso!');
+        toast.success(linked.created ? 'Familiar cadastrado e criado como contato.' : 'Contato já existente reconhecido e vinculado ao grupo familiar (nos dois sentidos).');
         setContactAssets(prev => ({
           ...prev,
           dependents: [...prev.dependents, depItem],
@@ -456,6 +447,8 @@ export const AdminContactsView: React.FC<AdminContactsViewProps> = ({
           phone: '',
           notes: '',
         });
+      } else {
+        toast.error('Não foi possível vincular: confira nome e telefone (a pessoa não pode ser o próprio titular).');
       }
     } catch (err: any) {
       toast.error(`Erro ao adicionar dependente: ${err.message || 'Falha de comunicação'}`);

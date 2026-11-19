@@ -11,6 +11,8 @@ import {
   Calendar, ChevronLeft, Workflow
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { isPhoneMatch } from '../../services/leadService';
+import { isDependentRole, linkDependentFromFicha } from '../../utils/familyLinkSync';
 import { useAdminState } from '../../context/AdminStateContext';
 import { maskPhoneInput, formatPhone } from '../../utils/phoneFormatter';
 import { renderFunnelOrStageIcon } from '../../utils/funnelIconLibrary';
@@ -160,7 +162,8 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
     updateClient,
     updateLeadData,
     linkClientDebutante,
-    addDebutanteAccount
+    addDebutanteAccount,
+    currentUser,
   } = useAdminState();
   usePresenceContext(lead ? { type: 'client', id: lead.id, label: lead.debutanteName } : null);
 
@@ -403,6 +406,25 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
 
     const updatedContacts = [...(client.contacts || []), newContact];
     updateClient(client.id, { contacts: updatedContacts });
+
+    // Dependente: vira contato (ou reconhece o existente), entra no grupo familiar nos dois sentidos
+    // e aparece tambem na ficha comercial de origem
+    if (isDependentRole(newContact.role) && newContact.phone) {
+      const originLead = (leads || []).find(l => l.id === client.commercialLeadId || l.id === client.originalLeadId);
+      void linkDependentFromFicha({
+        masterId: currentUser?.masterId || currentUser?.id,
+        parentContactId: originLead?.contactId,
+        parentPhone: client.payerPhone || originLead?.phone,
+        member: newContact,
+        venueId: client.venueId,
+      }).then(outcome => {
+        if (outcome === 'created') toast.success('Dependente criado como contato e vinculado ao grupo familiar.');
+        else if (outcome === 'existing') toast.success('Contato já existente reconhecido e vinculado ao grupo familiar (nos dois sentidos).');
+      });
+      if (originLead && !(originLead.contacts || []).some(x => x.phone && isPhoneMatch(x.phone, newContact.phone))) {
+        updateLeadData(originLead.id, { contacts: [...(originLead.contacts || []), { ...newContact, role: 'dependent' }] });
+      }
+    }
 
     setNewContactName('');
     setNewContactPhone('');

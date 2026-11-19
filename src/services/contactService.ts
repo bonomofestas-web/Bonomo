@@ -21,6 +21,16 @@ export interface GetContactsParams {
   offset?: number;
 }
 
+/** Parentesco inverso (A e X de B  =>  B e Y de A). Usado para gravar o vinculo familiar nos dois sentidos. */
+export function reciprocalKinship(kinship: string): string {
+  const k = (kinship || '').toLowerCase();
+  if (k.includes('filh')) return 'Pai/Mãe';
+  if (k.includes('pai') || k.includes('mãe') || k.includes('mae')) return 'Filho(a) / Debutante';
+  if (k.includes('cônjuge') || k.includes('conjuge') || k.includes('noiv')) return 'Cônjuge / Noivo(a)';
+  if (k.includes('irm')) return 'Irmão(ã)';
+  return 'Familiar';
+}
+
 export const contactService = {
   /**
    * Busca lista paginada e filtrada de contatos respeitando estritamente o isolamento master_id
@@ -516,6 +526,86 @@ export const contactService = {
       };
     } catch (err) {
       console.error('Exceção em addContactDependent:', err);
+      return null;
+    }
+  },
+
+  /**
+   * Cadastra alguem do grupo familiar de um contato.
+   * - Se a pessoa ja existe nos contatos (telefone ou CPF, dentro do mesmo Master), reconhece e reaproveita; senao cria o contato.
+   * - O vinculo e gravado nos DOIS sentidos: A entra no grupo familiar de B e B entra no de A.
+   * Idempotente: repetir nao duplica.
+   */
+  async linkFamilyMember(params: {
+    masterId: string;
+    parentContactId: string;
+    name: string;
+    phone?: string;
+    cpf?: string;
+    email?: string;
+    birthDate?: string;
+    notes?: string;
+    kinship: string;
+    venueId?: string;
+    /** Telefone provisorio quando a pessoa ainda nao tem numero proprio. */
+    fallbackPhone?: string;
+  }): Promise<{ contact: Contact; created: boolean; dependent: ContactDependent | null } | null> {
+    if (!isSupabaseConfigured || !params.masterId || !params.parentContactId || !params.name.trim()) return null;
+    try {
+      const digits = (params.phone || '').replace(/\D/g, '');
+      let contact: Contact | null = null;
+
+      if (digits.length >= 8) {
+        const found = await this.findByPhones(params.masterId, [digits]);
+        contact = found.get(digits) || Array.from(found.values())[0] || null;
+      }
+      const cpfRaw = (params.cpf || '').trim();
+      if (!contact && cpfRaw) {
+        const cpfDigits = cpfRaw.replace(/\D/g, '');
+        const variants = Array.from(new Set([cpfRaw, cpfDigits].filter(Boolean)));
+        const { data } = await supabase
+          .from('contacts').select('*').eq('master_id', params.masterId).is('deleted_at', null).in('cpf', variants).limit(1);
+        if (data && data.length > 0) contact = mapRowToContact(data[0]);
+      }
+
+      let created = false;
+      if (!contact) {
+        const primaryPhone = digits.length >= 8 ? digits : (params.fallbackPhone || '');
+        if (!primaryPhone) return null;
+        contact = await this.createContact({
+          masterId: params.masterId,
+          name: params.name.trim(),
+          primaryPhone,
+          email: params.email,
+          cpf: cpfRaw || undefined,
+          birthDate: params.birthDate || undefined,
+          relationshipRole: params.kinship,
+          notes: params.notes,
+          venueId: params.venueId,
+        });
+        created = true;
+      }
+      if (!contact || contact.id === params.parentContactId) return null;
+
+      const { error } = await supabase.from('contact_dependents').upsert([
+        { master_id: params.masterId, parent_contact_id: params.parentContactId, dependent_contact_id: contact.id, kinship: params.kinship.trim() },
+        { master_id: params.masterId, parent_contact_id: contact.id, dependent_contact_id: params.parentContactId, kinship: reciprocalKinship(params.kinship) },
+      ], { onConflict: 'parent_contact_id,dependent_contact_id', ignoreDuplicates: true });
+      if (error) {
+        console.error('Erro ao vincular grupo familiar:', error);
+        return null;
+      }
+
+      const { data: row } = await supabase
+        .from('contact_dependents').select('*').eq('master_id', params.masterId)
+        .eq('parent_contact_id', params.parentContactId).eq('dependent_contact_id', contact.id).maybeSingle();
+      const dependent: ContactDependent | null = row ? {
+        id: row.id, masterId: row.master_id, parentContactId: row.parent_contact_id,
+        dependentContactId: row.dependent_contact_id, kinship: row.kinship, createdAt: row.created_at, dependentContact: contact,
+      } : null;
+      return { contact, created, dependent };
+    } catch (err) {
+      console.error('Exceção em linkFamilyMember:', err);
       return null;
     }
   },
