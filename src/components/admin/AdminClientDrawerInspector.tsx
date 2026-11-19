@@ -300,17 +300,15 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
 
   const [copiedContractCode, setCopiedContractCode] = useState(false);
   const contractCodeDisplay = useMemo(() => {
-    const raw = client?.code || lead.code || '';
-    if (raw.startsWith('CTR-')) return raw;
-    const clean = raw.replace(/[^a-zA-Z0-9]/g, '').slice(-6).toUpperCase() || '8M2K';
-    return `CTR-2026-${clean}`;
+    // Pos-venda usa o CODIGO DE CLIENTE (CLI-...); o codigo de contrato foi descontinuado nesta tela
+    return client?.code || lead.code || '';
   }, [client?.code, lead.code]);
 
   const handleCopyContractCode = (e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     navigator.clipboard.writeText(contractCodeDisplay);
     setCopiedContractCode(true);
-    toast.success(`Código do contrato ${contractCodeDisplay} copiado!`);
+    toast.success(`Código do cliente ${contractCodeDisplay} copiado!`);
     setTimeout(() => setCopiedContractCode(false), 2000);
   };
 
@@ -581,7 +579,7 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
               <button
                 type="button"
                 onClick={handleCopyContractCode}
-                title="Copiar código do contrato"
+                title="Copiar código do cliente"
                 style={{
                   background: 'transparent',
                   border: 'none',

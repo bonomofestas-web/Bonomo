@@ -1,6 +1,6 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { isUuid, generateUuid } from '../utils/uuid';
-import { generateBase36Code } from './contactService';
+import { generateBase36Code, contactService } from './contactService';
 import { isLidIdentifier } from './uazapiSseService';
 import { fetchAllRows } from '../utils/fetchAllRows';
 import { chatCache } from '../utils/chatCache';
@@ -752,42 +752,17 @@ export const leadService = {
           let resolvedContactId: string | null = payload.contact_id || (lead as any).contactId || null;
 
           if (!resolvedContactId) {
-            // Busca contato existente na Central de Contatos
-            const { data: existingContacts } = await supabase
-              .from('contacts')
-              .select('id, name')
-              .eq('master_id', effectiveMasterId)
-              .is('deleted_at', null)
-              .or(`primary_phone.eq.${cleanPhone},primary_phone.ilike.%${cleanPhone.slice(-8)}%`)
-              .limit(1);
-
-            if (existingContacts && existingContacts.length > 0) {
-              resolvedContactId = existingContacts[0].id;
-            } else {
-              // Se não existir, cria o Contact automaticamente com código Base36
-              const newContactCode = generateBase36Code('CONT', 8);
-              const contactPayload: Record<string, any> = {
-                master_id: effectiveMasterId,
-                code: newContactCode,
+            // Única porta de entrada: acha o contato do Master (telefone/CPF) ou cria
+            try {
+              const { contact: ensured } = await contactService.findOrCreateContact({
+                masterId: effectiveMasterId,
                 name: payload.name || lead.name || 'Sem nome',
-                primary_phone: cleanPhone || rawLeadPhone,
-                email: payload.email || lead.email || null,
-                relationship_role: 'Titular',
-                created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString(),
-              };
-
-              const { data: newContact, error: newContactErr } = await supabase
-                .from('contacts')
-                .insert(contactPayload)
-                .select('id')
-                .single();
-
-              if (!newContactErr && newContact) {
-                resolvedContactId = newContact.id;
-              } else {
-                console.warn('⚠️ Não foi possível auto-criar contato na ingestão do lead:', newContactErr?.message);
-              }
+                primaryPhone: cleanPhone || rawLeadPhone,
+                email: payload.email || lead.email || undefined,
+              });
+              resolvedContactId = ensured.id;
+            } catch (ensureErr) {
+              console.warn('⚠️ Não foi possível localizar/criar contato na ingestão do lead:', ensureErr);
             }
           }
 

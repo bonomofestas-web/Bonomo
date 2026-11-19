@@ -56,6 +56,16 @@ export function reciprocalKinship(kinship: string): string {
   return 'Familiar';
 }
 
+/** Lançado quando já existe contato com o mesmo telefone ou CPF no Master. Carrega o contato existente. */
+export class ContactDuplicateError extends Error {
+  existing: Contact | null;
+  constructor(existing: Contact | null, message?: string) {
+    super(message || (existing ? `Já cadastrado: ${existing.name}` : 'Já existe um contato com este telefone ou CPF.'));
+    this.name = 'ContactDuplicateError';
+    this.existing = existing;
+  }
+}
+
 export const contactService = {
   /**
    * Busca lista paginada e filtrada de contatos respeitando estritamente o isolamento master_id
@@ -253,8 +263,59 @@ export const contactService = {
     }
   },
 
+  /** Procura contato existente do Master por telefone (principal/secundário, com tolerância) e/ou CPF. */
+  async findExisting(masterId: string, ref: { phones?: Array<string | null | undefined>; cpf?: string | null }): Promise<Contact | null> {
+    if (!isSupabaseConfigured || !masterId) return null;
+    const phones = (ref.phones || []).map(p => (p || '').replace(/\D/g, '')).filter(p => p.length >= 8);
+    if (phones.length) {
+      const map = await this.findByPhones(masterId, phones);
+      for (const p of phones) { const c = map.get(p); if (c) return c; }
+    }
+    const cpfDigits = (ref.cpf || '').replace(/\D/g, '');
+    if (cpfDigits.length === 11) {
+      const { data } = await supabase
+        .from('contacts').select('*')
+        .eq('master_id', masterId).is('deleted_at', null).eq('cpf_digits', cpfDigits).limit(1).maybeSingle();
+      if (data) return mapRowToContact(data);
+    }
+    return null;
+  },
+
   /**
-   * Cria um novo contato na Central de Contatos
+   * ÚNICA porta de entrada para criar contato: devolve o existente (completando só campos vazios) ou cria.
+   */
+  async findOrCreateContact(
+    data: Partial<Contact> & { masterId: string; venueId?: string }
+  ): Promise<{ contact: Contact; created: boolean }> {
+    const existing = await this.findExisting(data.masterId, { phones: [data.primaryPhone, data.secondaryPhone], cpf: data.cpf });
+    if (existing) {
+      const fill: Partial<Contact> = {};
+      if (!existing.email && data.email?.trim()) fill.email = data.email.trim();
+      if (!existing.cpf && data.cpf?.trim()) fill.cpf = data.cpf.trim();
+      if (!existing.secondaryPhone && data.secondaryPhone?.trim()) fill.secondaryPhone = data.secondaryPhone.trim();
+      let contact = existing;
+      if (Object.keys(fill).length) {
+        try { contact = (await this.updateContact(existing.id, data.masterId, fill)) || existing; } catch { /* mantém o existente */ }
+      }
+      if (data.venueId && isUuid(data.venueId)) {
+        await supabase.from('contact_venue_access')
+          .upsert({ master_id: data.masterId, contact_id: contact.id, venue_id: data.venueId }, { onConflict: 'contact_id,venue_id' });
+      }
+      return { contact, created: false };
+    }
+    try {
+      const created = await this.createContact(data);
+      if (!created) throw new Error('Falha ao salvar contato.');
+      return { contact: created, created: true };
+    } catch (err) {
+      // Corrida: outro cadastro criou entre a checagem e o insert
+      if (err instanceof ContactDuplicateError && err.existing) return { contact: err.existing, created: false };
+      throw err;
+    }
+  },
+
+  /**
+   * Cria um novo contato na Central de Contatos. Recusa duplicado (telefone/CPF) com ContactDuplicateError.
    */
   async createContact(
     data: Partial<Contact> & { masterId: string; venueId?: string }
@@ -264,6 +325,9 @@ export const contactService = {
     }
 
     try {
+      const dup = await this.findExisting(data.masterId, { phones: [data.primaryPhone, data.secondaryPhone], cpf: data.cpf });
+      if (dup) throw new ContactDuplicateError(dup);
+
       const code = data.code || generateBase36Code('CONT', 8);
       const payload: Record<string, any> = {
         master_id: data.masterId,
@@ -295,6 +359,10 @@ export const contactService = {
         .select()
         .single();
 
+      if (error?.code === '23505') {
+        const again = await this.findExisting(data.masterId, { phones: [data.primaryPhone, data.secondaryPhone], cpf: data.cpf });
+        throw new ContactDuplicateError(again);
+      }
       if (error || !created) {
         console.error('Erro ao criar contato:', error);
         throw new Error(error?.message || 'Falha ao salvar contato.');
@@ -637,7 +705,7 @@ export const contactService = {
       if (!contact) {
         const primaryPhone = digits.length >= 8 ? digits : (params.fallbackPhone || '');
         if (!primaryPhone) return null;
-        contact = await this.createContact({
+        const res = await this.findOrCreateContact({
           masterId: params.masterId,
           name: params.name.trim(),
           primaryPhone,
@@ -648,7 +716,8 @@ export const contactService = {
           notes: params.notes,
           venueId: params.venueId,
         });
-        created = true;
+        contact = res.contact;
+        created = res.created;
       }
       if (!contact || contact.id === params.parentContactId) return null;
 

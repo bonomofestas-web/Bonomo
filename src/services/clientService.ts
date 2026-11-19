@@ -1,6 +1,6 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import type { Client, ClientDocument, ClientActivity } from '../types/admin';
-import { generateBase36Code } from './contactService';
+import { contactService } from './contactService';
 import { isUuid, generateUuid } from '../utils/uuid';
 import { fetchAllRows } from '../utils/fetchAllRows';
 
@@ -343,26 +343,22 @@ export const clientService = {
           }
 
           if (!foundContactId) {
-            const newCode = generateBase36Code('CONT', 8);
-            const { data: newContact } = await supabase
-              .from('contacts')
-              .insert({
-                master_id: effectiveMasterId,
-                code: newCode,
+            try {
+              const { contact: ensured } = await contactService.findOrCreateContact({
+                masterId: effectiveMasterId,
                 name: contactName || 'Contratante / Decisor',
-                primary_phone: cleanPhone || 'Não informado',
-                email: client.payerEmail || null,
-                cpf: cleanCpf || null,
-                street: client.payerAddress || null,
-                neighborhood: client.payerNeighborhood || null,
-                city: client.payerCity || null,
-                relationship_role: client.payerRelationship || 'Contratante',
-                created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString(),
-              })
-              .select('id')
-              .maybeSingle();
-            if (newContact?.id) foundContactId = newContact.id;
+                primaryPhone: cleanPhone || 'Não informado',
+                email: client.payerEmail || undefined,
+                cpf: cleanCpf || undefined,
+                street: client.payerAddress || undefined,
+                neighborhood: client.payerNeighborhood || undefined,
+                city: client.payerCity || undefined,
+                relationshipRole: client.payerRelationship || 'Contratante',
+              });
+              foundContactId = ensured.id;
+            } catch (ensureErr) {
+              console.warn('[clientService] contato não localizado/criado:', ensureErr);
+            }
           }
 
           if (foundContactId) {

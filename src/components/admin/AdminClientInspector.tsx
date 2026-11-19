@@ -1,5 +1,5 @@
 import { DateField, Select } from '../ui';
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { 
   ArrowLeft, FileText, Plus, ExternalLink, Check, Copy, Trash2, 
   Clock, Sparkles, Send, CheckCircle2, MessageSquare, Shield, Heart,
@@ -8,11 +8,13 @@ import {
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { formatPhone } from '../../utils/phoneFormatter';
-import { funnelSenders } from '../../utils/senderResolver';
+import { funnelSenders, leadCarriedSourceIds } from '../../utils/senderResolver';
 import { collectPhoneHolders, findPhoneConflict, duplicatePhoneMessage } from '../../utils/phoneDuplicates';
 import { uazapiService } from '../../services/uazapiService';
 import { whatsappMediaService } from '../../services/whatsappMediaService';
 import { AdminConfirmModal } from './AdminConfirmModal';
+import { ClientEventTypeRow, ContractOriginalTag, ClientCardHistory } from './ClientCardChanges';
+import { contractService } from '../../services/contractService';
 import { AdminTaskDetailModal } from './AdminTaskDetailModal';
 import { AdminTaskCompletionModal } from './AdminTaskCompletionModal';
 import { DocumentFileUploadZone } from './DocumentFileUploadZone';
@@ -180,6 +182,9 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
   const [upsellInstallmentsCount, setUpsellInstallmentsCount] = useState<number>(1);
   const [upsellResponsibleId, setUpsellResponsibleId] = useState<string>(() => currentUser?.id || '');
   const [upsellNotes, setUpsellNotes] = useState<string>('');
+  // Historico do card (convidados/data/tipo): guarda o valor ao focar para registrar antes -> depois
+  const guestFocusValueRef = useRef<number | null>(null);
+  const [cardHistoryTick, setCardHistoryTick] = useState(0);
   const [upsellToDelete, setUpsellToDelete] = useState<ClientUpsellSale | null>(null);
   
   // Task detail modal & completion state
@@ -409,7 +414,7 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
   const connectedSenderSources = useMemo(() => {
     const base = (sources || []).filter(s => s.type === 'whatsapp_api' && s.status === 'active' && ((s.configuration as any)?.connectedPhone || s.whatsappInstanceId));
     const funnelId = (client as any)?.funnelId as string | undefined;
-    return funnelId ? funnelSenders(base, funnels.find(f => f.id === funnelId) || { id: funnelId }, () => true) : base;
+    return funnelId ? funnelSenders(base, funnels.find(f => f.id === funnelId) || { id: funnelId }, () => true, leadCarriedSourceIds(client as any, (client as any)?.activities)) : base;
   }, [sources, funnels, (client as any)?.funnelId]);
 
   const [selectedSenderSourceId, setSelectedSenderSourceId] = useState<string>('');
@@ -1353,11 +1358,20 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
               <div style={cardValueStyle}>
                 <DateField
                   value={client.eventDate || ''}
-                  onChange={(e) => updateClient(client.id, { eventDate: e.target.value })}
+                  onChange={(e) => {
+                    const prev = client.eventDate || '';
+                    updateClient(client.id, { eventDate: e.target.value });
+                    void contractService.logCardChange({
+                      clientId: client.id, masterId: (client as any).masterId || (currentUser as any)?.masterId || currentUser?.id || '',
+                      field: 'event_date', oldValue: prev, newValue: e.target.value || '',
+                      author: { id: currentUser?.id, name: currentUser?.name || 'Equipe', role: currentUser?.role },
+                    }).then(() => setCardHistoryTick(t => t + 1));
+                  }}
                   style={{ ...seamlessInputStyle, fontWeight: 700, color: '#F59E0B' }}
                   onFocus={(e) => { e.currentTarget.style.borderBottomColor = 'var(--adm-accent)'; }}
                   onBlur={(e) => { e.currentTarget.style.borderBottomColor = 'transparent'; }}
                 />
+                <ContractOriginalTag clientId={client.id} masterId={(client as any).masterId || (currentUser as any)?.masterId || currentUser?.id || ''} field="eventDate" current={client.eventDate} refreshKey={cardHistoryTick} />
               </div>
             </div>
 
@@ -1375,6 +1389,17 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
                 />
               </div>
             </div>
+
+            <ClientEventTypeRow
+              client={client}
+              masterId={(client as any).masterId || (currentUser as any)?.masterId || currentUser?.id || ''}
+              user={currentUser}
+              rowStyle={cardRowStyle}
+              labelStyle={cardLabelStyle}
+              valueStyle={cardValueStyle}
+              selectStyle={cardSelectStyle}
+              onApplied={(patch) => { updateClient(client.id, patch); setCardHistoryTick(t => t + 1); }}
+            />
 
             <div style={cardRowStyle}>
               <span style={cardLabelStyle}>Casa de Festas</span>
@@ -1402,12 +1427,26 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
                   value={client.guestCount || 150}
                   onChange={(e) => updateClient(client.id, { guestCount: Number(e.target.value) || 0 })}
                   style={{ ...seamlessInputStyle, width: '90px' }}
-                  onFocus={(e) => { e.currentTarget.style.borderBottomColor = 'var(--adm-accent)'; }}
-                  onBlur={(e) => { e.currentTarget.style.borderBottomColor = 'transparent'; }}
+                  onFocus={(e) => { e.currentTarget.style.borderBottomColor = 'var(--adm-accent)'; guestFocusValueRef.current = client.guestCount || 0; }}
+                  onBlur={(e) => {
+                    e.currentTarget.style.borderBottomColor = 'transparent';
+                    const before = guestFocusValueRef.current;
+                    guestFocusValueRef.current = null;
+                    if (before !== null && before !== (client.guestCount || 0)) {
+                      void contractService.logCardChange({
+                        clientId: client.id, masterId: (client as any).masterId || (currentUser as any)?.masterId || currentUser?.id || '',
+                        field: 'guest_count', oldValue: String(before), newValue: String(client.guestCount || 0),
+                        author: { id: currentUser?.id, name: currentUser?.name || 'Equipe', role: currentUser?.role },
+                      }).then(() => setCardHistoryTick(t => t + 1));
+                    }
+                  }}
                 />
                 <span style={{ fontSize: '11px', color: 'var(--adm-text-muted)' }}>Pessoas</span>
+                <ContractOriginalTag clientId={client.id} masterId={(client as any).masterId || (currentUser as any)?.masterId || currentUser?.id || ''} field="guestCount" current={client.guestCount} refreshKey={cardHistoryTick} />
               </div>
             </div>
+
+            <ClientCardHistory clientId={client.id} masterId={(client as any).masterId || (currentUser as any)?.masterId || currentUser?.id || ''} refreshKey={cardHistoryTick} />
           </div>
 
           {/* Seção 2: Contratante & Decisores */}

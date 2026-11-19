@@ -65,7 +65,7 @@ import { AdminClientDrawerInspector } from './AdminClientDrawerInspector';
 import { AdminLeadReadOnlyModal } from './AdminLeadReadOnlyModal';
 import { ChannelAvatar } from './ChannelBadge';
 import { channelOfLead } from '../../utils/channels';
-import { funnelSenders, lastSystemSentSourceId, recommendSender, readManualSender, saveManualSender } from '../../utils/senderResolver';
+import { funnelSenders, leadCarriedSourceIds, lastIncomingSourceId, lastSystemSentSourceId, recommendSender, readManualSender, saveManualSender } from '../../utils/senderResolver';
 import { AdminNewLeadModal } from './AdminNewLeadModal';
 import { AdminTransferLeadVenueModal } from './AdminTransferLeadVenueModal';
 import { AdminTaskDetailModal, renderTaskTypeLucideIcon } from './AdminTaskDetailModal';
@@ -1728,6 +1728,17 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   // Client adapter for Post-Sale funnels
   const clientsAsLeads = useMemo<Lead[]>(() => {
     if (!isPostSaleFunnel) return [];
+    // Mesmo cliente com 2+ contratos no MESMO funil (mesmo numero = mesma origem): a conversa e uma so.
+    // Os cards compartilham as mensagens (o que chega ou e enviado por um aparece no outro).
+    const chatKeyOf = (c: any): string => {
+      const d = (c.payerPhone || '').replace(/\D/g, '');
+      return d.length >= 8 ? `${c.funnelId || 'post_sale_default'}|${d.slice(-8)}` : '';
+    };
+    const chatGroups = new Map<string, any[]>();
+    for (const c of clients || []) {
+      const k = chatKeyOf(c);
+      if (k) chatGroups.set(k, [...(chatGroups.get(k) || []), c]);
+    }
     return (clients || []).map(c => {
       const pName = c.birthdayPersonName || c.name || 'Cliente';
       const cPayer = c.payerName || '';
@@ -1754,6 +1765,13 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
         if (!mergedActivities.some(a => a.id === nAct.id)) {
           mergedActivities.push(nAct);
         }
+      }
+      const chatKey = chatKeyOf(c);
+      const siblingChat = chatKey
+        ? (chatGroups.get(chatKey) || []).filter(x => x.id !== c.id).flatMap(x => ((x as any).activities || []) as LeadActivity[]).filter(a => a.type === 'contact')
+        : [];
+      if (siblingChat.length > 0) {
+        mergedActivities.splice(0, mergedActivities.length, ...mergeAndSortActivities(mergedActivities, siblingChat, c.id));
       }
       mergedActivities.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
@@ -3013,14 +3031,18 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
 
     // Lead sem funil (funil e opcional): vale a regra por casa
     if (!senderFunnelId) return byVenue;
-    return funnelSenders(byVenue, funnels.find(f => f.id === senderFunnelId) || { id: senderFunnelId }, () => true);
-  }, [sources, funnels, selectedLead?.venueId, senderFunnelId, activeVenueId, getSourceInstanceToken]);
+    return funnelSenders(byVenue, funnels.find(f => f.id === senderFunnelId) || { id: senderFunnelId }, () => true, leadCarriedSourceIds(selectedLead as any, (selectedLead as any)?.activities));
+  }, [sources, funnels, selectedLead, selectedLead?.venueId, senderFunnelId, activeVenueId, getSourceInstanceToken]);
 
   const [selectedSenderSourceId, setSelectedSenderSourceId] = useState<string>('');
   const manuallySelectedSenderLeadIdRef = useRef<string | null>(null);
 
   // Chip da ultima mensagem enviada PELO SISTEMA para este lead
   const lastSentSourceId = useMemo(() => lastSystemSentSourceId(selectedLead?.activities), [selectedLead?.activities]);
+  // Numero por onde o cliente falou por ultimo: ao abrir a conversa, ja vem selecionado (so ao abrir, nao troca sozinho depois)
+  const lastIncomingSourceIdValue = useMemo(() => lastIncomingSourceId(selectedLead?.activities), [selectedLead?.activities]);
+  const lastIncomingRef = useRef<string | undefined>(undefined);
+  lastIncomingRef.current = lastIncomingSourceIdValue;
 
   useEffect(() => {
     if (!selectedLead) {
@@ -3034,11 +3056,12 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       : readManualSender(selectedLead.id);
     const rec = recommendSender(venueSenderSources.map(s => s.id), {
       manualId,
+      lastIncomingId: lastIncomingRef.current,
       lastSentId: lastSentSourceId,
       originId: selectedLead.sourceId,
     });
     setSelectedSenderSourceId(rec?.id || '');
-  }, [selectedLead?.id, selectedLead?.sourceId, lastSentSourceId, venueSenderSources]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selectedLead?.id, selectedLead?.sourceId, lastSentSourceId, Boolean(lastIncomingSourceIdValue), venueSenderSources]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const baseSenderSource = useMemo(() => {
     return venueSenderSources.find(s => s.id === selectedSenderSourceId) || venueSenderSources[0] || null;
@@ -4543,10 +4566,20 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       a.metadata?.phone || a.metadata?.senderPhone || a.metadata?.to || a.metadata?.from || ''
     );
 
+    // Conversa por NUMERO: com 2+ WhatsApps no lead, mostra so as mensagens do numero selecionado (sem chip = aparece em todos)
+    const chipOf = (a: any): string => a.instanceId || a.metadata?.senderSourceId || a.metadata?.sourceId || a.metadata?.instanceId || '';
+    const chipsInChat = new Set(chatOnly.map(chipOf).filter(Boolean));
+    const selectedChipId = chipsInChat.size > 1 ? (activeSenderSource?.id || '') : '';
+
     // Filtra pelo canal setorial selecionado (Comercial) ou bilateralidade multi-decisor (Pós-Venda)
     const filteredByChannel = chatOnly.filter(a => {
       const isSessionMarker = Boolean((a as any).metadata?.isSessionEnd || (a as any).metadata?.isViewAudit || (a.title || '').toLowerCase().includes('conversa encerrada'));
       if (isSessionMarker) return true;
+
+      if (selectedChipId) {
+        const chip = chipOf(a);
+        if (chip && chip !== selectedChipId) return false;
+      }
 
       if (splitByContact && selectedChatPhone) {
         const ap = activityContactPhone(a);
@@ -4632,7 +4665,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       const minuteBucket = Math.floor(new Date(act.timestamp || 0).getTime() / 60000);
       const textKey = (act.text || act.title || '').trim().toLowerCase();
       const authorKey = (act.authorName || '').trim().toLowerCase();
-      const fingerprint = `${act.type}_${minuteBucket}_${authorKey}_${textKey}`;
+      const fingerprint = `${act.type}_${minuteBucket}_${authorKey}_${textKey}_${chipOf(act)}`;
 
       if (textKey && act.type === 'contact' && seenFingerprints.has(fingerprint)) {
         continue;
@@ -4650,7 +4683,50 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     }
 
     return deduped;
-  }, [effectiveLeadActivities, isPostSaleChat, activePostSaleChannelId, availableRecipients, activeRecipient]);
+  }, [effectiveLeadActivities, isPostSaleChat, activePostSaleChannelId, availableRecipients, activeRecipient, activeSenderSource?.id]);
+
+  // Numeros (WhatsApp) que ja falaram neste lead: 2+ => aparece o seletor "WhatsApp A / B" acima da conversa
+  const chatChipSources = useMemo(() => {
+    const ids = new Set<string>();
+    for (const a of (effectiveLeadActivities || []) as any[]) {
+      const id = a.instanceId || a.metadata?.senderSourceId || a.metadata?.sourceId || a.metadata?.instanceId;
+      if (id) ids.add(id);
+    }
+    if (ids.size < 2) return [];
+    return (sources || []).filter(src => ids.has(src.id));
+  }, [effectiveLeadActivities, sources]);
+
+  // Nao lidas por numero: mensagens recebidas pelo OUTRO numero depois da ultima vez que a conversa dele foi vista.
+  // A troca de numero e feita so no seletor de baixo; aqui so alertamos (ponto/contador no seletor).
+  const [chipSeenTick, setChipSeenTick] = useState(0);
+  const chipSeenKey = (leadId: string, chipId: string) => `${leadId}|${chipId}`;
+  const readChipSeen = (): Record<string, number> => { try { return JSON.parse(localStorage.getItem('f5_chip_seen_v1') || '{}'); } catch { return {}; } };
+  useEffect(() => {
+    if (!selectedLead || chatChipSources.length < 2) return;
+    const seen = readChipSeen();
+    const now = Date.now();
+    let changed = false;
+    for (const src of chatChipSources) {
+      const k = chipSeenKey(selectedLead.id, src.id);
+      // numero em foco: sempre visto agora; os outros: marco inicial na primeira abertura
+      if (src.id === activeSenderSource?.id || seen[k] === undefined) { seen[k] = now; changed = true; }
+    }
+    if (changed) { try { localStorage.setItem('f5_chip_seen_v1', JSON.stringify(seen)); } catch { /* sem armazenamento */ } setChipSeenTick(t => t + 1); }
+  }, [selectedLead?.id, activeSenderSource?.id, chatChipSources, (effectiveLeadActivities || []).length]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const unreadByChip = useMemo<Record<string, number>>(() => {
+    const out: Record<string, number> = {};
+    if (!selectedLead || chatChipSources.length < 2) return out;
+    const seen = readChipSeen();
+    for (const a of (effectiveLeadActivities || []) as any[]) {
+      if (a.authorId !== 'lead') continue;
+      const chip = a.instanceId || a.metadata?.senderSourceId || a.metadata?.sourceId || a.metadata?.instanceId;
+      if (!chip || chip === activeSenderSource?.id) continue;
+      const since = seen[chipSeenKey(selectedLead.id, chip)];
+      if (since !== undefined && new Date(a.timestamp || 0).getTime() > since) out[chip] = (out[chip] || 0) + 1;
+    }
+    return out;
+  }, [effectiveLeadActivities, chatChipSources, selectedLead?.id, activeSenderSource?.id, chipSeenTick]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Função para carregar lote anterior de mensagens do histórico (rolagem para o passado)
   const loadOlderMessages = useCallback(async () => {
@@ -6139,6 +6215,20 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                             return cleanPreviewText || (lastActivity?.title || 'Sem mensagens recentes');
                           })()}
                         </span>
+                        {(() => {
+                          // Lead com mensagens de 2+ numeros: mostra por qual numero foi a ultima mensagem
+                          const chipOfAct = (a: any): string => a.instanceId || a.metadata?.senderSourceId || a.metadata?.sourceId || a.metadata?.instanceId || '';
+                          const chatActs = (lead.activities || []).filter(a => a.type === 'contact');
+                          if (new Set(chatActs.map(chipOfAct).filter(Boolean)).size < 2) return null;
+                          const lastChip = chipOfAct(chatActs[chatActs.length - 1]);
+                          const src = lastChip ? (sources || []).find(x => x.id === lastChip) : null;
+                          if (!src) return null;
+                          return (
+                            <span title={`Última mensagem pelo número ${getSourceCleanLabel(src).cleanName}`} style={{ flexShrink: 0, maxWidth: '90px', fontSize: '0.6rem', fontWeight: 700, padding: '1px 5px', borderRadius: '4px', background: 'var(--adm-bg-input)', color: 'var(--adm-text-muted)', border: '1px solid var(--adm-border)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              via {getSourceCleanLabel(src).cleanName}
+                            </span>
+                          );
+                        })()}
                       </div>
                       {Boolean(lead.unreadCount && lead.unreadCount > 0) && (
                         <div style={{
@@ -7212,9 +7302,13 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                 flexDirection: 'column',
                 gap: '4px',
                 background: composerTab === 'whatsapp'
-                  ? (isDarkMode
-                    ? '#0b141a'
-                    : '#efeae2')
+                  ? (() => {
+                      // Com 2+ numeros no lead, o fundo muda levemente conforme o numero em foco
+                      const idx = chatChipSources.length > 1 ? Math.max(0, chatChipSources.findIndex(src => src.id === activeSenderSource?.id)) : 0;
+                      const dark = ['#0b141a', '#0b1a1a', '#14121f'];
+                      const light = ['#efeae2', '#e4eeee', '#ece8f2'];
+                      return (isDarkMode ? dark : light)[idx % 3];
+                    })()
                   : 'radial-gradient(ellipse at 50% 10%, rgba(212, 175, 55, 0.03) 0%, transparent 60%)',
               }}>
               {/* 1. ABA WHATSAPP: Exibe histórico de mensagens com layout bilateral */}
@@ -12215,6 +12309,11 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                 />
                               )
                             )}
+                            {Object.values(unreadByChip).some(n => n > 0) && (
+                              <span title="Mensagem nao lida em outro numero" style={{ minWidth: 16, height: 16, borderRadius: 8, background: '#EF4444', color: '#fff', fontSize: '0.6rem', fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px', marginLeft: 2 }}>
+                                {Object.values(unreadByChip).reduce((x, y) => x + y, 0)}
+                              </span>
+                            )}
                           </button>
 
                           {/* Popup Dropdown de Instâncias (bloqueado em canais com chip dedicado) */}
@@ -12326,6 +12425,11 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                     </div>
 
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                                      {(unreadByChip[src.id] || 0) > 0 && (
+                                        <span title="Mensagens nao lidas neste numero" style={{ minWidth: 18, height: 18, borderRadius: 9, background: '#EF4444', color: '#fff', fontSize: '0.64rem', fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '0 5px' }}>
+                                          {unreadByChip[src.id]}
+                                        </span>
+                                      )}
                                       <span style={{
                                         fontSize: '0.64rem',
                                         fontWeight: 800,

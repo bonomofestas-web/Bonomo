@@ -90,7 +90,7 @@ export const AdminSourceDetailView: React.FC<Props> = ({
 
   // Funis em que o numero participa (origem + enviar) e se esta habilitado para envio
   const participation = useMemo(() => {
-    const ids = [source.funnelId, ...(((source.configuration as any)?.senderFunnelIds as string[]) || [])].filter(Boolean) as string[];
+    const ids = [source.funnelId].filter(Boolean) as string[];
     return Array.from(new Set(ids)).map(id => {
       const f = funnels.find(x => x.id === id);
       return { id, name: f?.name || 'Funil removido', isOrigin: id === source.funnelId, sends: f ? !getSendDisabledIds(f).includes(source.id) : false };

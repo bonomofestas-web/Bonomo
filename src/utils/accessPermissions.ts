@@ -1,4 +1,5 @@
 import type { Collaborator, AdminRole } from '../types/admin';
+import { hasJobRole } from './jobRoles';
 
 export interface AccessLevelOption {
   id: AdminRole;
@@ -59,6 +60,22 @@ export const isUserManager = (user?: Partial<Collaborator> | null): boolean => {
   if (role === 'admin' || role === 'gerencia') return true;
   if (user.sectors && user.sectors.includes('gerencia')) return true;
   return false;
+};
+
+/**
+ * Tipo do evento do contrato: so gerencia (gerente de pos-venda, gerente geral, diretor/acesso geral, master/admin).
+ * Predicado unico, tambem verificado no servico (nao so na tela).
+ */
+export const canChangeEventType = (user?: Partial<Collaborator> | null): boolean => {
+  if (!user) return false;
+  if (isUserMaster(user) || isUserManager(user)) return true;
+  const role = (user.role || '').toLowerCase();
+  if (role === 'gerente') return true;
+  if (user.department === 'gerencia' || user.department === 'diretoria') return true;
+  if (user.sectors && user.sectors.includes('gerencia')) return true;
+  const title = ((user as any).roleTitle || '').toLowerCase();
+  if (title.includes('geren') || title.includes('direto')) return true;
+  return hasJobRole(user as any, 'pos_venda:gerente') || hasJobRole(user as any, 'gerencia:gerente_geral');
 };
 
 /**

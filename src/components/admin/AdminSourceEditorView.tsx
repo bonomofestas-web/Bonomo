@@ -1,6 +1,5 @@
 import { Select } from '../ui';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { FunnelMultiSelect } from './FunnelMultiSelect';
 import { 
   ArrowLeft, Compass, PhoneCall, FileText,
   Plus, Trash2, Tag,
@@ -58,7 +57,6 @@ export const AdminSourceEditorView: React.FC<AdminSourceEditorViewProps> = ({
   const [type, setType] = useState<SourceType>('whatsapp_api');
   const [funnelId, setFunnelId] = useState('');
   // Funis (esteiras) alem do de origem que podem responder o cliente por este numero
-  const [senderFunnelIds, setSenderFunnelIds] = useState<string[]>([]);
   const [status, setStatus] = useState<'active' | 'inactive'>('active');
 
   // Custom Dropdowns States & Refs (Modern UX without unnecessary modals)
@@ -140,7 +138,6 @@ export const AdminSourceEditorView: React.FC<AdminSourceEditorViewProps> = ({
       } else {
         setFunnelId(initialFunnelId);
       }
-      setSenderFunnelIds(Array.isArray((sourceToEdit.configuration as any)?.senderFunnelIds) ? (sourceToEdit.configuration as any).senderFunnelIds : []);
 
       setWhatsappInstanceId(sourceToEdit.whatsappInstanceId || '');
       setSlug(sourceToEdit.slug || '');
@@ -211,18 +208,6 @@ export const AdminSourceEditorView: React.FC<AdminSourceEditorViewProps> = ({
       return f.venueId === venueId || shared.includes(venueId);
     });
   }, [funnels, venueId]);
-
-  // Funis em que o numero pode ENVIAR alem do de origem: somente os da casa desta origem, sem repetir o funil de origem
-  const senderFunnelOptions = useMemo(
-    () => availableVenueFunnels.filter(f => f.id !== funnelId).map(f => ({ id: f.id, name: f.name })),
-    [availableVenueFunnels, funnelId],
-  );
-
-  // Trocar a casa (ou o funil de origem) descarta marcacoes que nao pertencem mais as opcoes validas
-  useEffect(() => {
-    const valid = new Set(senderFunnelOptions.map(o => o.id));
-    setSenderFunnelIds(prev => (prev.every(id => valid.has(id)) ? prev : prev.filter(id => valid.has(id))));
-  }, [senderFunnelOptions]);
 
   // Leads captados por esta origem específica
   const originLeads = useMemo(() => {
@@ -382,8 +367,8 @@ export const AdminSourceEditorView: React.FC<AdminSourceEditorViewProps> = ({
           connectedProfileName,
           connectedAvatar,
           subSources,
-          // O funil de origem sempre pode enviar; aqui ficam so os OUTROS funis autorizados
-          senderFunnelIds: senderFunnelIds.filter(id => senderFunnelOptions.some(o => o.id === id)),
+          // Regra: um numero pertence a UM funil (origem) e nao envia por outro. Compartilhamento removido.
+          senderFunnelIds: [],
         } : {}),
         ...(type === 'form' ? { title: formTitle, description: formDescription, fields: formFields, successMessage, buttonText } : {}),
       };
@@ -1286,30 +1271,6 @@ export const AdminSourceEditorView: React.FC<AdminSourceEditorViewProps> = ({
               );
             })()}
           </div>
-
-          {/* Funis que tambem podem enviar mensagens por este numero (esteira dividida em varios funis com o mesmo WhatsApp) */}
-          {type === 'whatsapp_api' && (
-            <div>
-              <label style={{ display: 'block', fontSize: '0.76rem', fontWeight: 800, color: 'var(--adm-text-title)', marginBottom: '6px' }}>
-                Funis que também podem enviar mensagens por este número
-              </label>
-              <div style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)', marginBottom: '8px' }}>
-                O funil de origem acima sempre pode enviar. Aqui aparecem só os outros funis desta casa (comerciais e de pós-venda) que também podem responder o cliente por este número. Dentro de cada funil dá para desabilitar o envio dele.
-              </div>
-              {senderFunnelOptions.length === 0 ? (
-                <div style={{ fontSize: '0.76rem', color: 'var(--adm-text-muted)' }}>
-                  {venueId ? 'Esta casa não tem outros funis além do de origem.' : 'Escolha a casa de festa para ver os funis disponíveis.'}
-                </div>
-              ) : (
-                <FunnelMultiSelect
-                  options={senderFunnelOptions}
-                  value={senderFunnelIds}
-                  onChange={setSenderFunnelIds}
-                  placeholder="Selecionar funis"
-                />
-              )}
-            </div>
-          )}
 
           {/* Status (Apenas na edição de uma origem já cadastrada) */}
           {currentSourceId && (

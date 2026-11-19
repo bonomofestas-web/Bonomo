@@ -1,6 +1,8 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { isUuid, generateUuid } from '../utils/uuid';
-import { generateBase36Code, buildContactSearchFilter } from './contactService';
+import { generateBase36Code, buildContactSearchFilter, contactService } from './contactService';
+import { buildContractTitle } from '../utils/contractTitle';
+import { canChangeEventType } from '../utils/accessPermissions';
 import { taskService } from './taskService';
 import type { Contract, ContractApprovalStatus, ContractFunnelPlacement, Lead } from '../types/admin';
 
@@ -249,54 +251,22 @@ export const contractService = {
       let effectiveContactId = params.contactId && isUuid(params.contactId) ? params.contactId : null;
 
       if (!effectiveContactId) {
-        const phone = (params.clientSnapshot?.phone || '').replace(/\D/g, '');
-        const cpf = (params.clientSnapshot?.cpf || '').replace(/\D/g, '');
-
-        if (phone || cpf) {
-          let query = supabase
-            .from('contacts')
-            .select('id')
-            .eq('master_id', params.masterId)
-            .is('deleted_at', null);
-
-          if (cpf && cpf.length === 11) {
-            query = query.eq('cpf', params.clientSnapshot?.cpf);
-          } else if (phone) {
-            query = query.eq('primary_phone', params.clientSnapshot?.phone);
-          }
-
-          const { data: existingContact } = await query.maybeSingle();
-          if (existingContact?.id) {
-            effectiveContactId = existingContact.id;
-          }
-        }
-
-        // Se ainda não localizou contato cadastrado na Central de Contatos, cria registro limpo
-        if (!effectiveContactId) {
-          const newContactCode = generateBase36Code('CONT', 8);
-          const contactName = params.clientSnapshot?.payerName || params.clientSnapshot?.name || 'Contratante';
-          const { data: createdContact, error: contactErr } = await supabase
-            .from('contacts')
-            .insert({
-              master_id: params.masterId,
-              code: newContactCode,
-              name: contactName.trim(),
-              primary_phone: params.clientSnapshot?.phone || 'Não informado',
-              email: params.clientSnapshot?.email || null,
-              cpf: params.clientSnapshot?.cpf || null,
-              address: params.clientSnapshot?.address || null,
-              neighborhood: params.clientSnapshot?.neighborhood || null,
-              city: params.clientSnapshot?.city || null,
-              relationship_role: params.clientSnapshot?.payerRelationship || 'Titular',
-            })
-            .select('id')
-            .single();
-
-          if (createdContact?.id) {
-            effectiveContactId = createdContact.id;
-          } else if (contactErr) {
-            console.warn('[contractService.createContract] Aviso ao criar contato fallback:', contactErr);
-          }
+        // Única porta de entrada: acha o contato (telefone/CPF) ou cria, sem duplicar
+        try {
+          const { contact: ensured } = await contactService.findOrCreateContact({
+            masterId: params.masterId,
+            name: (params.clientSnapshot?.payerName || params.clientSnapshot?.name || 'Contratante').trim(),
+            primaryPhone: params.clientSnapshot?.phone || 'Não informado',
+            email: params.clientSnapshot?.email || undefined,
+            cpf: params.clientSnapshot?.cpf || undefined,
+            address: params.clientSnapshot?.address || undefined,
+            neighborhood: params.clientSnapshot?.neighborhood || undefined,
+            city: params.clientSnapshot?.city || undefined,
+            relationshipRole: params.clientSnapshot?.payerRelationship || 'Titular',
+          } as any);
+          effectiveContactId = ensured.id;
+        } catch (contactErr) {
+          console.warn('[contractService.createContract] Aviso ao localizar/criar contato:', contactErr);
         }
       }
 
@@ -337,7 +307,18 @@ export const contractService = {
         : new Date().getFullYear();
 
       const contractCode = params.contractCode || generateBase36Code(`CTR-${year}`, 6);
-      const computedTitle = (params.contractTitle || params.title || params.eventTitle || 'Contrato').trim();
+      // Nome do contrato = padrao unico `Contratante • Protagonista + tipo` (nao e texto livre)
+      const snap: any = params.clientSnapshot || {};
+      const standardTitle = buildContractTitle({
+        contractors: [snap.payerName || snap.name],
+        protagonists: snap.birthdayPersonName ? [snap.birthdayPersonName] : [],
+        eventType: params.eventType,
+        age: snap.birthdayPersonAge,
+        contractorIsProtagonist: snap.payerRelationship === 'self',
+        contractCode,
+      });
+      const hasStandardData = Boolean(snap.payerName || snap.name || snap.birthdayPersonName);
+      const computedTitle = (hasStandardData ? standardTitle : (params.contractTitle || params.title || params.eventTitle || standardTitle)).trim();
 
       const totalAmount = Number(params.totalAmount ?? params.dealValue ?? 0);
       const entryAmount = Number(params.entryAmount ?? 0);
@@ -556,6 +537,13 @@ export const contractService = {
         Math.max(0, totalAmount - entryAmount)
       );
 
+      const standardTitleFromLead = buildContractTitle({
+        contractors: [params.lead.name],
+        protagonists: params.lead.debutanteName ? [params.lead.debutanteName] : [],
+        eventType: params.eventData.eventType || params.lead.eventType,
+        contractCode,
+      });
+
       const payload: Record<string, any> = {
         master_id: params.masterId,
         contract_code: contractCode,
@@ -568,8 +556,8 @@ export const contractService = {
         client_id: params.clientId && isUuid(params.clientId) ? params.clientId : null,
         event_type: params.eventData.eventType || params.lead.eventType || '15_anos',
         event_title: params.eventData.eventTitle.trim(),
-        contract_title: params.eventData.contractTitle?.trim() || params.eventData.eventTitle.trim(),
-        title: params.eventData.contractTitle?.trim() || params.eventData.eventTitle.trim(),
+        contract_title: standardTitleFromLead,
+        title: standardTitleFromLead,
         event_date: params.eventData.eventDate || null,
         event_time: params.eventData.eventTime || null,
         guest_count: params.eventData.guestCount || params.lead.estimatedGuests || 0,
@@ -614,6 +602,254 @@ export const contractService = {
       console.error('Exceção em contractService.createContractFromLead:', err);
       throw err;
     }
+  },
+
+  /**
+   * ÚNICA função que cria o card de cliente (pós-venda) a partir de um contrato. Idempotente:
+   * se o contrato já tem card, devolve o id existente. O card guarda só o operacional; título, tipo, data,
+   * valores e pacote nascem copiados do contrato (o contrato segue sendo a base jurídica, imutável).
+   */
+  async createClientFromContract(params: {
+    contractId: string;
+    masterId: string;
+    funnelId?: string | null;
+  }): Promise<string | null> {
+    if (!isSupabaseConfigured || !isUuid(params.contractId) || !params.masterId) return null;
+    try {
+      const { data: c } = await supabase
+        .from('contracts').select('*, contact:contacts(name, primary_phone, email, cpf)')
+        .eq('id', params.contractId).eq('master_id', params.masterId).maybeSingle();
+      if (!c) return null;
+      if (c.client_id) {
+        const { data: ex } = await supabase.from('clients').select('id').eq('id', c.client_id).eq('master_id', params.masterId).maybeSingle();
+        if (ex?.id) return ex.id as string;
+      }
+
+      let funnelId: string | null = params.funnelId && isUuid(params.funnelId) ? params.funnelId : null;
+      if (!funnelId && Array.isArray(c.target_pos_sale_funnel_ids) && c.target_pos_sale_funnel_ids.length > 0) funnelId = c.target_pos_sale_funnel_ids[0];
+      // Contrato sem funil de pos-venda definido (ex.: subido manualmente): entra no funil de pos-venda da unidade
+      if (!funnelId) {
+        const { data: psf } = await supabase.from('commercial_funnels').select('id')
+          .eq('master_id', params.masterId).eq('venue_id', c.venue_id).eq('is_post_sale', true)
+          .order('created_at', { ascending: true }).limit(1).maybeSingle();
+        if (psf?.id) funnelId = psf.id as string;
+      }
+      let stage = 'onboarding';
+      if (funnelId) {
+        const { data: f } = await supabase.from('commercial_funnels').select('stages').eq('id', funnelId).eq('master_id', params.masterId).maybeSingle();
+        if (Array.isArray(f?.stages) && f!.stages.length > 0) stage = f!.stages[0].id || stage;
+      }
+
+      const snap = (c.client_snapshot || {}) as Record<string, any>;
+      const { data: venue } = await supabase.from('venues').select('name').eq('id', c.venue_id).maybeSingle();
+      const clientId = generateUuid();
+      const { error } = await supabase.from('clients').insert({
+        id: clientId,
+        master_id: params.masterId,
+        code: generateBase36Code('CLI', 8),
+        name: snap.birthdayPersonName || c.contract_title || 'Cliente',
+        contract_title: c.contract_title,
+        payer_name: snap.payerName || c.contact?.name || snap.name || null,
+        payer_phone: snap.phone || c.contact?.primary_phone || null,
+        payer_email: snap.email || c.contact?.email || null,
+        payer_cpf: snap.cpf || c.contact?.cpf || null,
+        birthday_person_name: snap.birthdayPersonName || null,
+        event_type: c.event_type,
+        event_date: c.event_date || null,
+        event_time: c.event_time || null,
+        guest_count: c.guest_count || 0,
+        venue_id: c.venue_id,
+        venue_name: venue?.name || null,
+        package_sold: c.package_name || null,
+        deal_value: Number(c.total_amount || 0),
+        funnel_id: funnelId,
+        stage,
+        commercial_lead_id: c.origin_lead_id || null,
+      });
+      if (error) { console.warn('[createClientFromContract] erro ao criar card:', error.message); return null; }
+
+      const { error: linkErr } = await supabase
+        .from('contracts').update({ client_id: clientId }).eq('id', params.contractId).eq('master_id', params.masterId);
+      if (linkErr) {
+        // Outro processo ligou um card primeiro (indice unico): descarta o nosso e usa o existente
+        await supabase.from('clients').delete().eq('id', clientId).eq('master_id', params.masterId);
+        const { data: again } = await supabase.from('contracts').select('client_id').eq('id', params.contractId).eq('master_id', params.masterId).maybeSingle();
+        return (again?.client_id as string | null) || null;
+      }
+      return clientId;
+    } catch (err) {
+      console.warn('[createClientFromContract] excecao:', err);
+      return null;
+    }
+  },
+
+  /**
+   * Altera um campo OPERACIONAL do card de cliente e registra o historico (quem, quando, antes -> depois).
+   * - Convidados e data do evento: qualquer perfil do pos-venda.
+   * - Tipo do evento: SO gerencia (verificado aqui, nao so na tela), motivo obrigatorio; regera o titulo do contrato.
+   *   O snapshot juridico do contrato nao e reescrito.
+   */
+  async updateCardField(params: {
+    clientId: string;
+    masterId: string;
+    field: 'guest_count' | 'event_date' | 'event_type';
+    value: string | number;
+    reason?: string;
+    author: { id?: string; name: string; role?: string } & Record<string, any>;
+  }): Promise<{ success: boolean; message?: string }> {
+    if (!isSupabaseConfigured || !isUuid(params.clientId) || !params.masterId) return { success: false, message: 'Parâmetros inválidos.' };
+    const { field, value, author } = params;
+    if (field === 'event_type') {
+      if (!canChangeEventType(author as any)) return { success: false, message: 'Só a gerência pode alterar o tipo do evento.' };
+      if (!(params.reason || '').trim() || (params.reason || '').trim().length < 3) return { success: false, message: 'Informe o motivo da mudança do tipo do evento.' };
+    }
+    try {
+      const { data: client } = await supabase.from('clients').select('id, guest_count, event_date, event_type, contract_title').eq('id', params.clientId).eq('master_id', params.masterId).maybeSingle();
+      if (!client) return { success: false, message: 'Cliente não encontrado.' };
+      const { data: contract } = await supabase.from('contracts').select('id, contract_code, event_type, client_snapshot').eq('client_id', params.clientId).eq('master_id', params.masterId).maybeSingle();
+
+      const newValue = field === 'guest_count' ? Math.max(0, Number(value) || 0) : String(value || '');
+      const oldValue = (client as any)[field];
+      if (String(oldValue ?? '') === String(newValue)) return { success: true };
+
+      const clientUpdate: Record<string, any> = { [field]: field === 'event_date' && !newValue ? null : newValue, updated_at: new Date().toISOString() };
+      const changes: Array<{ field: string; old: string; neu: string }> = [{ field, old: String(oldValue ?? ''), neu: String(newValue) }];
+
+      if (field === 'event_type' && contract) {
+        const snap: any = contract.client_snapshot || {};
+        const title = buildContractTitle({
+          contractors: [snap.payerName || snap.name],
+          protagonists: snap.birthdayPersonName ? [snap.birthdayPersonName] : [],
+          eventType: String(newValue),
+          age: snap.birthdayPersonAge,
+          contractorIsProtagonist: snap.payerRelationship === 'self',
+          contractCode: contract.contract_code,
+        });
+        clientUpdate.contract_title = title;
+        changes.push({ field: 'contract_title', old: String(client.contract_title ?? ''), neu: title });
+        const { error: ce } = await supabase.from('contracts')
+          .update({ event_type: newValue, contract_title: title, title, event_title: title, updated_at: new Date().toISOString() })
+          .eq('id', contract.id).eq('master_id', params.masterId);
+        if (ce) return { success: false, message: ce.message };
+      }
+
+      const { error } = await supabase.from('clients').update(clientUpdate).eq('id', params.clientId).eq('master_id', params.masterId);
+      if (error) return { success: false, message: error.message };
+
+      await supabase.from('contract_card_changes').insert(changes.map(ch => ({
+        master_id: params.masterId,
+        contract_id: contract?.id || null,
+        client_id: params.clientId,
+        field: ch.field,
+        old_value: ch.old,
+        new_value: ch.neu,
+        reason: params.reason?.trim() || null,
+        author_id: author.id && isUuid(author.id) ? author.id : null,
+        author_name: author.name,
+        author_role: author.role || null,
+      })));
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, message: err?.message || 'Erro ao alterar o card.' };
+    }
+  },
+
+  /**
+   * Vincula um lead SOLTO (sem contrato) ao contratante de um contrato. Idempotente, nesta ordem:
+   * (1) contato do lead solto (findOrCreateContact, dentro de linkFamilyMember) -> (2) dependente nos dois sentidos
+   * na Central de Contatos -> (3) numero entra como participante do card. Devolve o lead de conversa do card
+   * (se houver) para o chamador unificar as mensagens (mergeLeads) e tirar o lead solto do funil.
+   */
+  async linkLooseLeadToContract(params: {
+    masterId: string;
+    looseLead: { id: string; name: string; phone: string };
+    contractId: string;
+    kinship: string;
+  }): Promise<{ success: boolean; message?: string; clientId?: string; conversationLeadId?: string | null }> {
+    if (!isSupabaseConfigured || !params.masterId || !isUuid(params.contractId)) return { success: false, message: 'Parâmetros inválidos.' };
+    try {
+      const { data: c } = await supabase.from('contracts')
+        .select('id, contact_id, client_id, venue_id').eq('id', params.contractId).eq('master_id', params.masterId).maybeSingle();
+      if (!c || !c.contact_id) return { success: false, message: 'Contrato sem contratante cadastrado.' };
+
+      const linked = await contactService.linkFamilyMember({
+        masterId: params.masterId,
+        parentContactId: c.contact_id,
+        name: params.looseLead.name,
+        phone: params.looseLead.phone,
+        kinship: params.kinship,
+        venueId: c.venue_id,
+      });
+      if (!linked) return { success: false, message: 'Não foi possível vincular o contato.' };
+
+      let clientId = (c.client_id as string | null) || null;
+      if (!clientId) clientId = await this.createClientFromContract({ contractId: c.id, masterId: params.masterId });
+      let conversationLeadId: string | null = null;
+      if (clientId) {
+        const { data: cl } = await supabase.from('clients').select('contacts, commercial_lead_id').eq('id', clientId).eq('master_id', params.masterId).maybeSingle();
+        const digits = (params.looseLead.phone || '').replace(/\D/g, '');
+        const list: any[] = Array.isArray(cl?.contacts) ? [...(cl!.contacts as any[])] : [];
+        if (digits && !list.some(x => (x?.phone || '').replace(/\D/g, '') === digits)) {
+          list.push({ id: generateUuid(), name: params.looseLead.name, phone: params.looseLead.phone, role: params.kinship.toLowerCase(), isPrimaryDecisionMaker: false });
+        }
+        conversationLeadId = (cl?.commercial_lead_id as string | null) || null;
+        // Mesma pessoa com outro contrato: o card compartilha a conversa que ja existe (um numero = uma conversa)
+        if (!conversationLeadId) {
+          const { data: siblings } = await supabase.from('contracts')
+            .select('client_id').eq('master_id', params.masterId).eq('contact_id', c.contact_id).neq('id', c.id).not('client_id', 'is', null);
+          const siblingIds = (siblings || []).map((x: any) => x.client_id).filter(Boolean);
+          if (siblingIds.length > 0) {
+            const { data: sib } = await supabase.from('clients').select('commercial_lead_id')
+              .eq('master_id', params.masterId).in('id', siblingIds).not('commercial_lead_id', 'is', null).limit(1);
+            conversationLeadId = (sib?.[0]?.commercial_lead_id as string | null) || null;
+          }
+        }
+        const upd: Record<string, any> = { contacts: list, updated_at: new Date().toISOString() };
+        // Card sem lead de conversa: o proprio lead solto passa a ser a conversa do card (e deixa de aparecer como solto)
+        if (!conversationLeadId) upd.commercial_lead_id = params.looseLead.id;
+        else if (!cl?.commercial_lead_id) upd.commercial_lead_id = conversationLeadId;
+        await supabase.from('clients').update(upd).eq('id', clientId).eq('master_id', params.masterId);
+      }
+      return { success: true, clientId: clientId || undefined, conversationLeadId: conversationLeadId && conversationLeadId !== params.looseLead.id ? conversationLeadId : null };
+    } catch (err: any) {
+      return { success: false, message: err?.message || 'Erro ao vincular.' };
+    }
+  },
+
+  /** Registra no historico uma mudanca ja gravada pela tela (convidados/data): quem, quando, antes -> depois. */
+  async logCardChange(params: {
+    clientId: string; masterId: string; field: 'guest_count' | 'event_date';
+    oldValue: string; newValue: string; author: { id?: string; name: string; role?: string };
+  }): Promise<void> {
+    if (!isSupabaseConfigured || !isUuid(params.clientId) || !params.masterId || params.oldValue === params.newValue) return;
+    const { data: contract } = await supabase.from('contracts').select('id').eq('client_id', params.clientId).eq('master_id', params.masterId).maybeSingle();
+    await supabase.from('contract_card_changes').insert({
+      master_id: params.masterId,
+      contract_id: contract?.id || null,
+      client_id: params.clientId,
+      field: params.field,
+      old_value: params.oldValue,
+      new_value: params.newValue,
+      author_id: params.author.id && isUuid(params.author.id) ? params.author.id : null,
+      author_name: params.author.name,
+      author_role: params.author.role || null,
+    });
+  },
+
+  /** Valores ORIGINAIS do contrato (base juridica) para a etiqueta "contrato: N" quando o card difere. */
+  async getCardContractInfo(clientId: string, masterId: string): Promise<{ guestCount: number; eventDate: string | null; eventType: string } | null> {
+    if (!isSupabaseConfigured || !isUuid(clientId) || !masterId) return null;
+    const { data } = await supabase.from('contracts').select('guest_count, event_date, event_type').eq('client_id', clientId).eq('master_id', masterId).maybeSingle();
+    return data ? { guestCount: Number(data.guest_count || 0), eventDate: data.event_date || null, eventType: data.event_type } : null;
+  },
+
+  /** Historico de alteracoes do card (aba "Histórico de alterações"). */
+  async getCardChanges(clientId: string, masterId: string): Promise<Array<{ id: string; field: string; oldValue: string; newValue: string; reason?: string; authorName?: string; authorRole?: string; createdAt: string }>> {
+    if (!isSupabaseConfigured || !isUuid(clientId) || !masterId) return [];
+    const { data } = await supabase.from('contract_card_changes')
+      .select('id, field, old_value, new_value, reason, author_name, author_role, created_at')
+      .eq('client_id', clientId).eq('master_id', masterId).order('created_at', { ascending: false }).limit(100);
+    return (data || []).map((r: any) => ({ id: r.id, field: r.field, oldValue: r.old_value, newValue: r.new_value, reason: r.reason, authorName: r.author_name, authorRole: r.author_role, createdAt: r.created_at }));
   },
 
   /**
@@ -746,6 +982,12 @@ export const contractService = {
           await supabase
             .from('contract_funnel_placements')
             .upsert(placementInserts, { onConflict: 'contract_id,funnel_id' });
+        }
+
+        // 5a. Card unico do contrato (idempotente), no primeiro funil de pos-venda
+        if (!contractRow.client_id) {
+          const createdClientId = await this.createClientFromContract({ contractId: params.contractId, masterId: params.masterId, funnelId: validFunnelIds[0] });
+          if (createdClientId) contractRow.client_id = createdClientId;
         }
 
         // 5b. Cada funil de pos-venda e um setor independente: garante um card (client) por funil,

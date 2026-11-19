@@ -79,6 +79,14 @@ import { chatCache } from '../utils/chatCache';
 import { getLeadConversationTime } from '../utils/leadSorting';
 import { createMonogramAvatar } from '../utils/avatarUtils';
 import { generateLeadCode, generateClientCode, buildHandoverActivity } from '../utils/leadUtils';
+import { leadCarriedSourceIds } from '../utils/senderResolver';
+
+/** Leads de funil SEM origem (ex.: follow-up) que ja carregam a instancia (origem do lead ou mensagens por ela). */
+const originlessCarrierLeads = (pool: Lead[], srcs: Source[], sourceId?: string): Lead[] =>
+  !sourceId ? [] : pool.filter(l =>
+    l.funnelId &&
+    !srcs.some(s => s.type === 'whatsapp_api' && s.funnelId === l.funnelId) &&
+    leadCarriedSourceIds(l as any, l.activities).includes(sourceId));
 import { isUuid } from '../utils/uuid';
 import { getLeadPendingWaitingTime } from '../utils/leadSorting';
 import { notificationService, type NewNotification } from '../services/notificationService';
@@ -7387,6 +7395,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
               metadata: {
                 messageId: incoming.messageId,
                 sourceId: matchedSource.id,
+                senderSourceId: matchedSource.id,
+                senderSourceName: matchedSource.name,
                 quotedMessage: incoming.quotedMessage,
               },
             } as LeadActivity;
@@ -7424,8 +7434,10 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
         // 2ª Prioridade (Áudio 1): Se não encontrou no funil da origem, mas o contato já existe no sistema do mesmo tipo (comercial ou pós-venda),
         // NÃO PODE DUPLICAR! Reutiliza o lead existente e envia a correspondência para sua ficha devida.
+        // REGRA DOS NUMEROS: fora do funil da origem so anexa a lead de funil SEM origem que carrega esta instancia;
+        // senao nasce lead novo (nunca anexa ao lead que foi movido para outro funil com origem).
         if (!matchedLead) {
-          const globalMatch = findMatchingLead(eligibleTypeLeads, {
+          const globalMatch = findMatchingLead(originlessCarrierLeads(eligibleTypeLeads, currentSources, matchedSource?.id), {
             phone: cleanPhone,
             jid: rawJid,
             lid: rawLid,
@@ -7497,6 +7509,9 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
               messageId: incoming.messageId,
               // Origem (chip) da mensagem: necessária para baixar a mídia depois com o token certo (nunca grava o token)
               sourceId: matchedSource?.id,
+              // Numero (chip) por onde a mensagem passou: separa a conversa por WhatsApp quando o lead tem 2+ numeros
+              senderSourceId: matchedSource?.id,
+              senderSourceName: matchedSource?.name,
               fromPhone: cleanPhone,
               quotedMessage: incoming.quotedMessage,
             },
@@ -7838,6 +7853,14 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           });
           if (matchInFunnel.matchedLead) {
             matchedLead = matchInFunnel.matchedLead;
+          } else {
+            const carrierMatch = findMatchingLead(originlessCarrierLeads(eligibleTypeLeads, currentSources, targetSource?.id), {
+              phone: cleanPhone,
+              jid: rawJid,
+              lid: rawLid,
+              rawPayload: msg.rawPayload,
+            });
+            if (carrierMatch.matchedLead) matchedLead = carrierMatch.matchedLead;
           }
         } else {
           const fallbackMatch = findMatchingLead(eligibleTypeLeads, {

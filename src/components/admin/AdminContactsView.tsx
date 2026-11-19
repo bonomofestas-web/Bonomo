@@ -7,7 +7,7 @@ import {
   MessageSquare, Building2, Trash2, Search, MapPin
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
-import { contactService } from '../../services/contactService';
+import { contactService, ContactDuplicateError } from '../../services/contactService';
 import { formatPhone } from '../../utils/phoneFormatter';
 import { generateUuid } from '../../utils/uuid';
 import { toast } from 'sonner';
@@ -377,6 +377,11 @@ export const AdminContactsView: React.FC<AdminContactsViewProps> = ({
         setQuickForm({ name: '', phone: '', email: '', venueId: '' });
       }
     } catch (err: any) {
+      if (err instanceof ContactDuplicateError && err.existing) {
+        const dup = err.existing;
+        toast.warning(`Já cadastrado: ${dup.name}`, { action: { label: 'Abrir', onClick: () => { setSelectedContact(dup); setIsNewContactModalOpen(false); } } });
+        return;
+      }
       toast.error(`Erro ao criar contato: ${err.message || 'Falha de comunicação'}`);
     }
   };

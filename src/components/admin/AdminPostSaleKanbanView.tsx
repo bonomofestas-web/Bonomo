@@ -20,6 +20,7 @@ import { AdminCreatePostSaleFunnelModal } from './AdminCreatePostSaleFunnelModal
 import { renderFunnelOrStageIcon } from '../../utils/funnelIconLibrary';
 import { getDefaultPostSaleFunnelId, filterExtraPostSaleLeads, matchesFunnelStrict as matchesFunnelStrictHelper } from '../../utils/funnelUtils';
 import { AdminContractKanbanCard } from './AdminContractKanbanCard';
+import { AdminLinkContractorModal } from './AdminLinkContractorModal';
 import { toast } from 'sonner';
 import type { Client, ClientStage, CommercialFunnel } from '../../types/admin';
 
@@ -346,6 +347,7 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
   const [isFunnelMoreMenuOpen, setIsFunnelMoreMenuOpen] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
+  const [linkLeadId, setLinkLeadId] = useState<string | null>(null);
   const [inspectorClientId, setInspectorClientId] = useState<string | null>(null);
   const [previewLeadId, setPreviewLeadId] = useState<string | null>(null);
   const [isNewClientModalOpen, setIsNewClientModalOpen] = useState(false);
@@ -1841,6 +1843,7 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
       overflow: 'hidden',
       fontFamily: "'Plus Jakarta Sans', sans-serif",
     }}>
+      <AdminLinkContractorModal leadId={linkLeadId} onClose={() => setLinkLeadId(null)} />
       {/* ── 1. TOOLBAR COMPACTA PADRÃO COMERCIAL CRM ── */}
       <div style={{
         padding: '8px 16px',
@@ -2636,6 +2639,8 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
                         <AdminContractKanbanCard
                           key={client.id}
                           client={client}
+                          isLooseLead={!(clients || []).some(c => c.id === client.id)}
+                          onLinkContractor={setLinkLeadId}
                           isMultiSelectMode={isMultiSelectMode}
                           isSelectedInMulti={isSelectedInMulti}
                           onToggleSelect={toggleClientSelection}

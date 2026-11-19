@@ -675,28 +675,35 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           continue;
         }
 
-        // Tipo da origem (comercial ou pós-venda): define que lead pode ser reaproveitado
-        let sourceIsPostSale = false;
-        if (matchedSource?.funnel_id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(matchedSource.funnel_id))) {
-          const { data: sf } = await supabase.from('commercial_funnels').select('is_post_sale, category, name').eq('id', matchedSource.funnel_id).maybeSingle();
-          sourceIsPostSale = Boolean(sf?.is_post_sale || sf?.category === 'Pós-Venda' || sf?.category === 'pos_venda' || (sf?.name || '').toLowerCase().includes('pós-venda'));
-        }
-        // Mesma regra do navegador (SSE): 1º lead do funil da origem; senão o mesmo contato já existente do mesmo tipo
-        // (ex.: lead transferido de funil), sem duplicar.
-        const pickLeadForSource = (list: any[] | null | undefined) => {
+        // REGRA DOS NUMEROS: uma origem pertence a UM funil. A mensagem so entra em lead (a) do funil da origem ou
+        // (b) de funil SEM origem (ex.: follow-up) que carrega esta instancia (origem do lead ou mensagens por ela).
+        // Qualquer outro caso cria lead novo (nunca anexa ao lead que foi movido para outro funil com origem).
+        const pickLeadForSource = async (list: any[] | null | undefined) => {
           if (!list || list.length === 0) return null;
           if (matchedSource?.funnel_id) {
             const inFunnel = list.find((l: any) => l.funnel_id === matchedSource.funnel_id);
             if (inFunnel) return inFunnel;
           }
-          return list.find((l: any) => Boolean(l.is_client) === sourceIsPostSale) || null;
+          const otherFunnelIds = Array.from(new Set(list.map((l: any) => l.funnel_id).filter(Boolean)));
+          if (otherFunnelIds.length === 0 || !matchedSource?.id) return null;
+          const { data: srcRows } = await supabase.from('sources').select('funnel_id').in('funnel_id', otherFunnelIds);
+          const withOrigin = new Set((srcRows || []).map((r: any) => r.funnel_id));
+          for (const l of list) {
+            if (!l.funnel_id || withOrigin.has(l.funnel_id)) continue;
+            if (l.source_id === matchedSource.id) return l;
+            const { data: carried } = await supabase
+              .from('lead_activities').select('id')
+              .eq('lead_id', l.id).eq('metadata->>senderSourceId', matchedSource.id).limit(1);
+            if (carried && carried.length > 0) return l;
+          }
+          return null;
         };
 
         // 2a. Se for LID, procura primeiro por correspondência de whatsappLid salva em custom_field_values
         if (isLid) {
           let lidQuery = supabase
             .from('leads')
-            .select('id, name, phone, unread_count, venue_id, funnel_id, custom_field_values, master_id, is_client')
+            .select('id, name, phone, unread_count, venue_id, funnel_id, custom_field_values, master_id, is_client, source_id')
             .or(`custom_field_values->>whatsappLid.eq.${cleanPhone},custom_field_values->>whatsapp_lid.eq.${cleanPhone}`);
           
           if (tenantMasterId) {
@@ -710,7 +717,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           if (lidMatches && lidMatches.length > 0) {
             // Prioriza o lead no funil da origem se houver, caso contrário pega o mais recente no sistema
             // REGRA: duplicado = mesmo contato 2x no MESMO funil. Em outro funil é um lead distinto.
-            existingLead = pickLeadForSource(lidMatches);
+            existingLead = await pickLeadForSource(lidMatches);
           }
 
           // Se não encontrou por LID gravado, tenta extrair o telefone real dos campos do payload ou UAZAPI
@@ -765,7 +772,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           const last8 = digitsOnly.slice(-8);
           const part1 = last8.slice(0, 4);
           const part2 = last8.slice(4);
-          const leadSelect = 'id, name, phone, unread_count, venue_id, funnel_id, custom_field_values, master_id, is_client, last_message_at';
+          const leadSelect = 'id, name, phone, unread_count, venue_id, funnel_id, custom_field_values, master_id, is_client, last_message_at, source_id';
           // Busca no telefone principal E nos contatos do lead (2º/3º número, mãe, pai...) via função do banco; sem ela, cai na busca antiga
           let phoneLeads: any[] | null = null;
           if (tenantMasterId) {
@@ -804,7 +811,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             // REGRA: Se houver lead já alocado no funil desta origem, prioriza ele;
             // Caso contrário, aproveita o lead existente no sistema para NÃO gerar duplicidade!
             // REGRA: só reaproveita lead do MESMO funil da origem; em outro funil cria lead novo naquele funil.
-            existingLead = pickLeadForSource(phoneLeads);
+            existingLead = await pickLeadForSource(phoneLeads);
 
             // Vincula o LID ao lead encontrado para que as próximas mensagens batam de primeira!
             if (isLid && existingLead) {

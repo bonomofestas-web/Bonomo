@@ -391,13 +391,13 @@ export async function applySyncPlan(params: {
       if (!contact) {
         try {
           const niceName = chat.name && !/^Contato \d+$/.test(chat.name) ? chat.name : `Contato ${chat.phone.slice(-4)}`;
-          const created = await contactService.createContact({
+          const { contact: created } = await contactService.findOrCreateContact({
             masterId,
             name: niceName,
             primaryPhone: chat.phone,
             whatsappPhone: chat.phone,
-            venueIds: venueId ? [venueId] : undefined,
-          } as any);
+            venueId: venueId || undefined,
+          });
           if (created) { contact = created; contactByPhone.set(chat.phone, created); }
         } catch (err) {
           console.warn('[sync] contato não criado:', chat.phone, err);

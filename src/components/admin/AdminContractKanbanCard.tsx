@@ -2,10 +2,15 @@ import React, { useState } from 'react';
 import { 
   Building2, Calendar, User, Users, 
   Copy, Check, MessageSquare, MoreVertical, Eye, ExternalLink, 
-  Trash2, Gem
+  Trash2, Gem, Link2
 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { Client, Collaborator, Venue } from '../../types/admin';
+import { buildContractTitle, normalizeEventKind, type EventKind } from '../../utils/contractTitle';
+
+const KIND_LABEL: Record<EventKind, string> = {
+  quinze_anos: '15 Anos', casamento: 'Casamento', infantil: 'Infantil', corporativo: 'Corporativo', outro: 'Evento',
+};
 
 export interface AdminContractKanbanCardProps {
   client: Client;
@@ -19,6 +24,9 @@ export interface AdminContractKanbanCardProps {
   onOpenWhatsApp?: (clientId: string) => void;
   onOpenDebutanteApp?: (slug: string) => void;
   onDeleteClient?: (client: Client) => void;
+  /** Lead em funil de pos-venda SEM contrato: card diferente, com acao de vincular a um contratante */
+  isLooseLead?: boolean;
+  onLinkContractor?: (leadId: string) => void;
   venues?: Venue[];
   collaborators?: Collaborator[];
   clientTasks?: any[];
@@ -37,6 +45,8 @@ export const AdminContractKanbanCard: React.FC<AdminContractKanbanCardProps> = (
   onOpenWhatsApp,
   onOpenDebutanteApp,
   onDeleteClient,
+  isLooseLead = false,
+  onLinkContractor,
   venues = [],
   collaborators = [],
 }) => {
@@ -44,16 +54,14 @@ export const AdminContractKanbanCard: React.FC<AdminContractKanbanCardProps> = (
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isRevenueHovered, setIsRevenueHovered] = useState(false);
 
-  // 1. Código CTR Base36
-  const ctrCode = customContractCode || 
-    (client as any).contractCode || 
-    (client.code?.startsWith('CTR-') ? client.code : `CTR-2026-${client.code?.replace(/[^a-zA-Z0-9]/g, '').slice(-6).toUpperCase() || 'S8V1RM'}`);
+  // 1. Codigo de CLIENTE (CLI-...). O codigo de contrato (CTR-) foi descontinuado no pos-venda.
+  const ctrCode = customContractCode || client.code || `CLI-${client.id.slice(0, 6).toUpperCase()}`;
 
   const handleCopyCtr = (e: React.MouseEvent) => {
     e.stopPropagation();
     navigator.clipboard.writeText(ctrCode);
     setIsCopied(true);
-    toast.success(`Código ${ctrCode} copiado!`);
+    toast.success(`Código do cliente ${ctrCode} copiado!`);
     setTimeout(() => setIsCopied(false), 2000);
   };
 
@@ -63,6 +71,8 @@ export const AdminContractKanbanCard: React.FC<AdminContractKanbanCardProps> = (
 
   // 3. Detecção Limpa do Tipo de Evento & Estilo da Tag
   const detectedEventType = React.useMemo(() => {
+    const explicit = normalizeEventKind(client.eventType);
+    if (client.eventType && String(client.eventType).trim() && explicit !== 'outro') return KIND_LABEL[explicit];
     const raw = `${client.eventType || ''} ${(client.tags || []).join(' ')} ${client.name || ''} ${client.notes || ''}`.toLowerCase();
     if (raw.includes('casamento') || raw.includes('noivos') || raw.includes('noiva')) return 'Casamento';
     if (raw.includes('infantil') || raw.includes('kids') || raw.includes('1 aninho') || raw.includes('circo')) return 'Infantil';
@@ -162,20 +172,37 @@ export const AdminContractKanbanCard: React.FC<AdminContractKanbanCardProps> = (
       roleText = 'Mãe';
     }
 
-    // Monta título limpo no padrão Carla Dias – Sophia Dias 15 Anos
-    let title = '';
-    if (contratante && protagonista && contratante.toLowerCase() !== protagonista.toLowerCase()) {
-      title = `${contratante} – ${protagonista} ${detectedEventType}`;
-    } else if (contratante) {
-      title = `${contratante} – ${detectedEventType}`;
-    } else {
-      title = `Contrato ${ctrCode}`;
-    }
+    // Padrao unico: `Contratante • Protagonista + tipo`. Prefere o titulo gravado no contrato.
+    const stored = String(client.contractTitle || '').trim();
+    const title = stored || buildContractTitle({
+      contractors: [client.payerName || client.name],
+      protagonists: client.birthdayPersonName ? [client.birthdayPersonName] : [],
+      eventType: client.eventType || detectedEventType,
+      age: client.birthdayPersonAge,
+      contractorIsProtagonist: relLower === 'self',
+      contractCode: ctrCode,
+    });
 
     const decisor = `Decisor: ${contratante || 'Cliente'} (${roleText})`;
 
     return { contractTitle: title, decisorLine: decisor };
-  }, [client.payerName, client.name, client.birthdayPersonName, client.payerRelationship, detectedEventType, ctrCode]);
+  }, [client.payerName, client.name, client.birthdayPersonName, client.birthdayPersonAge, client.contractTitle, client.eventType, client.payerRelationship, detectedEventType, ctrCode]);
+
+  // 4b. Detalhe por tipo de evento (layout base unico; so muda o que aparece na linha)
+  const typeDetail = React.useMemo(() => {
+    const kind = normalizeEventKind(client.eventType || detectedEventType);
+    const honoree = (client.birthdayPersonName || '').trim();
+    const age = client.birthdayPersonAge ? `${client.birthdayPersonAge} anos` : '';
+    const pkg = (client.packageSold || '').trim();
+    const parts: Record<EventKind, Array<string | undefined>> = {
+      quinze_anos: [honoree, age, pkg],
+      casamento: [honoree, (client.venueName || '').trim()],
+      infantil: [honoree, age, (client.tags || []).find(t => /tema/i.test(t))],
+      corporativo: [(client.payerName || '').trim(), client.guestCount ? `${client.guestCount} pessoas` : undefined],
+      outro: [honoree, pkg],
+    };
+    return parts[kind].filter(Boolean).join(' · ');
+  }, [client.eventType, detectedEventType, client.birthdayPersonName, client.birthdayPersonAge, client.packageSold, client.venueName, client.tags, client.payerName, client.guestCount]);
 
   // 5. Data do Evento & Contagem Regressiva
   const eventDateStr = client.eventDate || (client as any).partyDate;
@@ -218,7 +245,7 @@ export const AdminContractKanbanCard: React.FC<AdminContractKanbanCardProps> = (
       style={{
         fontFamily: "'Inter', sans-serif",
         backgroundColor: isSelectedInMulti ? 'rgba(2, 132, 199, 0.05)' : 'var(--adm-bg-card, #FFFFFF)',
-        border: isSelectedInMulti ? '1.5px solid #0284C7' : '1px solid var(--adm-border, #E2E8F0)',
+        border: isSelectedInMulti ? '1.5px solid #0284C7' : (isLooseLead ? '1.5px dashed #94A3B8' : '1px solid var(--adm-border, #E2E8F0)'),
         borderRadius: '12px',
         padding: '12px 14px',
         display: 'flex',
@@ -246,6 +273,21 @@ export const AdminContractKanbanCard: React.FC<AdminContractKanbanCardProps> = (
         }
       }}
     >
+      {isLooseLead && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px', padding: '5px 8px', borderRadius: '8px', background: 'rgba(148, 163, 184, 0.14)', border: '1px solid rgba(148, 163, 184, 0.35)' }}>
+          <span style={{ fontSize: '0.66rem', fontWeight: 800, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.4px' }}>Sem contrato</span>
+          {onLinkContractor && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onLinkContractor(client.id); }}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '0.68rem', fontWeight: 800, color: '#0284C7', background: 'transparent', border: 'none', cursor: 'pointer', padding: 0 }}
+            >
+              <Link2 size={12} /> Vincular a um contratante
+            </button>
+          )}
+        </div>
+      )}
+
       {/* ── 1. TOPO: Menu / Multi-Select + Código CTR à Esquerda + Badge Tipo de Evento à Direita ── */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '5px', minWidth: 0 }}>
@@ -436,7 +478,7 @@ export const AdminContractKanbanCard: React.FC<AdminContractKanbanCardProps> = (
             </div>
           )}
 
-          {/* Badge Código CTR */}
+          {/* Badge Código do Cliente */}
           <span 
             style={{
               fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
@@ -466,7 +508,7 @@ export const AdminContractKanbanCard: React.FC<AdminContractKanbanCardProps> = (
               display: 'flex',
               alignItems: 'center',
             }}
-            title="Copiar Código CTR"
+            title="Copiar código do cliente"
           >
             {isCopied ? <Check size={12} color="#10B981" /> : <Copy size={12} />}
           </button>
@@ -509,6 +551,11 @@ export const AdminContractKanbanCard: React.FC<AdminContractKanbanCardProps> = (
         >
           {contractTitle}
         </h4>
+        {typeDetail && (
+          <div style={{ fontSize: '0.70rem', fontWeight: 600, color: eventBadgeStyle.color, marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={typeDetail}>
+            {typeDetail}
+          </div>
+        )}
         <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.72rem', color: 'var(--adm-text-muted)', marginTop: '2px' }}>
           <User size={11} style={{ flexShrink: 0 }} />
           <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
