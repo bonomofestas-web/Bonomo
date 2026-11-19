@@ -3,6 +3,7 @@ import { isUuid, generateUuid } from '../utils/uuid';
 import { generateBase36Code } from './contactService';
 import { isLidIdentifier } from './uazapiSseService';
 import { fetchAllRows } from '../utils/fetchAllRows';
+import { chatCache } from '../utils/chatCache';
 import type { Lead, LeadActivity, LeadParticipant } from '../types/admin';
 
 function mapLeadToDatabase(lead: Partial<Lead>): Record<string, any> {
@@ -1342,56 +1343,17 @@ export const leadService = {
   },
 
   /**
-   * Helpers para salvar e recuperar atividades recentes do lead no LocalStorage
+   * Helpers para salvar e recuperar atividades recentes do lead no cache local (IndexedDB + memoria)
    * para exibição instantânea (0ms) no WhatsApp Workspace
    */
   saveActivitiesToCache(leadId: string, activities: LeadActivity[]): void {
     if (!leadId || !activities || activities.length === 0) return;
-    try {
-      const cacheKey = `f5_lead_chat_${leadId}`;
-      const simplified = activities.slice(-120).map(a => ({
-        id: a.id,
-        leadId: a.leadId,
-        timestamp: a.timestamp,
-        type: a.type,
-        title: a.title,
-        text: a.text,
-        authorName: a.authorName,
-        authorId: a.authorId,
-        authorAvatarUrl: a.authorAvatarUrl,
-        mediaUrl: a.mediaUrl,
-        mediaType: a.mediaType,
-        status: a.status,
-        messageId: a.messageId,
-        quotedMessage: a.quotedMessage,
-        metadata: a.metadata,
-      }));
-      localStorage.setItem(cacheKey, JSON.stringify(simplified));
-    } catch {
-      // Se quota excedida, limpa caches mais antigos
-      try {
-        const keysToRemove: string[] = [];
-        for (let i = 0; i < localStorage.length; i++) {
-          const k = localStorage.key(i);
-          if (k && k.startsWith('f5_lead_chat_') && k !== `f5_lead_chat_${leadId}`) {
-            keysToRemove.push(k);
-          }
-        }
-        keysToRemove.slice(0, 10).forEach(k => localStorage.removeItem(k));
-      } catch {}
-    }
+    chatCache.save(leadId, activities);
   },
 
   getActivitiesFromCache(leadId: string): LeadActivity[] {
     if (!leadId) return [];
-    try {
-      const raw = localStorage.getItem(`f5_lead_chat_${leadId}`);
-      if (!raw) return [];
-      const parsed = JSON.parse(raw);
-      return Array.isArray(parsed) ? parsed : [];
-    } catch {
-      return [];
-    }
+    return chatCache.get(leadId);
   },
 
   /**

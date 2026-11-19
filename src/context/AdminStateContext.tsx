@@ -75,6 +75,7 @@ import { whatsappMediaService, MediaPendingError } from '../services/whatsappMed
 import { mediaStorageService } from '../services/mediaStorageService';
 import { uazapiSseService, isLidIdentifier } from '../services/uazapiSseService';
 import { ensureMessagingEnabled, refreshMessagingPause, setMessagingPausedFromFlag } from '../utils/messagingPause';
+import { chatCache } from '../utils/chatCache';
 import { createMonogramAvatar } from '../utils/avatarUtils';
 import { generateLeadCode, generateClientCode, buildHandoverActivity } from '../utils/leadUtils';
 import { isUuid } from '../utils/uuid';
@@ -160,6 +161,7 @@ export const purgeAllTenantStorage = () => {
     localStorage.removeItem(STORAGE_KEY_SUPPORT_TICKETS);
     sessionStorage.clear();
   } catch {}
+  void chatCache.clearAll(); // cache local de conversas (IndexedDB) tambem sai no logout/troca de Master
 };
 
 export const createDefaultMqlQuestionsForVenue = (venueId: string): MqlQuestion[] => [
@@ -240,6 +242,7 @@ const DEFAULT_FEATURE_FLAGS: Record<FeatureFlagId, FeatureFlagStatus> = {
   goals: 'active',
   team_presence: 'active',
   whatsapp_messaging: 'active',
+  chat_local_cache: 'active',
 };
 
 const DEFAULT_ADMIN_USER: AdminUser | null = null;
@@ -1019,6 +1022,49 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   }, [featureFlags.whatsapp_messaging]);
   useEffect(() => { void refreshMessagingPause(); }, []);
 
+  // Cache local de conversas (IndexedDB): liga/desliga pela chave remota chat_local_cache
+  useEffect(() => {
+    const on = featureFlags.chat_local_cache !== 'disabled' && featureFlags.chat_local_cache !== 'coming_soon';
+    chatCache.setEnabled(on);
+  }, [featureFlags.chat_local_cache]);
+
+  // Abre o cache do usuario e preenche as conversas ja vistas (a tela mostra as mensagens antes do banco responder)
+  useEffect(() => {
+    if (!currentUser) return;
+    let cancelled = false;
+    const scope = `${currentUser.masterId || currentUser.id}:${currentUser.id}`;
+    chatCache.init(scope).then(() => {
+      if (cancelled) return;
+      setLeads(prev => prev.map(lead => {
+        const cached = chatCache.get(lead.id);
+        if (!cached || cached.length === 0) return lead;
+        const current = lead.activities || [];
+        const ids = new Set(current.map(a => a.id));
+        if (!cached.some(a => !ids.has(a.id))) return lead;
+        return { ...lead, activities: mergeAndSortActivities(current, cached, lead.id) };
+      }));
+    });
+    return () => { cancelled = true; };
+  }, [currentUser?.id, currentUser?.masterId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Ao ocultar/fechar a aba, guarda no cache as conversas que ja estavam no cache (inclui o que chegou em tempo real)
+  useEffect(() => {
+    const persist = () => {
+      const now = Date.now();
+      leadsRef.current.forEach(l => {
+        if (l.activities && l.activities.length > 0 && chatCache.has(l.id)) chatCache.save(l.id, l.activities, now);
+      });
+      chatCache.flush();
+    };
+    const onVisibility = () => { if (document.visibilityState === 'hidden') persist(); };
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('pagehide', persist);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('pagehide', persist);
+    };
+  }, []);
+
   const [featureDescriptions, setFeatureDescriptions] = useState<Record<FeatureFlagId, string>>(() => {
     const saved = localStorage.getItem(STORAGE_KEY_FEATURE_DESCRIPTIONS);
     if (saved) {
@@ -1462,7 +1508,18 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
               console.log(`[Supabase Sync] ${mergedCount} lead(s) duplicado(s) foram consolidados e apagados com sucesso no banco de dados.`);
             }
             // Refresh manual não pode apagar o histórico já carregado na conversa aberta
-            const keptLeads = mergeLeadsKeepingActivities(consolidatedLeads, leadsRef.current);
+            const cu = currentUserRef.current;
+            if (cu) await chatCache.init(`${cu.masterId || cu.id}:${cu.id}`);
+            // Lead que nao existe mais no banco (apagado/reset) sai do cache local; so poda com lista valida (nao vazia)
+            if (consolidatedLeads.length > 0) chatCache.prune(new Set(consolidatedLeads.map(l => l.id)));
+            const keptLeads = mergeLeadsKeepingActivities(consolidatedLeads, leadsRef.current).map(lead => {
+              const cached = chatCache.get(lead.id);
+              if (!cached || cached.length === 0) return lead;
+              const current = lead.activities || [];
+              const ids = new Set(current.map(a => a.id));
+              if (!cached.some(a => !ids.has(a.id))) return lead;
+              return { ...lead, activities: mergeAndSortActivities(current, cached, lead.id) };
+            });
             leadsRef.current = keptLeads;
             setLeads(keptLeads);
             safeLocalStorageSet(STORAGE_KEY_LEADS, JSON.stringify(keptLeads));
@@ -4878,24 +4935,41 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const pending = Array.from(new Set(leadIds || [])).filter(id => id && !prefetchedLeadIdsRef.current.has(id));
     if (pending.length === 0) return;
     pending.forEach(id => prefetchedLeadIdsRef.current.add(id));
-    // Lotes de 40 conversas por chamada (RPC única por lote)
+    // Lotes de 40 conversas por rodada. Conversas JA no cache local buscam so o DELTA (mais novo que a ultima sincronizacao)
     for (let i = 0; i < pending.length; i += 40) {
       const chunk = pending.slice(i, i + 40);
-      const byLead = await leadService.getRecentActivitiesForLeads(chunk, perLead);
-      if (byLead === null) {
-        // Erro (ex.: função SQL ainda não criada): libera para tentar de novo depois
+      const startedAt = Date.now();
+      const cachedIds = chunk.filter(id => chatCache.has(id));
+      const freshIds = chunk.filter(id => !chatCache.has(id));
+      const sinceIso = cachedIds.length > 0
+        ? new Date(Math.min(...cachedIds.map(id => chatCache.syncedAt(id))) - 2 * 60 * 1000).toISOString()
+        : undefined;
+      const [freshRes, deltaRes] = await Promise.all([
+        freshIds.length > 0 ? leadService.getRecentActivitiesForLeads(freshIds, perLead) : Promise.resolve(new Map<string, LeadActivity[]>()),
+        cachedIds.length > 0 ? leadService.getRecentActivitiesForLeads(cachedIds, perLead, sinceIso) : Promise.resolve(new Map<string, LeadActivity[]>()),
+      ]);
+      if (freshRes === null || deltaRes === null) {
+        // Erro (ex.: funcao SQL ainda nao criada): libera para tentar de novo depois
         chunk.forEach(id => prefetchedLeadIdsRef.current.delete(id));
         prefetchBackoffUntilRef.current = Date.now() + 60_000;
         return;
       }
-      if (byLead.size === 0) continue; // conversas sem mensagens: já marcadas, não repete a consulta
+      const resolved = new Map<string, LeadActivity[]>();
+      freshIds.forEach(id => resolved.set(id, freshRes.get(id) || []));
+      cachedIds.forEach(id => {
+        const delta = deltaRes.get(id) || [];
+        // Delta cheio (>= limite): pode haver buraco entre o cache e o novo; usa so o recente e descarta o antigo
+        resolved.set(id, delta.length >= perLead ? delta : mergeAndSortActivities(chatCache.get(id), delta, id));
+      });
       setLeads(prev => prev.map(lead => {
-        const fetched = byLead.get(lead.id);
-        if (!fetched || fetched.length === 0) return lead;
+        const fetched = resolved.get(lead.id);
+        if (!fetched) return lead;
         const current = lead.activities || [];
+        const merged = mergeAndSortActivities(current, fetched, lead.id);
+        chatCache.save(lead.id, merged, startedAt);
         const existingIds = new Set(current.map(a => a.id));
         if (!fetched.some(a => !existingIds.has(a.id))) return lead;
-        return { ...lead, activities: mergeAndSortActivities(current, fetched, lead.id) };
+        return { ...lead, activities: merged };
       }));
     }
   }, []);

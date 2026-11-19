@@ -57,6 +57,13 @@ export const AdminDevFeatureFlagsView: React.FC = () => {
       category: 'Atendimento',
       status: featureFlags.whatsapp_messaging || 'active',
     },
+    {
+      id: 'chat_local_cache',
+      name: 'Cache local das conversas (navegador)',
+      description: 'Guarda no navegador as últimas mensagens das conversas recentes para abrir na hora, como o WhatsApp Web. Desativar apaga o cache local e volta a carregar tudo do banco.',
+      category: 'Atendimento',
+      status: featureFlags.chat_local_cache || 'active',
+    },
   ];
 
   const handleStatusChange = (id: FeatureFlagId, status: FeatureFlagStatus, name: string) => {

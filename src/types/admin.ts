@@ -25,7 +25,8 @@ export type FeatureFlagId =
   | 'commercial_dashboard'
   | 'goals'
   | 'team_presence'
-  | 'whatsapp_messaging';
+  | 'whatsapp_messaging'
+  | 'chat_local_cache';
 
 export type FeatureFlagStatus = 'active' | 'coming_soon' | 'disabled';
 
