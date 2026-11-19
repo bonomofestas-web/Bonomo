@@ -4688,6 +4688,42 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     return { score: selectedLead.mqlScore ?? 0, label: badge.label, color: badge.color, bg: badge.bg, border: badge.border, isUndefined: false };
   }, [selectedLead, mqlQuestions]);
 
+  // Filtros de Casa, Atendente e Temperatura. `inline` = abertos na barra de cima; senao empilhados no popover (Kanban embutido).
+  const renderFilterSelects = (inline: boolean) => {
+    const base: React.CSSProperties = inline
+      ? { width: '100%', height: '38px', fontSize: '0.78rem', borderRadius: '10px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.18)', color: '#E2E8F0', padding: '0 10px', outline: 'none', cursor: 'pointer' }
+      : { width: '100%', height: '36px', fontSize: '0.78rem', borderRadius: '9px', background: 'var(--adm-bg-input)', border: '1px solid var(--adm-border)', color: 'var(--adm-text-title)', padding: '0 10px', outline: 'none', cursor: 'pointer' };
+    const labelStyle: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.70rem', fontWeight: 700, color: 'var(--adm-text-muted)', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.04em' };
+    const field = (key: string, icon: React.ReactNode, label: string, control: React.ReactNode, flex: number) => (
+      <div key={key} style={inline ? { flex: `${flex} 1 0`, minWidth: 0 } : undefined}>
+        {!inline && <label style={labelStyle}>{icon}<span>{label}</span></label>}
+        {control}
+      </div>
+    );
+    return [
+      field('venue', <Building2 size={12} />, 'Casa de Festa', (
+        <Select value={filterVenueId} onChange={(e) => setFilterVenueId(e.target.value)} style={base} title="Casa de Festa">
+          <option value="all">Todas as Casas de Festa</option>
+          {venues.map(v => (<option key={v.id} value={v.id}>{v.name}</option>))}
+        </Select>
+      ), 1.1),
+      field('collab', <UserCheck size={12} />, 'Atendente / Responsável', (
+        <Select value={filterCollaboratorId} onChange={(e) => setFilterCollaboratorId(e.target.value)} style={base} title="Atendente / Responsável">
+          <option value="all">Todos os Atendentes</option>
+          {collaborators.map(c => (<option key={c.id} value={c.id}>{c.name}</option>))}
+        </Select>
+      ), 1.1),
+      field('temp', <Flame size={12} />, 'Temperatura do Lead', (
+        <Select value={filterTemperature} onChange={(e) => setFilterTemperature(e.target.value)} style={base} title="Temperatura do Lead">
+          <option value="all">Todas as Temperaturas</option>
+          <option value="hot">Quente (Alta Probabilidade)</option>
+          <option value="warm">Morno (Em Negociação)</option>
+          <option value="cold">Frio (Inicial)</option>
+        </Select>
+      ), 1),
+    ];
+  };
+
   return (
     <div style={{
       height: isEmbeddedInFunnel ? 'calc(100vh - 100px)' : '100%',
@@ -5250,6 +5286,24 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                 )}
               </div>
 
+              {/* Ordenar conversas: selecao direta, logo abaixo das abas */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span title="Ordenar conversas" style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '0.68rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>
+                  <ArrowUpDown size={12} /> Ordenar
+                </span>
+                <Select
+                  value={localSortBy}
+                  onChange={(e) => handleUpdateSortBy(e.target.value)}
+                  style={{ flex: 1, height: '34px', fontSize: '0.76rem', borderRadius: '9px', background: 'var(--adm-bg-input)', border: '1px solid var(--adm-border)', color: 'var(--adm-text-title)', padding: '0 10px', outline: 'none', cursor: 'pointer' }}
+                >
+                  <option value="waiting_time">Tempo de espera (prioridade SLA)</option>
+                  <option value="recent">Mensagens mais recentes</option>
+                  <option value="oldest">Mensagens mais antigas</option>
+                  <option value="name_asc">Nome do lead (A - Z)</option>
+                  <option value="temperature">Temperatura do lead</option>
+                </Select>
+              </div>
+
               {/* Search + Filter Button with Gear/Icon */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', position: 'relative' }}>
                 {isEmbeddedInFunnel && (
@@ -5306,6 +5360,20 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
 
                 {/* Filter Toggle Button */}
                 <FilterSlot>
+                {!isEmbeddedInFunnel && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', width: 'min(680px, calc(50vw - 300px))', minWidth: 0 }}>
+                    {renderFilterSelects(true)}
+                    {isFilterActive && (
+                      <button type="button" onClick={resetFilters} title="Limpar filtros" style={{
+                        flexShrink: 0, height: '38px', padding: '0 12px', borderRadius: '10px', border: '1px solid var(--adm-accent)', background: 'var(--adm-accent-bg)',
+                        color: 'var(--adm-accent)', fontSize: '0.74rem', fontWeight: 800, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap',
+                      }}>
+                        <X size={13} /> Limpar
+                      </button>
+                    )}
+                  </div>
+                )}
+                {isEmbeddedInFunnel && (
                 <div ref={filterDropdownRef} style={{ position: 'relative' }}>
                   <button
                     type="button"
@@ -5373,125 +5441,11 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                         )}
                       </div>
 
-                      {/* Ordenação Local com Prioridade de Tempo de Espera */}
-                      <div>
-                        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.70rem', fontWeight: 700, color: 'var(--adm-text-muted)', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                          <ArrowUpDown size={12} />
-                          <span>Ordenar Conversas</span>
-                        </label>
-                        <Select
-                          value={localSortBy}
-                          onChange={(e) => handleUpdateSortBy(e.target.value)}
-                          style={{
-                            width: '100%',
-                            height: '36px',
-                            fontSize: '0.78rem',
-                            borderRadius: '9px',
-                            background: 'var(--adm-bg-input)',
-                            border: '1px solid var(--adm-border)',
-                            color: 'var(--adm-text-title)',
-                            padding: '0 10px',
-                            outline: 'none',
-                            cursor: 'pointer',
-                          }}
-                        >
-                          <option value="waiting_time">Tempo de Espera (Prioridade SLA)</option>
-                          <option value="recent">Mensagens Mais Recentes</option>
-                          <option value="oldest">Mensagens Mais Antigas</option>
-                          <option value="name_asc">Nome do Lead (A - Z)</option>
-                          <option value="temperature">Temperatura do Lead</option>
-                        </Select>
-                      </div>
-
-                      {/* Filter: Venue */}
-                      <div>
-                        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.70rem', fontWeight: 700, color: 'var(--adm-text-muted)', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                          <Building2 size={12} />
-                          <span>Casa de Festa</span>
-                        </label>
-                        <Select
-                          value={filterVenueId}
-                          onChange={(e) => setFilterVenueId(e.target.value)}
-                          style={{
-                            width: '100%',
-                            height: '36px',
-                            fontSize: '0.78rem',
-                            borderRadius: '9px',
-                            background: 'var(--adm-bg-input)',
-                            border: '1px solid var(--adm-border)',
-                            color: 'var(--adm-text-title)',
-                            padding: '0 10px',
-                            outline: 'none',
-                            cursor: 'pointer',
-                          }}
-                        >
-                          <option value="all">Todas as Casas de Festa</option>
-                          {venues.map(v => (
-                            <option key={v.id} value={v.id}>{v.name}</option>
-                          ))}
-                        </Select>
-                      </div>
-
-                      {/* Filter: Collaborator */}
-                      <div>
-                        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.70rem', fontWeight: 700, color: 'var(--adm-text-muted)', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                          <UserCheck size={12} />
-                          <span>Atendente / Responsável</span>
-                        </label>
-                        <Select
-                          value={filterCollaboratorId}
-                          onChange={(e) => setFilterCollaboratorId(e.target.value)}
-                          style={{
-                            width: '100%',
-                            height: '36px',
-                            fontSize: '0.78rem',
-                            borderRadius: '9px',
-                            background: 'var(--adm-bg-input)',
-                            border: '1px solid var(--adm-border)',
-                            color: 'var(--adm-text-title)',
-                            padding: '0 10px',
-                            outline: 'none',
-                            cursor: 'pointer',
-                          }}
-                        >
-                          <option value="all">Todos os Atendentes</option>
-                          {collaborators.map(c => (
-                            <option key={c.id} value={c.id}>{c.name}</option>
-                          ))}
-                        </Select>
-                      </div>
-
-                      {/* Filter: Temperature */}
-                      <div>
-                        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.70rem', fontWeight: 700, color: 'var(--adm-text-muted)', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                          <Flame size={12} />
-                          <span>Temperatura do Lead</span>
-                        </label>
-                        <Select
-                          value={filterTemperature}
-                          onChange={(e) => setFilterTemperature(e.target.value)}
-                          style={{
-                            width: '100%',
-                            height: '36px',
-                            fontSize: '0.78rem',
-                            borderRadius: '9px',
-                            background: 'var(--adm-bg-input)',
-                            border: '1px solid var(--adm-border)',
-                            color: 'var(--adm-text-title)',
-                            padding: '0 10px',
-                            outline: 'none',
-                            cursor: 'pointer',
-                          }}
-                        >
-                          <option value="all">Todas as Temperaturas</option>
-                          <option value="hot">Quente (Alta Probabilidade)</option>
-                          <option value="warm">Morno (Em Negociação)</option>
-                          <option value="cold">Frio (Inicial)</option>
-                        </Select>
-                      </div>
+                      {renderFilterSelects(false)}
                     </div>
                   )}
                 </div>
+                )}
                 </FilterSlot>
               </div>
             </>
