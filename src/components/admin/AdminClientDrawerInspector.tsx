@@ -1,6 +1,6 @@
-import { DateField, Select } from '../ui';
+import { Select } from '../ui';
 import { usePresenceContext } from '../../hooks/usePresence';
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { 
   ChevronDown, Check, 
   Users, Sparkles, ExternalLink, 
@@ -8,7 +8,7 @@ import {
   Shield, MessageSquare,
   Gift, Award, Star,
   Compass, UserPlus, CheckCircle2, Eye, X, Building2,
-  Calendar, ChevronLeft, Workflow
+  ChevronLeft, Workflow, Archive
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { isPhoneMatch } from '../../services/leadService';
@@ -16,13 +16,16 @@ import { isDependentRole, linkDependentFromFicha } from '../../utils/familyLinkS
 import { useAdminState } from '../../context/AdminStateContext';
 import { maskPhoneInput, formatPhone } from '../../utils/phoneFormatter';
 import { renderFunnelOrStageIcon } from '../../utils/funnelIconLibrary';
-import { relationshipLabel, eventTypeLabels } from '../../utils/roleLabels';
+import { relationshipLabel } from '../../utils/roleLabels';
 import { collectPhoneHolders, findPhoneConflict, duplicatePhoneMessage } from '../../utils/phoneDuplicates';
 import { WhatsAppBrandIcon } from './WhatsAppBrandIcon';
 import { AdminLeadReadOnlyModal } from './AdminLeadReadOnlyModal';
-import { ClientVenueEventsCard } from './ClientVenueEventsCard';
+import { ClientContractSection } from './ClientContractSection';
+import { AdminLinkContractModal } from './AdminLinkContractModal';
+import { AdminConfirmModal } from './AdminConfirmModal';
+import { isUserMaster, isUserManager } from '../../utils/accessPermissions';
 import { contractService } from '../../services/contractService';
-import type { Lead, ClientStage, LeadContact, ContractFunnelPlacement } from '../../types/admin';
+import type { Lead, ClientStage, LeadContact, ContractFunnelPlacement, Contract } from '../../types/admin';
 
 interface AdminClientDrawerInspectorProps {
   lead: Lead;
@@ -87,8 +90,17 @@ const POST_SALE_STAGES: { id: ClientStage; label: string; color: string; bg: str
 // Funis de pos-venda realmente vinculados ao contrato (contract_funnel_placements), somente leitura.
 // Cada funil e um setor independente: a etapa so muda no Kanban do proprio funil.
 const LinkedFunnelsProgress: React.FC<{ clientId?: string }> = ({ clientId }) => {
-  const { funnels, currentUser } = useAdminState();
+  const { funnels, clients, currentUser } = useAdminState();
   const masterId = currentUser?.masterId || currentUser?.id || '';
+  // Clicar leva ao funil (se o usuario tem acesso); a etapa so muda no quadro do proprio funil
+  const openFunnel = (funnelId: string) => {
+    if (!funnels.some(f => f.id === funnelId)) { toast.error('Você não tem acesso a este funil.'); return; }
+    const mine = (clients || []).find(c => c.id === clientId);
+    const clone = mine?.commercialLeadId
+      ? (clients || []).find(c => c.funnelId === funnelId && c.commercialLeadId === mine.commercialLeadId)
+      : undefined;
+    window.dispatchEvent(new CustomEvent('admin_switch_tab', { detail: { tab: 'post-sale-crm', funnelId, clientId: clone?.id } }));
+  };
   const [placements, setPlacements] = useState<ContractFunnelPlacement[] | null>(null);
 
   const load = useCallback(async () => {
@@ -130,7 +142,15 @@ const LinkedFunnelsProgress: React.FC<{ clientId?: string }> = ({ clientId }) =>
       ) : rows.length === 0 ? (
         <span style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)' }}>Nenhum funil vinculado a este contrato.</span>
       ) : rows.map(r => (
-        <div key={r.p.id} style={{ padding: '7px 9px', borderRadius: '8px', background: 'var(--adm-bg-input)', border: '1px solid var(--adm-border)' }}>
+        <div
+          key={r.p.id}
+          role="button"
+          tabIndex={0}
+          title="Abrir este funil"
+          onClick={() => openFunnel(r.p.funnelId)}
+          onKeyDown={(e) => { if (e.key === 'Enter') openFunnel(r.p.funnelId); }}
+          style={{ padding: '7px 9px', borderRadius: '8px', background: 'var(--adm-bg-input)', border: '1px solid var(--adm-border)', cursor: 'pointer' }}
+        >
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px', fontSize: '0.72rem' }}>
             <strong style={{ color: 'var(--adm-text-title)' }}>{r.funnelName}</strong>
             <span style={{ color: 'var(--adm-text-muted)', fontWeight: 700 }}>{r.percent}%</span>
@@ -160,6 +180,8 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
     leads,
     funnels,
     updateClient,
+    updateClientStage,
+    deleteClient,
     updateLeadData,
     linkClientDebutante,
     addDebutanteAccount,
@@ -190,7 +212,6 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
   const client = useMemo(() => {
     return clients.find(c => c.id === lead.id || c.commercialLeadId === lead.id) || null;
   }, [clients, lead.id]);
-  const eventLabels = eventTypeLabels(client?.eventType || lead.eventType);
 
   // Lead Comercial Original
   const commercialLead = useMemo(() => {
@@ -266,17 +287,8 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
   }, [debutantes, client, lead]);
 
   const debutanteSlug = client?.debutanteSlug || lead.debutanteSlug || linkedDebutante?.slug || (client?.name || lead.name || 'festa').toLowerCase().replace(/[^a-z0-9]/g, '-');
-  const partyDateStr = client?.partyDate || client?.eventDate || lead.partyDate || lead.eventDate || '';
+  const baseValue = client?.baseContractValue ?? (client?.dealValue || lead.dealValue || 0);
   
-  // Contagem regressiva de dias para a festa
-  const countdownDays = useMemo(() => {
-    if (!partyDateStr) return null;
-    const pTime = new Date(partyDateStr + 'T12:00:00').getTime();
-    const now = Date.now();
-    const diff = Math.ceil((pTime - now) / (1000 * 60 * 60 * 24));
-    return diff;
-  }, [partyDateStr]);
-
   // Gestor de Sucesso responsável
   const successManagerCollab = useMemo(() => {
     const sId = client?.assignedSuccessManagerId || client?.assignedToId || lead.sdrId;
@@ -286,19 +298,27 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
     return undefined;
   }, [collaborators, client, lead]);
 
-  // Valores financeiros
-  const baseValue = client?.baseContractValue ?? (client?.dealValue || lead.dealValue || 0);
-  const downPayment = client?.contractDownPayment ?? client?.signalValue ?? 0;
-  const installmentsCount = client?.contractInstallmentsCount || 10;
-  const installmentsRemaining = client?.contractInstallmentsRemaining ?? Math.max(0, baseValue - downPayment);
-  const parcelValue = installmentsCount > 0 ? (installmentsRemaining / installmentsCount) : 0;
-  const hasCreditCard = client?.hasCreditCard ?? (lead as any)?.hasCreditCard ?? false;
-
-  const upsellSales = client?.upsellSales || [];
-  const totalUpsellValue = upsellSales.reduce((acc, s) => acc + (Number(s.value) || 0), 0);
-  const totalClientValue = baseValue + totalUpsellValue;
-
   const [copiedContractCode, setCopiedContractCode] = useState(false);
+
+  // Contrato (documento do sistema) ligado a este cliente: sem ele, a ficha nao mostra dados do evento, valores nem agenda
+  const fichaMasterId = (client as any)?.masterId || currentUser?.masterId || currentUser?.id || '';
+  const [linkedContract, setLinkedContract] = useState<Contract | null>(null);
+  const [contractLoading, setContractLoading] = useState(true);
+  const [isLinkContractOpen, setIsLinkContractOpen] = useState(false);
+  const [isDeleteClientOpen, setIsDeleteClientOpen] = useState(false);
+  const canRemoveClient = isUserMaster(currentUser) || isUserManager(currentUser);
+
+  const loadLinkedContract = useCallback(async () => {
+    if (!client?.id || !fichaMasterId) { setLinkedContract(null); setContractLoading(false); return; }
+    setLinkedContract(await contractService.getContractByClientId(client.id, fichaMasterId));
+    setContractLoading(false);
+  }, [client?.id, fichaMasterId]);
+  useEffect(() => { setContractLoading(true); void loadLinkedContract(); }, [loadLinkedContract]);
+  useEffect(() => {
+    const onChanged = () => { void loadLinkedContract(); };
+    window.addEventListener('f5:contracts-changed', onChanged);
+    return () => window.removeEventListener('f5:contracts-changed', onChanged);
+  }, [loadLinkedContract]);
   const contractCodeDisplay = useMemo(() => {
     // Pos-venda usa o CODIGO DE CLIENTE (CLI-...); o codigo de contrato foi descontinuado nesta tela
     return client?.code || lead.code || '';
@@ -505,27 +525,6 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
     transition: 'all 0.15s ease',
   };
 
-  const customSelectStyle: React.CSSProperties = {
-    appearance: 'none',
-    WebkitAppearance: 'none',
-    MozAppearance: 'none',
-    background: 'var(--adm-bg-input)',
-    backgroundImage: `url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2394A3B8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e")`,
-    backgroundRepeat: 'no-repeat',
-    backgroundPosition: 'right 8px center',
-    backgroundSize: '12px',
-    border: '1px solid var(--adm-border)',
-    borderRadius: '6px',
-    padding: '4px 26px 4px 8px',
-    fontSize: '0.74rem',
-    fontWeight: 600,
-    color: 'var(--adm-text-title)',
-    outline: 'none',
-    width: '100%',
-    cursor: readOnly ? 'default' : 'pointer',
-    transition: 'border-color 0.15s ease, box-shadow 0.15s ease',
-  };
-
   const sectionTitleStyle: React.CSSProperties = {
     display: 'flex',
     alignItems: 'center',
@@ -607,10 +606,31 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
               alignItems: 'center',
               gap: '4px',
             }}>
-              <Shield size={10} /> {currentStage === 'completed' ? 'Festa Realizada' : 'Contrato Ativo'}
+              <Shield size={10} /> {currentStage === 'completed' ? 'Festa Realizada' : (linkedContract ? 'Contrato vinculado' : 'Sem contrato')}
             </span>
           </div>
 
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          {!readOnly && client && (
+            <button
+              type="button"
+              onClick={() => { updateClientStage(client.id, 'archived' as ClientStage); toast.success('Cliente arquivado.'); onToggleCollapse?.(); }}
+              title="Arquivar cliente"
+              style={{ background: 'rgba(139, 92, 246, 0.12)', border: '1px solid rgba(139, 92, 246, 0.35)', color: '#8B5CF6', cursor: 'pointer', padding: '4px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: '6px' }}
+            >
+              <Archive size={14} />
+            </button>
+          )}
+          {!readOnly && client && canRemoveClient && (
+            <button
+              type="button"
+              onClick={() => setIsDeleteClientOpen(true)}
+              title="Remover cliente"
+              style={{ background: 'rgba(239, 68, 68, 0.12)', border: '1px solid rgba(239, 68, 68, 0.35)', color: '#EF4444', cursor: 'pointer', padding: '4px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: '6px' }}
+            >
+              <Trash2 size={14} />
+            </button>
+          )}
           {onToggleCollapse && (
             <button
               type="button"
@@ -640,9 +660,10 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
               <ChevronLeft size={15} />
             </button>
           )}
+          </div>
         </div>
 
-        {/* ── CARD ESSENCIAL DO CONTRATO (FINANCEIRO + DATAS + PESSOAS) ── */}
+        {/* ── TITULO: nome do contrato (se vinculado) ou nome do cliente ── */}
         <div style={{
           background: 'var(--adm-bg-card)',
           border: '1px solid var(--adm-border)',
@@ -650,105 +671,21 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
           padding: '10px 12px',
           display: 'flex',
           flexDirection: 'column',
-          gap: '8px',
+          gap: '4px',
           boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
         }}>
-          {/* Linha 1: Contratante & Homenageada */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
-                <span style={{ fontSize: '0.62rem', fontWeight: 800, textTransform: 'uppercase', color: 'var(--adm-text-muted)' }}>Contratante:</span>
-                <span style={{ fontSize: '0.80rem', fontWeight: 800, color: 'var(--adm-text-title)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {client?.payerName || client?.name || lead.name}
-                </span>
-              </div>
+          <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, color: 'var(--adm-text-title)', lineHeight: 1.25, overflowWrap: 'anywhere' }}>
+            {linkedContract?.contractTitle || linkedContract?.title || client?.name || lead.name}
+          </h3>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', fontSize: '0.72rem', color: 'var(--adm-text-muted)' }}>
+            <span style={{ fontWeight: 700, color: 'var(--adm-text-title)' }}>{client?.payerName || lead.name}</span>
+            {client?.payerRelationship && (
               <span style={{ fontSize: '0.62rem', fontWeight: 700, padding: '1px 6px', borderRadius: '4px', background: 'rgba(59, 130, 246, 0.12)', color: '#3B82F6', border: '1px solid rgba(59, 130, 246, 0.3)' }}>
-                {relationshipLabel(client?.payerRelationship)}
+                {relationshipLabel(client.payerRelationship)}
               </span>
-            </div>
-
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, flex: 1 }}>
-                <span style={{ fontSize: '0.62rem', fontWeight: 800, textTransform: 'uppercase', color: 'var(--adm-text-muted)' }}>
-                  {eventLabels.personLabel}
-                </span>
-                <input
-                  type="text"
-                  disabled={readOnly}
-                  value={client?.birthdayPersonName || ''}
-                  onChange={(e) => {
-                    const newName = e.target.value;
-                    if (client) {
-                      updateClient(client.id, { birthdayPersonName: newName });
-                    }
-                  }}
-                  placeholder={eventLabels.personPlaceholder}
-                  title={eventLabels.personTitle}
-                  style={{
-                    ...seamlessInputStyle,
-                    fontSize: '0.80rem',
-                    fontWeight: 800,
-                    color: '#EC4899',
-                    padding: '0 2px',
-                    width: '100%',
-                  }}
-                />
-              </div>
-              <span style={{ fontSize: '0.62rem', fontWeight: 700, padding: '1px 6px', borderRadius: '4px', background: 'rgba(236, 72, 153, 0.12)', color: '#EC4899', border: '1px solid rgba(236, 72, 153, 0.3)' }}>
-                {eventLabels.tag}
-              </span>
-            </div>
+            )}
+            {(client?.payerPhone || lead.phone) && <span>{formatPhone(client?.payerPhone || lead.phone || '')}</span>}
           </div>
-
-          {/* Divisor */}
-          <div style={{ height: '1px', background: 'var(--adm-border)' }} />
-
-          {/* Dados Financeiros Essenciais */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px', textAlign: 'center' }}>
-            <div style={{ padding: '4px', background: 'var(--adm-bg-input)', borderRadius: '6px' }}>
-              <span style={{ fontSize: '0.60rem', color: 'var(--adm-text-muted)', fontWeight: 700, textTransform: 'uppercase', display: 'block' }}>Total</span>
-              <strong style={{ fontSize: '0.78rem', color: '#10B981', fontWeight: 900 }}>
-                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(totalClientValue || 0)}
-              </strong>
-            </div>
-
-            <div style={{ padding: '4px', background: 'var(--adm-bg-input)', borderRadius: '6px' }}>
-              <span style={{ fontSize: '0.60rem', color: 'var(--adm-text-muted)', fontWeight: 700, textTransform: 'uppercase', display: 'block' }}>Entrada</span>
-              <strong style={{ fontSize: '0.78rem', color: 'var(--adm-text-title)', fontWeight: 800 }}>
-                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(downPayment || 0)}
-              </strong>
-            </div>
-
-            <div style={{ padding: '4px', background: 'var(--adm-bg-input)', borderRadius: '6px' }}>
-              <span style={{ fontSize: '0.60rem', color: 'var(--adm-text-muted)', fontWeight: 700, textTransform: 'uppercase', display: 'block' }}>Saldo</span>
-              <strong style={{ fontSize: '0.78rem', color: '#F59E0B', fontWeight: 800 }}>
-                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(installmentsRemaining || 0)}
-              </strong>
-            </div>
-          </div>
-
-          {/* Data do Evento & Local */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px', fontSize: '0.70rem', color: 'var(--adm-text-muted)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <Calendar size={11} color="#06B6D4" />
-              <span style={{ fontWeight: 700, color: 'var(--adm-text-title)' }}>
-                {partyDateStr ? new Date(partyDateStr + 'T12:00:00').toLocaleDateString('pt-BR') : 'Data não definida'}
-              </span>
-              {countdownDays !== null && (
-                <span style={{ fontSize: '0.62rem', color: countdownDays > 0 ? '#10B981' : '#F59E0B', fontWeight: 800 }}>
-                  ({countdownDays > 0 ? `Faltam ${countdownDays} dias` : 'Hoje'})
-                </span>
-              )}
-            </div>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <Building2 size={11} color="#D4AF37" />
-              <span style={{ fontWeight: 600, maxWidth: '110px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {venues?.find(v => v.id === (client?.venueId || lead.venueId))?.name || client?.venueName || lead.venueName || 'Unidade não definida'}
-              </span>
-            </div>
-          </div>
-
         </div>
 
         {/* ── ETAPA DO FUNIL DE PÓS-VENDA (DROPDOWN + PROGRESS BAR) ── */}
@@ -1164,146 +1101,10 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
               )}
             </div>
 
-            {/* ── SEÇÃO: DADOS DO EVENTO & LOCAL ── */}
-            <div style={sectionTitleStyle}>
-              <Calendar size={12} color="#06B6D4" />
-              <span>Dados do Evento & Local</span>
-            </div>
-
-            <div style={cardStyle}>
-              <div style={cardRowStyle}>
-                <span style={cardLabelStyle}>Tipo de Evento</span>
-                <div style={cardValueStyle}>
-                  <Select
-                    disabled={readOnly}
-                    value={client?.eventType || (lead as any).eventType || ''}
-                    onChange={(e) => {
-                      const newType = e.target.value;
-                      if (client) {
-                        updateClient(client.id, { eventType: newType });
-                      }
-                      updateLeadData(lead.id, { eventType: newType } as any);
-                    }}
-                    style={customSelectStyle}
-                  >
-                    <option value="">Sem marcação</option>
-                    <option value="15_anos">15 Anos (Debutante)</option>
-                    <option value="casamento">Casamento</option>
-                    <option value="infantil">Aniversário Infantil</option>
-                    <option value="adulto">Aniversário Adulto</option>
-                    <option value="corporativo">Corporativo</option>
-                    <option value="formatura">Formatura</option>
-                    <option value="outro">Outro Evento</option>
-                  </Select>
-                </div>
-              </div>
-
-              <div style={cardRowStyle}>
-                <span style={cardLabelStyle}>Idade</span>
-                <div style={cardValueStyle}>
-                  <input
-                    type="number"
-                    disabled={readOnly}
-                    value={client?.birthdayPersonAge || lead.age || 15}
-                    onChange={(e) => client && updateClient(client.id, { birthdayPersonAge: Number(e.target.value) || 15 })}
-                    style={{ ...seamlessInputStyle, width: '45px' }}
-                    onFocus={(e) => { e.currentTarget.style.borderBottomColor = 'var(--adm-accent)'; }}
-                    onBlur={(e) => { e.currentTarget.style.borderBottomColor = 'transparent'; }}
-                  />
-                  <span style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)' }}>Anos</span>
-                </div>
-              </div>
-
-              <div style={cardRowStyle}>
-                <span style={cardLabelStyle}>Data da Festa</span>
-                <div style={cardValueStyle}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', width: '100%' }}>
-                    <DateField
-                      disabled={readOnly}
-                      value={partyDateStr ? partyDateStr.split('T')[0] : ''}
-                      onChange={(e) => client && updateClient(client.id, { eventDate: e.target.value, partyDate: e.target.value })}
-                      style={{ ...seamlessInputStyle, fontWeight: 700, color: '#F59E0B' }}
-                      onFocus={(e) => { e.currentTarget.style.borderBottomColor = 'var(--adm-accent)'; }}
-                      onBlur={(e) => { e.currentTarget.style.borderBottomColor = 'transparent'; }}
-                    />
-                    {countdownDays !== null && (
-                      <span style={{
-                        fontSize: '0.60rem',
-                        fontWeight: 800,
-                        padding: '1px 5px',
-                        borderRadius: '4px',
-                        background: countdownDays <= 30 ? 'rgba(239, 68, 68, 0.15)' : 'rgba(245, 158, 11, 0.15)',
-                        color: countdownDays <= 30 ? '#EF4444' : '#F59E0B',
-                        border: `1px solid ${countdownDays <= 30 ? 'rgba(239, 68, 68, 0.35)' : 'rgba(245, 158, 11, 0.35)'}`,
-                        whiteSpace: 'nowrap',
-                      }}>
-                        {countdownDays < 0 ? 'Concluída' : `${countdownDays} dias`}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              <div style={cardRowStyle}>
-                <span style={cardLabelStyle}>Ano Previsto</span>
-                <div style={cardValueStyle}>
-                  <input
-                    type="text"
-                    disabled={readOnly}
-                    value={client?.eventYear || (partyDateStr ? new Date(partyDateStr).getFullYear() : '')}
-                    onChange={(e) => client && updateClient(client.id, { eventYear: e.target.value })}
-                    placeholder="Ex: 2026"
-                    style={{ ...seamlessInputStyle, width: '70px' }}
-                    onFocus={(e) => { e.currentTarget.style.borderBottomColor = 'var(--adm-accent)'; }}
-                    onBlur={(e) => { e.currentTarget.style.borderBottomColor = 'transparent'; }}
-                  />
-                </div>
-              </div>
-
-              <div style={cardRowStyle}>
-                <span style={cardLabelStyle}>Convidados</span>
-                <div style={cardValueStyle}>
-                  <input
-                    type="number"
-                    disabled={readOnly}
-                    value={client?.guestCount || (lead as any)?.guestCount || 150}
-                    onChange={(e) => client && updateClient(client.id, { guestCount: Number(e.target.value) || 150 })}
-                    style={{ ...seamlessInputStyle, width: '60px' }}
-                    onFocus={(e) => { e.currentTarget.style.borderBottomColor = 'var(--adm-accent)'; }}
-                    onBlur={(e) => { e.currentTarget.style.borderBottomColor = 'transparent'; }}
-                  />
-                  <span style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)' }}>Pessoas</span>
-                </div>
-              </div>
-
-              <div style={cardRowStyle}>
-                <span style={cardLabelStyle}>Unidade</span>
-                <div style={cardValueStyle}>
-                  <Select
-                    disabled={readOnly}
-                    value={client?.venueId || lead.venueId || ''}
-                    onChange={(e) => {
-                      const vId = e.target.value;
-                      const targetVenue = venues.find(v => v.id === vId);
-                      if (client) {
-                        updateClient(client.id, { venueId: vId, venueName: targetVenue?.name });
-                      }
-                    }}
-                    style={customSelectStyle}
-                  >
-                    <option value="">Selecione a Unidade...</option>
-                    {venues.map(v => (
-                      <option key={v.id} value={v.id}>{v.name}</option>
-                    ))}
-                  </Select>
-                </div>
-              </div>
-            </div>
-
             {/* ── SEÇÃO: GESTÃO DO PÓS-VENDA & VALORES ── */}
             <div style={sectionTitleStyle}>
               <Shield size={12} color="#06B6D4" />
-              <span>Gestão de Sucesso & Valores</span>
+              <span>Responsável</span>
             </div>
 
             <div style={cardStyle}>
@@ -1440,163 +1241,13 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
                 </div>
               </div>
 
-              {/* Valor Base do Contrato */}
-              <div style={cardRowStyle}>
-                <span style={cardLabelStyle}>Valor Base</span>
-                <div style={cardValueStyle}>
-                  <input
-                    type="text"
-                    disabled={readOnly}
-                    value={baseValue ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(baseValue) : 'R$ 0,00'}
-                    onChange={(e) => {
-                      if (!client) return;
-                      const num = parseFloat(e.target.value.replace(/[^0-9]/g, '')) / 100;
-                      if (!isNaN(num)) {
-                        updateClient(client.id, { baseContractValue: num, dealValue: num + totalUpsellValue });
-                      }
-                    }}
-                    style={{ ...seamlessInputStyle, fontWeight: 700, color: '#10B981' }}
-                    onFocus={(e) => { e.currentTarget.style.borderBottomColor = 'var(--adm-accent)'; }}
-                    onBlur={(e) => { e.currentTarget.style.borderBottomColor = 'transparent'; }}
-                  />
-                </div>
-              </div>
-
-              {/* Valor de Entrada / Sinal */}
-              <div style={cardRowStyle}>
-                <span style={cardLabelStyle}>Entrada / Sinal</span>
-                <div style={{ ...cardValueStyle, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <input
-                    type="text"
-                    disabled={readOnly}
-                    value={downPayment ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(downPayment) : 'R$ 0,00'}
-                    onChange={(e) => {
-                      if (!client) return;
-                      const num = parseFloat(e.target.value.replace(/[^0-9]/g, '')) / 100;
-                      if (!isNaN(num)) {
-                        updateClient(client.id, { 
-                          contractDownPayment: num, 
-                          signalValue: num,
-                          signalPaid: num > 0,
-                          contractInstallmentsRemaining: Math.max(0, baseValue - num)
-                        });
-                      }
-                    }}
-                    style={{ ...seamlessInputStyle, fontWeight: 700, color: '#10B981' }}
-                    onFocus={(e) => { e.currentTarget.style.borderBottomColor = 'var(--adm-accent)'; }}
-                    onBlur={(e) => { e.currentTarget.style.borderBottomColor = 'transparent'; }}
-                  />
-                  {downPayment > 0 && (
-                    <span style={{ fontSize: '0.62rem', fontWeight: 800, color: '#10B981', padding: '1px 4px', borderRadius: '4px', background: 'rgba(16, 185, 129, 0.15)' }}>
-                      Pago
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              {/* Restante Parcelado */}
-              <div style={cardRowStyle}>
-                <span style={cardLabelStyle}>Restante Parc.</span>
-                <div style={{ ...cardValueStyle, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                  <span style={{ fontSize: '0.74rem', color: '#F59E0B', fontWeight: 700 }}>
-                    {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(installmentsRemaining)}
-                  </span>
-                  <Select
-                    disabled={readOnly}
-                    value={installmentsCount}
-                    onChange={(e) => client && updateClient(client.id, { contractInstallmentsCount: Number(e.target.value) || 10 })}
-                    style={{
-                      background: 'var(--adm-bg-input)',
-                      border: '1px solid var(--adm-border)',
-                      borderRadius: '4px',
-                      padding: '1px 4px',
-                      fontSize: '0.68rem',
-                      fontWeight: 700,
-                      color: 'var(--adm-text-title)',
-                      outline: 'none',
-                    }}
-                  >
-                    {[1,2,3,4,5,6,7,8,9,10,12,14,15,18,20,24].map(n => (
-                      <option key={n} value={n}>{n}x</option>
-                    ))}
-                  </Select>
-                  {installmentsCount > 1 && installmentsRemaining > 0 && (
-                    <span style={{ fontSize: '0.62rem', color: 'var(--adm-text-muted)', whiteSpace: 'nowrap' }}>
-                      ({new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(parcelValue)}/mês)
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              {/* Possui Cartão de Crédito? */}
-              <div style={cardRowStyle}>
-                <span style={cardLabelStyle}>Cartão Crédito?</span>
-                <div style={{ ...cardValueStyle, display: 'flex', gap: '4px' }}>
-                  <button
-                    type="button"
-                    disabled={readOnly}
-                    onClick={() => client && updateClient(client.id, { hasCreditCard: true })}
-                    style={{
-                      padding: '2px 8px',
-                      borderRadius: '5px',
-                      border: `1px solid ${hasCreditCard ? '#10B981' : 'var(--adm-border)'}`,
-                      background: hasCreditCard ? 'rgba(16, 185, 129, 0.15)' : 'var(--adm-bg-input)',
-                      color: hasCreditCard ? '#10B981' : 'var(--adm-text-muted)',
-                      fontSize: '0.68rem',
-                      fontWeight: hasCreditCard ? 800 : 500,
-                      cursor: readOnly ? 'default' : 'pointer',
-                    }}
-                  >
-                    Sim
-                  </button>
-                  <button
-                    type="button"
-                    disabled={readOnly}
-                    onClick={() => client && updateClient(client.id, { hasCreditCard: false })}
-                    style={{
-                      padding: '2px 8px',
-                      borderRadius: '5px',
-                      border: `1px solid ${!hasCreditCard ? '#64748B' : 'var(--adm-border)'}`,
-                      background: !hasCreditCard ? 'rgba(100, 116, 139, 0.15)' : 'var(--adm-bg-input)',
-                      color: !hasCreditCard ? 'var(--adm-text-title)' : 'var(--adm-text-muted)',
-                      fontSize: '0.68rem',
-                      fontWeight: !hasCreditCard ? 800 : 500,
-                      cursor: readOnly ? 'default' : 'pointer',
-                    }}
-                  >
-                    Não
-                  </button>
-                </div>
-              </div>
-
-              {/* Upsell Acumulado */}
-              {totalUpsellValue > 0 && (
-                <div style={cardRowStyle}>
-                  <span style={cardLabelStyle}>Vendas Upsell</span>
-                  <div style={cardValueStyle}>
-                    <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#8B5CF6' }}>
-                      + {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalUpsellValue)}
-                    </span>
-                  </div>
-                </div>
-              )}
-
-              {/* Valor Total do Cliente */}
-              <div style={{ ...cardRowStyle, borderTop: '1px dashed var(--adm-border)', paddingTop: '4px' }}>
-                <span style={{ ...cardLabelStyle, fontWeight: 800, color: 'var(--adm-text-title)' }}>Total Cliente</span>
-                <div style={cardValueStyle}>
-                  <strong style={{ fontSize: '0.86rem', fontWeight: 900, color: 'var(--adm-accent, #06B6D4)' }}>
-                    {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalClientValue)}
-                  </strong>
-                </div>
-              </div>
             </div>
 
             {/* ── SEÇÃO: PARTES ENVOLVIDAS NO CONTRATO ── */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'relative' }}>
               <div style={sectionTitleStyle}>
                 <Users size={12} color="var(--adm-accent)" />
-                <span>Partes Envolvidas no Contrato</span>
+                <span>Informações do Cliente</span>
               </div>
               {!readOnly && (
                 <div style={{ position: 'relative' }}>
@@ -1802,91 +1453,6 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
               </div>
             </div>
 
-            {/* 2. Card do Protagonista do Evento */}
-            <div style={cardStyle}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
-                <span style={{ fontSize: '0.70rem', fontWeight: 800, color: '#EC4899', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                  <Sparkles size={11} /> Protagonista do Evento
-                </span>
-                <span style={{ fontSize: '0.58rem', fontWeight: 700, padding: '1px 5px', borderRadius: '4px', background: 'rgba(236, 72, 153, 0.12)', color: '#EC4899' }}>
-                  {client?.eventType === 'Casamento' ? 'Noivos' : client?.eventType === '15 Anos' ? 'Debutante' : 'Homenageado(a)'}
-                </span>
-              </div>
-
-              <div style={cardRowStyle}>
-                <span style={cardLabelStyle}>Nome</span>
-                <div style={cardValueStyle}>
-                  <input
-                    type="text"
-                    disabled={readOnly}
-                    value={client?.birthdayPersonName || ''}
-                    placeholder={client?.eventType === 'Casamento' ? 'Nome dos noivos...' : client?.eventType === '15 Anos' ? 'Nome da aniversariante...' : 'Nome do(a) homenageado(a)...'}
-                    onChange={(e) => client && updateClient(client.id, { birthdayPersonName: e.target.value })}
-                    style={{ ...seamlessInputStyle, fontWeight: 700 }}
-                    onFocus={(e) => { e.currentTarget.style.borderBottomColor = 'var(--adm-accent)'; }}
-                    onBlur={(e) => { e.currentTarget.style.borderBottomColor = 'transparent'; }}
-                  />
-                </div>
-              </div>
-
-              <div style={cardRowStyle}>
-                <span style={cardLabelStyle}>WhatsApp</span>
-                <div style={cardValueStyle}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', width: '100%' }}>
-                    <input
-                      type="text"
-                      disabled={readOnly}
-                      value={maskPhoneInput(client?.birthdayPersonPhone || '')}
-                      placeholder="(00) 00000-0000"
-                      onChange={(e) => {
-                        if (!client) return;
-                        const others = collectPhoneHolders({ ...client, birthdayPersonPhone: undefined, debutantePhone: undefined });
-                        const dup = findPhoneConflict(e.target.value, others);
-                        if (dup) { toast.error(duplicatePhoneMessage(dup, 'cliente'), { id: 'dup-phone' }); return; }
-                        updateClient(client.id, { birthdayPersonPhone: e.target.value });
-                      }}
-                      style={seamlessInputStyle}
-                      onFocus={(e) => { e.currentTarget.style.borderBottomColor = 'var(--adm-accent)'; }}
-                      onBlur={(e) => { e.currentTarget.style.borderBottomColor = 'transparent'; }}
-                    />
-                    {client?.birthdayPersonPhone && (
-                      <button
-                        type="button"
-                        onClick={() => handleDirectWhatsApp(client.birthdayPersonPhone)}
-                        title="Conversar no WhatsApp"
-                        style={{
-                          background: 'rgba(16, 185, 129, 0.15)',
-                          border: '1px solid rgba(16, 185, 129, 0.4)',
-                          borderRadius: '4px',
-                          color: '#10B981',
-                          padding: '2px 5px',
-                          cursor: 'pointer',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '2px',
-                          fontSize: '0.62rem',
-                          fontWeight: 700,
-                          flexShrink: 0,
-                        }}
-                      >
-                        <MessageSquare size={9} />
-                        <span>Zap</span>
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              <div style={cardRowStyle}>
-                <span style={cardLabelStyle}>{client?.eventType === 'Casamento' ? 'Papel' : 'Idade'}</span>
-                <div style={cardValueStyle}>
-                  <span style={{ fontSize: '0.74rem', fontWeight: 700, color: 'var(--adm-text-title)' }}>
-                    {client?.eventType === 'Casamento' ? 'Noivos' : (client?.birthdayPersonAge || lead.age ? `${client?.birthdayPersonAge || lead.age} Anos` : 'Não informada')}
-                  </span>
-                </div>
-              </div>
-            </div>
-
             {/* Form Inline Adicionar Contato / Dependente */}
             {isAddingContact && !readOnly && (
               <form onSubmit={handleAddSubContact} style={{ ...cardStyle, background: 'var(--adm-bg-input)' }}>
@@ -2069,15 +1635,46 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
               );
             })}
 
-            {/* ── FUNIS VINCULADOS (somente leitura): cada funil e um setor independente ── */}
+            {/* ── CONTRATO: vincular / dados do evento / pessoas / valores (so com contrato) ── */}
+            {client && (
+              <ClientContractSection
+                client={client}
+                contract={linkedContract}
+                loading={contractLoading}
+                masterId={fichaMasterId}
+                readOnly={readOnly}
+                onOpenLink={() => setIsLinkContractOpen(true)}
+              />
+            )}
+
+            {/* ── FUNIS RELACIONADOS (somente leitura; clicar abre o funil se houver acesso) ── */}
             <LinkedFunnelsProgress clientId={client?.id} />
 
-            <ClientVenueEventsCard
-              client={client || undefined}
-              fallbackVenueId={lead.venueId}
-              fallbackPartyDate={partyDateStr}
-              fallbackGuestCount={(lead as any)?.guestCount}
-              readOnly={readOnly}
+            {client && (
+              <AdminLinkContractModal
+                isOpen={isLinkContractOpen}
+                clientId={client.id}
+                masterId={fichaMasterId}
+                venueId={client.venueId || lead.venueId}
+                onClose={() => setIsLinkContractOpen(false)}
+                onLinked={(patch) => { updateClient(client.id, patch as any); void loadLinkedContract(); }}
+              />
+            )}
+
+            <AdminConfirmModal
+              isOpen={isDeleteClientOpen}
+              onClose={() => setIsDeleteClientOpen(false)}
+              onConfirm={() => {
+                if (!client) return;
+                deleteClient(client.id);
+                setIsDeleteClientOpen(false);
+                toast.success('Cliente removido.');
+                onToggleCollapse?.();
+              }}
+              title="Remover cliente"
+              message="O card do cliente será removido do pós-venda. O contrato, se houver, continua na seção Contratos."
+              itemName={client?.name || lead.name}
+              confirmText="Sim, remover"
             />
           </>
         )}

@@ -322,10 +322,13 @@ export const AdminVenueEventsView: React.FC = () => {
     if (!raw) return;
     try { localStorage.removeItem('f5_venue_event_prefill'); } catch { /* ignora */ }
     try {
-      const p = JSON.parse(raw) as { clientId?: string; venueId?: string; date?: string; eventType?: string; guestCount?: number | null };
+      const p = JSON.parse(raw) as { clientId?: string; venueId?: string; date?: string; eventType?: string; guestCount?: number | null; title?: string; people?: string };
       openCreateModal(p.date || undefined);
       if (p.venueId && scopedVenues.some(v => v.id === p.venueId)) setFormVenueId(p.venueId);
       if (p.clientId) handleSelectClientInForm(p.clientId);
+      // Nome do evento e pessoas vindos da ficha do cliente (contrato vinculado)
+      if (p.title) setFormTitle(p.title);
+      if (p.people) setFormNotes(p.people);
       const kind = eventTypeLabels(p.eventType).kind;
       setFormEventType(kind === 'casamento' ? 'Casamento' : kind === 'aniversario' ? 'Festa Infantil' : '15 Anos / Debutante');
       if (p.guestCount) setFormGuestCount(String(p.guestCount));

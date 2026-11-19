@@ -472,6 +472,10 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       if (e.detail?.tab) {
         if (e.detail.tab === 'whatsapp' && e.detail.leadId) {
           handleOpenLeadInWhatsApp(e.detail.leadId);
+        } else if ((e.detail.tab === 'post-sale-crm' || e.detail.tab === 'crm') && e.detail.funnelId) {
+          // Redirecionamento para um funil especifico (ex.: "Funis relacionados" na ficha do cliente)
+          handleSelectTab(e.detail.tab, e.detail.funnelId);
+          if (e.detail.clientId) setOpenClientId(e.detail.clientId);
         } else {
           setActiveTab(e.detail.tab);
           try { localStorage.setItem('bonomo_admin_active_tab', e.detail.tab); } catch { }

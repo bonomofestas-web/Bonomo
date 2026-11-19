@@ -816,6 +816,84 @@ export const contractService = {
     }
   },
 
+  /** Contrato (documento do sistema) ligado a um card de cliente, ou null se o cliente ainda nao tem contrato. */
+  async getContractByClientId(clientId: string, masterId: string): Promise<Contract | null> {
+    if (!isSupabaseConfigured || !isUuid(clientId) || !masterId) return null;
+    const { data } = await supabase.from('contracts')
+      .select('*, contact:contacts(*), venue:venues(id, name)')
+      .eq('client_id', clientId).eq('master_id', masterId).maybeSingle();
+    return data ? mapRowToContract(data) : null;
+  },
+
+  /** Contratos aprovados que ainda NAO tem card de cliente (candidatos a vinculo), busca no banco por contrato/titulo/nome/telefone. */
+  async searchLinkableContracts(masterId: string, search: string, venueId?: string): Promise<Contract[]> {
+    if (!isSupabaseConfigured || !masterId) return [];
+    let q = supabase.from('contracts')
+      .select('*, contact:contacts(*), venue:venues(id, name)')
+      .eq('master_id', masterId).eq('approval_status', 'approved').is('client_id', null);
+    if (venueId && isUuid(venueId)) q = q.eq('venue_id', venueId);
+    const filter = await buildContractSearchFilter(masterId, search);
+    if (filter) q = q.or(filter);
+    const { data } = await q.order('created_at', { ascending: false }).limit(10);
+    return (data || []).map(mapRowToContract);
+  },
+
+  /**
+   * Vincula um contrato aprovado a um card de cliente: define contracts.client_id (o indice unico impede dois cards
+   * no mesmo contrato), copia para o card o que e operacional (titulo, tipo, data, convidados, pacote, valor, nomes)
+   * e garante a posicao do card no funil atual em contract_funnel_placements.
+   */
+  async linkContractToClient(params: { contractId: string; clientId: string; masterId: string }): Promise<{ success: boolean; message?: string; patch?: Record<string, any> }> {
+    if (!isSupabaseConfigured || !isUuid(params.contractId) || !isUuid(params.clientId) || !params.masterId) return { success: false, message: 'Parâmetros inválidos.' };
+    try {
+      const { data: c } = await supabase.from('contracts').select('*').eq('id', params.contractId).eq('master_id', params.masterId).maybeSingle();
+      if (!c) return { success: false, message: 'Contrato não encontrado.' };
+      if (c.approval_status !== 'approved') return { success: false, message: 'Só contratos aprovados podem ser vinculados.' };
+      if (c.client_id && c.client_id !== params.clientId) return { success: false, message: 'Este contrato já está vinculado a outro cliente.' };
+      const { data: cl } = await supabase.from('clients').select('id, funnel_id, stage, birthday_person_name, payer_name').eq('id', params.clientId).eq('master_id', params.masterId).maybeSingle();
+      if (!cl) return { success: false, message: 'Cliente não encontrado.' };
+      const { data: prev } = await supabase.from('contracts').select('id').eq('client_id', params.clientId).eq('master_id', params.masterId).neq('id', params.contractId).maybeSingle();
+      if (prev) return { success: false, message: 'Este cliente já tem outro contrato vinculado.' };
+
+      const { error: linkErr } = await supabase.from('contracts').update({ client_id: params.clientId, updated_at: new Date().toISOString() }).eq('id', params.contractId).eq('master_id', params.masterId);
+      if (linkErr) return { success: false, message: linkErr.code === '23505' ? 'Este contrato já está vinculado a outro cliente.' : linkErr.message };
+
+      const snap = (c.client_snapshot || {}) as Record<string, any>;
+      const clientUpdate: Record<string, any> = {
+        contract_title: c.contract_title,
+        event_type: c.event_type,
+        event_date: c.event_date || null,
+        event_time: c.event_time || null,
+        guest_count: c.guest_count || 0,
+        package_sold: c.package_name || null,
+        deal_value: Number(c.total_amount || 0),
+        venue_id: c.venue_id,
+        updated_at: new Date().toISOString(),
+      };
+      if (snap.birthdayPersonName && !cl.birthday_person_name) clientUpdate.birthday_person_name = snap.birthdayPersonName;
+      if (snap.payerName && !cl.payer_name) clientUpdate.payer_name = snap.payerName;
+      await supabase.from('clients').update(clientUpdate).eq('id', params.clientId).eq('master_id', params.masterId);
+
+      if (cl.funnel_id && isUuid(cl.funnel_id)) {
+        await supabase.from('contract_funnel_placements').upsert({
+          master_id: params.masterId, contract_id: params.contractId, funnel_id: cl.funnel_id, stage_id: cl.stage || 'onboarding', status: 'in_progress',
+        }, { onConflict: 'contract_id,funnel_id' });
+      }
+      try { window.dispatchEvent(new CustomEvent('f5:contracts-changed')); } catch { /* sem window */ }
+
+      return {
+        success: true,
+        patch: {
+          contractTitle: c.contract_title, eventType: c.event_type, eventDate: c.event_date || undefined, eventTime: c.event_time || undefined,
+          guestCount: c.guest_count || 0, packageSold: c.package_name || undefined, dealValue: Number(c.total_amount || 0), venueId: c.venue_id,
+          ...(snap.birthdayPersonName && !cl.birthday_person_name ? { birthdayPersonName: snap.birthdayPersonName } : {}),
+        },
+      };
+    } catch (err: any) {
+      return { success: false, message: err?.message || 'Erro ao vincular contrato.' };
+    }
+  },
+
   /** Registra no historico uma mudanca ja gravada pela tela (convidados/data): quem, quando, antes -> depois. */
   async logCardChange(params: {
     clientId: string; masterId: string; field: 'guest_count' | 'event_date';

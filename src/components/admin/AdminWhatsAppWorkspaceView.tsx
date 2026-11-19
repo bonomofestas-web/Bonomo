@@ -48,6 +48,7 @@ import { MessagingPausedBanner } from './MessagingPausedBanner';
 import { uazapiSseService } from '../../services/uazapiSseService';
 import { isSupabaseConfigured } from '../../lib/supabase';
 import { leadService, mergeAndSortActivities, isPhoneMatch } from '../../services/leadService';
+import { contractService } from '../../services/contractService';
 import { whatsappMediaService, MediaDownloadError, describeMediaFailure, resolveMediaMessageIds } from '../../services/whatsappMediaService';
 
 // Ids da UAZAPI de uma mensagem: o id pode estar em metadata (webhook) ou no campo principal da atividade (envio/SSE)
@@ -3970,9 +3971,36 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   const totalForecastedRemaining = installmentsRemaining + upsellParcelado;
   const totalRentabilidade = baseContract + totalUpsell;
 
+  // Arquivos do contrato do sistema vinculado ao cliente: entram em "Documentos Contratuais" (somente leitura)
+  const [linkedContractDocs, setLinkedContractDocs] = useState<ClientDocument[]>([]);
+  const contractDocsMasterId = currentUser?.masterId || currentUser?.id || '';
+  useEffect(() => {
+    let alive = true;
+    const load = async () => {
+      if (!currentClient?.id || !contractDocsMasterId) { if (alive) setLinkedContractDocs([]); return; }
+      const ct = await contractService.getContractByClientId(currentClient.id, contractDocsMasterId);
+      if (!alive) return;
+      if (!ct) { setLinkedContractDocs([]); return; }
+      const files: Array<{ name: string; url: string }> = [
+        ...(ct.contractFileUrl ? [{ name: 'Contrato assinado', url: ct.contractFileUrl }] : []),
+        ...(ct.paymentFileUrl ? [{ name: 'Comprovante de sinal', url: ct.paymentFileUrl }] : []),
+        ...((ct.attachments || []).map(a => ({ name: a.name, url: a.url }))),
+      ];
+      setLinkedContractDocs(files.map((f, i) => ({
+        id: `contract_file_${ct.id}_${i}`, clientId: currentClient.id, title: f.name, name: f.name,
+        type: 'contract', fileUrl: f.url, url: f.url, uploadedAt: ct.approvedAt || ct.createdAt,
+      } as ClientDocument)));
+    };
+    void load();
+    const onChanged = () => { void load(); };
+    window.addEventListener('f5:contracts-changed', onChanged);
+    return () => { alive = false; window.removeEventListener('f5:contracts-changed', onChanged); };
+  }, [currentClient?.id, contractDocsMasterId]);
+
   const clientDocuments = useMemo<ClientDocument[]>(() => {
-    return (currentClient?.documents || (selectedLead as any)?.documents || []) as ClientDocument[];
-  }, [currentClient, selectedLead]);
+    const own = (currentClient?.documents || (selectedLead as any)?.documents || []) as ClientDocument[];
+    return [...linkedContractDocs, ...own];
+  }, [currentClient, selectedLead, linkedContractDocs]);
 
   const handleSaveUpsell = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -10747,6 +10775,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                               </div>
                             </div>
 
+                            {!String(doc.id).startsWith('contract_file_') && (
                             <button
                               type="button"
                               onClick={() => handleDeleteDoc(doc.id)}
@@ -10761,6 +10790,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                             >
                               <Trash2 size={13} />
                             </button>
+                            )}
                           </div>
 
                           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 'auto', paddingTop: '8px', borderTop: '1px solid var(--adm-border)' }}>
