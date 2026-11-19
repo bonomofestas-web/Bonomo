@@ -4982,7 +4982,12 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   // ja estao na fila. Lotes de 40 com pausa, so com aba visivel e online, teto por sessao (cota gratuita do Supabase),
   // respeitando o modo economia de dados. O cache local faz as proximas sessoes baixarem so o que mudou.
   const backgroundPrefetchedForRef = useRef<string>('');
-  const leadsLoadedForPrefetch = leads.length > 0;
+  // SEMPRE as listas restritas ao usuario (casas, funis e etapas que ele pode ver): nunca baixa conversa fora do seu acesso
+  const scopedLeadsRef = useRef<Lead[]>(scopedLeads);
+  const scopedFunnelsRef = useRef<CommercialFunnel[]>(scopedFunnels);
+  scopedLeadsRef.current = scopedLeads;
+  scopedFunnelsRef.current = scopedFunnels;
+  const leadsLoadedForPrefetch = scopedLeads.length > 0;
   useEffect(() => {
     if (!currentUser || !leadsLoadedForPrefetch) return;
     if ((navigator as any)?.connection?.saveData) return;
@@ -4994,7 +4999,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       backgroundPrefetchedForRef.current = sessionKey;
       const SESSION_CAP = 300; // conversas pre-carregadas por sessao (~6.000 linhas no maximo)
       const PER_INBOX = 40;
-      const pool = leadsRef.current.filter(l => !l.isClient && !l.isArchived && !(l as any).isDeleted && !(l as any).isRemovedFromFunnel);
+      const pool = scopedLeadsRef.current.filter(l => !l.isClient && !l.isArchived && !(l as any).isDeleted && !(l as any).isRemovedFromFunnel);
       const recent = [...pool].sort((a, b) => getLeadConversationTime(b) - getLeadConversationTime(a));
       const queue: string[] = [];
       const seen = new Set<string>();
@@ -5003,7 +5008,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       recent.slice(0, PER_INBOX).forEach(l => push(l.id));
       // 2) funis comerciais: fixados do usuario primeiro, depois os demais; 40 mais recentes de cada um (sem repetir)
       const pinned = new Set(userPinnedFunnelIds || []);
-      const funnelOrder = [...funnelsRef.current]
+      const funnelOrder = [...scopedFunnelsRef.current]
         .filter(f => !f.isPostSale && f.category !== 'Pós-Venda' && f.category !== 'pos_venda')
         .sort((a, b) => Number(pinned.has(b.id)) - Number(pinned.has(a.id)));
       for (const f of funnelOrder) {
