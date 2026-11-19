@@ -1301,7 +1301,6 @@ export const AdminCollaboratorsView: React.FC<AdminCollaboratorsViewProps> = ({ 
           kind={teamData.kindOf(profileCollab)}
           perms={permsOf(profileCollab)}
           jobLabels={teamData.jobLabelsOf(profileCollab)}
-          title={teamData.titleOf(profileCollab)}
           venues={venues}
           leads={leads}
           clients={clients}

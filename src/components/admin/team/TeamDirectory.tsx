@@ -26,7 +26,7 @@ const eyebrow: React.CSSProperties = { fontSize: '0.66rem', fontWeight: 800, tex
 
 export const TeamDirectory: React.FC<Props> = ({ collaborators, data, actions, presence, sendingInviteEmail, inviteSentEmail }) => {
   const [query, setQuery] = useState('');
-  const [sector, setSector] = useState<'all' | CollabSectorKey>('all');
+  const [sector, setSector] = useState<'all' | 'inactive' | CollabSectorKey>('all');
   const [venueFilter, setVenueFilter] = useState('all');
   const [status, setStatus] = useState<'all' | 'active' | 'inactive' | 'pending'>('all');
   const [viewMode, setViewMode] = useState<'list' | 'card'>('list');
@@ -38,15 +38,17 @@ export const TeamDirectory: React.FC<Props> = ({ collaborators, data, actions, p
     const perSector = new Map<CollabSectorKey, number>();
     let active = 0;
     let pending = 0;
+    let inactive = 0;
     collaborators.forEach(c => {
-      if (c.active) active += 1;
+      if (!c.active) { inactive += 1; return; }
+      active += 1;
       if (permsOf(c).isPending) pending += 1;
       const s = primarySectorOf(c);
       perSector.set(s, (perSector.get(s) || 0) + 1);
     });
-    const totals = summarizeAssetsTotal(collaborators.map(c => assets.get(c.id)));
+    const totals = summarizeAssetsTotal(collaborators.filter(c => c.active).map(c => assets.get(c.id)));
     const online = presence ? collaborators.filter(c => presence.get(c.id)?.online).length : null;
-    return { active, pending, perSector, totals, online };
+    return { active, pending, inactive, perSector, totals, online };
   }, [collaborators, assets, permsOf, presence]);
 
   /* ───── Filtros + agrupamento por setor ───── */
@@ -57,7 +59,8 @@ export const TeamDirectory: React.FC<Props> = ({ collaborators, data, actions, p
         const hay = `${c.name} ${c.email} ${c.phone || ''} ${c.customJobTitle || ''} ${jobLabelsOf(c).join(' ')}`.toLowerCase();
         if (!hay.includes(q)) return false;
       }
-      if (sector !== 'all' && primarySectorOf(c) !== sector) return false;
+      if (sector === 'inactive' && c.active) return false;
+      if (sector !== 'all' && sector !== 'inactive' && (!c.active || primarySectorOf(c) !== sector)) return false;
       if (venueFilter !== 'all') {
         const d = getVenueDisplay(c, venues);
         if (!d.isAll && !d.list.some(v => v.id === venueFilter)) return false;
@@ -69,14 +72,17 @@ export const TeamDirectory: React.FC<Props> = ({ collaborators, data, actions, p
       return true;
     });
     const bySector = new Map<CollabSectorKey, Collaborator[]>();
-    list.forEach(c => {
+    list.filter(c => c.active).forEach(c => {
       const s = primarySectorOf(c);
       bySector.set(s, [...(bySector.get(s) || []), c]);
     });
-    return SECTOR_ORDER.filter(s => bySector.has(s)).map(s => ({
+    const sectors = SECTOR_ORDER.filter(s => bySector.has(s)).map(s => ({
       sector: s,
       people: (bySector.get(s) as Collaborator[]).sort((a, b) => kindRank(kindOf(a)) - kindRank(kindOf(b)) || a.name.localeCompare(b.name, 'pt-BR')),
     }));
+    // Inativos ficam numa secao propria, independente de setor e cargo
+    const inactivePeople = list.filter(c => !c.active).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+    return { sectors, inactivePeople };
   }, [collaborators, query, sector, venueFilter, status, venues, permsOf, kindOf, jobLabelsOf]);
 
   const menuItems = (c: Collaborator): DropdownMenuItem[] => {
@@ -102,7 +108,6 @@ export const TeamDirectory: React.FC<Props> = ({ collaborators, data, actions, p
     const venue = getVenueDisplay(c, venues);
     const live = presence?.get(c.id);
     const roles = jobLabelsOf(c);
-    const title = data.titleOf(c) || roles[0] || '';
     const nameBlock = (
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
         <span style={{ position: 'relative', flexShrink: 0 }}>
@@ -113,7 +118,7 @@ export const TeamDirectory: React.FC<Props> = ({ collaborators, data, actions, p
           <div style={{ fontSize: '0.92rem', fontWeight: 800, color: 'var(--adm-text-title)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             {c.name}{p.isSelf && <span style={{ marginLeft: 6, fontSize: '0.6rem', fontWeight: 800, color: 'var(--adm-accent)' }}>VOCÊ</span>}
           </div>
-          <div style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{title || c.email}</div>
+          <div style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.email}</div>
         </div>
       </div>
     );
@@ -209,6 +214,12 @@ export const TeamDirectory: React.FC<Props> = ({ collaborators, data, actions, p
             }}><Briefcase size={13} /> {m.label} ({summary.perSector.get(s)})</button>
           );
         })}
+        {summary.inactive > 0 && (
+          <button type="button" onClick={() => setSector(sector === 'inactive' ? 'all' : 'inactive')} aria-pressed={sector === 'inactive'} style={{
+            display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '7px 14px', borderRadius: '999px', fontSize: '0.76rem', fontWeight: 800, cursor: 'pointer',
+            border: `1px solid ${sector === 'inactive' ? '#94A3B8' : 'var(--adm-border)'}`, background: sector === 'inactive' ? 'rgba(148,163,184,0.2)' : 'var(--adm-bg-card)', color: sector === 'inactive' ? '#94A3B8' : 'var(--adm-text-muted)',
+          }}><Power size={13} /> Inativos ({summary.inactive})</button>
+        )}
       </div>
 
       {/* Busca, filtros e modo de exibicao */}
@@ -239,13 +250,13 @@ export const TeamDirectory: React.FC<Props> = ({ collaborators, data, actions, p
       </div>
 
       {/* Secoes por setor */}
-      {groups.length === 0 ? (
+      {groups.sectors.length === 0 && groups.inactivePeople.length === 0 ? (
         <div style={{ ...card, padding: '40px 20px', textAlign: 'center', color: 'var(--adm-text-muted)', fontSize: '0.85rem' }}>
           <CalendarClock size={26} style={{ marginBottom: 8 }} />
           <div style={{ fontWeight: 800, color: 'var(--adm-text-title)' }}>Nenhuma pessoa encontrada</div>
           <div>Ajuste a busca ou os filtros.</div>
         </div>
-      ) : groups.map(g => (
+      ) : groups.sectors.map(g => (
         <section key={g.sector} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <span style={{ width: '4px', height: '18px', borderRadius: '2px', background: SECTOR_META[g.sector].color }} />
@@ -267,6 +278,29 @@ export const TeamDirectory: React.FC<Props> = ({ collaborators, data, actions, p
           )}
         </section>
       ))}
+
+      {/* Inativos: secao propria, fora do quadro de colaboradores */}
+      {groups.inactivePeople.length > 0 && (
+        <section style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <span style={{ width: '4px', height: '18px', borderRadius: '2px', background: '#94A3B8' }} />
+            <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, color: 'var(--adm-text-muted)' }}>Inativos</h3>
+            <span style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)' }}>{groups.inactivePeople.length} {groups.inactivePeople.length === 1 ? 'pessoa' : 'pessoas'}</span>
+          </div>
+          {viewMode === 'list' ? (
+            <div style={{ ...card, overflow: 'hidden' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(250px, 2.2fr) minmax(170px, 1.4fr) minmax(120px, 0.9fr) minmax(190px, 1.4fr) 150px 40px', gap: '16px', padding: '10px 18px', background: 'var(--adm-bg-input)', borderBottom: '1px solid var(--adm-border)' }}>
+                {['Pessoa', 'Cargo', 'Unidades', 'Em aberto', 'Status', ''].map(h => <span key={h} style={eyebrow}>{h}</span>)}
+              </div>
+              {groups.inactivePeople.map((c, i) => renderPerson(c, i))}
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(290px, 1fr))', gap: '14px' }}>
+              {groups.inactivePeople.map((c, i) => renderPerson(c, i))}
+            </div>
+          )}
+        </section>
+      )}
     </div>
   );
 };

@@ -23,7 +23,6 @@ interface Props {
   kind: ProfileKind;
   perms: CollabPerms;
   jobLabels: string[];
-  title: string;
   venues: Venue[];
   leads: Lead[];
   clients: Client[];
@@ -76,7 +75,7 @@ const Section: React.FC<{ title: string; count?: number; children: React.ReactNo
 );
 
 export const CollaboratorProfile: React.FC<Props> = ({
-  collaborator: c, collaborators, kind, perms, jobLabels, title, venues, leads, clients, tasks, appointments, funnels, assets, kindOf, actions,
+  collaborator: c, collaborators, kind, perms, jobLabels, venues, leads, clients, tasks, appointments, funnels, assets, kindOf, actions,
   presence, sendingInviteEmail, onBack,
 }) => {
   const manager = isManagerKind(kind);
@@ -225,7 +224,6 @@ export const CollaboratorProfile: React.FC<Props> = ({
         </div>
         <div>
           <div style={{ fontSize: '1.4rem', fontWeight: 900, color: 'var(--adm-text-title)' }}>{c.name}</div>
-          <div style={{ fontSize: '0.84rem', color: 'var(--adm-text-muted)' }}>{title || PROFILE_KIND_LABEL[kind]}</div>
         </div>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'center' }}>
           <SectorChip sector={sector} />
