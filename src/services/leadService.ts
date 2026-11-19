@@ -646,6 +646,46 @@ export const leadService = {
   },
 
   /**
+   * Pré-carga das últimas mensagens de VÁRIAS conversas em uma única chamada (RPC get_recent_lead_activities).
+   * Devolve um mapa leadId -> atividades em ordem cronológica. `since` busca só o que é mais novo (delta).
+   * Em erro (ex.: função ainda não criada no banco) devolve null: a conversa carrega normalmente ao abrir.
+   */
+  async getRecentActivitiesForLeads(leadIds: string[], perLead = 20, since?: string): Promise<Map<string, LeadActivity[]> | null> {
+    const out = new Map<string, LeadActivity[]>();
+    if (!isSupabaseConfigured) return out;
+    const ids = Array.from(new Set((leadIds || []).filter(id => isUuid(id))));
+    if (ids.length === 0) return out;
+    try {
+      for (let i = 0; i < ids.length; i += 100) {
+        const chunk = ids.slice(i, i + 100);
+        const { data, error } = await supabase.rpc('get_recent_lead_activities', {
+          p_lead_ids: chunk,
+          p_per_lead: perLead,
+          p_since: since || null,
+        });
+        if (error) {
+          console.warn('[leadService] Pré-carga de mensagens indisponível:', error.message);
+          return null;
+        }
+        const byLead = new Map<string, any[]>();
+        (data || []).forEach((row: any) => {
+          const list = byLead.get(row.lead_id) || [];
+          list.push(row);
+          byLead.set(row.lead_id, list);
+        });
+        byLead.forEach((rows, leadId) => {
+          const formatted = rows.map(r => formatActivityFromDb(r));
+          out.set(leadId, mergeAndSortActivities([], formatted, leadId));
+        });
+      }
+    } catch (err) {
+      console.warn('[leadService] Falha na pré-carga de mensagens:', err);
+      return null;
+    }
+    return out;
+  },
+
+  /**
    * Total REAL de leads no banco (sem baixar nenhuma linha). É este número que as telas mostram como "total",
    * nunca o tamanho da lista carregada. `venueIds` restringe às casas do usuário (não-master).
    */

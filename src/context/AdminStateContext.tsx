@@ -398,6 +398,8 @@ export interface AdminContextType {
   markLeadAsRead: (leadId: string) => void;
   loadOlderLeadActivities: (leadId: string, beforeTimestamp: string, limit?: number) => Promise<number>;
   loadLeadConversationDays: (leadId: string, days?: number) => Promise<boolean>;
+  /** Pré-carrega as últimas mensagens de várias conversas de uma vez (WhatsApp abre sem "carregando"). */
+  prefetchLeadConversations: (leadIds: string[], perLead?: number) => Promise<void>;
 
   // CRM Leads — Stage & Assignment
   unindexedLeadsCount: number;
@@ -4865,6 +4867,36 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     } catch (err) {
       console.error('Erro em loadOlderLeadActivities:', err);
       return 0;
+    }
+  }, []);
+
+  // Conversas já pré-carregadas nesta sessão (evita repetir a consulta ao rolar a lista)
+  const prefetchedLeadIdsRef = useRef<Set<string>>(new Set());
+  const prefetchBackoffUntilRef = useRef(0); // apos erro, espera 60 s antes de tentar de novo
+  const prefetchLeadConversations = useCallback(async (leadIds: string[], perLead: number = 20): Promise<void> => {
+    if (Date.now() < prefetchBackoffUntilRef.current) return;
+    const pending = Array.from(new Set(leadIds || [])).filter(id => id && !prefetchedLeadIdsRef.current.has(id));
+    if (pending.length === 0) return;
+    pending.forEach(id => prefetchedLeadIdsRef.current.add(id));
+    // Lotes de 40 conversas por chamada (RPC única por lote)
+    for (let i = 0; i < pending.length; i += 40) {
+      const chunk = pending.slice(i, i + 40);
+      const byLead = await leadService.getRecentActivitiesForLeads(chunk, perLead);
+      if (byLead === null) {
+        // Erro (ex.: função SQL ainda não criada): libera para tentar de novo depois
+        chunk.forEach(id => prefetchedLeadIdsRef.current.delete(id));
+        prefetchBackoffUntilRef.current = Date.now() + 60_000;
+        return;
+      }
+      if (byLead.size === 0) continue; // conversas sem mensagens: já marcadas, não repete a consulta
+      setLeads(prev => prev.map(lead => {
+        const fetched = byLead.get(lead.id);
+        if (!fetched || fetched.length === 0) return lead;
+        const current = lead.activities || [];
+        const existingIds = new Set(current.map(a => a.id));
+        if (!fetched.some(a => !existingIds.has(a.id))) return lead;
+        return { ...lead, activities: mergeAndSortActivities(current, fetched, lead.id) };
+      }));
     }
   }, []);
 
@@ -11440,6 +11472,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       markLeadAsRead,
       loadOlderLeadActivities,
       loadLeadConversationDays,
+      prefetchLeadConversations,
       unindexedLeadsCount,
       reassignLeadFunnel,
       reassignMultipleLeadsFunnel,

@@ -894,6 +894,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     markLeadAsRead,
     loadOlderLeadActivities,
     loadLeadConversationDays,
+    prefetchLeadConversations,
     syncWhatsAppHistoryGap,
     systemSlaConfig,
   } = useAdminState();
@@ -2121,6 +2122,35 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       return new Date(b.createdAt || '').getTime() - new Date(a.createdAt || '').getTime();
     });
   }, [canSeeAllConversations, sourceLeads, activeFunnel, selectedFunnelId, postSaleFunnels, funnels, activeVenueId, isPostSaleFunnel, quickFilter, leadOwnershipFilter, sortBy, localSortBy, filterVenueId, filterStage, filterCollaboratorId, filterTemperature, searchTerm, searchQuery, currentUser, effectiveUser, viewingAsCollaborator, selectedLeadId, initialLeadId, isEmbeddedInFunnel, collabIds]);
+
+  // ── Janela da caixa de entrada (como o WhatsApp Web): 40 conversas e +10 a cada rolagem ──────────────
+  // As 20 ultimas mensagens de cada conversa visivel (e das proximas 10) sao pre-carregadas em lote para abrir sem "carregando".
+  const INBOX_INITIAL = 40;
+  const INBOX_STEP = 10;
+  const [visibleCount, setVisibleCount] = useState(INBOX_INITIAL);
+  const inboxSentinelRef = useRef<HTMLDivElement>(null);
+  const inboxFilterSignature = `${quickFilter}|${filterVenueId}|${filterCollaboratorId}|${filterTemperature}|${filterStage}|${searchTerm}|${searchQuery}|${localSortBy}|${selectedFunnelId}|${leadOwnershipFilter}`;
+  useEffect(() => { setVisibleCount(INBOX_INITIAL); }, [inboxFilterSignature]);
+  // Conversa selecionada fora da janela: amplia a janela para ela aparecer
+  useEffect(() => {
+    if (!selectedLeadId) return;
+    const idx = filteredLeads.findIndex(l => l.id === selectedLeadId);
+    if (idx >= visibleCount) setVisibleCount(idx + INBOX_STEP);
+  }, [selectedLeadId, filteredLeads]); // eslint-disable-line react-hooks/exhaustive-deps
+  const visibleLeads = useMemo(() => filteredLeads.slice(0, visibleCount), [filteredLeads, visibleCount]);
+  useEffect(() => {
+    if (isPostSaleFunnel) return; // clientes de pos-venda nao sao leads do banco
+    void prefetchLeadConversations(filteredLeads.slice(0, visibleCount + INBOX_STEP).map(l => l.id), 20);
+  }, [filteredLeads, visibleCount, isPostSaleFunnel, prefetchLeadConversations]);
+  useEffect(() => {
+    const el = inboxSentinelRef.current;
+    if (!el || typeof IntersectionObserver === 'undefined') return;
+    const io = new IntersectionObserver(entries => {
+      if (entries.some(e => e.isIntersecting)) setVisibleCount(c => c + INBOX_STEP);
+    }, { rootMargin: '300px' });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [visibleCount, filteredLeads.length]);
 
   const lastInitialLeadIdRef = useRef<string | undefined>(initialLeadId);
 
@@ -5538,7 +5568,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
               <div style={{ fontSize: '0.72rem', marginTop: '2px' }}>Ajuste os filtros ou o termo de busca</div>
             </div>
           ) : (
-            filteredLeads.map(lead => {
+            visibleLeads.map(lead => {
               const isSelected = selectedLeadId === lead.id;
               const venue = venues.find(v => v.id === lead.venueId);
               const lastActivity = lead.activities?.[lead.activities.length - 1];
@@ -6490,6 +6520,11 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                 </div>
               );
             })
+          )}
+          {filteredLeads.length > visibleCount && (
+            <div ref={inboxSentinelRef} style={{ flexShrink: 0, padding: '10px 0 14px 0', textAlign: 'center', fontSize: '0.7rem', color: 'var(--adm-text-muted)' }}>
+              Carregando mais conversas...
+            </div>
           )}
         </div>
       </div>
