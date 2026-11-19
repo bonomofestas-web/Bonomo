@@ -109,39 +109,70 @@ export const AdminContactsView: React.FC<AdminContactsViewProps> = ({
   const CONTACTS_PAGE_SIZE = 100;
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
+  // Busca SEMPRE no banco: resultados paginados + total real da busca
   const [searchResults, setSearchResults] = useState<Contact[] | null>(null);
+  const [searchTotal, setSearchTotal] = useState(0);
+  const [searchLoading, setSearchLoading] = useState(false);
+  // Total REAL de contatos no banco (não o tamanho da página carregada)
+  const [totalContacts, setTotalContacts] = useState(0);
+  const activeSearchTerm = localSearch.trim().length >= 2 ? localSearch.trim() : '';
 
-  // Carrega a próxima página (offset = já carregados)
+  const refreshTotalContacts = useCallback(async () => {
+    if (!scopedMasterId) return;
+    setTotalContacts(await contactService.countContacts({ masterId: scopedMasterId }));
+  }, [scopedMasterId]);
+
+  // Carrega a próxima página (da lista ou da busca, sempre pelo banco)
   const loadMoreContacts = async () => {
     if (loadingMore || !scopedMasterId) return;
     setLoadingMore(true);
     try {
-      const next = await contactService.getContacts({
-        masterId: scopedMasterId,
-        limit: CONTACTS_PAGE_SIZE,
-        offset: contacts.length,
-      });
-      setContacts(prev => {
-        const ids = new Set(prev.map(c => c.id));
-        return [...prev, ...next.filter(c => !ids.has(c.id))];
-      });
-      setHasMore(next.length === CONTACTS_PAGE_SIZE);
+      if (activeSearchTerm) {
+        const next = await contactService.getContacts({
+          masterId: scopedMasterId,
+          search: activeSearchTerm,
+          limit: CONTACTS_PAGE_SIZE,
+          offset: searchResults?.length || 0,
+        });
+        setSearchResults(prev => {
+          const base = prev || [];
+          const ids = new Set(base.map(c => c.id));
+          return [...base, ...next.filter(c => !ids.has(c.id))];
+        });
+      } else {
+        const next = await contactService.getContacts({
+          masterId: scopedMasterId,
+          limit: CONTACTS_PAGE_SIZE,
+          offset: contacts.length,
+        });
+        setContacts(prev => {
+          const ids = new Set(prev.map(c => c.id));
+          return [...prev, ...next.filter(c => !ids.has(c.id))];
+        });
+        setHasMore(next.length === CONTACTS_PAGE_SIZE);
+      }
     } finally {
       setLoadingMore(false);
     }
   };
 
-  // Busca no servidor (cobre toda a base, não só os já carregados)
+  // Busca no servidor (cobre toda a base): primeira página + total real da busca
   useEffect(() => {
-    const term = localSearch.trim();
-    if (term.length < 2 || !scopedMasterId) { setSearchResults(null); return; }
+    if (!activeSearchTerm || !scopedMasterId) { setSearchResults(null); setSearchTotal(0); setSearchLoading(false); return; }
     let cancelled = false;
+    setSearchLoading(true);
     const t = setTimeout(async () => {
-      const res = await contactService.getContacts({ masterId: scopedMasterId, search: term, limit: 100 });
-      if (!cancelled) setSearchResults(res);
+      const [res, total] = await Promise.all([
+        contactService.getContacts({ masterId: scopedMasterId, search: activeSearchTerm, limit: CONTACTS_PAGE_SIZE }),
+        contactService.countContacts({ masterId: scopedMasterId, search: activeSearchTerm }),
+      ]);
+      if (cancelled) return;
+      setSearchResults(res);
+      setSearchTotal(total);
+      setSearchLoading(false);
     }, 350);
     return () => { cancelled = true; clearTimeout(t); };
-  }, [localSearch, scopedMasterId]);
+  }, [activeSearchTerm, scopedMasterId]);
 
   // Carrega contatos
   const loadContacts = useCallback(async () => {
@@ -155,6 +186,7 @@ export const AdminContactsView: React.FC<AdminContactsViewProps> = ({
 
       setContacts(res);
       setHasMore(res.length === CONTACTS_PAGE_SIZE);
+      void refreshTotalContacts();
 
       // Selecao vinda da busca global (ou ja feita pelo usuario) nunca e sobrescrita pelo recarregamento da lista
       if (selectedContactRef.current) return;
@@ -180,7 +212,7 @@ export const AdminContactsView: React.FC<AdminContactsViewProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [scopedMasterId]);
+  }, [scopedMasterId, refreshTotalContacts]);
 
   useEffect(() => {
     loadContacts();
@@ -339,6 +371,7 @@ export const AdminContactsView: React.FC<AdminContactsViewProps> = ({
       if (newContact) {
         toast.success('Contato cadastrado com sucesso!');
         setContacts(prev => [newContact, ...prev]);
+        void refreshTotalContacts();
         setSelectedContact(newContact);
         setIsNewContactModalOpen(false);
         setQuickForm({ name: '', phone: '', email: '', venueId: '' });
@@ -455,19 +488,12 @@ export const AdminContactsView: React.FC<AdminContactsViewProps> = ({
     }
   };
 
-  // Filtragem da lista local por busca textual
+  // Lista exibida: com busca, SÓ o que o banco devolveu (nunca filtra a lista carregada na tela)
   const filteredContacts = useMemo(() => {
-    if (!localSearch.trim()) return contacts;
-    if (searchResults) return searchResults;
-    const term = localSearch.toLowerCase().trim();
-    return contacts.filter(c =>
-      (c.name && c.name.toLowerCase().includes(term)) ||
-      (c.primaryPhone && c.primaryPhone.includes(term)) ||
-      (c.code && c.code.toLowerCase().includes(term)) ||
-      (c.email && c.email.toLowerCase().includes(term)) ||
-      (c.cpf && c.cpf.includes(term))
-    );
-  }, [contacts, localSearch, searchResults]);
+    if (!activeSearchTerm) return contacts;
+    return searchResults || [];
+  }, [contacts, activeSearchTerm, searchResults]);
+  const searchHasMore = Boolean(activeSearchTerm) && (searchResults?.length || 0) < searchTotal;
 
   // Nome real da etapa do lead
   const getStageRealName = (lead: Lead) => {
@@ -560,7 +586,7 @@ export const AdminContactsView: React.FC<AdminContactsViewProps> = ({
                 backgroundColor: isLight ? '#EFF6FF' : 'rgba(59, 130, 246, 0.2)',
                 color: isLight ? '#1D4ED8' : '#60A5FA',
               }}>
-                {contacts.length}
+                {activeSearchTerm ? searchTotal : totalContacts}
               </span>
             </div>
 
@@ -636,7 +662,7 @@ export const AdminContactsView: React.FC<AdminContactsViewProps> = ({
 
           {/* Lista com Rolagem */}
           <div style={{ flex: 1, overflowY: 'auto' }}>
-            {loading && contacts.length === 0 ? (
+            {(loading && contacts.length === 0) || (activeSearchTerm && searchLoading && !searchResults) ? (
               <div style={{ padding: '40px 16px', textAlign: 'center', color: isLight ? '#64748B' : '#94A3B8' }}>
                 <Clock size={20} className="animate-spin" style={{ margin: '0 auto 8px auto', display: 'block' }} />
                 <span style={{ fontSize: '0.8rem' }}>Carregando contatos...</span>
@@ -767,7 +793,7 @@ export const AdminContactsView: React.FC<AdminContactsViewProps> = ({
                 );
               })
             )}
-            {hasMore && !localSearch.trim() && (
+            {(activeSearchTerm ? searchHasMore : hasMore) && (
               <button
                 type="button"
                 onClick={loadMoreContacts}

@@ -81,7 +81,7 @@ import {
 } from './AdminLeadActionModals';
 import { formatPhone } from '../../utils/phoneFormatter';
 import { generateUuid } from '../../utils/uuid';
-import { getLeadPendingWaitingTime, getLeadWaitTimeSla } from '../../utils/leadSorting';
+import { getLeadPendingWaitingTime, getLeadWaitTimeSla, getLeadConversationTime } from '../../utils/leadSorting';
 import { renderFunnelOrStageIcon } from '../../utils/funnelIconLibrary';
 import { getDefaultPostSaleFunnelId, filterExtraPostSaleLeads } from '../../utils/funnelUtils';
 import type { Lead, LeadActivity, CrmStage, ClientStage, AdminTask, TaskStatus, ClientUpsellSale, ClientDocument, PostSaleChannelConfig, LeadEventType } from '../../types/admin';
@@ -1721,20 +1721,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
 
 
 
-  const getLastMessageTime = (l: Lead) => {
-    const contactActs = (l.activities || []).filter(a => (a.type === 'contact' || (a.type === 'creation' && Boolean(a.text))) && (a.text || a.mediaUrl));
-    // Timestamps persistidos (com hora) cobrem leads cujas atividades ainda não foram carregadas
-    const persistedTime = Math.max(
-      new Date(l.lastMessageAt || 0).getTime() || 0,
-      new Date(l.lastInteractionAt || 0).getTime() || 0
-    );
-    if (contactActs.length > 0) {
-      const maxTime = contactActs.reduce((max, a) => Math.max(max, new Date(a.timestamp || 0).getTime()), 0);
-      if (maxTime > 0 || persistedTime > 0) return Math.max(maxTime, persistedTime);
-    }
-    if (persistedTime > 0) return persistedTime;
-    return new Date(l.updatedAt || l.createdAt || 0).getTime();
-  };
+  // Hora REAL da ultima mensagem (fonte unica: lista, ordenacao e SLA). Nunca updatedAt/createdAt/lastInteractionAt.
+  const getLastMessageTime = (l: Lead) => getLeadConversationTime(l);
 
   // Client adapter for Post-Sale funnels
   const clientsAsLeads = useMemo<Lead[]>(() => {
@@ -5663,7 +5651,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                 cleanPreviewText = cleanedText || 'Nenhuma mensagem recente';
               }
 
-              const lastTime = lastMessageActivity?.timestamp || lead.updatedAt || lead.createdAt;
+              const lastTime = getLeadConversationTime(lead) || undefined;
               const pendingWaitMs = getLeadPendingWaitingTime(lead, collabIds);
               const sla = getLeadWaitTimeSla(pendingWaitMs, systemSlaConfig);
 

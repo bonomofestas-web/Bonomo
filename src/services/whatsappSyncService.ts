@@ -474,6 +474,8 @@ export async function applySyncPlan(params: {
           fromMe: first?.fromMe,
           initialFunnelId: funnelId,
           initialStage: 'new_lead',
+          // Data de entrada = a da PRIMEIRA mensagem puxada (nunca "hoje")
+          messageTimestamp: first?.timestamp,
         });
         if (!leadId) throw new Error('Não foi possível criar o lead.');
 

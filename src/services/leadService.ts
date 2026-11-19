@@ -2,6 +2,7 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { isUuid, generateUuid } from '../utils/uuid';
 import { generateBase36Code } from './contactService';
 import { isLidIdentifier } from './uazapiSseService';
+import { fetchAllRows } from '../utils/fetchAllRows';
 import type { Lead, LeadActivity, LeadParticipant } from '../types/admin';
 
 function mapLeadToDatabase(lead: Partial<Lead>): Record<string, any> {
@@ -99,6 +100,9 @@ function mapLeadToDatabase(lead: Partial<Lead>): Record<string, any> {
   if (lead.visitCommitment !== undefined) payload.visit_commitment = lead.visitCommitment;
   if (lead.tastingCommitment !== undefined) payload.tasting_commitment = lead.tastingCommitment;
   if (lead.updatedAt !== undefined) payload.updated_at = lead.updatedAt;
+  // Data de ENTRADA do lead: só grava quando vem com data E hora (ISO). Datas soltas (YYYY-MM-DD) nunca sobrescrevem
+  // o horário real; leads criados por sincronização entram com a hora da primeira mensagem, não "agora".
+  if (lead.createdAt && /T\d{2}:\d{2}/.test(String(lead.createdAt))) payload.created_at = lead.createdAt;
 
   if (lead.isArchived !== undefined) payload.is_archived = lead.isArchived;
   if (lead.archivedAt !== undefined) payload.archived_at = lead.archivedAt;
@@ -357,16 +361,16 @@ export const leadService = {
   async getAll(options?: { messageDays?: number; includeActivities?: boolean; masterId?: string }): Promise<Lead[]> {
     if (!isSupabaseConfigured) return [];
     try {
-      let query = supabase
-        .from('leads')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (options?.masterId) {
-        query = query.eq('master_id', options.masterId);
-      }
-
-      const { data: leadsData, error: leadsError } = await query;
+      // Traz TODOS os leads do banco (o Supabase corta em 1.000 linhas por consulta: pagina até acabar)
+      const { data: leadsData, error: leadsError } = await fetchAllRows((from, to) => {
+        let q = supabase
+          .from('leads')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .order('id', { ascending: true });
+        if (options?.masterId) q = q.eq('master_id', options.masterId);
+        return q.range(from, to);
+      });
 
       if (leadsError) {
         console.error('Erro ao buscar leads:', leadsError);
@@ -638,6 +642,29 @@ export const leadService = {
     } catch (err) {
       console.error('❌ Falha em leadService.update:', err);
       return false;
+    }
+  },
+
+  /**
+   * Total REAL de leads no banco (sem baixar nenhuma linha). É este número que as telas mostram como "total",
+   * nunca o tamanho da lista carregada. `venueIds` restringe às casas do usuário (não-master).
+   */
+  async countLeads(params: { masterId?: string; venueIds?: string[] } = {}): Promise<number> {
+    if (!isSupabaseConfigured) return 0;
+    try {
+      let query = supabase.from('leads').select('id', { count: 'exact', head: true });
+      if (params.masterId) query = query.eq('master_id', params.masterId);
+      const venues = (params.venueIds || []).filter(v => isUuid(v));
+      if (venues.length > 0) query = query.in('venue_id', venues);
+      const { count, error } = await query;
+      if (error) {
+        console.error('Erro ao contar leads:', error);
+        return 0;
+      }
+      return count ?? 0;
+    } catch (err) {
+      console.error('Exceção em leadService.countLeads:', err);
+      return 0;
     }
   },
 

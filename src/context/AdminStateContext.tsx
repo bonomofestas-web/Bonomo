@@ -430,6 +430,8 @@ export interface AdminContextType {
     mediaType?: 'text' | 'image' | 'video' | 'audio' | 'document' | 'sticker';
     initialFunnelId?: string;
     initialStage?: CrmStage;
+    /** Hora REAL da (primeira) mensagem. Sincronização usa a da primeira mensagem puxada: o lead nunca "entra hoje". */
+    messageTimestamp?: string;
   }) => Promise<string>;
   createLead: (data: {
     name: string;
@@ -6659,8 +6661,12 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     mediaType?: 'text' | 'image' | 'video' | 'audio' | 'document' | 'sticker';
     initialFunnelId?: string;
     initialStage?: CrmStage;
+    messageTimestamp?: string;
   }): Promise<string> => {
     const cleanPhoneDigits = data.phone.replace(/\D/g, '');
+    // Hora da mensagem (real) — nunca "agora" quando a mensagem é antiga (sincronização)
+    const parsedMsgTime = data.messageTimestamp ? new Date(data.messageTimestamp).getTime() : NaN;
+    const msgIso = Number.isFinite(parsedMsgTime) ? new Date(parsedMsgTime).toISOString() : new Date().toISOString();
     const isPostSaleTarget = data.initialFunnelId === 'post_sale_default' ||
       funnels.some(f => f.id === data.initialFunnelId && (f.isPostSale || f.category === 'Pós-Venda'));
 
@@ -6764,7 +6770,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         const newAct: LeadActivity = {
           id: newActId,
           leadId: existing.id,
-          timestamp: new Date().toISOString(),
+          timestamp: msgIso,
           type: 'contact',
           title: data.fromMe ? 'Mensagem enviada via WhatsApp' : 'Mensagem recebida no WhatsApp',
           text: data.firstMessage,
@@ -6778,10 +6784,17 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         const updates: Partial<Lead> = {
           activities: updatedActivities,
           updatedAt: new Date().toISOString().split('T')[0],
-          lastInteractionAt: new Date().toISOString(),
-          lastMessageDirection: data.fromMe ? 'outgoing' : 'incoming',
           unreadCount: data.fromMe ? existing.unreadCount : (existing.unreadCount || 0) + 1,
         };
+        // Hora/prévia da conversa só avançam se a mensagem for MAIS NOVA que a última conhecida (hora real da mensagem)
+        const knownLast = new Date(existing.lastMessageAt || existing.lastInteractionAt || 0).getTime() || 0;
+        if (new Date(msgIso).getTime() >= knownLast) {
+          updates.lastInteractionAt = msgIso;
+          updates.lastMessageAt = msgIso;
+          updates.lastMessageDirection = data.fromMe ? 'outgoing' : 'incoming';
+          const previewText = (data.firstMessage || '').replace(/^\[media:[^\]]*\]\s*/i, '').trim();
+          if (previewText) updates.lastMessageText = previewText.slice(0, 200);
+        }
         // Auto-cura de telefone se o anterior estava incompleto/truncado
         if (cleanPhoneDigits.length >= 12 && (!existing.phone || existing.phone.replace(/\D/g, '').length < cleanPhoneDigits.length)) {
           updates.phone = cleanPhoneDigits;
@@ -6825,7 +6838,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       {
         id: generateUuid(),
         leadId: newLeadId,
-        timestamp: new Date().toISOString(),
+        timestamp: msgIso,
         type: 'creation',
         title: matchedSubSource ? `Lead captado via WhatsApp / ${matchedSubSource}` : 'Lead captado via WhatsApp API',
         authorName: 'WhatsApp API',
@@ -6839,10 +6852,10 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       activities.push({
         id: generateUuid(),
         leadId: newLeadId,
-        timestamp: new Date().toISOString(),
+        timestamp: msgIso,
         type: 'contact',
-        title: data.fromMe 
-          ? (isAudio ? 'Mensagem de voz enviada (Celular/Web)' : 'Mensagem enviada via WhatsApp (Celular/Web)') 
+        title: data.fromMe
+          ? (isAudio ? 'Mensagem de voz enviada (Celular/Web)' : 'Mensagem enviada via WhatsApp (Celular/Web)')
           : (isAudio ? 'Mensagem de voz recebida' : 'Mensagem recebida no WhatsApp'),
         text: effectiveMsgText || data.firstMessage || '',
         mediaUrl: data.mediaUrl,
@@ -6974,9 +6987,12 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         }
       ],
       unreadCount: data.fromMe ? 0 : 1,
-      lastInteractionAt: new Date().toISOString(),
+      lastInteractionAt: msgIso,
+      lastMessageAt: effectiveMsgText ? msgIso : undefined,
+      lastMessageText: effectiveMsgText ? effectiveMsgText.replace(/^\[media:[^\]]*\]\s*/i, '').trim().slice(0, 200) : undefined,
       lastMessageDirection: data.fromMe ? 'outgoing' : 'incoming',
-      createdAt: new Date().toISOString().split('T')[0],
+      // Data de ENTRADA: a da (primeira) mensagem real. Lead sincronizado nunca entra "hoje".
+      createdAt: msgIso,
       updatedAt: new Date().toISOString().split('T')[0],
     };
 
@@ -7488,6 +7504,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             fromMe: isFromMe,
             initialFunnelId: matchedSource?.funnelId || (isTargetPostSale ? 'post_sale_default' : undefined),
             initialStage: isTargetPostSale ? ('new_lead' as any) : undefined,
+            messageTimestamp: incoming.timestamp,
           });
 
           if (newId && incoming.instanceToken) {
@@ -7755,6 +7772,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             fromMe: isFromMe,
             mediaUrl: msg.mediaUrl,
             mediaType: msg.mediaType,
+            messageTimestamp: msg.timestamp,
           });
           if (newId) newLeadsCount++;
         }

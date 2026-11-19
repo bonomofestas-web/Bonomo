@@ -6,6 +6,27 @@ import { leadService } from '../services/leadService';
  */
 
 /**
+ * Hora REAL da última mensagem de chat da conversa (ms). Fonte única para a hora exibida na lista, a ordenação e o SLA.
+ * Ordem: `lastMessageAt` persistido (gravado com a hora da própria mensagem) > maior timestamp das mensagens carregadas.
+ * NUNCA usa updatedAt / createdAt / lastInteractionAt: eles mudam com edição, etapa, tarefa ou processamento e davam
+ * a falsa impressão de conversa de hoje quando a mensagem era de dias atrás. Retorna 0 se não houver mensagem.
+ */
+export function getLeadConversationTime(lead: Lead): number {
+  const persisted = lead.lastMessageAt ? new Date(lead.lastMessageAt).getTime() : 0;
+  let fromActivities = 0;
+  const acts = lead.activities || [];
+  for (const a of acts) {
+    const isChat = a.type === 'contact' || (a.type === 'creation' && Boolean(a.text?.trim()));
+    if (!isChat) continue;
+    if ((a as any).metadata?.isViewAudit === true) continue;
+    const t = new Date(a.timestamp || 0).getTime();
+    if (Number.isFinite(t) && t > fromActivities) fromActivities = t;
+  }
+  const p = Number.isFinite(persisted) ? persisted : 0;
+  return Math.max(p, fromActivities);
+}
+
+/**
  * Calcula o tempo de espera pendente (em milissegundos) que o cliente está aguardando resposta da equipe:
  * - Retorna -1 se não houver mensagens ou se a última mensagem foi enviada pela equipe/atendente (já respondido).
  * - Retorna -1 se a última mensagem foi enviada por automação / bot.
@@ -19,9 +40,8 @@ export function getLeadPendingWaitingTime(lead: Lead, collaboratorIdSet?: Set<st
   if (!acts || acts.length === 0) {
     const dir = lead.lastMessageDirection as string | undefined;
     if (dir === 'incoming' || dir === 'inbound') {
-      const timeRef = lead.lastInteractionAt || lead.updatedAt || lead.createdAt;
-      if (timeRef) {
-        const msgTime = new Date(timeRef).getTime();
+      const msgTime = getLeadConversationTime(lead);
+      if (msgTime > 0) {
         return Math.max(1, Date.now() - msgTime);
       }
       return 1;
@@ -34,9 +54,8 @@ export function getLeadPendingWaitingTime(lead: Lead, collaboratorIdSet?: Set<st
     // Se a direção não está explícita, checa contagem de não lidas
     const unread = Number(lead.unreadCount ?? (lead as any).unreadMessagesCount ?? 0);
     if (unread > 0) {
-      const timeRef = lead.lastInteractionAt || lead.updatedAt || lead.createdAt;
-      if (timeRef) {
-        const msgTime = new Date(timeRef).getTime();
+      const msgTime = getLeadConversationTime(lead);
+      if (msgTime > 0) {
         return Math.max(1, Date.now() - msgTime);
       }
       return 1;
@@ -72,9 +91,9 @@ export function getLeadPendingWaitingTime(lead: Lead, collaboratorIdSet?: Set<st
   if (chatActivities.length === 0) {
     const dir = lead.lastMessageDirection as string | undefined;
     if (dir === 'incoming' || dir === 'inbound' || (Number(lead.unreadCount ?? (lead as any).unreadMessagesCount ?? 0) > 0)) {
-      const timeRef = lead.lastInteractionAt || lead.updatedAt || lead.createdAt;
-      if (timeRef) {
-        return Math.max(1, Date.now() - new Date(timeRef).getTime());
+      const msgTimeB = getLeadConversationTime(lead);
+      if (msgTimeB > 0) {
+        return Math.max(1, Date.now() - msgTimeB);
       }
     }
     return -1;
@@ -154,12 +173,7 @@ export function getLeadPendingWaitingTime(lead: Lead, collaboratorIdSet?: Set<st
  * Retorna o timestamp da última atividade/mensagem relevante do lead
  */
 export function getLastLeadMessageTime(l: Lead): number {
-  const acts = (l.activities && l.activities.length > 0) ? l.activities : leadService.getActivitiesFromCache(l.id);
-  const contactActs = (acts || []).filter(a => a.type === 'contact' || a.type === 'note');
-  if (contactActs.length > 0) {
-    return new Date(contactActs[contactActs.length - 1].timestamp || 0).getTime();
-  }
-  return new Date(l.lastInteractionAt || l.updatedAt || l.createdAt || 0).getTime();
+  return getLeadConversationTime(l);
 }
 
 /**

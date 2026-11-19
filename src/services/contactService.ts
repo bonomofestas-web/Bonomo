@@ -21,6 +21,31 @@ export interface GetContactsParams {
   offset?: number;
 }
 
+/**
+ * Filtro `.or()` do PostgREST para a busca de contatos NO BANCO.
+ * Nome, e-mail e código por texto; telefones e CPF pelas colunas só-dígitos (casam com ou sem máscara/DDI).
+ * Retorna undefined quando não há termo.
+ */
+export function buildContactSearchFilter(search?: string): string | undefined {
+  const raw = (search || '').trim();
+  if (!raw) return undefined;
+  // vírgula, parênteses e aspas quebram a sintaxe do .or(); % e _ são curingas do ilike
+  const text = raw.replace(/[,()"\\%_]/g, ' ').replace(/\s+/g, ' ').trim();
+  const digits = raw.replace(/\D/g, '');
+  const parts: string[] = [];
+  if (text) {
+    parts.push(`name.ilike.%${text}%`, `email.ilike.%${text}%`, `code.ilike.%${text}%`);
+  }
+  if (digits.length >= 3) {
+    parts.push(
+      `primary_phone_digits.ilike.%${digits}%`,
+      `secondary_phone_digits.ilike.%${digits}%`,
+      `cpf_digits.ilike.%${digits}%`
+    );
+  }
+  return parts.length > 0 ? parts.join(',') : undefined;
+}
+
 /** Parentesco inverso (A e X de B  =>  B e Y de A). Usado para gravar o vinculo familiar nos dois sentidos. */
 export function reciprocalKinship(kinship: string): string {
   const k = (kinship || '').toLowerCase();
@@ -53,13 +78,9 @@ export const contactService = {
         .order('created_at', { ascending: false })
         .range(offset, offset + limit - 1);
 
-      // Filtro de busca textual (Nome, Telefone, Código ou CPF)
-      if (search && search.trim()) {
-        const term = search.trim();
-        query = query.or(
-          `name.ilike.%${term}%,primary_phone.ilike.%${term}%,code.ilike.%${term}%,cpf.ilike.%${term}%`
-        );
-      }
+      // Busca no banco (nome, e-mail, código, telefones e CPF com ou sem máscara)
+      const searchFilter = buildContactSearchFilter(search);
+      if (searchFilter) query = query.or(searchFilter);
 
       // Filtro de unidades físicas (Multi-Venues via contact_venue_access)
       if (venueIds && venueIds.length > 0) {
@@ -85,6 +106,50 @@ export const contactService = {
     } catch (err) {
       console.error('Exceção em contactService.getContacts:', err);
       return [];
+    }
+  },
+
+  /**
+   * Total REAL de contatos no banco (mesmos filtros do getContacts, sem paginação).
+   * É este número que as telas mostram — nunca o tamanho da lista carregada.
+   */
+  async countContacts({
+    masterId,
+    venueIds,
+    search,
+  }: { masterId: string; venueIds?: string[]; search?: string }): Promise<number> {
+    if (!isSupabaseConfigured || !masterId) return 0;
+
+    try {
+      let query = supabase
+        .from('contacts')
+        .select('id', { count: 'exact', head: true })
+        .eq('master_id', masterId)
+        .is('deleted_at', null);
+
+      const searchFilter = buildContactSearchFilter(search);
+      if (searchFilter) query = query.or(searchFilter);
+
+      if (venueIds && venueIds.length > 0) {
+        const { data: accessRows } = await supabase
+          .from('contact_venue_access')
+          .select('contact_id')
+          .eq('master_id', masterId)
+          .in('venue_id', venueIds);
+        const allowedContactIds = (accessRows || []).map(r => r.contact_id);
+        if (allowedContactIds.length === 0) return 0;
+        query = query.in('id', allowedContactIds);
+      }
+
+      const { count, error } = await query;
+      if (error) {
+        console.error('Erro ao contar contatos:', error);
+        return 0;
+      }
+      return count ?? 0;
+    } catch (err) {
+      console.error('Exceção em contactService.countContacts:', err);
+      return 0;
     }
   },
 

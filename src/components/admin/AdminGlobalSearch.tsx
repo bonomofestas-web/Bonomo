@@ -98,6 +98,7 @@ export const AdminGlobalSearch: React.FC<AdminGlobalSearchProps> = ({
   // Atendimentos de pos-venda (placements) dos contratos encontrados
   const [placementsResults, setPlacementsResults] = useState<ContractFunnelPlacement[]>([]);
   const [loadingAsync, setLoadingAsync] = useState(false);
+  const [dbTotals, setDbTotals] = useState<{ contacts: number; contracts: number }>({ contacts: 0, contracts: 0 });
 
   const inputRef = useRef<HTMLInputElement>(null);
   const prevTabRef = useRef(activeTab);
@@ -176,7 +177,7 @@ export const AdminGlobalSearch: React.FC<AdminGlobalSearchProps> = ({
     const timer = setTimeout(async () => {
       setLoadingAsync(true);
       try {
-        const [cList, ctrList] = await Promise.all([
+        const [cList, ctrList, cTotal, ctrTotal] = await Promise.all([
           contactService.getContacts({
             masterId: scopedMasterId,
             search: searchQuery.trim(),
@@ -187,10 +188,14 @@ export const AdminGlobalSearch: React.FC<AdminGlobalSearchProps> = ({
             search: searchQuery.trim(),
             limit: 20,
           }),
+          // Totais REAIS no banco (a lista do painel mostra só as primeiras 20)
+          contactService.countContacts({ masterId: scopedMasterId, search: searchQuery.trim() }),
+          contractService.countContracts({ masterId: scopedMasterId, search: searchQuery.trim() }),
         ]);
 
         setContactsResults(cList);
         setContractsResults(ctrList);
+        setDbTotals({ contacts: cTotal, contracts: ctrTotal });
         const approvedIds = ctrList.filter(c => c.approvalStatus === 'approved').map(c => c.id);
         setPlacementsResults(await contractService.getPlacementsByContracts(approvedIds, scopedMasterId));
       } catch (err) {
@@ -268,6 +273,10 @@ export const AdminGlobalSearch: React.FC<AdminGlobalSearchProps> = ({
 
   // Total de correspondências
   const totalMatches = displayContacts.length + filteredLeads.length + displayContracts.length;
+  // Sem filtro de unidade/colaborador/tag, os totais de contatos e contratos vêm do banco (não das 20 linhas exibidas)
+  const noExtraFilters = selectedVenueFilter === 'all' && selectedCollaboratorFilter === 'all' && selectedTagFilter === 'all';
+  const allLabelTotal = totalMatches
+    + (noExtraFilters ? Math.max(0, dbTotals.contacts - displayContacts.length) + Math.max(0, dbTotals.contracts - displayContracts.length) : 0);
 
   // Nome do funil atual se estiver no CRM
   const currentActiveFunnel = useMemo(() => {
@@ -529,10 +538,10 @@ export const AdminGlobalSearch: React.FC<AdminGlobalSearchProps> = ({
               {/* Chips de Categoria */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                 {[
-                  { id: 'all', label: `Todos (${totalMatches})` },
-                  { id: 'contacts', label: `Contatos (${displayContacts.length})`, icon: <Users size={12} /> },
+                  { id: 'all', label: `Todos (${allLabelTotal})` },
+                  { id: 'contacts', label: `Contatos (${noExtraFilters ? Math.max(displayContacts.length, dbTotals.contacts) : displayContacts.length})`, icon: <Users size={12} /> },
                   { id: 'leads', label: `Leads Comerciais (${filteredLeads.length})`, icon: <Briefcase size={12} /> },
-                  { id: 'contracts', label: `Contratos (${displayContracts.length})`, icon: <FileText size={12} /> },
+                  { id: 'contracts', label: `Contratos (${noExtraFilters ? Math.max(displayContracts.length, dbTotals.contracts) : displayContracts.length})`, icon: <FileText size={12} /> },
                 ].map(cat => {
                   const isSelected = activeCategory === cat.id;
                   return (

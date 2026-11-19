@@ -2,6 +2,7 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import type { Client, ClientDocument, ClientActivity } from '../types/admin';
 import { generateBase36Code } from './contactService';
 import { isUuid, generateUuid } from '../utils/uuid';
+import { fetchAllRows } from '../utils/fetchAllRows';
 
 const cleanDate = (d?: string | null): string | null => {
   if (!d || typeof d !== 'string') return null;
@@ -19,16 +20,16 @@ export const clientService = {
   async getAll(masterId?: string): Promise<Client[]> {
     if (!isSupabaseConfigured) return [];
     try {
-      let query = supabase
-        .from('clients')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (masterId) {
-        query = query.eq('master_id', masterId);
-      }
-
-      const { data, error } = await query;
+      // Traz TODOS os clientes do banco (o Supabase corta em 1.000 linhas por consulta: pagina até acabar)
+      const { data, error } = await fetchAllRows((from, to) => {
+        let q = supabase
+          .from('clients')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .order('id', { ascending: true });
+        if (masterId) q = q.eq('master_id', masterId);
+        return q.range(from, to);
+      });
 
       if (error) {
         console.error('Erro ao buscar clientes no Supabase:', error);

@@ -1,7 +1,8 @@
 import { Select } from '../ui';
 import { toast } from 'sonner';
 import { HeaderActions } from './HeaderActions';
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { leadService } from '../../services/leadService';
 import { 
   Users, 
   Target, 
@@ -54,6 +55,17 @@ export const AdminLeadsListView: React.FC<AdminLeadsListViewProps> = ({
     moveMultipleLeadsToClient,
     deletedLeadsHistory,
   } = useAdminState();
+
+  // Total REAL de leads no banco (nao o tamanho da lista carregada)
+  const [dbTotalLeads, setDbTotalLeads] = useState<number | null>(null);
+  const scopedMasterForCount = currentUser?.masterId || currentUser?.id || undefined;
+  const venueScopeForCount = currentUser?.role === 'master' ? undefined : currentUser?.venueIds;
+  useEffect(() => {
+    let off = false;
+    leadService.countLeads({ masterId: scopedMasterForCount, venueIds: venueScopeForCount }).then(c => { if (!off) setDbTotalLeads(c); });
+    return () => { off = true; };
+    // recontar quando a base muda (novo lead, exclusao)
+  }, [scopedMasterForCount, leads.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Filtros
   const [searchTerm, setSearchTerm] = useState('');
@@ -500,7 +512,7 @@ export const AdminLeadsListView: React.FC<AdminLeadsListViewProps> = ({
               Total na Base
             </span>
             <div style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--adm-text-title, #0F172A)', lineHeight: 1.2 }}>
-              {stats.total}
+              {dbTotalLeads ?? stats.total}
             </div>
           </div>
         </div>
@@ -957,7 +969,7 @@ export const AdminLeadsListView: React.FC<AdminLeadsListViewProps> = ({
                 cursor: 'pointer',
               }}
             >
-              Todos ({stats.total})
+              Todos ({dbTotalLeads ?? stats.total})
             </button>
             <button
               onClick={() => { setFilterType('active'); setSelectedFunnelFilter('all'); }}

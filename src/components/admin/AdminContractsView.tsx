@@ -17,6 +17,7 @@ import type { Contract, AdminTabType, ContractFunnelPlacement } from '../../type
 
 // Cache em memoria por (master|aba|unidade|busca): evita lista vazia ao voltar para a tela
 const contractsListCache = new Map<string, Contract[]>();
+const CONTRACTS_PAGE_SIZE = 100;
 
 interface AdminContractsViewProps {
   onNavigateTab?: (tab: AdminTabType, params?: any) => void;
@@ -57,6 +58,9 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
   // Lista inicial vem do cache (stale-while-revalidate): trocar de aba e voltar nao zera a tela
   const [contracts, setContracts] = useState<Contract[]>(() => contractsListCache.get(cacheKey) || []);
   const [loading, setLoading] = useState(() => !contractsListCache.has(cacheKey));
+  // Totais REAIS vindos do banco (a lista mostra só uma página; o número nunca sai do tamanho dela)
+  const [tabTotals, setTabTotals] = useState<{ pending: number | null; approved: number | null }>({ pending: null, approved: null });
+  const [loadingMore, setLoadingMore] = useState(false);
 
   // Drawer de Detalhes do Contrato
   const [selectedContract, setSelectedContract] = useState<Contract | null>(null);
@@ -114,15 +118,22 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
         ? (currentUser?.role === 'master' ? undefined : currentUser?.venueIds)
         : [selectedVenueFilter];
 
-      const res = await contractService.getContracts({
-        masterId: scopedMasterId,
-        venueIds,
-        approvalStatus: activeTab === 'pending' ? 'pending_approval' : 'approved',
-        search: searchQuery.trim() || undefined,
-        limit: 100,
-      });
+      const search = searchQuery.trim() || undefined;
+      const [res, pendingTotal, approvedTotal] = await Promise.all([
+        contractService.getContracts({
+          masterId: scopedMasterId,
+          venueIds,
+          approvalStatus: activeTab === 'pending' ? 'pending_approval' : 'approved',
+          search,
+          limit: CONTRACTS_PAGE_SIZE,
+        }),
+        // Totais REAIS do banco para as duas abas (mesmos filtros de unidade e busca)
+        contractService.countContracts({ masterId: scopedMasterId, venueIds, approvalStatus: 'pending_approval', search }),
+        contractService.countContracts({ masterId: scopedMasterId, venueIds, approvalStatus: 'approved', search }),
+      ]);
 
       contractsListCache.set(cacheKey, res);
+      setTabTotals({ pending: pendingTotal, approved: approvedTotal });
       setContracts(res);
       // Mantem o drawer aberto sincronizado com a versao mais recente
       setSelectedContract(prev => (prev ? res.find(c => c.id === prev.id) || prev : prev));
@@ -136,6 +147,36 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
   useEffect(() => {
     loadContracts();
   }, [loadContracts]);
+
+  const activeTotal = tabTotals[activeTab];
+  const hasMoreContracts = activeTotal !== null && contracts.length < activeTotal;
+
+  // Próxima página do banco (mesmos filtros e busca)
+  const loadMoreContracts = async () => {
+    if (loadingMore || !scopedMasterId) return;
+    setLoadingMore(true);
+    try {
+      const venueIds = selectedVenueFilter === 'all'
+        ? (currentUser?.role === 'master' ? undefined : currentUser?.venueIds)
+        : [selectedVenueFilter];
+      const next = await contractService.getContracts({
+        masterId: scopedMasterId,
+        venueIds,
+        approvalStatus: activeTab === 'pending' ? 'pending_approval' : 'approved',
+        search: searchQuery.trim() || undefined,
+        limit: CONTRACTS_PAGE_SIZE,
+        offset: contracts.length,
+      });
+      setContracts(prev => {
+        const ids = new Set(prev.map(c => c.id));
+        const merged = [...prev, ...next.filter(c => !ids.has(c.id))];
+        contractsListCache.set(cacheKey, merged);
+        return merged;
+      });
+    } finally {
+      setLoadingMore(false);
+    }
+  };
 
   // Tempo real: o AdminStateContext dispara este evento quando contracts/placements mudam
   useEffect(() => {
@@ -407,7 +448,7 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
                 color: activeTab === 'pending' ? '#FFFFFF' : colors.textMuted,
                 fontWeight: 800,
               }}>
-                {activeTab === 'pending' ? contracts.length : '•'}
+                {tabTotals.pending ?? '•'}
               </span>
             </button>
 
@@ -438,7 +479,7 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
                 color: activeTab === 'approved' ? '#FFFFFF' : colors.textMuted,
                 fontWeight: 800,
               }}>
-                {activeTab === 'approved' ? contracts.length : '•'}
+                {tabTotals.approved ?? '•'}
               </span>
             </button>
           </div>
@@ -596,7 +637,7 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
               <span>Clique no card ou no botão para abrir a tela completa do contrato:</span>
               <span style={{ color: colors.warning, fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
                 <Clock size={13} />
-                {contracts.length} {contracts.length === 1 ? 'venda aguardando decisão' : 'vendas aguardando decisão'}
+                {tabTotals.pending ?? contracts.length} {(tabTotals.pending ?? contracts.length) === 1 ? 'venda aguardando decisão' : 'vendas aguardando decisão'}
               </span>
             </div>
 
@@ -903,6 +944,22 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
                 })}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {!loading && hasMoreContracts && (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', padding: '18px 0 4px 0' }}>
+            <span style={{ fontSize: '0.74rem', color: colors.textMuted }}>
+              Mostrando {contracts.length} de {activeTotal}
+            </span>
+            <button
+              type="button"
+              onClick={loadMoreContracts}
+              disabled={loadingMore}
+              style={{ padding: '8px 18px', borderRadius: '8px', border: `1px solid ${colors.border}`, background: 'transparent', color: colors.textTitle, fontSize: '0.78rem', fontWeight: 700, cursor: loadingMore ? 'wait' : 'pointer' }}
+            >
+              {loadingMore ? 'Carregando...' : 'Carregar mais contratos'}
+            </button>
           </div>
         )}
       </div>

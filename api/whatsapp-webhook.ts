@@ -765,7 +765,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           const last8 = digitsOnly.slice(-8);
           const part1 = last8.slice(0, 4);
           const part2 = last8.slice(4);
-          const leadSelect = 'id, name, phone, unread_count, venue_id, funnel_id, custom_field_values, master_id, is_client';
+          const leadSelect = 'id, name, phone, unread_count, venue_id, funnel_id, custom_field_values, master_id, is_client, last_message_at';
           // Busca no telefone principal E nos contatos do lead (2º/3º número, mãe, pai...) via função do banco; sem ela, cai na busca antiga
           let phoneLeads: any[] | null = null;
           if (tenantMasterId) {
@@ -820,10 +820,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
         const isAudio = mediaType === 'audio' || (typeof text === 'string' && text.includes('🎵'));
 
-        // Histórico usa a data real da mensagem (ms ou s); mensagem ao vivo usa o instante do recebimento
+        // SEMPRE a hora REAL da mensagem (ms ou s). So cai no instante do recebimento se a mensagem nao trouxer hora
+        // valida (ou vier no futuro). Assim mensagem atrasada/reentregue nao vira "agora" e a conversa nao ganha falsa urgencia.
         const rawMsgTs = Number(msg.messageTimestamp || msg.timestamp || 0);
-        const activityIso = isHistory && rawMsgTs > 0
-          ? new Date(rawMsgTs > 1e11 ? rawMsgTs : rawMsgTs * 1000).toISOString()
+        const msgTsMs = rawMsgTs > 0 ? (rawMsgTs > 1e11 ? rawMsgTs : rawMsgTs * 1000) : 0;
+        const activityIso = (msgTsMs > 0 && msgTsMs <= Date.now() + 5 * 60 * 1000)
+          ? new Date(msgTsMs).toISOString()
           : new Date().toISOString();
         // Ids para baixar a mídia depois (completo owner:messageid e curto) e origem do chip (nunca o token)
         const fullWaId = typeof msg.id === 'string' ? msg.id : undefined;
@@ -855,16 +857,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               // ainda precisa refletir hora/direção/prévia da última mensagem.
               const dupPreview = lastMessagePreview(text, mediaUrl, mediaType);
               if (dupPreview && !isHistory) {
-                const dupNowIso = new Date().toISOString();
-                await supabase
-                  .from('leads')
-                  .update({
-                    last_interaction_at: dupNowIso,
-                    last_message_direction: isFromMe ? 'outgoing' : 'incoming',
-                    last_message_text: dupPreview,
-                    last_message_at: dupNowIso,
-                  })
-                  .eq('id', existingLead.id);
+                // Eco do webhook: hora REAL da mensagem, e so avanca se for a mais nova
+                const dupIso = activityIso;
+                if (new Date(dupIso).getTime() >= (new Date(existingLead.last_message_at || 0).getTime() || 0)) {
+                  await supabase
+                    .from('leads')
+                    .update({
+                      last_interaction_at: dupIso,
+                      last_message_direction: isFromMe ? 'outgoing' : 'incoming',
+                      last_message_text: dupPreview,
+                      last_message_at: dupIso,
+                    })
+                    .eq('id', existingLead.id);
+                }
               }
               continue;
             }
@@ -933,13 +938,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
           const updatePayload: Record<string, any> = {
             updated_at: new Date().toISOString(),
-            last_interaction_at: new Date().toISOString(),
-            last_message_direction: isFromMe ? 'outgoing' : 'incoming',
           };
 
-          if (previewText) {
-            updatePayload.last_message_text = previewText;
-            updatePayload.last_message_at = updatePayload.last_interaction_at;
+          // Hora/previa/direcao da conversa so AVANCAM se esta mensagem for a mais nova (hora real da mensagem)
+          const prevLastMs = new Date(existingLead.last_message_at || 0).getTime() || 0;
+          if (new Date(activityIso).getTime() >= prevLastMs) {
+            updatePayload.last_interaction_at = activityIso;
+            updatePayload.last_message_direction = isFromMe ? 'outgoing' : 'incoming';
+            if (previewText) {
+              updatePayload.last_message_text = previewText;
+              updatePayload.last_message_at = activityIso;
+            }
           }
 
           if (!isFromMe) {
@@ -1024,7 +1033,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 if (!isHistory) {
                   await supabase.from('leads').update({
                     updated_at: new Date().toISOString(),
-                    last_interaction_at: new Date().toISOString(),
+                    last_interaction_at: activityIso,
+                    last_message_at: activityIso,
+                    last_message_direction: isFromMe ? 'outgoing' : 'incoming',
+                    last_message_text: lastMessagePreview(text, mediaUrl, mediaType) || null,
                     unread_count: isFromMe ? (matchedLead.unread_count || 0) : (matchedLead.unread_count || 0) + 1,
                   }).eq('id', matchedLead.id);
                 }
@@ -1119,7 +1131,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             tags: isPostSaleTarget ? ['Cliente'] : [],
             unread_count: (isFromMe || isHistory) ? 0 : 1,
             notes: isFromMe ? `Conversa iniciada via WhatsApp: "${initialNoteText}"` : `Primeira mensagem via WhatsApp: "${initialNoteText}"`,
-            created_at: new Date().toISOString(),
+            // Data de ENTRADA: a da mensagem real (historico nunca entra "hoje"); ao vivo e praticamente o mesmo instante
+            created_at: activityIso,
             updated_at: new Date().toISOString(),
             last_interaction_at: activityIso,
             last_message_direction: isFromMe ? 'outgoing' : 'incoming',

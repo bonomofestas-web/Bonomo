@@ -1,6 +1,6 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { isUuid, generateUuid } from '../utils/uuid';
-import { generateBase36Code } from './contactService';
+import { generateBase36Code, buildContactSearchFilter } from './contactService';
 import { taskService } from './taskService';
 import type { Contract, ContractApprovalStatus, ContractFunnelPlacement, Lead } from '../types/admin';
 
@@ -11,6 +11,41 @@ export interface GetContractsParams {
   search?: string;
   limit?: number;
   offset?: number;
+}
+
+/**
+ * Filtro `.or()` da busca de contratos NO BANCO: código, títulos, SDR/Closer, nome do cliente no snapshot
+ * e contratos cujo contato (nome/telefone/CPF/e-mail) combine com o termo.
+ */
+async function buildContractSearchFilter(masterId: string, search?: string): Promise<string | undefined> {
+  const raw = (search || '').trim();
+  if (!raw) return undefined;
+  const term = raw.replace(/[,()"\\%_]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!term) return undefined;
+
+  const parts = [
+    `contract_code.ilike.%${term}%`,
+    `contract_title.ilike.%${term}%`,
+    `title.ilike.%${term}%`,
+    `event_title.ilike.%${term}%`,
+    `sdr_name.ilike.%${term}%`,
+    `closer_name.ilike.%${term}%`,
+    `client_snapshot->>name.ilike.%${term}%`,
+  ];
+
+  // Contratos do(s) contato(s) encontrado(s) por nome, telefone (com/sem máscara), CPF ou e-mail
+  const contactFilter = buildContactSearchFilter(raw);
+  if (contactFilter) {
+    const { data: matched } = await supabase
+      .from('contacts')
+      .select('id')
+      .eq('master_id', masterId)
+      .or(contactFilter)
+      .limit(300);
+    const ids = (matched || []).map(r => r.id).filter(Boolean);
+    if (ids.length > 0) parts.push(`contact_id.in.(${ids.join(',')})`);
+  }
+  return parts.join(',');
 }
 
 export const contractService = {
@@ -49,13 +84,9 @@ export const contractService = {
         query = query.in('venue_id', venueIds);
       }
 
-      // Busca textual (Código do Contrato, Título do Evento ou Nome do Cliente)
-      if (search && search.trim()) {
-        const term = search.trim();
-        query = query.or(
-          `contract_code.ilike.%${term}%,contract_title.ilike.%${term}%,title.ilike.%${term}%,event_title.ilike.%${term}%,sdr_name.ilike.%${term}%,closer_name.ilike.%${term}%`
-        );
-      }
+      // Busca no banco (código, título do evento, nome/telefone/CPF do cliente, SDR e Closer)
+      const searchFilter = await buildContractSearchFilter(masterId, search);
+      if (searchFilter) query = query.or(searchFilter);
 
       const { data, error } = await query;
       if (error) {
@@ -67,6 +98,42 @@ export const contractService = {
     } catch (err) {
       console.error('Exceção em contractService.getContracts:', err);
       return [];
+    }
+  },
+
+  /**
+   * Total REAL de contratos no banco (mesmos filtros do getContracts, sem paginação).
+   * É este número que as abas e a lista mostram — nunca o tamanho da página carregada.
+   */
+  async countContracts({
+    masterId,
+    venueIds,
+    approvalStatus = 'all',
+    search,
+  }: Omit<GetContractsParams, 'limit' | 'offset'>): Promise<number> {
+    if (!isSupabaseConfigured || !masterId) return 0;
+
+    try {
+      let query = supabase
+        .from('contracts')
+        .select('id', { count: 'exact', head: true })
+        .eq('master_id', masterId);
+
+      if (approvalStatus !== 'all') query = query.eq('approval_status', approvalStatus);
+      if (venueIds && venueIds.length > 0) query = query.in('venue_id', venueIds);
+
+      const searchFilter = await buildContractSearchFilter(masterId, search);
+      if (searchFilter) query = query.or(searchFilter);
+
+      const { count, error } = await query;
+      if (error) {
+        console.error('Erro ao contar contratos:', error);
+        return 0;
+      }
+      return count ?? 0;
+    } catch (err) {
+      console.error('Exceção em contractService.countContracts:', err);
+      return 0;
     }
   },
 
