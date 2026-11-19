@@ -27,7 +27,7 @@ export interface JobRoleOption { id: string; label: string; description: string 
 export const JOB_ROLE_OPTIONS: Record<JobSector, JobRoleOption[]> = {
   comercial: [
     { id: 'comercial:gerente', label: 'Gerente comercial', description: 'Gestão do setor comercial' },
-    { id: 'comercial:closer', label: 'Closer', description: 'Conduz a visita e fecha o contrato' },
+    { id: 'comercial:closer', label: 'Especialista', description: 'Conduz a visita e fecha o contrato' },
     { id: 'comercial:sdr', label: 'SDR', description: 'Qualifica e agenda' },
   ],
   gerencia: [

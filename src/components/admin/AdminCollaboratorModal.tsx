@@ -545,13 +545,14 @@ export const AdminCollaboratorModal: React.FC<AdminCollaboratorModalProps> = ({
 
           {/* Foto de Perfil */}
           <ImageUploadField
-            label="Foto de Perfil do Colaborador"
+            label="Foto de perfil"
             value={avatarUrl}
             onChange={(val) => setAvatarUrl(val)}
             folder="avatars"
+            shape="circle"
             aspectRatio="1:1"
-            previewHeight="80px"
-            placeholder="Subir foto de rosto"
+            previewHeight="88px"
+            placeholder="Adicionar foto"
           />
 
           {/* Status Ativo / Inativo */}

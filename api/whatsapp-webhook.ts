@@ -10,7 +10,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 // ── Política de armazenamento de mídia (R2 Free: 10 GB) ───────────────────────
 // Mantenha em sincronia com src/utils/mediaStoragePolicy.ts (funções serverless não importam de src/).
 const MB = 1024 * 1024;
-const AUTO_UPLOAD_MAX_BYTES: Record<string, number> = { image: 2 * MB, video: 10 * MB, audio: 15 * MB, document: 5 * MB, other: 5 * MB };
+const AUTO_UPLOAD_MAX_BYTES: Record<string, number> = { image: 100 * MB, video: 200 * MB, audio: 100 * MB, document: 100 * MB, other: 100 * MB };
 const MIME_EXT: Record<string, string> = {
   'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif',
   'video/mp4': 'mp4', 'video/quicktime': 'mov', 'video/webm': 'webm', 'video/3gpp': '3gp',
@@ -97,7 +97,7 @@ async function handleWebhookMedia(ctx: WebhookMediaContext): Promise<void> {
           sizeBytes = Number.isFinite(len) && len > 0 ? len : undefined;
           const limit = AUTO_UPLOAD_MAX_BYTES[kind] ?? AUTO_UPLOAD_MAX_BYTES.other;
           // Peso desconhecido: áudio/documento passam (limite duro abaixo); foto/vídeo esperam decisão
-          const unknownHeavy = sizeBytes === undefined && (kind === 'image' || kind === 'video');
+          const unknownHeavy = false; // salva tudo (temporário): peso desconhecido também sobe
 
           if (unknownHeavy || (sizeBytes !== undefined && sizeBytes > limit)) {
             failureReason = 'heavy';
@@ -296,6 +296,25 @@ function lastMessagePreview(text: string, mediaUrl?: string, mediaType?: string)
   return `${prefix} ${base}`.trim().slice(0, 200);
 }
 
+// ── Pausa geral de mensagens (chave remota `whatsapp_messaging` em system_feature_flags) ──
+// Cache curto em memoria para nao consultar o banco a cada evento (cota do Supabase).
+let pauseCache = { paused: false, at: 0 };
+async function isMessagingPausedServer(): Promise<boolean> {
+  if (Date.now() - pauseCache.at < 15_000) return pauseCache.paused;
+  try {
+    const { data, error } = await supabase
+      .from('system_feature_flags')
+      .select('status')
+      .eq('feature_id', 'whatsapp_messaging')
+      .maybeSingle();
+    if (!error) pauseCache = { paused: data?.status === 'disabled' || data?.status === 'coming_soon', at: Date.now() };
+    else pauseCache = { ...pauseCache, at: Date.now() };
+  } catch {
+    pauseCache = { ...pauseCache, at: Date.now() };
+  }
+  return pauseCache.paused;
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -389,6 +408,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
       }
       return;
+    }
+
+    // ── PAUSA GERAL DE MENSAGENS (chave remota whatsapp_messaging) ────────────
+    // Conexao/status (acima) continua funcionando; qualquer mensagem e descartada com 200 (nada e gravado).
+    if (await isMessagingPausedServer()) {
+      console.log(`[UAZAPI Webhook] Mensagens pausadas (whatsapp_messaging). Evento ${eventType} descartado.`);
+      return res.status(200).json({ success: true, paused: true });
     }
 
     // ── 1.5 HISTÓRICO (sincronização de pareamento / history-sync) ───────────

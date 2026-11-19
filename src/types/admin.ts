@@ -24,7 +24,8 @@ export type FeatureFlagId =
   | 'master_dashboard'
   | 'commercial_dashboard'
   | 'goals'
-  | 'team_presence';
+  | 'team_presence'
+  | 'whatsapp_messaging';
 
 export type FeatureFlagStatus = 'active' | 'coming_soon' | 'disabled';
 

@@ -1,4 +1,5 @@
 import { uazapiService } from './uazapiService';
+import { isMessagingPaused, onMessagingPauseChange } from '../utils/messagingPause';
 
 export interface UazapiIncomingMessageEvent {
   instanceToken: string;
@@ -267,8 +268,18 @@ class UazapiSseManager {
   private presenceListeners: Set<PresenceHandler> = new Set();
   private processedMessageIds: Set<string> = new Set();
   private isWindowListenerBound = false;
+  /** Instancias que devem estar conectadas quando as mensagens nao estiverem pausadas */
+  private desiredTokens: Set<string> = new Set();
 
   constructor() {
+    // Pausa geral de mensagens: fecha todos os streams ao pausar e reabre os desejados ao retomar
+    onMessagingPauseChange((paused) => {
+      if (paused) {
+        for (const token of Array.from(this.activeStreams.keys())) this.disconnect(token);
+      } else {
+        for (const token of this.desiredTokens) this.connect(token);
+      }
+    });
     if (typeof window !== 'undefined' && !this.isWindowListenerBound) {
       this.isWindowListenerBound = true;
       window.addEventListener('online', () => this.reconnectAll());
@@ -337,6 +348,7 @@ class UazapiSseManager {
    */
   connect(instanceToken: string) {
     if (!instanceToken) return;
+    if (isMessagingPaused()) return; // pausa geral de mensagens: nao recebe nada
 
     // Se já existe e está aberto, não precisa recriar
     const existingStream = this.activeStreams.get(instanceToken);
@@ -426,7 +438,8 @@ class UazapiSseManager {
    */
   syncActiveInstances(instanceTokens: string[]) {
     const desired = new Set(instanceTokens.filter(Boolean));
-    
+    this.desiredTokens = desired;
+
     // Fecha as que não são mais necessárias
     for (const [token, stream] of this.activeStreams.entries()) {
       if (!desired.has(token)) {
@@ -448,6 +461,7 @@ class UazapiSseManager {
    */
   private handleEventPayload(instanceToken: string, payload: any) {
     if (!payload) return;
+    if (isMessagingPaused()) return; // evento que ainda chegue durante a pausa e descartado
 
     const eventType = String(payload.EventType || payload.event || payload.type || payload.event_type || '').toLowerCase();
 

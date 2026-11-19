@@ -50,6 +50,13 @@ export const AdminDevFeatureFlagsView: React.FC = () => {
       category: 'Administrativo',
       status: featureFlags.team_presence || 'active',
     },
+    {
+      id: 'whatsapp_messaging',
+      name: 'Mensagens do WhatsApp (envio e recebimento)',
+      description: 'Liga/desliga todo o envio e recebimento de mensagens. Desativado = pausa geral: envio bloqueado com aviso, webhook descarta mensagens e o aviso fixo aparece na tela inicial. Mensagens recebidas durante a pausa não são guardadas.',
+      category: 'Atendimento',
+      status: featureFlags.whatsapp_messaging || 'active',
+    },
   ];
 
   const handleStatusChange = (id: FeatureFlagId, status: FeatureFlagStatus, name: string) => {

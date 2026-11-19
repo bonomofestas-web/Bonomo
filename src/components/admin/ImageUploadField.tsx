@@ -13,6 +13,8 @@ interface ImageUploadFieldProps {
   aspectRatio?: '1:1' | '16:9' | '9:16' | '4:3';
   previewHeight?: string;
   folder?: string;
+  /** 'circle' = foto de perfil: preview redondo, sem entrada por link. */
+  shape?: 'rect' | 'circle';
 }
 
 export const ImageUploadField: React.FC<ImageUploadFieldProps> = ({
@@ -25,7 +27,9 @@ export const ImageUploadField: React.FC<ImageUploadFieldProps> = ({
   aspectRatio = '16:9',
   previewHeight = '120px',
   folder = 'images',
+  shape = 'rect',
 }) => {
+  const isCircle = shape === 'circle';
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -178,7 +182,7 @@ export const ImageUploadField: React.FC<ImageUploadFieldProps> = ({
           {label}
         </label>
         
-        <button
+        {!isCircle && <button
           type="button"
           onClick={() => setShowUrlInput(!showUrlInput)}
           style={{
@@ -193,10 +197,10 @@ export const ImageUploadField: React.FC<ImageUploadFieldProps> = ({
           }}
         >
           {showUrlInput ? 'Ocultar URL manual' : 'Inserir por Link/URL'}
-        </button>
+        </button>}
       </div>
 
-      {showUrlInput && (
+      {showUrlInput && !isCircle && (
         <div style={{ display: 'flex', gap: '6px', marginBottom: '4px' }}>
           <input
             type="url"
@@ -267,17 +271,18 @@ export const ImageUploadField: React.FC<ImageUploadFieldProps> = ({
             src={localPreview || value}
             alt="Preview"
             style={{
-              width: aspectRatio === '1:1' ? (previewHeight || '64px') : '90px',
+              width: (aspectRatio === '1:1' || isCircle) ? (previewHeight || '64px') : '90px',
               height: previewHeight || '64px',
               objectFit: 'cover',
-              borderRadius: '8px',
+              borderRadius: isCircle ? '50%' : '8px',
+              flexShrink: 0,
               border: '1px solid var(--adm-border)',
             }}
           />
 
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--adm-text-title)', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span>{localPreview ? 'Enviando para o R2...' : 'Imagem salva no Cloudflare R2'}</span>
+              <span>{localPreview ? 'Enviando...' : (isCircle ? 'Foto de perfil' : 'Imagem salva')}</span>
               {isUploading && (
                 <span style={{ fontSize: '0.68rem', color: '#D4AF37', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
                   <Loader2 size={11} className="animate-spin" /> Otimizando & Enviando...
@@ -285,7 +290,7 @@ export const ImageUploadField: React.FC<ImageUploadFieldProps> = ({
               )}
               {uploadSuccess && (
                 <span style={{ fontSize: '0.68rem', color: '#22C55E', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
-                  <Check size={11} /> Salvo no R2
+                  <Check size={11} /> Salvo
                 </span>
               )}
             </div>
@@ -340,8 +345,9 @@ export const ImageUploadField: React.FC<ImageUploadFieldProps> = ({
           onClick={() => !isUploading && fileInputRef.current?.click()}
           style={{
             border: `1.5px dashed ${isDragging ? 'var(--adm-accent)' : 'var(--adm-border)'}`,
-            borderRadius: '12px',
-            padding: '16px',
+            borderRadius: isCircle ? '50%' : '12px',
+            ...(isCircle ? { width: previewHeight || '96px', height: previewHeight || '96px', alignSelf: 'flex-start', boxSizing: 'border-box' as const } : {}),
+            padding: isCircle ? '8px' : '16px',
             textAlign: 'center',
             cursor: isUploading ? 'wait' : 'pointer',
             background: isDragging ? 'var(--adm-accent-bg)' : 'var(--adm-bg-input)',
@@ -363,12 +369,14 @@ export const ImageUploadField: React.FC<ImageUploadFieldProps> = ({
           ) : (
             <>
               <ImageIcon size={22} color="var(--adm-text-muted)" />
-              <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--adm-text-title)' }}>
+              <div style={{ fontSize: isCircle ? '0.68rem' : '0.78rem', fontWeight: 600, color: 'var(--adm-text-title)' }}>
                 {placeholder || 'Clique para selecionar ou arraste uma foto'}
               </div>
-              <div style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)' }}>
-                JPG, PNG ou WebP • Otimização automática e instantânea
-              </div>
+              {!isCircle && (
+                <div style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)' }}>
+                  JPG, PNG ou WebP • Otimização automática e instantânea
+                </div>
+              )}
             </>
           )}
         </div>

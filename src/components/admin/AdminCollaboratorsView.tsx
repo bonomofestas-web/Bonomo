@@ -8,7 +8,7 @@ import {
   CheckCircle2, Clock, Check, ArrowLeft,
   UserX, AlertTriangle, CheckSquare, Target, X,
   Lock, UserCheck, Shield,
-  ArrowRightLeft, Search
+  ArrowRightLeft, Search, ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { ImageUploadField } from './ImageUploadField';
@@ -18,7 +18,7 @@ import { AdminCollabInviteModal } from './AdminCollabInviteModal';
 import type { Collaborator, AdminRole, LeadActivity, Lead } from '../../types/admin';
 import type { AdminTabType } from './AdminSidebar';
 import { GOALS_COLLAB_KEY } from './AdminVenueGoalsView';
-import { JOB_ROLE_OPTIONS, JOB_SECTORS, jobRoleLabel, slugifyRole, type CustomJobRole, type JobSector } from '../../utils/jobRoles';
+import { JOB_ROLE_OPTIONS, JOB_SECTORS, jobRoleLabel, orderedSectorRoleIds, slugifyRole, type CustomJobRole, type JobSector } from '../../utils/jobRoles';
 import { jobRoleService } from '../../services/jobRoleService';
 import { collaboratorHistoryService, type CollaboratorHistoryAction } from '../../services/collaboratorHistoryService';
 import { useJobRoleCatalog } from '../../hooks/useJobRoleCatalog';
@@ -439,7 +439,7 @@ export const AdminCollaboratorsView: React.FC<AdminCollaboratorsViewProps> = ({ 
     if (collab.isDev || collab.role === 'dev') return 'Desenvolvedor';
     if (collab.role === 'admin') return 'Administrador';
     if (collab.role === 'gerencia') return 'Gerência Geral';
-    if (collab.role === 'closer') return 'Closer (Fechamento)';
+    if (collab.role === 'closer') return 'Especialista (Fechamento)';
     if (collab.role === 'sdr') return 'SDR (Pré-Vendas)';
     if (collab.role === 'pos_venda') return 'Pós-Venda (Sucesso do Cliente)';
     return '';
@@ -856,10 +856,14 @@ export const AdminCollaboratorsView: React.FC<AdminCollaboratorsViewProps> = ({ 
             {/* Foto de Perfil */}
             <div>
               <ImageUploadField
-                label="Foto de Perfil / Avatar (Opcional)"
+                label="Foto de perfil"
                 value={formAvatarUrl}
                 onChange={setFormAvatarUrl}
                 folder="avatars"
+                shape="circle"
+                aspectRatio="1:1"
+                previewHeight="88px"
+                placeholder="Adicionar foto"
               />
             </div>
           </div>
@@ -1115,7 +1119,7 @@ export const AdminCollaboratorsView: React.FC<AdminCollaboratorsViewProps> = ({ 
                   <div>
                     <h2 style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--adm-text-title)', margin: 0 }}>3. Cargo</h2>
                     <span style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)' }}>
-                      O acesso define o que a pessoa vê. O cargo define o que ela é: filtra SDR, Closer, metas, gestores.
+                      O acesso define o que a pessoa vê. O cargo define o que ela é: filtra SDR, Especialista, metas, gestores.
                     </span>
                   </div>
                 </div>
@@ -1129,23 +1133,46 @@ export const AdminCollaboratorsView: React.FC<AdminCollaboratorsViewProps> = ({ 
               {JOB_SECTORS.filter(g => formSectors.includes(g.id)).map(g => {
                 const fixed = JOB_ROLE_OPTIONS[g.id];
                 const custom = customRoles.filter(r => r.sector === g.id);
-                const options = [
+                const orderedIds = orderedSectorRoleIds(g.id, customRoles, roleOrder);
+                const moveRole = (id: string, dir: -1 | 1) => {
+                  const i = orderedIds.indexOf(id);
+                  const j = i + dir;
+                  if (i < 0 || j < 0 || j >= orderedIds.length) return;
+                  const next = [...orderedIds];
+                  [next[i], next[j]] = [next[j], next[i]];
+                  void reorderRoles(g.id, next);
+                };
+                const rawOptions = [
                   ...fixed.map(o => ({ id: o.id, label: roleAliases[o.id] || o.label, description: o.description, custom: undefined as CustomJobRole | undefined })),
                   ...custom.map(o => ({ id: o.id, label: roleAliases[o.id] || o.name, description: 'Cargo personalizado', custom: o })),
                   // Cargo ainda selecionado mas ja excluido do catalogo: continua visivel ate salvar
                   ...formJobRoles.filter(id => id.startsWith(`${g.id}:`) && !fixed.some(o => o.id === id) && !custom.some(o => o.id === id))
                     .map(id => ({ id, label: jobRoleLabel(id, customRoles, roleAliases), description: '', custom: undefined as CustomJobRole | undefined })),
                 ];
+                const rankIn = (id: string) => { const i = orderedIds.indexOf(id); return i < 0 ? 9999 : i; };
+                const options = [...rawOptions].sort((a, b) => rankIn(a.id) - rankIn(b.id));
                 const isAdding = addingRoleSector === g.id;
                 return (
                   <div key={g.id} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                     <span style={{ fontSize: '0.7rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', color: g.color }}>{g.label}</span>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                      {options.map(opt => {
+                      {options.map((opt, optIdx) => {
                         const active = formJobRoles.includes(opt.id);
                         const removable = Boolean(opt.custom) && canManageRoles;
+                        const canMove = canManageRoles && orderedIds.includes(opt.id);
+                        const moveBtn = (dir: -1 | 1, disabled: boolean, icon: React.ReactNode) => (
+                          <button
+                            type="button"
+                            aria-label={dir < 0 ? `Mover ${opt.label} para a esquerda` : `Mover ${opt.label} para a direita`}
+                            title={dir < 0 ? 'Subir na hierarquia' : 'Descer na hierarquia'}
+                            disabled={disabled}
+                            onClick={() => moveRole(opt.id, dir)}
+                            style={{ background: 'transparent', border: 'none', color: 'var(--adm-text-muted)', cursor: disabled ? 'default' : 'pointer', opacity: disabled ? 0.25 : 1, display: 'inline-flex', alignItems: 'center', padding: '0 2px' }}
+                          >{icon}</button>
+                        );
                         return (
-                          <span key={opt.id} style={{ display: 'inline-flex', alignItems: 'stretch' }}>
+                          <span key={opt.id} style={{ display: 'inline-flex', alignItems: 'stretch', gap: '2px' }}>
+                            {canMove && moveBtn(-1, optIdx === 0, <ChevronLeft size={14} />)}
                             <button
                               type="button"
                               aria-pressed={active}
@@ -1176,6 +1203,7 @@ export const AdminCollaboratorsView: React.FC<AdminCollaboratorsViewProps> = ({ 
                                 <X size={13} />
                               </button>
                             )}
+                            {canMove && moveBtn(1, optIdx >= orderedIds.length - 1, <ChevronRight size={14} />)}
                           </span>
                         );
                       })}
@@ -1210,7 +1238,7 @@ export const AdminCollaboratorsView: React.FC<AdminCollaboratorsViewProps> = ({ 
                     )}
                     {g.id === 'comercial' && !formJobRoles.some(r => r.startsWith('comercial:')) && (
                       <span style={{ fontSize: '0.7rem', color: 'var(--adm-text-muted)' }}>
-                        Sem cargo definido: o sistema usa a equipe configurada em cada funil. SDR e Closer podem ser marcados juntos.
+                        Sem cargo definido: o sistema usa a equipe configurada em cada funil. SDR e Especialista podem ser marcados juntos.
                       </span>
                     )}
                   </div>
@@ -1812,13 +1840,14 @@ export const AdminCollaboratorsView: React.FC<AdminCollaboratorsViewProps> = ({ 
             <form onSubmit={handleSaveMasterProfile} style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '16px' }}>
               {/* Foto de Perfil */}
               <ImageUploadField
-                label="Sua Foto de Perfil"
+                label="Foto de perfil"
                 value={masterFormAvatarUrl}
                 onChange={(url) => setMasterFormAvatarUrl(url)}
                 folder="avatars"
+                shape="circle"
                 aspectRatio="1:1"
-                previewHeight="80px"
-                placeholder="Subir foto de perfil"
+                previewHeight="88px"
+                placeholder="Adicionar foto"
               />
 
               {/* Nome */}

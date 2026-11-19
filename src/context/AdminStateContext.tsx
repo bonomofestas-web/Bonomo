@@ -74,6 +74,7 @@ import { uazapiService } from '../services/uazapiService';
 import { whatsappMediaService, MediaPendingError } from '../services/whatsappMediaService';
 import { mediaStorageService } from '../services/mediaStorageService';
 import { uazapiSseService, isLidIdentifier } from '../services/uazapiSseService';
+import { ensureMessagingEnabled, refreshMessagingPause, setMessagingPausedFromFlag } from '../utils/messagingPause';
 import { createMonogramAvatar } from '../utils/avatarUtils';
 import { generateLeadCode, generateClientCode, buildHandoverActivity } from '../utils/leadUtils';
 import { isUuid } from '../utils/uuid';
@@ -238,6 +239,7 @@ const DEFAULT_FEATURE_FLAGS: Record<FeatureFlagId, FeatureFlagStatus> = {
   commercial_dashboard: 'active',
   goals: 'active',
   team_presence: 'active',
+  whatsapp_messaging: 'active',
 };
 
 const DEFAULT_ADMIN_USER: AdminUser | null = null;
@@ -1006,6 +1008,12 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
     return DEFAULT_FEATURE_FLAGS;
   });
+
+  // Pausa geral de mensagens (chave remota whatsapp_messaging): espelha no modulo usado pelos servicos
+  useEffect(() => {
+    setMessagingPausedFromFlag(featureFlags.whatsapp_messaging);
+  }, [featureFlags.whatsapp_messaging]);
+  useEffect(() => { void refreshMessagingPause(); }, []);
 
   const [featureDescriptions, setFeatureDescriptions] = useState<Record<FeatureFlagId, string>>(() => {
     const saved = localStorage.getItem(STORAGE_KEY_FEATURE_DESCRIPTIONS);
@@ -7576,6 +7584,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     endTimestamp?: number;
     createMissingLeads?: boolean;
   }): Promise<{ recoveredCount: number; newLeadsCount: number; updatedLeadsCount: number }> => {
+    await ensureMessagingEnabled(); // pausa geral de mensagens
     const currentSources = sourcesRef.current;
     let targetToken = options?.instanceToken;
     let targetSource = options?.sourceId ? currentSources.find(s => s.id === options.sourceId) : null;

@@ -54,3 +54,12 @@ Menu de ações ("⋯") para linhas e cards com várias ações. Lista em portal
 ]} />
 ```
 - `hidden: true` oculta o item; `trigger` personaliza o botão (padrão: três pontos).
+
+### `MessagingPausedBanner` (`src/components/admin/MessagingPausedBanner.tsx`)
+Aviso fixo (não dispensável) enquanto o envio e o recebimento de mensagens do WhatsApp estão pausados (chave remota `whatsapp_messaging` em `system_feature_flags`, status `disabled`). Não renderiza nada quando ativo. Texto vem de `coming_soon_message` da chave.
+```tsx
+<MessagingPausedBanner />          {/* tela inicial */}
+<MessagingPausedBanner compact />  {/* lista de conversas / compositor */}
+```
+- Estado fora do React: `src/utils/messagingPause.ts` (`isMessagingPaused`, `ensureMessagingEnabled`, `MessagingPausedError`); hook `useMessagingPause()`.
+- Envios passam pela barreira em `uazapiService` (`sendText`, `sendMedia`, `sendSticker`, `reactMessage`): erro `Função desabilitada temporariamente`.

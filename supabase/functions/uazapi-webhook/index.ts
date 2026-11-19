@@ -217,6 +217,19 @@ serve(async (req) => {
         return;
       }
 
+      // Pausa geral de mensagens (chave remota whatsapp_messaging): descarta qualquer mensagem sem gravar
+      {
+        const { data: pauseRow } = await supabase
+          .from("system_feature_flags")
+          .select("status")
+          .eq("feature_id", "whatsapp_messaging")
+          .maybeSingle();
+        if (pauseRow?.status === "disabled" || pauseRow?.status === "coming_soon") {
+          console.log(`[Edge Function UAZAPI] Mensagens pausadas. Evento ${eventType} descartado.`);
+          return;
+        }
+      }
+
       // Mensagens
       if (eventType === "messages" || eventType === "messages.upsert" || eventType === "messages_update") {
         const msg = payload.message || payload.data?.message || payload.data || payload;

@@ -357,7 +357,7 @@ export const CollaboratorProfile: React.FC<Props> = ({
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', paddingTop: 6 }}>
               {jobLabels.length ? jobLabels.map(l => <RoleChip key={l} label={l} />) : <span style={{ fontSize: '0.82rem', color: 'var(--adm-text-muted)' }}>Sem cargo definido ({PROFILE_KIND_LABEL[kind]}).</span>}
             </div>
-            <div style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)', marginTop: 10 }}>O cargo define o papel nos funis (SDR, Closer, Gerente).</div>
+            <div style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)', marginTop: 10 }}>O cargo define o papel nos funis (SDR, Especialista, Gerente).</div>
           </Section>
           <Section title="Unidades">
             {venueInfo.list.map(v => <Row key={v.id} title={v.name} />)}

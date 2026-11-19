@@ -5,8 +5,10 @@
  * - Texto: sempre no banco, nunca expira.
  * - Áudio/voz: sobe sempre (limite de segurança), nunca expira.
  * - Documento: sobe automaticamente até 5 MB; nunca expira.
- * - Foto: sobe automaticamente até 2 MB; expira após 90 dias sem abrir, salvo fixada.
- * - Vídeo: sobe automaticamente até 10 MB; maior = sob demanda; expira após 30 dias sem abrir, salvo fixado.
+ * - Foto: expira após 90 dias sem abrir, salvo fixada.
+ * - Vídeo: expira após 30 dias sem abrir, salvo fixado.
+ * - TEMPORÁRIO (decisão do usuário): salva TUDO automaticamente, sem compactar. Os tetos abaixo são só uma trava
+ *   de segurança altíssima; sem compactação, voltar a limites menores quando o R2 apertar.
  *
  * ATENÇÃO: `api/whatsapp-webhook.ts` e `api/r2-cleanup.ts` mantêm uma cópia destes números
  * (funções serverless não importam de src/). Ao mudar aqui, atualize lá também.
@@ -19,11 +21,11 @@ const MB = 1024 * 1024;
 export const MEDIA_STORAGE_POLICY = {
   /** Até este tamanho (bytes) a mídia sobe sozinha para o R2; acima fica pendente (sob demanda). */
   autoUploadMaxBytes: {
-    image: 2 * MB,
-    video: 10 * MB,
-    audio: 15 * MB,
-    document: 5 * MB,
-    other: 5 * MB,
+    image: 100 * MB,
+    video: 200 * MB,
+    audio: 100 * MB,
+    document: 100 * MB,
+    other: 100 * MB,
   } as Record<MediaKind, number>,
   /** Dias sem abrir até a limpeza (null = nunca expira). Mídia fixada nunca expira. */
   expireAfterDays: {
@@ -57,10 +59,8 @@ export interface StorageDecision {
 export function decideMediaStorage(kind: MediaKind, sizeBytes?: number | null): StorageDecision {
   const limit = MEDIA_STORAGE_POLICY.autoUploadMaxBytes[kind];
   if (sizeBytes === undefined || sizeBytes === null || !Number.isFinite(sizeBytes) || sizeBytes <= 0) {
-    // Peso desconhecido: áudio e documento leves sobem (limite protege no download); foto/vídeo esperam o peso.
-    return kind === 'audio' || kind === 'document' || kind === 'other'
-      ? { action: 'auto' }
-      : { action: 'pending', reason: 'Peso desconhecido' };
+    // Peso desconhecido: salva mesmo assim (salva tudo, sem compactar)
+    return { action: 'auto' };
   }
   if (sizeBytes <= limit) return { action: 'auto' };
   return { action: 'pending', reason: `Acima de ${formatMediaBytes(limit)} (política de armazenamento)` };

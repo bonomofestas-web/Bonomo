@@ -2,7 +2,6 @@ import { DateField, Select } from '../ui';
 import { createPortal } from 'react-dom';
 import { usePresenceContext } from '../../hooks/usePresence';
 import { animateList } from '../../utils/animateList';
-import { HeaderActions } from './HeaderActions';
 import { toast } from 'sonner';
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
@@ -43,6 +42,9 @@ const InstagramIcon: React.FC<{ size?: number; className?: string; color?: strin
 );
 import { useAdminState } from '../../context/AdminStateContext';
 import { uazapiService } from '../../services/uazapiService';
+import { isMessagingPaused, MESSAGING_PAUSED_TEXT } from '../../utils/messagingPause';
+import { useMessagingPause } from '../../hooks/useMessagingPause';
+import { MessagingPausedBanner } from './MessagingPausedBanner';
 import { uazapiSseService } from '../../services/uazapiSseService';
 import { isSupabaseConfigured } from '../../lib/supabase';
 import { leadService, mergeAndSortActivities, isPhoneMatch } from '../../services/leadService';
@@ -1006,8 +1008,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   }, [currentUser, viewingAsCollaborator]);
 
   const [searchTerm, setSearchTerm] = useState(searchQuery);
-  // Filtros vão para o menu superior no WhatsApp standalone; embutido no funil ficam inline
-  const FilterSlot: React.ElementType = isEmbeddedInFunnel ? React.Fragment : HeaderActions;
+  const [isSortDropdownOpen, setIsSortDropdownOpen] = useState(false);
+  const sortDropdownRef = useRef<HTMLDivElement>(null);
   const [isNewLeadModalOpen, setIsNewLeadModalOpen] = useState(false);
   const [isTransferVenueModalOpen, setIsTransferVenueModalOpen] = useState(false);
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(() => {
@@ -1697,6 +1699,9 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     const handleClickOutside = (event: MouseEvent) => {
       if (filterDropdownRef.current && !filterDropdownRef.current.contains(event.target as Node)) {
         setIsFilterDropdownOpen(false);
+      }
+      if (sortDropdownRef.current && !sortDropdownRef.current.contains(event.target as Node)) {
+        setIsSortDropdownOpen(false);
       }
       if (funnelSelectRef.current && !funnelSelectRef.current.contains(event.target as Node)) {
         setIsFunnelSelectOpen(false);
@@ -2670,6 +2675,25 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     return sendable[0];
   }, [availableRecipients, selectedRecipientKey, selectedRecipientPhone]);
 
+  // Quem esta do outro lado do chat: o contato principal usa nome/foto do lead; qualquer outro contato (familiar, dependente)
+  // usa os proprios dados e NUNCA herda a foto/nome do principal (sem foto => iniciais).
+  const peerOfRecipient = useCallback((r?: { name?: string; avatarUrl?: string; isMain?: boolean } | null) => {
+    if (r && !r.isMain) return { name: r.name || selectedLead?.name || '', avatarUrl: r.avatarUrl || undefined };
+    return { name: selectedLead?.name || '', avatarUrl: (selectedLead as any)?.avatarUrl || (selectedLead as any)?.profilePicUrl || undefined };
+  }, [selectedLead]);
+  const chatPeer = useMemo(() => peerOfRecipient(activeRecipient), [peerOfRecipient, activeRecipient]);
+  // Dono de uma mensagem recebida: casa o numero gravado na atividade com os contatos da ficha; senao, o chat aberto
+  const peerOfActivity = useCallback((act: any) => {
+    const digits = (v: unknown) => String(v || '').replace(/\D/g, '');
+    const m = act?.metadata || {};
+    const ap = digits(act?.recipientPhone || m.recipientPhone || m.fromPhone || m.senderPhone || m.phone || m.from || m.remoteJid);
+    if (ap.length >= 8) {
+      const owner = (availableRecipients || []).find(r => digits(r.phone).length >= 8 && isPhoneMatch(r.phone, ap));
+      if (owner) return peerOfRecipient(owner);
+    }
+    return chatPeer;
+  }, [availableRecipients, peerOfRecipient, chatPeer]);
+
   useEffect(() => {
     if (availableRecipients.length > 0) {
       const touched = recipientTouchedRef.current === selectedLead?.id;
@@ -3027,6 +3051,10 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   // Garantia antes de qualquer envio: precisa haver chip habilitado no funil e ele precisa estar conectado.
   // Nunca troca de numero sozinho; quem decide e o usuario.
   const ensureSenderReady = useCallback((): boolean => {
+    if (isMessagingPaused()) {
+      toast.error(MESSAGING_PAUSED_TEXT);
+      return false;
+    }
     if (!activeSenderSource || !activeSenderToken) {
       toast.warning('Nenhum WhatsApp habilitado para envio neste funil. Habilite um número nas configurações do funil.');
       return false;
@@ -3085,6 +3113,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     };
   }, [selectedLead?.id, activeSenderToken]);
 
+  const messagingPaused = useMessagingPause(); // pausa geral: desabilita o compositor
   const isManager = currentUser?.role === 'master' || currentUser?.role === 'admin';
   const isLeadSpectator = useMemo(() => {
     if (!selectedLead || isManager) return false;
@@ -3405,6 +3434,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   // Handle Send Message / Note
   const handleSendMessage = async (e?: React.FormEvent, directText?: string) => {
     if (e) e.preventDefault();
+    if (isMessagingPaused()) { toast.error(MESSAGING_PAUSED_TEXT); return; } // pausa geral de mensagens
     const textToUse = directText !== undefined ? directText : messageText;
 
     // Se houver anexo pendente no chat, encaminha para o envio de mídia
@@ -4212,6 +4242,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
 
   // Real Audio Recording Handlers (MediaRecorder)
   const startAudioRecording = async () => {
+    if (isMessagingPaused()) { toast.error(MESSAGING_PAUSED_TEXT); return; } // pausa geral de mensagens
     try {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         toast.warning('Seu navegador não possui suporte para gravação de áudio ou a página não está em HTTPS.');
@@ -5321,27 +5352,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                 )}
               </div>
 
-              {/* Ordenar conversas: selecao direta, logo abaixo das abas */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span title="Ordenar conversas" style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '0.68rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>
-                  <ArrowUpDown size={12} /> Ordenar
-                </span>
-                <Select
-                  value={localSortBy}
-                  onChange={(e) => handleUpdateSortBy(e.target.value)}
-                  style={{ flex: 1, height: '34px', fontSize: '0.76rem', borderRadius: '9px', background: 'var(--adm-bg-input)', border: '1px solid var(--adm-border)', color: 'var(--adm-text-title)', padding: '0 10px', outline: 'none', cursor: 'pointer' }}
-                >
-                  <option value="waiting_time">Tempo de espera (prioridade SLA)</option>
-                  <option value="recent">Mensagens mais recentes</option>
-                  <option value="oldest">Mensagens mais antigas</option>
-                  <option value="name_asc">Nome do lead (A - Z)</option>
-                  <option value="temperature">Temperatura do lead</option>
-                </Select>
-              </div>
-
-              {/* Search + Filter Button with Gear/Icon */}
+              {/* Busca + Ordenar (icone) + Filtros (engrenagem) */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', position: 'relative' }}>
-                {isEmbeddedInFunnel && (
                 <div style={{ position: 'relative', flex: 1 }}>
                   <Search size={15} color="var(--adm-text-muted)" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)' }} />
                   <input
@@ -5391,24 +5403,62 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                     </button>
                   )}
                 </div>
-                )}
 
-                {/* Filter Toggle Button */}
-                <FilterSlot>
-                {!isEmbeddedInFunnel && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', width: 'min(680px, calc(50vw - 300px))', minWidth: 0 }}>
-                    {renderFilterSelects(true)}
-                    {isFilterActive && (
-                      <button type="button" onClick={resetFilters} title="Limpar filtros" style={{
-                        flexShrink: 0, height: '38px', padding: '0 12px', borderRadius: '10px', border: '1px solid var(--adm-accent)', background: 'var(--adm-accent-bg)',
-                        color: 'var(--adm-accent)', fontSize: '0.74rem', fontWeight: 800, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap',
-                      }}>
-                        <X size={13} /> Limpar
-                      </button>
-                    )}
-                  </div>
-                )}
-                {isEmbeddedInFunnel && (
+                {/* Ordenar: so o icone; abre menu com icones */}
+                <div ref={sortDropdownRef} style={{ position: 'relative' }}>
+                  <button
+                    type="button"
+                    onClick={() => setIsSortDropdownOpen(v => !v)}
+                    title="Ordenar conversas"
+                    aria-label="Ordenar conversas"
+                    style={{
+                      width: '38px', height: '38px', borderRadius: '10px',
+                      border: isSortDropdownOpen ? '1px solid var(--adm-accent)' : '1px solid var(--adm-border)',
+                      background: isSortDropdownOpen ? 'var(--adm-accent-bg)' : 'var(--adm-bg-card)',
+                      color: isSortDropdownOpen ? 'var(--adm-accent)' : '#9E988D',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'all 0.15s ease',
+                    }}
+                  >
+                    <ArrowUpDown size={17} />
+                  </button>
+                  {isSortDropdownOpen && (
+                    <div style={{
+                      position: 'absolute', top: '100%', right: 0, marginTop: '8px', width: '250px', background: 'var(--adm-bg-card)',
+                      border: '1px solid var(--adm-border)', borderRadius: '14px', padding: '6px', boxShadow: '0 20px 48px rgba(0,0,0,0.5)', zIndex: 9999,
+                      display: 'flex', flexDirection: 'column', gap: '2px', fontFamily: "'Plus Jakarta Sans', sans-serif",
+                    }}>
+                      {([
+                        { id: 'waiting_time', label: 'Tempo de espera', hint: 'Prioridade SLA', icon: <Clock size={15} /> },
+                        { id: 'recent', label: 'Mais recentes', hint: 'Última mensagem primeiro', icon: <ArrowDown size={15} /> },
+                        { id: 'oldest', label: 'Mais antigas', hint: 'Mensagem mais velha primeiro', icon: <ArrowUp size={15} /> },
+                        { id: 'name_asc', label: 'Nome (A - Z)', hint: 'Ordem alfabética', icon: <span style={{ fontSize: '0.64rem', fontWeight: 900, letterSpacing: '-0.02em' }}>A-Z</span> },
+                        { id: 'temperature', label: 'Temperatura do lead', hint: 'Quentes primeiro', icon: <Flame size={15} /> },
+                      ] as const).map(opt => {
+                        const active = localSortBy === opt.id;
+                        return (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => { handleUpdateSortBy(opt.id); setIsSortDropdownOpen(false); }}
+                            style={{
+                              display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 10px', borderRadius: '9px', border: 'none', textAlign: 'left', cursor: 'pointer',
+                              background: active ? 'var(--adm-accent-bg)' : 'transparent', color: active ? 'var(--adm-accent)' : 'var(--adm-text-title)',
+                            }}
+                          >
+                            <span style={{ width: '22px', display: 'inline-flex', justifyContent: 'center', flexShrink: 0 }}>{opt.icon}</span>
+                            <span style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0 }}>
+                              <span style={{ fontSize: '0.78rem', fontWeight: 700 }}>{opt.label}</span>
+                              <span style={{ fontSize: '0.66rem', fontWeight: 500, color: 'var(--adm-text-muted)' }}>{opt.hint}</span>
+                            </span>
+                            {active && <Check size={14} />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Filtros (engrenagem) */}
                 <div ref={filterDropdownRef} style={{ position: 'relative' }}>
                   <button
                     type="button"
@@ -5454,7 +5504,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                           <SlidersHorizontal size={14} color="var(--adm-accent)" />
                           <span style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
-                            Filtros & Ordenação
+                            Filtros
                           </span>
                         </div>
                         {isFilterActive && (
@@ -5480,12 +5530,16 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                     </div>
                   )}
                 </div>
-                )}
-                </FilterSlot>
               </div>
             </>
           )}
         </div>
+
+        {messagingPaused && (
+          <div style={{ padding: '8px 10px', borderBottom: '1px solid var(--adm-border)' }}>
+            <MessagingPausedBanner compact />
+          </div>
+        )}
 
         {/* Leads Conversations Scrollable List */}
         <div ref={animateList} style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
@@ -6547,7 +6601,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                   </button>
                 )}
                 <SafeAvatar
-                  src={activeRecipient?.avatarUrl || selectedLead.avatarUrl}
+                  src={chatPeer.avatarUrl}
                   name={activeRecipient?.name || selectedLead.name}
                   size={40}
                   border={activeRecipient?.isDecisor ? "2px solid #10B981" : "1.5px solid var(--adm-accent)"}
@@ -7578,15 +7632,15 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                             >
                               {/* Avatar do Lead: só exibe no último balão do grupo consecutivo */}
                               {!isSameAsNext ? (
-                                (selectedLead as any).avatarUrl ? (
+                                peerOfActivity(act).avatarUrl ? (
                                   <img
-                                    src={(selectedLead as any).avatarUrl}
-                                    alt={selectedLead.name}
+                                    src={peerOfActivity(act).avatarUrl}
+                                    alt={peerOfActivity(act).name}
                                     style={{ width: '30px', height: '30px', borderRadius: '50%', objectFit: 'cover', border: isDarkMode ? '1.5px solid rgba(255,255,255,0.1)' : '1.5px solid rgba(0,0,0,0.1)', flexShrink: 0 }}
                                   />
                                 ) : (
                                   <div style={{ width: '30px', height: '30px', borderRadius: '50%', background: isDarkMode ? 'rgba(59, 130, 246, 0.2)' : '#e0e7ff', color: '#3B82F6', fontWeight: 800, fontSize: '0.74rem', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: '1.5px solid rgba(59, 130, 246, 0.35)' }}>
-                                    {(selectedLead.name || 'L').charAt(0).toUpperCase()}
+                                    {(peerOfActivity(act).name || 'L').charAt(0).toUpperCase()}
                                   </div>
                                 )
                               ) : (
@@ -7627,7 +7681,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                   {!isSameAsPrev && (
                                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '14px', marginBottom: '2px' }}>
                                       <span style={{ fontSize: '0.72rem', fontWeight: 800, color: isDarkMode ? '#53bdeb' : '#128c7e' }}>
-                                        {selectedLead.name || act.authorName || 'Cliente'}
+                                        {peerOfActivity(act).name || act.authorName || 'Cliente'}
                                       </span>
                                       <span style={{ fontSize: '0.62rem', color: isDarkMode ? '#8696a0' : '#667781' }}>
                                         {formattedTime}
@@ -7798,8 +7852,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                       durationText={effectiveText?.includes('(') ? effectiveText.match(/\((.*?)\)/)?.[1] : undefined}
                                       onBroken={() => markMediaBroken(act.id)}
                                       isIncoming={true}
-                                      authorName={selectedLead.name}
-                                      avatarUrl={(selectedLead as any)?.avatarUrl || (selectedLead as any)?.profilePicUrl}
+                                      authorName={peerOfActivity(act).name}
+                                      avatarUrl={peerOfActivity(act).avatarUrl}
                                       formattedTime={formattedTime}
                                       isDarkMode={isDarkMode}
                                       status="read"
@@ -8696,8 +8750,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                       }}
                     >
                       <SafeAvatar
-                        src={(selectedLead as any).avatarUrl}
-                        name={selectedLead.name}
+                        src={chatPeer.avatarUrl}
+                        name={chatPeer.name}
                         size={30}
                         border={isDarkMode ? '1.5px solid var(--adm-border)' : '1.5px solid rgba(0,0,0,0.1)'}
                       />
@@ -10692,7 +10746,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                     <>
                       <Mic size={15} color="#00a884" />
                       <span style={{ fontSize: '0.8rem', fontWeight: 600, color: isDarkMode ? '#e9edef' : '#111827' }}>
-                        {selectedLead?.name ? `${selectedLead.name} está gravando áudio...` : 'Gravando áudio...'}
+                        {chatPeer.name ? `${chatPeer.name} está gravando áudio...` : 'Gravando áudio...'}
                       </span>
                     </>
                   ) : (
@@ -10705,7 +10759,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                         <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#00a884' }} />
                       </div>
                       <span style={{ fontSize: '0.8rem', fontWeight: 600, color: isDarkMode ? '#e9edef' : '#111827', marginLeft: '4px' }}>
-                        {selectedLead?.name ? `${selectedLead.name} está digitando...` : 'Digitando...'}
+                        {chatPeer.name ? `${chatPeer.name} está digitando...` : 'Digitando...'}
                       </span>
                     </>
                   )}
@@ -10843,7 +10897,11 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
               }}
             />
 
-            {isLeadSpectator ? (
+            {messagingPaused ? (
+              <div style={{ padding: '14px 16px', borderTop: '1px solid var(--adm-border)', background: 'var(--adm-bg-input)' }}>
+                <MessagingPausedBanner />
+              </div>
+            ) : isLeadSpectator ? (
               <div style={{
                 padding: '16px 20px',
                 background: 'var(--adm-bg-input)',
@@ -12282,9 +12340,9 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                 </span>
 
                                 {/* Foto / Avatar do destinatário antes do nome */}
-                                {availableRecipients[0].avatarUrl || selectedLead?.avatarUrl ? (
+                                {peerOfRecipient(availableRecipients[0]).avatarUrl ? (
                                   <img
-                                    src={availableRecipients[0].avatarUrl || selectedLead?.avatarUrl}
+                                    src={peerOfRecipient(availableRecipients[0]).avatarUrl}
                                     alt={availableRecipients[0].name}
                                     style={{
                                       width: '18px',
@@ -12349,7 +12407,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
 
                                   {(() => {
                                     const currentRec = availableRecipients.find(r => (selectedRecipientKey && r.key === selectedRecipientKey) || ((selectedRecipientPhone || selectedLead?.phone) === r.phone)) || availableRecipients[0];
-                                    const recAvatar = currentRec.avatarUrl || selectedLead?.avatarUrl;
+                                    const recAvatar = peerOfRecipient(currentRec).avatarUrl;
 
                                     return (
                                       <>

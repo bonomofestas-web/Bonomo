@@ -20,6 +20,7 @@ import { ClientVenueEventsCard } from './ClientVenueEventsCard';
 import { isTaskOverdue } from '../../utils/taskColors';
 import type { Client, ClientStage, ClientDocument, LeadContact, AdminTask, TaskStatus, ClientUpsellSale } from '../../types/admin';
 import { toast } from 'sonner';
+import { isMessagingPaused, MESSAGING_PAUSED_TEXT } from '../../utils/messagingPause';
 
 interface AdminClientInspectorProps {
   clientId: string | null;
@@ -590,6 +591,7 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
   const handleSendClientUazapiMessage = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!whatsappCustomMsg.trim() || !client) return;
+    if (isMessagingPaused()) { toast.error(MESSAGING_PAUSED_TEXT); return; } // pausa geral: nao grava nota nem envia
 
     const textToSend = whatsappCustomMsg.trim();
     const targetPhone = selectedClientRecipientPhone || client.payerPhone || (client as any).phone;

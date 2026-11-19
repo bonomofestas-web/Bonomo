@@ -8,6 +8,7 @@ import {
 import { useAdminState } from '../../context/AdminStateContext';
 import { AdminTaskDetailModal } from './AdminTaskDetailModal';
 import { AdminConfirmModal } from './AdminConfirmModal';
+import { MessagingPausedBanner } from './MessagingPausedBanner';
 import type { AdminTask } from '../../types/admin';
 import type { Appointment } from '../../types';
 import { getTaskPriorityConfig, isTaskOverdue } from '../../utils/taskColors';
@@ -395,6 +396,9 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
       animation: 'fadeIn 0.25s ease-out',
       fontFamily: "'Plus Jakarta Sans', sans-serif",
     }}>
+      {/* Aviso fixo: envio e recebimento de mensagens pausados (chave remota whatsapp_messaging) */}
+      <MessagingPausedBanner style={{ marginBottom: '-8px' }} />
+
       {/* ── TOP HERO BANNER & GREETING (Soft & Clean Executive Layout) ── */}
       <div style={{
         display: 'flex',

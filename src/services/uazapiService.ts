@@ -1,5 +1,6 @@
 import { isLidIdentifier } from './uazapiSseService';
 import { normalizeWhatsAppNumber } from '../utils/phoneFormatter';
+import { ensureMessagingEnabled, isMessagingPaused } from '../utils/messagingPause';
 import type {
   UazapiConnectOptions,
   UazapiConnectResponse,
@@ -468,6 +469,7 @@ export const uazapiService = {
    * Envia uma mensagem de texto pelo WhatsApp
    */
   async sendText(instanceToken: string, payload: UazapiSendTextPayload): Promise<UazapiSendMessageResponse> {
+    await ensureMessagingEnabled(); // pausa geral de mensagens
     const baseUrl = this.getServerUrl();
     if (!baseUrl) throw new Error('URL do servidor UAZAPI não configurada.');
     if (!instanceToken) throw new Error('Token da instância não fornecido.');
@@ -524,6 +526,7 @@ export const uazapiService = {
    * Envia uma mídia (imagem, vídeo, áudio/voz PTT, documento)
    */
   async sendMedia(instanceToken: string, payload: UazapiSendMediaPayload): Promise<UazapiSendMessageResponse> {
+    await ensureMessagingEnabled(); // pausa geral de mensagens
     const baseUrl = this.getServerUrl();
     if (!baseUrl) throw new Error('URL do servidor UAZAPI não configurada.');
     if (!instanceToken) throw new Error('Token da instância não fornecido.');
@@ -574,6 +577,7 @@ export const uazapiService = {
    * Envia uma figurinha / sticker para o WhatsApp
    */
   async sendSticker(instanceToken: string, payload: { number: string; file: string; delay?: number }): Promise<UazapiSendMessageResponse> {
+    await ensureMessagingEnabled(); // pausa geral de mensagens
     const baseUrl = this.getServerUrl();
     if (!baseUrl) throw new Error('URL do servidor UAZAPI não configurada.');
     if (!instanceToken) throw new Error('Token da instância não fornecido.');
@@ -666,6 +670,7 @@ export const uazapiService = {
     instanceToken: string,
     params: { number: string; messageid?: string; timestamp?: number; fromMe?: boolean; count?: number }
   ): Promise<{ ok: boolean; status: string; httpStatus: number; error?: string; hasMore?: boolean | null }> {
+    if (isMessagingPaused()) return { ok: false, status: 'paused', httpStatus: 0, error: 'Função desabilitada temporariamente' };
     const baseUrl = this.getServerUrl();
     if (!baseUrl || !instanceToken || !params.number) return { ok: false, status: 'config', httpStatus: 0 };
     try {
@@ -695,6 +700,7 @@ export const uazapiService = {
    * Reage a uma mensagem existente com emoji
    */
   async reactMessage(instanceToken: string, payload: UazapiReactPayload): Promise<boolean> {
+    await ensureMessagingEnabled(); // pausa geral de mensagens
     const baseUrl = this.getServerUrl();
     if (!baseUrl) return false;
 
@@ -722,6 +728,7 @@ export const uazapiService = {
       delay?: number;
     }
   ): Promise<boolean> {
+    if (isMessagingPaused()) return false; // pausa geral: nao sinaliza "digitando"
     const baseUrl = this.getServerUrl();
     if (!baseUrl || !instanceToken) return false;
     const cleanNumber = normalizeWhatsAppNumber(payload.number);
@@ -942,6 +949,7 @@ export const uazapiService = {
    * Lista conversas recentes ativas na instância do WhatsApp
    */
   async listRecentChats(instanceToken: string, limit = 100): Promise<any[]> {
+    if (isMessagingPaused()) return []; // pausa geral: nao puxa conversas
     const baseUrl = this.getServerUrl();
     if (!baseUrl || !instanceToken) return [];
 
@@ -985,6 +993,7 @@ export const uazapiService = {
     signal?: AbortSignal;
     onProgress?: (loaded: number) => void;
   } = {}): Promise<any[]> {
+    if (isMessagingPaused()) return []; // pausa geral: nao puxa conversas
     const baseUrl = this.getServerUrl();
     if (!baseUrl || !instanceToken) return [];
     const max = opts.maxChats || 1000;
@@ -1033,6 +1042,7 @@ export const uazapiService = {
    * reordenamos cronologicamente antes de retornar.
    */
   async fetchChatMessages(instanceToken: string, phoneOrChatId: string, limit = 50): Promise<any[]> {
+    if (isMessagingPaused()) return []; // pausa geral: nao puxa mensagens
     const baseUrl = this.getServerUrl();
     if (!baseUrl || !instanceToken) return [];
     const cleanPhone = phoneOrChatId.replace(/\D/g, '');
@@ -1157,6 +1167,7 @@ export const uazapiService = {
     fromMe?: boolean;
     rawPayload: any;
   }>> {
+    await ensureMessagingEnabled(); // pausa geral: sincronizacao de historico bloqueada
     const { startTimestamp, endTimestamp = Date.now(), limitPerChat = 50, signal, onProgress } = options;
     const chats = options.onlyChats
       ? options.onlyChats

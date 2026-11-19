@@ -13,7 +13,8 @@
     "backup:db": "node scripts/backup-prod-data.mjs",
     "restore:local": "node scripts/restore-local-data.mjs",
     "sync:local": "node scripts/sync-cloud-to-local.mjs",
-    "cleanup:r2": "node scripts/cleanup-r2-local.mjs"
+    "cleanup:r2": "node scripts/cleanup-r2-local.mjs",
+    "clean:r2-leads": "node scripts/clean-r2-lead-data.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1118.0",
