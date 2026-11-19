@@ -25,6 +25,13 @@ export interface PresencePayload {
   entityLabel?: string | null;
 }
 
+/**
+ * RECURSO NA GAVETA: presenca ao vivo desligada por decisao de custo (cota do Supabase gratuito).
+ * Com false, nada grava nem le: nenhum timer, nenhuma requisicao. Para reativar, mude para true
+ * (e confira a chave remota team_presence em Dev). A tabela collaborator_presence continua no banco, vazia.
+ */
+export const PRESENCE_ENABLED = false;
+
 const MAX_WRITES_PER_HOUR = 120;
 const BACKOFF_MS = 10 * 60 * 1000;
 const ONLINE_WINDOW_MS = 3 * 60 * 1000;
@@ -49,7 +56,7 @@ export const presenceService = {
 
   /** Grava a presenca da pessoa (upsert sem retorno: ~0 bytes de resposta). */
   async publish(p: PresencePayload): Promise<void> {
-    if (!isSupabaseConfigured || disabledForSession || Date.now() < blockedUntil) return;
+    if (!PRESENCE_ENABLED || !isSupabaseConfigured || disabledForSession || Date.now() < blockedUntil) return;
     if (!UUID_RE.test(p.collaboratorId) || !UUID_RE.test(p.masterId)) return;
     const now = Date.now();
     writeTimes = writeTimes.filter(t => now - t < 3600000);
@@ -70,7 +77,7 @@ export const presenceService = {
 
   /** Le a presenca de UMA pessoa (resposta minima, ~250 bytes). Usada so no perfil aberto. */
   async getOne(masterId: string, collaboratorId: string): Promise<PresenceRow | null> {
-    if (!isSupabaseConfigured || disabledForSession || Date.now() < blockedUntil || !UUID_RE.test(masterId) || !UUID_RE.test(collaboratorId)) return null;
+    if (!PRESENCE_ENABLED || !isSupabaseConfigured || disabledForSession || Date.now() < blockedUntil || !UUID_RE.test(masterId) || !UUID_RE.test(collaboratorId)) return null;
     const { data, error } = await supabase
       .from('collaborator_presence')
       .select('collaborator_id, view, entity_type, entity_id, entity_label, last_seen_at')
@@ -91,7 +98,7 @@ export const presenceService = {
 
   /** Le quem esta online (ultimos 3 min) do Master. Colunas minimas. */
   async listOnline(masterId: string): Promise<PresenceRow[]> {
-    if (!isSupabaseConfigured || disabledForSession || Date.now() < blockedUntil || !UUID_RE.test(masterId)) return [];
+    if (!PRESENCE_ENABLED || !isSupabaseConfigured || disabledForSession || Date.now() < blockedUntil || !UUID_RE.test(masterId)) return [];
     const since = new Date(Date.now() - ONLINE_WINDOW_MS).toISOString();
     const { data, error } = await supabase
       .from('collaborator_presence')

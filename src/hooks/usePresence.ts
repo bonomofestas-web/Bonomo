@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { presenceService, type PresenceEntityType, type PresenceRow } from '../services/presenceService';
+import { PRESENCE_ENABLED, presenceService, type PresenceEntityType, type PresenceRow } from '../services/presenceService';
 
 /**
  * Presenca ao vivo, sem Realtime.
@@ -32,7 +32,8 @@ const IDLE_MS = 5 * 60_000;
 export const usePresencePublisher = (opts: {
   enabled: boolean; collaboratorId?: string; masterId?: string; venueId?: string | null; view: string;
 }) => {
-  const { enabled, collaboratorId, masterId, venueId, view } = opts;
+  const { collaboratorId, masterId, venueId, view } = opts;
+  const enabled = opts.enabled && PRESENCE_ENABLED; // recurso na gaveta: sem timers nem listeners
   const lastWrite = useRef(0);
   const lastActivity = useRef(Date.now());
   const pending = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -90,7 +91,8 @@ const POLL_OFFLINE_MS = 60_000;
  * Fora do perfil nao ha leitura nenhuma.
  */
 export const useCollaboratorPresence = (opts: { enabled: boolean; masterId?: string; collaboratorId?: string | null }): PresenceRow | null => {
-  const { enabled, masterId, collaboratorId } = opts;
+  const { masterId, collaboratorId } = opts;
+  const enabled = opts.enabled && PRESENCE_ENABLED;
   const [row, setRow] = useState<PresenceRow | null>(null);
 
   useEffect(() => {

@@ -25,7 +25,7 @@ import { AdminJobRolesModal } from './AdminJobRolesModal';
 import { toast } from 'sonner';
 import { TeamDirectory } from './team/TeamDirectory';
 import { useCollaboratorPresence } from '../../hooks/usePresence';
-import { presenceService, type PresenceRow } from '../../services/presenceService';
+import { PRESENCE_ENABLED, presenceService, type PresenceRow } from '../../services/presenceService';
 import type { PresenceView } from './team/teamShared';
 import { CollaboratorProfile } from './team/CollaboratorProfile';
 import type { CollabPerms, TeamActions, TeamDataBundle } from './team/teamShared';
@@ -593,7 +593,7 @@ export const AdminCollaboratorsView: React.FC<AdminCollaboratorsViewProps> = ({ 
   };
 
   // Presenca ao vivo: so Master/Gerencia veem, so com a chave ligada, e so enquanto esta tela esta aberta
-  const canSeePresence = (currentUser?.role === 'master' || currentUser?.role === 'admin' || currentUser?.role === 'gerencia')
+  const canSeePresence = PRESENCE_ENABLED && (currentUser?.role === 'master' || currentUser?.role === 'admin' || currentUser?.role === 'gerencia')
     && featureFlags.team_presence !== 'disabled' && featureFlags.team_presence !== 'coming_soon';
   // So le a presenca quando o perfil de alguem esta aberto, e so mostra se a pessoa estiver online
   const presenceRow = useCollaboratorPresence({ enabled: canSeePresence && Boolean(profileCollabId), masterId: masterId || undefined, collaboratorId: profileCollabId });
