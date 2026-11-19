@@ -46,6 +46,8 @@ export interface TeamDataBundle {
   jobLabelsOf: (c: Collaborator) => string[];
   /** Titulo mostrado (primeiro cargo com o nome de exibicao do Master). */
   titleOf: (c: Collaborator) => string;
+  /** Posicao hierarquica no setor (menor = primeiro). */
+  rankOf: (c: Collaborator) => number;
 }
 
 export const kindRank = (k: ProfileKind): number => (k === 'gerente_geral' ? 0 : isManagerKind(k) ? 1 : 2);

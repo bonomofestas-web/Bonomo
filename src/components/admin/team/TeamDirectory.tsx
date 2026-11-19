@@ -78,10 +78,11 @@ export const TeamDirectory: React.FC<Props> = ({ collaborators, data, actions, p
     });
     const sectors = SECTOR_ORDER.filter(s => bySector.has(s)).map(s => ({
       sector: s,
-      people: (bySector.get(s) as Collaborator[]).sort((a, b) => kindRank(kindOf(a)) - kindRank(kindOf(b)) || a.name.localeCompare(b.name, 'pt-BR')),
+      people: (bySector.get(s) as Collaborator[]).sort((a, b) => data.rankOf(a) - data.rankOf(b) || kindRank(kindOf(a)) - kindRank(kindOf(b)) || a.name.localeCompare(b.name, 'pt-BR')),
     }));
-    // Inativos ficam numa secao propria, independente de setor e cargo
-    const inactivePeople = list.filter(c => !c.active).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+    // Inativos so aparecem quando o filtro "Inativos" (ou o status Inativo) esta ligado: nunca entram em "Todos"
+    const showInactive = sector === 'inactive' || status === 'inactive';
+    const inactivePeople = showInactive ? list.filter(c => !c.active).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')) : [];
     return { sectors, inactivePeople };
   }, [collaborators, query, sector, venueFilter, status, venues, permsOf, kindOf, jobLabelsOf]);
 
@@ -179,31 +180,14 @@ export const TeamDirectory: React.FC<Props> = ({ collaborators, data, actions, p
     );
   };
 
-  const tile = (label: string, value: React.ReactNode, hint?: string, accent?: string) => (
-    <div style={{ ...card, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '4px', minWidth: 0 }}>
-      <span style={eyebrow}>{label}</span>
-      <span style={{ fontSize: '1.5rem', fontWeight: 800, lineHeight: 1.1, color: accent || 'var(--adm-text-title)', fontVariantNumeric: 'tabular-nums' }}>{value}</span>
-      {hint && <span style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)' }}>{hint}</span>}
-    </div>
-  );
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
-      {/* Faixa de resumo do time */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '12px' }}>
-        {tile('Pessoas ativas', <>{summary.active}<span style={{ fontSize: '0.9rem', color: 'var(--adm-text-muted)', fontWeight: 700 }}> / {collaborators.length}</span></>)}
-        {tile('Convites pendentes', summary.pending, summary.pending > 0 ? 'Ainda não fizeram o 1º acesso' : 'Todos já acessaram', summary.pending > 0 ? '#F59E0B' : undefined)}
-        {tile('Leads em aberto', summary.totals.leads, 'Comercial, no time todo')}
-        {tile('Contratos administrados', summary.totals.contracts, 'Pós-venda, em andamento')}
-        {summary.online !== null && tile('Online agora', summary.online, 'Atualiza a cada ~30 s', summary.online > 0 ? '#10B981' : undefined)}
-      </div>
-
       {/* Setores (filtro rapido) */}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
         <button type="button" onClick={() => setSector('all')} aria-pressed={sector === 'all'} style={{
           display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '7px 14px', borderRadius: '999px', fontSize: '0.76rem', fontWeight: 800, cursor: 'pointer',
           border: `1px solid ${sector === 'all' ? 'var(--adm-accent)' : 'var(--adm-border)'}`, background: sector === 'all' ? 'var(--adm-accent)' : 'var(--adm-bg-card)', color: sector === 'all' ? '#0B111A' : 'var(--adm-text-title)',
-        }}><Users size={13} /> Todos ({collaborators.length})</button>
+        }}><Users size={13} /> Todos ({summary.active})</button>
         {SECTOR_ORDER.filter(s => summary.perSector.has(s)).map(s => {
           const m = SECTOR_META[s];
           const active = sector === s;

@@ -1,4 +1,5 @@
 import { DateField, Select } from '../ui';
+import { createPortal } from 'react-dom';
 import { usePresenceContext } from '../../hooks/usePresence';
 import { animateList } from '../../utils/animateList';
 import { HeaderActions } from './HeaderActions';
@@ -1580,6 +1581,15 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
 
   // Menu de 3 Pontinhos no Card do Lead & Exclusão Direta
   const [activeLeadMenuId, setActiveLeadMenuId] = useState<string | null>(null);
+  // Posicao do botao de 3 pontinhos: o menu abre em camada fixa (portal) para nao ser cortado pela lista nem ficar atras do campo de mensagem
+  const [activeLeadMenuRect, setActiveLeadMenuRect] = useState<{ top: number; bottom: number; left: number } | null>(null);
+  useEffect(() => {
+    if (!activeLeadMenuId) return;
+    const close = () => setActiveLeadMenuId(null);
+    window.addEventListener('scroll', close, true);
+    window.addEventListener('resize', close);
+    return () => { window.removeEventListener('scroll', close, true); window.removeEventListener('resize', close); };
+  }, [activeLeadMenuId]);
   const [leadToDeleteDirectly, setLeadToDeleteDirectly] = useState<Lead | null>(null);
 
   useEffect(() => {
@@ -5737,6 +5747,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
+                              const r = e.currentTarget.getBoundingClientRect();
+                              setActiveLeadMenuRect({ top: r.top, bottom: r.bottom, left: r.left });
                               setActiveLeadMenuId(activeLeadMenuId === lead.id ? null : lead.id);
                             }}
                             title="Opções do lead"
@@ -5758,13 +5770,18 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                             <MoreVertical size={13} />
                           </button>
 
-                          {activeLeadMenuId === lead.id && (
+                          {activeLeadMenuId === lead.id && activeLeadMenuRect && createPortal(
                             <div
                               onClick={(e) => e.stopPropagation()}
                               style={{
-                                position: 'absolute',
-                                top: '100%',
-                                left: 0,
+                                position: 'fixed',
+                                // abre para baixo; se nao couber (ex.: ultimas conversas), abre para cima
+                                ...(window.innerHeight - activeLeadMenuRect.bottom < 260
+                                  ? { bottom: window.innerHeight - activeLeadMenuRect.top + 4 }
+                                  : { top: activeLeadMenuRect.bottom + 4 }),
+                                left: Math.min(activeLeadMenuRect.left, window.innerWidth - 200),
+                                maxHeight: 'calc(100vh - 24px)',
+                                overflowY: 'auto',
                                 zIndex: 99999,
                                 background: 'var(--adm-bg-card, #FFFFFF)',
                                 border: '1px solid var(--adm-border, #CBD5E1)',
@@ -5966,7 +5983,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                 <Trash2 size={12} color="#EF4444" />
                                 <span>Excluir Lead</span>
                               </button>
-                            </div>
+                            </div>,
+                            document.body
                           )}
                         </div>
                       </div>

@@ -827,6 +827,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
 
   // Subcontacts state
   const [isAddingContact, setIsAddingContact] = useState(false);
+  const [isAddContactChooserOpen, setIsAddContactChooserOpen] = useState(false);
   const [newContactName, setNewContactName] = useState('');
   const [newContactPhone, setNewContactPhone] = useState('');
   const [newContactEmail, setNewContactEmail] = useState('');
@@ -5200,10 +5201,10 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
 
               {/* BOTÃO CIRCULAR (+) CENTRALIZADO FORA DOS RETÂNGULOS */}
               {!isAddingContact && !effectiveReadOnly && (
-                <div style={{ display: 'flex', justifyContent: 'center', margin: '8px 0 4px 0' }}>
+                <div style={{ display: 'flex', justifyContent: 'center', margin: '8px 0 4px 0', position: 'relative', flexDirection: 'column', alignItems: 'center' }}>
                   <button
                     type="button"
-                    onClick={() => setIsAddingContact(true)}
+                    onClick={() => setIsAddContactChooserOpen(o => !o)}
                     title="Adicionar Contato Vinculado"
                     style={{
                       width: '34px',
@@ -5232,6 +5233,31 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                   >
                     <Plus size={16} />
                   </button>
+                  {isAddContactChooserOpen && (
+                    <>
+                      <div onClick={() => setIsAddContactChooserOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
+                      <div role="menu" style={{
+                        position: 'absolute', top: '100%', marginTop: '6px', zIndex: 41, minWidth: '190px', padding: '6px',
+                        background: 'var(--adm-bg-card)', border: '1px solid var(--adm-border)', borderRadius: '12px', boxShadow: '0 12px 28px rgba(0,0,0,0.35)',
+                        display: 'flex', flexDirection: 'column', gap: '2px',
+                      }}>
+                        {[
+                          { id: 'contact', label: 'Novo contato', hint: 'Mãe, pai, responsável...', role: alreadyHasDebutanteOrAniversariante.hasAny ? 'mother' : 'debutante' },
+                          { id: 'dependent', label: 'Dependente', hint: 'Entra no grupo familiar', role: 'dependent' },
+                        ].map(opt => (
+                          <button key={opt.id} type="button" role="menuitem"
+                            onClick={() => { setNewContactRole(opt.role as LeadContactRole); setIsAddContactChooserOpen(false); setIsAddingContact(true); }}
+                            style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '1px', padding: '8px 10px', borderRadius: '8px', border: 'none', background: 'transparent', cursor: 'pointer', textAlign: 'left' }}
+                            onMouseEnter={e => { e.currentTarget.style.background = 'var(--adm-bg-input)'; }}
+                            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+                          >
+                            <span style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>{opt.label}</span>
+                            <span style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)' }}>{opt.hint}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
 

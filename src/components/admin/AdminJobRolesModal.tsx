@@ -1,12 +1,16 @@
 import React, { useState } from 'react';
-import { Check, Lock, Pencil, Plus, Trash2, X } from 'lucide-react';
+import { Check, ChevronLeft, ChevronRight, Lock, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { Modal, eyebrow } from './goals/GoalUi';
-import { JOB_ROLE_OPTIONS, JOB_SECTORS, type CustomJobRole, type JobRoleAliases, type JobSector } from '../../utils/jobRoles';
+import { JOB_ROLE_OPTIONS, JOB_SECTORS, orderedSectorRoleIds, type CustomJobRole, type JobRoleAliases, type JobRoleOrder, type JobSector } from '../../utils/jobRoles';
 
 interface Props {
   customRoles: CustomJobRole[];
   /** Nomes de exibicao (id do cargo -> nome mostrado). */
   aliases: JobRoleAliases;
+  /** Ordem hierarquica salva (menor = primeiro). */
+  order: JobRoleOrder;
+  /** Salva a nova ordem dos cargos de um setor. */
+  onReorder: (sector: JobSector, orderedIds: string[]) => Promise<void>;
   onSetAlias: (roleId: string, name: string) => Promise<boolean>;
   /** Quantas pessoas usam cada cargo (id -> total). */
   usage: Record<string, number>;
@@ -25,7 +29,7 @@ const EXAMPLES: Record<JobSector, string> = {
 };
 
 /** Configuração de cargos: cargos fixos de cada setor e os personalizados ("Outro"), que podem ser criados e excluídos. */
-export const AdminJobRolesModal: React.FC<Props> = ({ customRoles, aliases, onSetAlias, usage, canEdit, onCreate, onDelete, onClose }) => {
+export const AdminJobRolesModal: React.FC<Props> = ({ customRoles, aliases, order, onReorder, onSetAlias, usage, canEdit, onCreate, onDelete, onClose }) => {
   const [names, setNames] = useState<Partial<Record<JobSector, string>>>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -68,7 +72,7 @@ export const AdminJobRolesModal: React.FC<Props> = ({ customRoles, aliases, onSe
       <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--adm-text-muted)', lineHeight: 1.5 }}>
         O acesso define o que a pessoa vê; o cargo define o que ela é. Além dos cargos padrão de cada setor, você pode digitar cargos próprios.
         Use o lápis para mudar o nome mostrado de um cargo (ex.: SDR aparecer como "Especialista"): o cargo continua o mesmo para o sistema.
-        Ao excluir um cargo personalizado, ele sai de quem o tinha.
+        Use as setas para definir a hierarquia: quem fica à esquerda aparece primeiro na lista do time dentro do setor. Ao excluir um cargo personalizado, ele sai de quem o tinha.
       </p>
 
       {JOB_SECTORS.map(sector => {
@@ -78,42 +82,54 @@ export const AdminJobRolesModal: React.FC<Props> = ({ customRoles, aliases, onSe
             <span style={{ ...eyebrow, color: sector.color, fontSize: '0.72rem' }}>{sector.label}</span>
 
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-              {JOB_ROLE_OPTIONS[sector.id].map(r => (
-                <span key={r.id} title={r.description} style={{
-                  display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '6px 12px', borderRadius: '999px', fontSize: '0.76rem', fontWeight: 800,
-                  border: '1px solid var(--adm-border)', background: 'var(--adm-bg-card)', color: 'var(--adm-text-title)',
-                }}>
-                  {editingId === r.id ? renderAliasEditor(r.id) : (
-                    <>
-                      {aliases[r.id] || r.label}
-                      {aliases[r.id] && <span style={{ fontWeight: 600, color: 'var(--adm-text-muted)' }}>padrão: {r.label}</span>}
-                      <Lock size={10} color="var(--adm-text-muted)" aria-label="Cargo padrão" />
-                      {canEdit && <button type="button" aria-label={`Renomear exibição de ${r.label}`} onClick={() => startAlias(r.id)} style={{ background: 'transparent', border: 'none', color: 'var(--adm-text-muted)', cursor: 'pointer', display: 'inline-flex', padding: '2px' }}><Pencil size={12} /></button>}
-                    </>
-                  )}
-                </span>
-              ))}
-              {mine.map(r => (
-                <span key={r.id} style={{
-                  display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '6px 8px 6px 12px', borderRadius: '999px', fontSize: '0.76rem', fontWeight: 800,
-                  border: `1px solid ${sector.color}66`, background: `${sector.color}14`, color: sector.color,
-                }}>
-                  {editingId === r.id ? renderAliasEditor(r.id) : (
-                    <>
-                      {aliases[r.id] || r.name}
-                      {aliases[r.id] && <span style={{ fontWeight: 600, color: 'var(--adm-text-muted)' }}>padrão: {r.name}</span>}
-                      <span style={{ fontWeight: 600, color: 'var(--adm-text-muted)' }}>{usage[r.id] || 0} {(usage[r.id] || 0) === 1 ? 'pessoa' : 'pessoas'}</span>
-                      {canEdit && <button type="button" aria-label={`Renomear exibição de ${r.name}`} onClick={() => startAlias(r.id)} style={{ background: 'transparent', border: 'none', color: 'var(--adm-text-muted)', cursor: 'pointer', display: 'inline-flex', padding: '2px' }}><Pencil size={12} /></button>}
-                    </>
-                  )}
-                  {canEdit && editingId !== r.id && (
-                    <button type="button" aria-label={`Excluir cargo ${r.name}`} onClick={() => onDelete(r)}
-                      style={{ background: 'transparent', border: 'none', color: '#EF4444', cursor: 'pointer', display: 'inline-flex', padding: '2px' }}>
-                      <Trash2 size={13} />
-                    </button>
-                  )}
-                </span>
-              ))}
+              {(() => {
+                const ids = orderedSectorRoleIds(sector.id, customRoles, order);
+                const move = (id: string, dir: -1 | 1) => {
+                  const i = ids.indexOf(id);
+                  const j = i + dir;
+                  if (i < 0 || j < 0 || j >= ids.length) return;
+                  const next = [...ids];
+                  [next[i], next[j]] = [next[j], next[i]];
+                  void onReorder(sector.id, next);
+                };
+                const arrow = (disabled: boolean, label: string, onClick: () => void, icon: React.ReactNode) => (
+                  <button type="button" aria-label={label} title={label} disabled={disabled} onClick={onClick}
+                    style={{ background: 'transparent', border: 'none', color: 'var(--adm-text-muted)', cursor: disabled ? 'default' : 'pointer', opacity: disabled ? 0.3 : 1, display: 'inline-flex', padding: '2px' }}>{icon}</button>
+                );
+                return ids.map((id, idx) => {
+                  const fixed = JOB_ROLE_OPTIONS[sector.id].find(o => o.id === id);
+                  const custom = mine.find(r => r.id === id);
+                  const base = fixed ? fixed.label : (custom?.name || id);
+                  return (
+                    <span key={id} title={fixed?.description} style={{
+                      display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '6px 8px', borderRadius: '999px', fontSize: '0.76rem', fontWeight: 800,
+                      border: fixed ? '1px solid var(--adm-border)' : `1px solid ${sector.color}66`,
+                      background: fixed ? 'var(--adm-bg-card)' : `${sector.color}14`, color: fixed ? 'var(--adm-text-title)' : sector.color,
+                    }}>
+                      {canEdit && arrow(idx === 0, `Subir ${base} na hierarquia`, () => move(id, -1), <ChevronLeft size={14} />)}
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ fontWeight: 600, color: 'var(--adm-text-muted)' }}>{idx + 1}º</span>
+                        {editingId === id ? renderAliasEditor(id) : (
+                          <>
+                            {aliases[id] || base}
+                            {aliases[id] && <span style={{ fontWeight: 600, color: 'var(--adm-text-muted)' }}>padrão: {base}</span>}
+                            {fixed && <Lock size={10} color="var(--adm-text-muted)" aria-label="Cargo padrão" />}
+                            <span style={{ fontWeight: 600, color: 'var(--adm-text-muted)' }}>{usage[id] || 0} {(usage[id] || 0) === 1 ? 'pessoa' : 'pessoas'}</span>
+                            {canEdit && <button type="button" aria-label={`Renomear exibição de ${base}`} onClick={() => startAlias(id)} style={{ background: 'transparent', border: 'none', color: 'var(--adm-text-muted)', cursor: 'pointer', display: 'inline-flex', padding: '2px' }}><Pencil size={12} /></button>}
+                          </>
+                        )}
+                        {custom && canEdit && editingId !== id && (
+                          <button type="button" aria-label={`Excluir cargo ${custom.name}`} onClick={() => onDelete(custom)}
+                            style={{ background: 'transparent', border: 'none', color: '#EF4444', cursor: 'pointer', display: 'inline-flex', padding: '2px' }}>
+                            <Trash2 size={13} />
+                          </button>
+                        )}
+                      </span>
+                      {canEdit && arrow(idx === ids.length - 1, `Descer ${base} na hierarquia`, () => move(id, 1), <ChevronRight size={14} />)}
+                    </span>
+                  );
+                });
+              })()}
               {JOB_ROLE_OPTIONS[sector.id].length === 0 && mine.length === 0 && (
                 <span style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)' }}>Nenhum cargo ainda. Digite abaixo para criar.</span>
               )}

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ArrowLeft, ArrowRightLeft, Building2, CalendarClock, Copy, Mail, MessageCircle, Pencil, Phone, Power, Send, Target, Trash2, TrendingUp, Users,
 } from 'lucide-react';
@@ -12,6 +12,8 @@ import { computeManagerResults, managerRange, type ManagerPeriod } from '../../.
 import { formatPhone } from '../../../utils/phoneFormatter';
 import { Select } from '../../ui';
 import { SafeAvatar } from '../SafeAvatar';
+import { CollaboratorPerformanceChart } from './CollaboratorPerformanceChart';
+import { collaboratorHistoryService, type CollaboratorHistoryEntry } from '../../../services/collaboratorHistoryService';
 import {
   RoleChip, SECTOR_META, SectorChip, StatusChip, VenueLogos, getVenueDisplay, whatsappLink,
   type CollabPerms, type PresenceView, type TeamActions,
@@ -33,13 +35,15 @@ interface Props {
   kindOf: (c: Collaborator) => ProfileKind;
   actions: TeamActions;
   presence?: PresenceView;
+  masterId?: string;
   sendingInviteEmail: boolean;
   onBack: () => void;
 }
 
 type Tab = 'overview' | 'assets' | 'performance' | 'access';
 
-const card: React.CSSProperties = { background: 'var(--adm-bg-card)', border: '1px solid var(--adm-border)', borderRadius: '16px', padding: '18px' };
+const panel: React.CSSProperties = { background: 'var(--adm-bg-card)', border: '1px solid var(--adm-border)', borderRadius: '18px', padding: '18px' };
+const card: React.CSSProperties = { background: 'var(--adm-bg-input)', border: '1px solid var(--adm-border)', borderRadius: '14px', padding: '18px' };
 const eyebrow: React.CSSProperties = { fontSize: '0.66rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--adm-text-muted)' };
 const money = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
 const pct = (v: number | null) => (v === null || Number.isNaN(v) ? 'Indefinido' : `${Math.round(v * 100)}%`);
@@ -76,13 +80,22 @@ const Section: React.FC<{ title: string; count?: number; children: React.ReactNo
 
 export const CollaboratorProfile: React.FC<Props> = ({
   collaborator: c, collaborators, kind, perms, jobLabels, venues, leads, clients, tasks, appointments, funnels, assets, kindOf, actions,
-  presence, sendingInviteEmail, onBack,
+  presence, masterId, sendingInviteEmail, onBack,
 }) => {
   const manager = isManagerKind(kind);
   const [tab, setTab] = useState<Tab>('overview');
   const [period, setPeriod] = useState<ManagerPeriod>('this_month');
   const [venueFilter, setVenueFilter] = useState('all');
   const today = todayISO();
+  const [history, setHistory] = useState<CollaboratorHistoryEntry[] | null>(null);
+  // Historico so e lido quando a aba "Acesso e cargo" abre (uma consulta pequena)
+  useEffect(() => {
+    if (tab !== 'access' || !masterId) return;
+    let cancelled = false;
+    setHistory(null);
+    void collaboratorHistoryService.list(masterId, c.id).then(list => { if (!cancelled) setHistory(list); });
+    return () => { cancelled = true; };
+  }, [tab, masterId, c.id]);
 
   const venueInfo = getVenueDisplay(c, venues);
   const wa = whatsappLink(c.phone);
@@ -217,7 +230,7 @@ export const CollaboratorProfile: React.FC<Props> = ({
       </button>
 
       {/* Cabeçalho */}
-      <div style={{ ...card, display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 10, padding: '26px 18px' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 10, padding: '6px 18px 10px' }}>
         <div style={{ position: 'relative' }}>
           <SafeAvatar src={c.avatarUrl} name={c.name} size={96} />
           {presence?.online && <span title="Online agora" style={{ position: 'absolute', right: 4, bottom: 4, width: 16, height: 16, borderRadius: '50%', background: '#10B981', border: '3px solid var(--adm-bg-card)' }} />}
@@ -228,6 +241,7 @@ export const CollaboratorProfile: React.FC<Props> = ({
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'center' }}>
           <SectorChip sector={sector} />
           {jobLabels.map(l => <RoleChip key={l} label={l} />)}
+          {jobLabels.length === 0 && c.customJobTitle?.trim() && <RoleChip label={c.customJobTitle.trim()} />}
           <StatusChip active={c.active} pending={perms.isPending} />
         </div>
         {presence?.online && presence.activity && <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#10B981' }}>Online agora · {presence.activity}</div>}
@@ -259,7 +273,8 @@ export const CollaboratorProfile: React.FC<Props> = ({
         </div>
       </div>
 
-      {/* Abas */}
+      {/* Painel: abas + conteudo */}
+      <div style={{ ...panel, display: 'grid', gap: 16 }}>
       <div role="tablist" style={{ display: 'flex', gap: 4, borderBottom: '1px solid var(--adm-border)', overflowX: 'auto' }}>
         {tabs.map(t => (
           <button key={t.id} role="tab" aria-selected={tab === t.id} type="button" onClick={() => setTab(t.id)} style={{
@@ -290,6 +305,7 @@ export const CollaboratorProfile: React.FC<Props> = ({
               <Stat label="Compromissos" value={mine.appointments} />
             </div>
           )}
+          <CollaboratorPerformanceChart collaborator={c} kind={kind} venueIds={venueInfo.list.map(v => v.id)} leads={leads} clients={clients} funnels={funnels} collaborators={collaborators} />
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(300px,1fr))', gap: 14 }}>
             {tasksList}
             {apptList}
@@ -346,6 +362,12 @@ export const CollaboratorProfile: React.FC<Props> = ({
           <Section title="Unidades">
             {venueInfo.list.map(v => <Row key={v.id} title={v.name} />)}
           </Section>
+          <Section title="Histórico de alterações" count={history?.length}>
+            {history === null ? <Empty text="Carregando..." /> : history.length === 0 ? <Empty text="Nenhuma alteração registrada ainda." /> : history.map(h => (
+              <Row key={h.id} title={({ created: 'Cadastro', role_changed: 'Cargo', sectors_changed: 'Acesso', venues_changed: 'Unidades', deactivated: 'Desativada', reactivated: 'Reativada', updated: 'Atualização' } as Record<string, string>)[h.action] || 'Alteração'}
+                meta={`${h.details}${h.details ? ' · ' : ''}por ${h.actorName}`} right={`${dateBR(h.createdAt)} ${new Date(h.createdAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`} />
+            ))}
+          </Section>
           <Section title="Conta">
             <Row title="Criado em" right={dateBR(c.createdAt)} />
             <Row title="Último acesso" right={c.lastLoginAt ? dateBR(c.lastLoginAt) : 'Nunca'} />
@@ -353,6 +375,7 @@ export const CollaboratorProfile: React.FC<Props> = ({
           </Section>
         </div>
       )}
+      </div>
     </div>
   );
 };

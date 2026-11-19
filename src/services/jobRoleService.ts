@@ -76,6 +76,28 @@ export const jobRoleService = {
     return 'ok';
   },
 
+  /** Ordem hierarquica dos cargos (role_id -> posicao). */
+  async listOrder(masterId: string): Promise<Record<string, number>> {
+    if (!isSupabaseConfigured || !masterId) return {};
+    const { data, error } = await supabase.from('job_role_order').select('role_id, position').eq('master_id', masterId);
+    if (error) { console.warn('[jobRoleService.listOrder]', error.message); return {}; }
+    const out: Record<string, number> = {};
+    (data || []).forEach(r => { out[r.role_id as string] = Number(r.position); });
+    return out;
+  },
+
+  /** Grava a ordem de TODOS os cargos de um setor (posicoes 0..n-1). */
+  async saveOrder(masterId: string, sector: JobSector, orderedIds: string[]): Promise<boolean> {
+    if (!isSupabaseConfigured || !masterId || orderedIds.length === 0) return false;
+    const now = new Date().toISOString();
+    const { error } = await supabase.from('job_role_order').upsert(
+      orderedIds.map((role_id, position) => ({ master_id: masterId, sector, role_id, position, updated_at: now })),
+      { onConflict: 'master_id,role_id' },
+    );
+    if (error) { console.error('[jobRoleService.saveOrder]', error.message); return false; }
+    return true;
+  },
+
   async remove(masterId: string, sector: JobSector, slug: string): Promise<boolean> {
     if (!isSupabaseConfigured || !masterId) return false;
     const { error } = await supabase.from('job_roles').delete().eq('master_id', masterId).eq('sector', sector).eq('slug', slug);

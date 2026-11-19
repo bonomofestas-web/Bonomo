@@ -20,6 +20,7 @@ import type { AdminTabType } from './AdminSidebar';
 import { GOALS_COLLAB_KEY } from './AdminVenueGoalsView';
 import { JOB_ROLE_OPTIONS, JOB_SECTORS, jobRoleLabel, slugifyRole, type CustomJobRole, type JobSector } from '../../utils/jobRoles';
 import { jobRoleService } from '../../services/jobRoleService';
+import { collaboratorHistoryService, type CollaboratorHistoryAction } from '../../services/collaboratorHistoryService';
 import { useJobRoleCatalog } from '../../hooks/useJobRoleCatalog';
 import { AdminJobRolesModal } from './AdminJobRolesModal';
 import { toast } from 'sonner';
@@ -29,7 +30,7 @@ import { PRESENCE_ENABLED, presenceService, type PresenceRow } from '../../servi
 import type { PresenceView } from './team/teamShared';
 import { CollaboratorProfile } from './team/CollaboratorProfile';
 import type { CollabPerms, TeamActions, TeamDataBundle } from './team/teamShared';
-import { jobRoleLabels, resolveProfileKind, summarizeAssets } from '../../utils/collaboratorAssets';
+import { collaboratorSectors, collaboratorRank, jobRoleLabels, resolveProfileKind, summarizeAssets } from '../../utils/collaboratorAssets';
 
 
 const VIEW_LABEL: Record<string, string> = {
@@ -102,7 +103,15 @@ export const AdminCollaboratorsView: React.FC<AdminCollaboratorsViewProps> = ({ 
   const [addingRoleName, setAddingRoleName] = useState('');
   const reloadRoles = useCallback(async () => { if (masterId) setCustomRoles(await jobRoleService.list(masterId)); }, [masterId]);
   useEffect(() => { void reloadRoles(); }, [reloadRoles]);
-  const { aliases: roleAliases, titleOf: roleTitleOf, reload: reloadRoleCatalog } = useJobRoleCatalog(masterId || undefined);
+  const { aliases: roleAliases, order: roleOrder, titleOf: roleTitleOf, reload: reloadRoleCatalog } = useJobRoleCatalog(masterId || undefined);
+  const logHistory = (collaboratorId: string, action: CollaboratorHistoryAction, details: string) => {
+    void collaboratorHistoryService.add({ masterId, collaboratorId, action, details, actorId: currentUser?.id, actorName: currentUser?.name });
+  };
+  const reorderRoles = async (sector: JobSector, orderedIds: string[]) => {
+    const ok = await jobRoleService.saveOrder(masterId, sector, orderedIds);
+    if (ok) await reloadRoleCatalog();
+    else toast.error('Não foi possível salvar a ordem dos cargos.');
+  };
   const setRoleAlias = async (roleId: string, name: string): Promise<boolean> => {
     const r = await jobRoleService.setLabel(masterId, roleId, name);
     if (r === 'ok') { await reloadRoleCatalog(); toast.success(name.trim() ? 'Nome de exibição atualizado.' : 'Nome padrão restaurado.'); return true; }
@@ -128,11 +137,14 @@ export const AdminCollaboratorsView: React.FC<AdminCollaboratorsViewProps> = ({ 
   const deleteRole = async (role: CustomJobRole) => {
     const holders = collaborators.filter(c => c.jobRoles?.includes(role.id));
     const msg = holders.length > 0
-      ? `Excluir o cargo "${role.name}"? Ele será removido de ${holders.length} ${holders.length === 1 ? 'pessoa' : 'pessoas'}.`
-      : `Excluir o cargo "${role.name}"?`;
+      ? `Tem ${holders.length} ${holders.length === 1 ? 'pessoa' : 'pessoas'} com o cargo "${role.name}". Realmente deseja excluir? Ele será removido ${holders.length === 1 ? 'dessa pessoa' : 'dessas pessoas'}.`
+      : `Excluir o cargo "${role.name}"? Ninguém está usando esse cargo.`;
     if (!window.confirm(msg)) return;
     if (!(await jobRoleService.remove(masterId, role.sector, role.slug))) { toast.error('Não foi possível excluir o cargo.'); return; }
-    holders.forEach(c => updateCollaborator(c.id, { jobRoles: (c.jobRoles || []).filter(r => r !== role.id) }));
+    holders.forEach(c => {
+      updateCollaborator(c.id, { jobRoles: (c.jobRoles || []).filter(r => r !== role.id) });
+      logHistory(c.id, 'role_changed', `Cargo "${role.name}" excluído do sistema e removido desta pessoa.`);
+    });
     setFormJobRoles(prev => prev.filter(r => r !== role.id));
     await reloadRoles();
     toast.success('Cargo excluído.');
@@ -146,7 +158,7 @@ export const AdminCollaboratorsView: React.FC<AdminCollaboratorsViewProps> = ({ 
 
   const rolesModal = isRolesModalOpen ? (
     <AdminJobRolesModal
-      customRoles={customRoles} aliases={roleAliases} onSetAlias={setRoleAlias} usage={roleUsage} canEdit={canManageRoles}
+      customRoles={customRoles} aliases={roleAliases} order={roleOrder} onReorder={reorderRoles} onSetAlias={setRoleAlias} usage={roleUsage} canEdit={canManageRoles}
       onCreate={async (sector, name) => Boolean(await createRole(sector, name))}
       onDelete={deleteRole}
       onClose={() => setIsRolesModalOpen(false)}
@@ -172,6 +184,7 @@ export const AdminCollaboratorsView: React.FC<AdminCollaboratorsViewProps> = ({ 
   const [masterFormName, setMasterFormName] = useState('');
   const [masterFormEmail, setMasterFormEmail] = useState('');
   const [masterFormPhone, setMasterFormPhone] = useState('');
+  const [masterFormJobTitle, setMasterFormJobTitle] = useState('');
   const [masterFormAvatarUrl, setMasterFormAvatarUrl] = useState('');
   const [masterFormPassword, setMasterFormPassword] = useState('');
   const [isSavingMasterProfile, setIsSavingMasterProfile] = useState(false);
@@ -353,6 +366,30 @@ export const AdminCollaboratorsView: React.FC<AdminCollaboratorsViewProps> = ({ 
     };
 
     if (collaboratorToEdit) {
+      // Historico: o que mudou (cargo, setores, unidades, ativacao)
+      const before = collaboratorToEdit;
+      const label = (id: string) => jobRoleLabel(id, customRoles, roleAliases);
+      const oldRoles = before.jobRoles || [];
+      const newRoles = payload.jobRoles || [];
+      const addedRoles = newRoles.filter(r => !oldRoles.includes(r)).map(label);
+      const removedRoles = oldRoles.filter(r => !newRoles.includes(r)).map(label);
+      if (addedRoles.length || removedRoles.length) {
+        logHistory(before.id, 'role_changed', [addedRoles.length ? `Cargo adicionado: ${addedRoles.join(', ')}` : '', removedRoles.length ? `Cargo removido: ${removedRoles.join(', ')}` : ''].filter(Boolean).join(' · '));
+      }
+      const oldSectors = collaboratorSectors(before);
+      const newSectors = (payload.sectors || []) as string[];
+      if (oldSectors.some(x => !newSectors.includes(x)) || newSectors.some(x => !(oldSectors as string[]).includes(x))) {
+        logHistory(before.id, 'sectors_changed', `Acesso por setor: de ${oldSectors.join(', ') || 'nenhum'} para ${newSectors.join(', ') || 'nenhum'}`);
+      }
+      const oldVenues = (before.venueIds && before.venueIds.length ? before.venueIds : []).slice().sort().join(',');
+      const newVenues = (payload.venueIds || []).slice().sort().join(',');
+      if (oldVenues !== newVenues) {
+        const names = (payload.venueIds || []).map(id => venues.find(v => v.id === id)?.name).filter(Boolean).join(', ');
+        logHistory(before.id, 'venues_changed', `Unidades: ${names || 'nenhuma'}`);
+      }
+      if (Boolean(before.active) !== Boolean(payload.active)) {
+        logHistory(before.id, payload.active ? 'reactivated' : 'deactivated', payload.active ? 'Pessoa reativada.' : 'Pessoa desativada.');
+      }
       // Gestor não define senha de cadastro; preserva a senha e o status do colaborador
       updateCollaborator(collaboratorToEdit.id, {
         ...payload,
@@ -366,6 +403,7 @@ export const AdminCollaboratorsView: React.FC<AdminCollaboratorsViewProps> = ({ 
         password: '',
         isFirstAccess: true,
       });
+      logHistory(newId, 'created', `Cadastrado com acesso: ${(payload.sectors || []).join(', ') || 'nenhum'}`);
       // Abre o modal do Link de Entrada para o Master copiar ou enviar no WhatsApp na hora
       setCollabForInviteModal({
         ...payload,
@@ -520,6 +558,7 @@ export const AdminCollaboratorsView: React.FC<AdminCollaboratorsViewProps> = ({ 
     setMasterFormName(masterCollab?.name || currentUser?.name || '');
     setMasterFormEmail(masterCollab?.email || currentUser?.email || '');
     setMasterFormPhone(masterCollab?.phone ? formatPhone(masterCollab.phone) : '');
+    setMasterFormJobTitle((masterCollab as Collaborator | undefined)?.customJobTitle || '');
     setMasterFormAvatarUrl(masterCollab?.avatarUrl || currentUser?.avatarUrl || '');
     setMasterFormPassword('');
     setIsMasterProfileOpen(true);
@@ -541,6 +580,8 @@ export const AdminCollaboratorsView: React.FC<AdminCollaboratorsViewProps> = ({ 
         email: masterFormEmail.trim().toLowerCase(),
         phone: masterFormPhone.trim() || undefined,
         avatarUrl: masterFormAvatarUrl.trim() || undefined,
+        // Cargo que aparece para os outros (ex.: Sócio, Diretor). Vazio limpa.
+        customJobTitle: masterFormJobTitle.trim(),
       };
       if (masterFormPassword.trim()) {
         payload.password = masterFormPassword.trim();
@@ -590,6 +631,7 @@ export const AdminCollaboratorsView: React.FC<AdminCollaboratorsViewProps> = ({ 
     permsOf,
     jobLabelsOf: c => jobRoleLabels(c, customRoles, roleAliases),
     titleOf: c => roleTitleOf(c),
+    rankOf: c => collaboratorRank(c, roleOrder, customRoles),
   };
 
   // Presenca ao vivo: so Master/Gerencia veem, so com a chave ligada, e so enquanto esta tela esta aberta
@@ -619,7 +661,10 @@ export const AdminCollaboratorsView: React.FC<AdminCollaboratorsViewProps> = ({ 
   const teamActions: TeamActions = {
     onOpen: c => setProfileCollabId(c.id),
     onEdit: handleOpenEdit,
-    onToggleActive: c => updateCollaborator(c.id, { active: !c.active }),
+    onToggleActive: c => {
+      updateCollaborator(c.id, { active: !c.active });
+      logHistory(c.id, c.active ? 'deactivated' : 'reactivated', c.active ? 'Pessoa desativada.' : 'Pessoa reativada.');
+    },
     onDelete: handleOpenDelete,
     onGoals: c => openGoals(c.id),
     onTransfer: c => handleOpenSuperManagement(c),
@@ -1085,11 +1130,11 @@ export const AdminCollaboratorsView: React.FC<AdminCollaboratorsViewProps> = ({ 
                 const fixed = JOB_ROLE_OPTIONS[g.id];
                 const custom = customRoles.filter(r => r.sector === g.id);
                 const options = [
-                  ...fixed.map(o => ({ id: o.id, label: roleAliases[o.id] || o.label, description: o.description })),
-                  ...custom.map(o => ({ id: o.id, label: roleAliases[o.id] || o.name, description: 'Cargo personalizado' })),
+                  ...fixed.map(o => ({ id: o.id, label: roleAliases[o.id] || o.label, description: o.description, custom: undefined as CustomJobRole | undefined })),
+                  ...custom.map(o => ({ id: o.id, label: roleAliases[o.id] || o.name, description: 'Cargo personalizado', custom: o })),
                   // Cargo ainda selecionado mas ja excluido do catalogo: continua visivel ate salvar
                   ...formJobRoles.filter(id => id.startsWith(`${g.id}:`) && !fixed.some(o => o.id === id) && !custom.some(o => o.id === id))
-                    .map(id => ({ id, label: jobRoleLabel(id, customRoles, roleAliases), description: '' })),
+                    .map(id => ({ id, label: jobRoleLabel(id, customRoles, roleAliases), description: '', custom: undefined as CustomJobRole | undefined })),
                 ];
                 const isAdding = addingRoleSector === g.id;
                 return (
@@ -1098,22 +1143,40 @@ export const AdminCollaboratorsView: React.FC<AdminCollaboratorsViewProps> = ({ 
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
                       {options.map(opt => {
                         const active = formJobRoles.includes(opt.id);
+                        const removable = Boolean(opt.custom) && canManageRoles;
                         return (
-                          <button
-                            key={opt.id}
-                            type="button"
-                            aria-pressed={active}
-                            title={opt.description}
-                            onClick={() => setFormJobRoles(active ? formJobRoles.filter(r => r !== opt.id) : [...formJobRoles, opt.id])}
-                            style={{
-                              padding: '8px 14px', borderRadius: '999px', fontSize: '0.78rem', fontWeight: 800, cursor: 'pointer',
-                              border: `1.5px solid ${active ? g.color : 'var(--adm-border)'}`,
-                              background: active ? `${g.color}1F` : 'var(--adm-bg-input)',
-                              color: active ? g.color : 'var(--adm-text-title)',
-                            }}
-                          >
-                            {opt.label}
-                          </button>
+                          <span key={opt.id} style={{ display: 'inline-flex', alignItems: 'stretch' }}>
+                            <button
+                              type="button"
+                              aria-pressed={active}
+                              title={opt.description}
+                              onClick={() => setFormJobRoles(active ? formJobRoles.filter(r => r !== opt.id) : [...formJobRoles, opt.id])}
+                              style={{
+                                padding: removable ? '8px 10px 8px 14px' : '8px 14px', fontSize: '0.78rem', fontWeight: 800, cursor: 'pointer',
+                                borderRadius: removable ? '999px 0 0 999px' : '999px',
+                                border: `1.5px solid ${active ? g.color : 'var(--adm-border)'}`, borderRight: removable ? 'none' : undefined,
+                                background: active ? `${g.color}1F` : 'var(--adm-bg-input)',
+                                color: active ? g.color : 'var(--adm-text-title)',
+                              }}
+                            >
+                              {opt.label}
+                            </button>
+                            {removable && opt.custom && (
+                              <button
+                                type="button"
+                                aria-label={`Excluir o cargo ${opt.label}`}
+                                title="Excluir este cargo"
+                                onClick={() => { void deleteRole(opt.custom as CustomJobRole); }}
+                                style={{
+                                  padding: '0 9px 0 6px', borderRadius: '0 999px 999px 0', cursor: 'pointer', display: 'inline-flex', alignItems: 'center',
+                                  border: `1.5px solid ${active ? g.color : 'var(--adm-border)'}`, borderLeft: 'none',
+                                  background: active ? `${g.color}1F` : 'var(--adm-bg-input)', color: '#EF4444',
+                                }}
+                              >
+                                <X size={13} />
+                              </button>
+                            )}
+                          </span>
                         );
                       })}
                       {!isAdding && (
@@ -1311,6 +1374,7 @@ export const AdminCollaboratorsView: React.FC<AdminCollaboratorsViewProps> = ({ 
           presence={profilePresence}
           kindOf={teamData.kindOf}
           actions={teamActions}
+          masterId={masterId}
           sendingInviteEmail={sendingInviteEmail === profileCollab.email}
           onBack={() => setProfileCollabId(null)}
         />
@@ -1837,6 +1901,31 @@ export const AdminCollaboratorsView: React.FC<AdminCollaboratorsViewProps> = ({ 
                     />
                   </div>
                 </div>
+              </div>
+
+              {/* Cargo exibido para a equipe */}
+              <div>
+                <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--adm-text-title)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>
+                  Cargo exibido para a equipe
+                </label>
+                <input
+                  type="text"
+                  list="master-job-title-options"
+                  maxLength={60}
+                  value={masterFormJobTitle}
+                  onChange={(e) => setMasterFormJobTitle(e.target.value)}
+                  placeholder="Ex.: Sócio, Sócia diretora, Diretor executivo"
+                  style={{
+                    width: '100%', background: 'var(--adm-bg-input)', border: '1px solid var(--adm-border)', borderRadius: '10px',
+                    padding: '10px 14px', color: 'var(--adm-text-title)', fontSize: '0.84rem', outline: 'none', boxSizing: 'border-box',
+                  }}
+                />
+                <datalist id="master-job-title-options">
+                  <option value="Sócio" /><option value="Sócia" /><option value="Sócio diretor" /><option value="Sócia diretora" /><option value="Diretor executivo" /><option value="Diretora executiva" />
+                </datalist>
+                <span style={{ display: 'block', marginTop: 4, fontSize: '0.7rem', color: 'var(--adm-text-muted)' }}>
+                  Só muda o nome mostrado. O Master continua com acesso a todas as telas e setores.
+                </span>
               </div>
 
               {/* Senha */}

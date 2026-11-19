@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useSyncExternalStore } from 'react';
 import { jobRoleService } from '../services/jobRoleService';
-import { jobRoleLabel, type CustomJobRole, type JobRoleAliases } from '../utils/jobRoles';
+import { jobRoleLabel, type CustomJobRole, type JobRoleAliases, type JobRoleOrder } from '../utils/jobRoles';
 import type { Collaborator } from '../types/admin';
 
 /**
  * Catalogo de cargos do Master (personalizados + nomes de exibicao), compartilhado entre as telas.
  * Uma leitura por Master (tabelas minusculas) e recarga so quando a configuracao de cargos muda.
  */
-interface State { masterId: string; custom: CustomJobRole[]; aliases: JobRoleAliases; loaded: boolean }
-let state: State = { masterId: '', custom: [], aliases: {}, loaded: false };
+interface State { masterId: string; custom: CustomJobRole[]; aliases: JobRoleAliases; order: JobRoleOrder; loaded: boolean }
+let state: State = { masterId: '', custom: [], aliases: {}, order: {}, loaded: false };
 let loading: string | null = null;
 const listeners = new Set<() => void>();
 const emit = () => listeners.forEach(l => l());
@@ -20,8 +20,8 @@ const load = async (masterId: string, force = false) => {
   if (!force && state.loaded && state.masterId === masterId) return;
   loading = masterId;
   try {
-    const [custom, aliases] = await Promise.all([jobRoleService.list(masterId), jobRoleService.listLabels(masterId)]);
-    state = { masterId, custom, aliases, loaded: true };
+    const [custom, aliases, order] = await Promise.all([jobRoleService.list(masterId), jobRoleService.listLabels(masterId), jobRoleService.listOrder(masterId)]);
+    state = { masterId, custom, aliases, order, loaded: true };
     emit();
   } finally {
     loading = null;
@@ -39,5 +39,5 @@ export const useJobRoleCatalog = (masterId?: string) => {
     if (first) return jobRoleLabel(first, snap.custom, snap.aliases);
     return (c.customJobTitle || '').trim();
   }, [snap]);
-  return { custom: snap.custom, aliases: snap.aliases, label, titleOf, reload };
+  return { custom: snap.custom, aliases: snap.aliases, order: snap.order, label, titleOf, reload };
 };

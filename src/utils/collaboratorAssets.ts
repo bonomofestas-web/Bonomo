@@ -1,7 +1,7 @@
 import type { AdminTask, Client, Collaborator, CommercialFunnel, Lead } from '../types/admin';
 import type { Appointment } from '../types';
 import { getCommercialRolesInVenue, isCommercialCollaborator } from './funnelResponsibility';
-import { commercialJobRoles, jobRoleLabel, type CustomJobRole, type JobRoleAliases } from './jobRoles';
+import { commercialJobRoles, jobRoleLabel, type CustomJobRole, type JobRoleAliases, type JobRoleOrder, roleRank } from './jobRoles';
 
 /**
  * Perfil e ATIVOS de cada colaborador. Funcoes puras sobre dados que o contexto ja carrega em memoria
@@ -40,6 +40,8 @@ export const collaboratorSectors = (c: Collaborator): CollabSectorKey[] => {
   (c.sectors || []).forEach(s => found.add(s as CollabSectorKey));
   (c.permissions || []).forEach(p => { if (typeof p === 'string' && p.startsWith('sector:')) found.add(p.replace('sector:', '') as CollabSectorKey); });
   if (c.department && c.department !== 'diretoria') found.add(c.department as CollabSectorKey);
+  // Master tem acesso global: sempre todos os setores (inclui os que forem criados depois)
+  if (c.role === 'master') ['gerencia', 'comercial', 'pos_venda', 'marketing', 'financeiro'].forEach(k => found.add(k as CollabSectorKey));
   if (c.role === 'master' || c.role === 'admin' || c.role === 'gerencia') {
     found.add('gerencia');
     if (found.size === 1) { found.add('comercial'); found.add('pos_venda'); }
@@ -98,6 +100,13 @@ export const resolveProfileKind = (c: Collaborator, funnels: CommercialFunnel[],
     return commercialJobRoles(c).manager ? 'gerente_comercial' : 'outro';
   }
   return 'outro';
+};
+
+/** Posicao hierarquica da pessoa no setor principal: menor cargo (posicao) entre os dela; sem cargo vai para o fim. */
+export const collaboratorRank = (c: Collaborator, order: JobRoleOrder, custom: CustomJobRole[]): number => {
+  const sector = primarySectorOf(c);
+  const ranks = (c.jobRoles || []).filter(r => r.split(':')[0] === sector).map(r => roleRank(r, order, custom));
+  return ranks.length > 0 ? Math.min(...ranks) : 9999;
 };
 
 /** Cargos legiveis (labels de jobRoles; custom pelo catalogo) para chips. */

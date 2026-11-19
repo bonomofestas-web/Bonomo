@@ -26,9 +26,9 @@ export interface JobRoleOption { id: string; label: string; description: string 
 /** Cargos fixos de cada setor. Os demais sao digitados em "+ Outro" (catalogo por setor). */
 export const JOB_ROLE_OPTIONS: Record<JobSector, JobRoleOption[]> = {
   comercial: [
-    { id: 'comercial:sdr', label: 'SDR', description: 'Qualifica e agenda' },
-    { id: 'comercial:closer', label: 'Closer', description: 'Conduz a visita e fecha o contrato' },
     { id: 'comercial:gerente', label: 'Gerente comercial', description: 'Gestão do setor comercial' },
+    { id: 'comercial:closer', label: 'Closer', description: 'Conduz a visita e fecha o contrato' },
+    { id: 'comercial:sdr', label: 'SDR', description: 'Qualifica e agenda' },
   ],
   gerencia: [
     { id: 'gerencia:gerente_geral', label: 'Gerente geral', description: 'Responsável pela unidade inteira' },
@@ -52,6 +52,24 @@ export const JOB_ROLE_OPTIONS: Record<JobSector, JobRoleOption[]> = {
 };
 
 export interface CustomJobRole { id: string; sector: JobSector; name: string; slug: string }
+
+/** Ordem hierarquica salva (id do cargo -> posicao; menor aparece primeiro). */
+export type JobRoleOrder = Record<string, number>;
+
+/** Posicao do cargo: a salva pelo Master; senao a ordem padrao (fixos na ordem da lista, personalizados depois). */
+export const roleRank = (id: string, order: JobRoleOrder = {}, custom: CustomJobRole[] = []): number => {
+  if (order[id] !== undefined) return order[id];
+  const sector = id.split(':')[0] as JobSector;
+  const fixedIndex = (JOB_ROLE_OPTIONS[sector] || []).findIndex(o => o.id === id);
+  if (fixedIndex >= 0) return fixedIndex;
+  const customIndex = custom.filter(r => r.sector === sector).findIndex(r => r.id === id);
+  return 500 + (customIndex >= 0 ? customIndex : 0);
+};
+
+/** Ids dos cargos de um setor (fixos + personalizados) na ordem hierarquica. */
+export const orderedSectorRoleIds = (sector: JobSector, custom: CustomJobRole[] = [], order: JobRoleOrder = {}): string[] =>
+  [...(JOB_ROLE_OPTIONS[sector] || []).map(o => o.id), ...custom.filter(r => r.sector === sector).map(r => r.id)]
+    .sort((a, b) => roleRank(a, order, custom) - roleRank(b, order, custom));
 
 export const slugifyRole = (name: string): string =>
   name.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 50);
