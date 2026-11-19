@@ -41,13 +41,26 @@ export const AdminNewClientModal: React.FC<AdminNewClientModalProps> = ({
   onClientCreated,
   defaultFunnelId,
 }) => {
-  const { venues, activeVenueId, addClient } = useAdminState();
+  const { venues, funnels, activeVenueId, addClient } = useAdminState();
+
+  // Unidades do FUNIL (vinculo manual do funil): 1 unidade = fixa e travada; so escolhe se o funil tiver mais de uma.
+  const funnelVenues = (() => {
+    const f = funnels.find(x => x.id === defaultFunnelId) as unknown as { venueId?: string; sharedVenueIds?: string[]; venueIds?: string[]; disabledVenueIds?: string[] } | undefined;
+    if (!f) return [] as typeof venues;
+    const disabled = new Set<string>(f.disabledVenueIds || []);
+    const ids = new Set<string>();
+    if (f.venueId && f.venueId !== 'all' && !disabled.has(f.venueId)) ids.add(f.venueId);
+    (f.sharedVenueIds || f.venueIds || []).forEach(id => { if (id && id !== 'all' && !disabled.has(id)) ids.add(id); });
+    return venues.filter(v => ids.has(v.id) && v.active !== false);
+  })();
+  const selectableVenues = funnelVenues.length > 0 ? funnelVenues : venues.filter(v => v.active !== false);
+  const isVenueLocked = funnelVenues.length === 1;
 
   const getEffectiveVenueId = () => {
-    if (activeVenueId && activeVenueId !== 'all' && venues.some(v => v.id === activeVenueId)) {
+    if (activeVenueId && activeVenueId !== 'all' && selectableVenues.some(v => v.id === activeVenueId)) {
       return activeVenueId;
     }
-    return venues[0]?.id || '';
+    return selectableVenues[0]?.id || venues[0]?.id || '';
   };
 
   // Modo: Rápido (padrão) vs Completo
@@ -471,13 +484,14 @@ export const AdminNewClientModal: React.FC<AdminNewClientModalProps> = ({
 
             <button
               type="button"
-              onClick={() => setIsVenueDropdownOpen(!isVenueDropdownOpen)}
+              onClick={() => { if (!isVenueLocked) setIsVenueDropdownOpen(!isVenueDropdownOpen); }}
+              title={isVenueLocked ? 'Unidade definida pelo funil' : undefined}
               style={{
                 ...fieldInputStyle,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                cursor: 'pointer',
+                cursor: isVenueLocked ? 'default' : 'pointer',
                 borderColor: isVenueDropdownOpen ? 'var(--adm-accent)' : 'var(--adm-border)',
               }}
             >
@@ -486,10 +500,12 @@ export const AdminNewClientModal: React.FC<AdminNewClientModalProps> = ({
                   {selectedVenue?.name || 'Selecione uma casa'}
                 </span>
               </div>
-              <ChevronDown size={14} color="var(--adm-text-muted)" style={{ transform: isVenueDropdownOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
+              {isVenueLocked
+                ? <span style={{ fontSize: '0.62rem', fontWeight: 700, color: 'var(--adm-text-muted)' }}>Definida pelo funil</span>
+                : <ChevronDown size={14} color="var(--adm-text-muted)" style={{ transform: isVenueDropdownOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />}
             </button>
 
-            {isVenueDropdownOpen && (
+            {isVenueDropdownOpen && !isVenueLocked && (
               <div style={{
                 position: 'absolute',
                 top: 'calc(100% + 4px)',
@@ -507,7 +523,7 @@ export const AdminNewClientModal: React.FC<AdminNewClientModalProps> = ({
                 flexDirection: 'column',
                 gap: '2px',
               }}>
-                {venues.filter(v => v.active !== false).map(v => {
+                {selectableVenues.map(v => {
                   const isSel = venueId === v.id;
                   return (
                     <button

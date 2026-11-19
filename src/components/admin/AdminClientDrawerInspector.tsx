@@ -568,142 +568,96 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
       {/* ── TOP HEADER (Status Ativo + Nome Editável + Código CLI + Collapse) ── */}
       <div style={{
         padding: '12px 14px 10px',
-        borderBottom: '1px solid var(--adm-border)',
+        borderBottom: '1px solid rgba(20, 169, 215, 0.25)',
         display: 'flex',
         flexDirection: 'column',
         gap: '8px',
-        background: 'var(--adm-bg-input)',
+        background: 'linear-gradient(180deg, #0B111A 0%, #0F1724 100%)',
+        color: '#FFFFFF',
       }}>
-        {/* Top Bar: Código do Contrato + Status + Botão Fechar/Recolher */}
+        {/* Linha 1: nome (editavel, igual ao comercial) + acoes */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            {/* Código Base36 do Contrato com Cópia */}
-            <div style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '4px',
-              padding: '3px 8px',
-              borderRadius: '6px',
-              background: 'rgba(6, 182, 212, 0.15)',
-              border: '1px solid rgba(6, 182, 212, 0.4)',
-              color: '#06B6D4',
-              fontSize: '0.72rem',
-              fontWeight: 800,
-              letterSpacing: '0.5px',
-            }}>
-              <FileText size={11} color="#06B6D4" />
-              <span>{contractCodeDisplay}</span>
+          {linkedContract ? (
+            <div
+              title="O nome segue o padrão do contrato"
+              style={{ flex: 1, minWidth: 0, fontSize: '0.92rem', fontWeight: 900, color: '#FFFFFF', padding: '2px 4px', overflowWrap: 'anywhere', lineHeight: 1.25 }}
+            >
+              {linkedContract.contractTitle || linkedContract.title || client?.name || lead.name}
+            </div>
+          ) : (
+            <input
+              type="text"
+              value={client?.name ?? lead.name}
+              disabled={readOnly}
+              onChange={(e) => { if (client) updateClient(client.id, { name: e.target.value }); else updateLeadData(lead.id, { name: e.target.value } as any); }}
+              title={readOnly ? 'Nome bloqueado para edição' : 'Clique para editar o nome do cliente'}
+              style={{
+                flex: 1, minWidth: 0, background: 'transparent', border: '1px solid transparent', borderRadius: '6px',
+                color: '#FFFFFF', fontSize: '0.92rem', fontWeight: 900, padding: '2px 4px', outline: 'none',
+                fontFamily: "'Plus Jakarta Sans', sans-serif", cursor: readOnly ? 'default' : 'text',
+              }}
+              onFocus={(e) => { if (!readOnly) { e.target.style.background = 'rgba(255,255,255,0.08)'; e.target.style.borderColor = 'rgba(20, 169, 215, 0.5)'; } }}
+              onBlur={(e) => { e.target.style.background = 'transparent'; e.target.style.borderColor = 'transparent'; }}
+            />
+          )}
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+            {!readOnly && client && (
               <button
                 type="button"
-                onClick={handleCopyContractCode}
-                title="Copiar código do cliente"
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  color: copiedContractCode ? '#10B981' : '#06B6D4',
-                  cursor: 'pointer',
-                  padding: '1px',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  marginLeft: '2px',
-                }}
+                onClick={() => { updateClientStage(client.id, 'archived' as ClientStage); toast.success('Cliente arquivado.'); onToggleCollapse?.(); }}
+                title="Arquivar cliente"
+                style={{ background: 'rgba(139, 92, 246, 0.18)', border: '1px solid rgba(139, 92, 246, 0.45)', color: '#A78BFA', cursor: 'pointer', padding: '4px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: '6px' }}
               >
-                {copiedContractCode ? <Check size={11} /> : <Copy size={11} />}
+                <Archive size={14} />
               </button>
-            </div>
-
-            <span style={{
-              fontSize: '0.62rem',
-              fontWeight: 700,
-              padding: '2px 7px',
-              borderRadius: '6px',
-              background: currentStage === 'completed' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(16, 185, 129, 0.10)',
-              color: currentStage === 'completed' ? '#10B981' : '#059669',
-              border: '1px solid rgba(16, 185, 129, 0.3)',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '4px',
-            }}>
-              <Shield size={10} /> {currentStage === 'completed' ? 'Festa Realizada' : (linkedContract ? 'Contrato vinculado' : 'Sem contrato')}
-            </span>
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          {!readOnly && client && (
-            <button
-              type="button"
-              onClick={() => { updateClientStage(client.id, 'archived' as ClientStage); toast.success('Cliente arquivado.'); onToggleCollapse?.(); }}
-              title="Arquivar cliente"
-              style={{ background: 'rgba(139, 92, 246, 0.12)', border: '1px solid rgba(139, 92, 246, 0.35)', color: '#8B5CF6', cursor: 'pointer', padding: '4px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: '6px' }}
-            >
-              <Archive size={14} />
-            </button>
-          )}
-          {!readOnly && client && canRemoveClient && (
-            <button
-              type="button"
-              onClick={() => setIsDeleteClientOpen(true)}
-              title="Remover cliente"
-              style={{ background: 'rgba(239, 68, 68, 0.12)', border: '1px solid rgba(239, 68, 68, 0.35)', color: '#EF4444', cursor: 'pointer', padding: '4px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: '6px' }}
-            >
-              <Trash2 size={14} />
-            </button>
-          )}
-          {onToggleCollapse && (
-            <button
-              type="button"
-              onClick={onToggleCollapse}
-              title="Recolher Ficha do Contrato"
-              style={{
-                background: 'var(--adm-bg-input)',
-                border: '1px solid var(--adm-border)',
-                color: 'var(--adm-text-muted)',
-                cursor: 'pointer',
-                padding: '4px',
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                borderRadius: '6px',
-                transition: 'all 0.15s ease',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.color = 'var(--adm-accent)';
-                e.currentTarget.style.borderColor = 'var(--adm-accent)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.color = 'var(--adm-text-muted)';
-                e.currentTarget.style.borderColor = 'var(--adm-border)';
-              }}
-            >
-              <ChevronLeft size={15} />
-            </button>
-          )}
+            )}
+            {!readOnly && client && canRemoveClient && (
+              <button
+                type="button"
+                onClick={() => setIsDeleteClientOpen(true)}
+                title="Remover cliente"
+                style={{ background: 'rgba(239, 68, 68, 0.18)', border: '1px solid rgba(239, 68, 68, 0.45)', color: '#F87171', cursor: 'pointer', padding: '4px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: '6px' }}
+              >
+                <Trash2 size={14} />
+              </button>
+            )}
+            {onToggleCollapse && (
+              <button
+                type="button"
+                onClick={onToggleCollapse}
+                title="Recolher ficha do cliente"
+                style={{ background: 'rgba(255, 255, 255, 0.08)', border: '1px solid rgba(20, 169, 215, 0.3)', color: '#14A9D7', borderRadius: '6px', padding: '4px 6px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              >
+                <ChevronLeft size={14} />
+              </button>
+            )}
           </div>
         </div>
 
-        {/* ── TITULO: nome do contrato (se vinculado) ou nome do cliente ── */}
-        <div style={{
-          background: 'var(--adm-bg-card)',
-          border: '1px solid var(--adm-border)',
-          borderRadius: '10px',
-          padding: '10px 12px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '4px',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
-        }}>
-          <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, color: 'var(--adm-text-title)', lineHeight: 1.25, overflowWrap: 'anywhere' }}>
-            {linkedContract?.contractTitle || linkedContract?.title || client?.name || lead.name}
-          </h3>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', fontSize: '0.72rem', color: 'var(--adm-text-muted)' }}>
-            <span style={{ fontWeight: 700, color: 'var(--adm-text-title)' }}>{client?.payerName || lead.name}</span>
-            {client?.payerRelationship && (
-              <span style={{ fontSize: '0.62rem', fontWeight: 700, padding: '1px 6px', borderRadius: '4px', background: 'rgba(59, 130, 246, 0.12)', color: '#3B82F6', border: '1px solid rgba(59, 130, 246, 0.3)' }}>
-                {relationshipLabel(client.payerRelationship)}
-              </span>
-            )}
-            {(client?.payerPhone || lead.phone) && <span>{formatPhone(client?.payerPhone || lead.phone || '')}</span>}
+        {/* Linha 2: codigo de cliente + situacao do contrato */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', background: 'rgba(6, 182, 212, 0.15)', border: '1px solid rgba(6, 182, 212, 0.4)', borderRadius: '6px', padding: '2px 7px' }}>
+            <span style={{ fontSize: '0.60rem', color: 'rgba(255,255,255,0.6)', fontWeight: 700, textTransform: 'uppercase' }}>CLIENTE:</span>
+            <span style={{ fontSize: '0.70rem', fontWeight: 900, color: '#06B6D4', letterSpacing: '0.6px', fontFamily: "'Poppins', monospace" }}>{contractCodeDisplay}</span>
+            <button
+              type="button"
+              onClick={handleCopyContractCode}
+              title="Copiar código do cliente"
+              style={{ background: 'transparent', border: 'none', color: copiedContractCode ? '#10B981' : '#06B6D4', cursor: 'pointer', padding: '1px 2px', display: 'flex', alignItems: 'center', marginLeft: '3px' }}
+            >
+              {copiedContractCode ? <Check size={11} /> : <Copy size={11} />}
+            </button>
           </div>
+          <span style={{
+            fontSize: '0.62rem', fontWeight: 700, padding: '2px 7px', borderRadius: '6px',
+            background: linkedContract || currentStage === 'completed' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(148, 163, 184, 0.18)',
+            color: linkedContract || currentStage === 'completed' ? '#34D399' : '#CBD5E1',
+            border: `1px solid ${linkedContract || currentStage === 'completed' ? 'rgba(16, 185, 129, 0.35)' : 'rgba(148, 163, 184, 0.35)'}`,
+            display: 'inline-flex', alignItems: 'center', gap: '4px',
+          }}>
+            <Shield size={10} /> {currentStage === 'completed' ? 'Festa Realizada' : (linkedContract ? 'Contrato vinculado' : 'Sem contrato')}
+          </span>
         </div>
 
         {/* ── ETAPA DO FUNIL DE PÓS-VENDA (DROPDOWN + PROGRESS BAR) ── */}
@@ -1393,6 +1347,33 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
                     onFocus={(e) => { e.currentTarget.style.borderBottomColor = 'var(--adm-accent)'; }}
                     onBlur={(e) => { e.currentTarget.style.borderBottomColor = 'transparent'; }}
                   />
+                </div>
+              </div>
+
+              <div style={cardRowStyle}>
+                <span style={cardLabelStyle}>Relação</span>
+                <div style={cardValueStyle}>
+                  <Select
+                    disabled={readOnly || !client}
+                    value={(() => {
+                      const r = String(client?.payerRelationship || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+                      if (r === 'mother' || r.includes('mae')) return 'mother';
+                      if (r === 'father' || r.includes('pai')) return 'father';
+                      if (r === 'guardian' || r.includes('responsavel')) return 'guardian';
+                      if (r === 'self' || r.includes('proprio') || r.includes('debutante') || r.includes('aniversariante')) return 'self';
+                      if (r === 'other' || r.includes('outro')) return 'other';
+                      return '';
+                    })()}
+                    onChange={(e) => client && updateClient(client.id, { payerRelationship: (e.target.value || undefined) as any })}
+                    style={{ width: '100%', height: '30px', fontSize: '0.76rem', borderRadius: '8px', padding: '0 8px' }}
+                  >
+                    <option value="">Não informado</option>
+                    <option value="mother">Mãe</option>
+                    <option value="father">Pai</option>
+                    <option value="guardian">Responsável legal</option>
+                    <option value="self">Debutante / Aniversariante</option>
+                    <option value="other">Outro</option>
+                  </Select>
                 </div>
               </div>
 
