@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useState } from 'react';
-import { FileText, Link2, Eye, Users, Calendar, CheckCircle2, CalendarPlus, CreditCard, Building2, Trash2 } from 'lucide-react';
+import { FileText, Link2, Eye, Users, Calendar, CheckCircle2, CalendarPlus, Building2, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { DateField } from '../ui';
 import { useAdminState } from '../../context/AdminStateContext';
@@ -231,17 +231,6 @@ export const ClientContractSection: React.FC<Props> = ({ client, contract, loadi
         <div style={rowStyle}><span style={labelStyle}>Total</span><strong style={{ fontSize: '0.84rem', color: '#10B981' }}>{money(contract.totalAmount)}</strong></div>
         <div style={rowStyle}><span style={labelStyle}>Entrada</span><strong style={{ fontSize: '0.78rem', color: 'var(--adm-text-title)' }}>{money(contract.entryAmount)}</strong></div>
         <div style={rowStyle}><span style={labelStyle}>Saldo</span><strong style={{ fontSize: '0.78rem', color: '#F59E0B' }}>{money(contract.balanceAmount)}</strong></div>
-        <div style={rowStyle}>
-          <span style={{ ...labelStyle, display: 'inline-flex', alignItems: 'center', gap: 4 }}><CreditCard size={12} /> Cartão de crédito</span>
-          <div style={{ display: 'flex', gap: 4 }}>
-            {[true, false].map(v => (
-              <button key={String(v)} type="button" disabled={readOnly} onClick={() => updateClient(client.id, { hasCreditCard: v })}
-                style={{ padding: '2px 10px', borderRadius: 6, border: '1px solid var(--adm-border)', background: (client.hasCreditCard ?? false) === v ? 'rgba(16,185,129,0.15)' : 'var(--adm-bg-input)', color: (client.hasCreditCard ?? false) === v ? '#059669' : 'var(--adm-text-muted)', fontSize: '0.68rem', fontWeight: 800, cursor: readOnly ? 'default' : 'pointer' }}>
-                {v ? 'Sim' : 'Não'}
-              </button>
-            ))}
-          </div>
-        </div>
         <button type="button" onClick={() => setQuickView(true)}
           style={{ alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, border: '1px solid var(--adm-border)', background: 'var(--adm-bg-input)', color: 'var(--adm-text-title)', fontWeight: 800, fontSize: '0.74rem', cursor: 'pointer' }}>
           <Eye size={13} /> Ver contrato

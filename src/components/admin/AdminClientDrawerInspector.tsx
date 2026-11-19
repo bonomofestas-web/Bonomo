@@ -25,6 +25,7 @@ import { AdminLinkContractModal } from './AdminLinkContractModal';
 import { AdminConfirmModal } from './AdminConfirmModal';
 import { isUserMaster, isUserManager } from '../../utils/accessPermissions';
 import { contractService } from '../../services/contractService';
+import { contactService } from '../../services/contactService';
 import type { Lead, ClientStage, LeadContact, ContractFunnelPlacement, Contract } from '../../types/admin';
 
 interface AdminClientDrawerInspectorProps {
@@ -307,6 +308,23 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
   const [isLinkContractOpen, setIsLinkContractOpen] = useState(false);
   const [isDeleteClientOpen, setIsDeleteClientOpen] = useState(false);
   const canRemoveClient = isUserMaster(currentUser) || isUserManager(currentUser);
+
+  // Cartao de credito vem do CONTATO (acompanha a pessoa em qualquer contrato); se o contato ainda nao tem, usa o que veio do comercial
+  const cardPhone = client?.payerPhone || lead.phone || '';
+  const [creditCard, setCreditCard] = useState<boolean | null>(null);
+  useEffect(() => {
+    let alive = true;
+    const fallback = (client as any)?.hasCreditCard ?? (lead as any)?.hasCreditCard ?? null;
+    setCreditCard(typeof fallback === 'boolean' ? fallback : null);
+    if (!cardPhone || !fichaMasterId) return;
+    void contactService.getHasCreditCard(fichaMasterId, cardPhone).then(r => { if (alive && r && r.value !== null) setCreditCard(r.value); });
+    return () => { alive = false; };
+  }, [cardPhone, fichaMasterId, client?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const saveCreditCard = async (v: boolean) => {
+    setCreditCard(v);
+    const ok = await contactService.setHasCreditCard(fichaMasterId, cardPhone, v);
+    if (!ok) toast.warning('Cartão marcado, mas o contato desta pessoa não foi encontrado para guardar a informação.');
+  };
 
   const loadLinkedContract = useCallback(async () => {
     if (!client?.id || !fichaMasterId) { setLinkedContract(null); setContractLoading(false); return; }
@@ -1449,6 +1467,33 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
                     onFocus={(e) => { e.currentTarget.style.borderBottomColor = 'var(--adm-accent)'; }}
                     onBlur={(e) => { e.currentTarget.style.borderBottomColor = 'transparent'; }}
                   />
+                </div>
+              </div>
+
+              <div style={cardRowStyle}>
+                <span style={cardLabelStyle}>Cartão de crédito</span>
+                <div style={{ ...cardValueStyle, gap: '4px' }}>
+                  {[{ v: true, l: 'Sim' }, { v: false, l: 'Não' }].map(opt => (
+                    <button
+                      key={opt.l}
+                      type="button"
+                      disabled={readOnly}
+                      onClick={() => saveCreditCard(opt.v)}
+                      style={{
+                        padding: '2px 10px',
+                        borderRadius: '6px',
+                        border: '1px solid var(--adm-border)',
+                        background: creditCard === opt.v ? (opt.v ? 'rgba(16, 185, 129, 0.15)' : 'rgba(100, 116, 139, 0.15)') : 'var(--adm-bg-input)',
+                        color: creditCard === opt.v ? (opt.v ? '#059669' : 'var(--adm-text-title)') : 'var(--adm-text-muted)',
+                        fontSize: '0.68rem',
+                        fontWeight: creditCard === opt.v ? 800 : 500,
+                        cursor: readOnly ? 'default' : 'pointer',
+                      }}
+                    >
+                      {opt.l}
+                    </button>
+                  ))}
+                  {creditCard === null && <span style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)' }}>Não informado</span>}
                 </div>
               </div>
             </div>

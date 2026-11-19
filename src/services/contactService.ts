@@ -263,6 +263,24 @@ export const contactService = {
     }
   },
 
+  /** "Tem cartao de credito?" fica no CONTATO (custom_fields.hasCreditCard), para valer em todos os contratos e leads da pessoa. */
+  async getHasCreditCard(masterId: string, phone?: string | null): Promise<{ contactId: string; value: boolean | null } | null> {
+    const c = await this.findExisting(masterId, { phones: [phone] });
+    if (!c) return null;
+    const v = (c.customFields || {}).hasCreditCard;
+    return { contactId: c.id, value: typeof v === 'boolean' ? v : null };
+  },
+
+  /** value null = "nao informado" (remove a marca do contato). */
+  async setHasCreditCard(masterId: string, phone: string | null | undefined, value: boolean | null): Promise<boolean> {
+    const c = await this.findExisting(masterId, { phones: [phone] });
+    if (!c) return false;
+    const fields: Record<string, any> = { ...(c.customFields || {}) };
+    if (value === null) delete fields.hasCreditCard; else fields.hasCreditCard = value;
+    const updated = await this.updateContact(c.id, masterId, { customFields: fields });
+    return Boolean(updated);
+  },
+
   /** Procura contato existente do Master por telefone (principal/secundário, com tolerância) e/ou CPF. */
   async findExisting(masterId: string, ref: { phones?: Array<string | null | undefined>; cpf?: string | null }): Promise<Contact | null> {
     if (!isSupabaseConfigured || !masterId) return null;

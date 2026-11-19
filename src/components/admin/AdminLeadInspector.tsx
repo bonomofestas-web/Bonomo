@@ -36,6 +36,7 @@ import { validateLeadForWon, getMissingLeadFieldKeys } from '../../utils/leadVal
 import { useAdminState } from '../../context/AdminStateContext';
 import { maskPhoneInput, formatPhone } from '../../utils/phoneFormatter';
 import { isPhoneMatch } from '../../services/leadService';
+import { contactService } from '../../services/contactService';
 import { getLeadPendingWaitingTime, getLeadWaitTimeSla } from '../../utils/leadSorting';
 import { ICP_SITUATION_CONFIG } from '../../types/admin';
 import { generateUuid } from '../../utils/uuid';
@@ -818,6 +819,17 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
   const [isValidateModalOpen, setIsValidateModalOpen] = useState(false);
   const [isTempDropdownOpen, setIsTempDropdownOpen] = useState(false);
   const [isCreditCardDropdownOpen, setIsCreditCardDropdownOpen] = useState(false);
+  // Cartao de credito acompanha o CONTATO (vale em todos os contratos e leads da pessoa); se o contato tem resposta, ela prevalece
+  const [contactCreditCard, setContactCreditCard] = useState<boolean | null>(null);
+  const creditCardMasterId = (lead as any).masterId || currentUser?.masterId || currentUser?.id || '';
+  useEffect(() => {
+    let alive = true;
+    setContactCreditCard(null);
+    if (!lead.phone || !creditCardMasterId) return;
+    void contactService.getHasCreditCard(creditCardMasterId, lead.phone).then(r => { if (alive && r) setContactCreditCard(r.value); });
+    return () => { alive = false; };
+  }, [lead.id, lead.phone, creditCardMasterId]);
+  const effectiveCreditCard: boolean | undefined = contactCreditCard !== null ? contactCreditCard : lead.hasCreditCard;
   const [isEventTypeDropdownOpen, setIsEventTypeDropdownOpen] = useState(false);
   const [isUrgencyDropdownOpen, setIsUrgencyDropdownOpen] = useState(false);
 
@@ -4217,9 +4229,9 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                     <span style={{
                       fontSize: '0.80rem',
                       fontWeight: 700,
-                      color: lead.hasCreditCard === true ? '#10B981' : lead.hasCreditCard === false ? '#EF4444' : 'var(--adm-text-muted)',
+                      color: effectiveCreditCard === true ? '#10B981' : effectiveCreditCard === false ? '#EF4444' : 'var(--adm-text-muted)',
                     }}>
-                      {lead.hasCreditCard === true ? 'Sim' : lead.hasCreditCard === false ? 'Não' : 'Não informado'}
+                      {effectiveCreditCard === true ? 'Sim' : effectiveCreditCard === false ? 'Não' : 'Não informado'}
                     </span>
                     {!readOnly && <ChevronDown size={12} color="var(--adm-text-muted)" />}
                   </div>
@@ -4244,13 +4256,17 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                         { val: false, label: 'Não', color: '#EF4444', icon: X },
                         { val: undefined, label: 'Não informado', color: 'var(--adm-text-muted)', icon: Clock },
                       ].map(opt => {
-                        const isSelected = lead.hasCreditCard === opt.val;
+                        const isSelected = effectiveCreditCard === opt.val;
                         const Icon = opt.icon;
                         return (
                           <div
                             key={String(opt.val)}
                             onClick={() => {
                               handleUpdate({ hasCreditCard: opt.val });
+                              setContactCreditCard(opt.val === undefined ? null : opt.val);
+                              if (lead.phone && creditCardMasterId) {
+                                void contactService.setHasCreditCard(creditCardMasterId, lead.phone, opt.val === undefined ? null : opt.val);
+                              }
                               setIsCreditCardDropdownOpen(false);
                             }}
                             style={{
