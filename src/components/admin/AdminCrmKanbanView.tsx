@@ -252,6 +252,32 @@ const getLeadMatchedColumnId = (
   return '';
 };
 
+/** Cards por etapa carregados de inicio e a cada rolagem (como a caixa de entrada do WhatsApp). */
+const KANBAN_COLUMN_INITIAL = 20;
+const KANBAN_COLUMN_STEP = 20;
+
+/** Rodape da coluna: ao aparecer na rolagem libera mais cards; tambem funciona como botao. */
+const KanbanColumnMore: React.FC<{ remaining: number; onMore: () => void }> = ({ remaining, onMore }) => {
+  const ref = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof IntersectionObserver === 'undefined') return;
+    const io = new IntersectionObserver(entries => { if (entries.some(e => e.isIntersecting)) onMore(); }, { rootMargin: '200px' });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [onMore, remaining]);
+  return (
+    <button
+      ref={ref}
+      type="button"
+      onClick={onMore}
+      style={{ flexShrink: 0, width: '100%', padding: '8px 6px', background: 'transparent', border: '1px dashed var(--adm-border)', borderRadius: '8px', color: 'var(--adm-text-muted)', fontSize: '0.68rem', fontWeight: 700, cursor: 'pointer' }}
+    >
+      Carregar mais ({remaining})
+    </button>
+  );
+};
+
 export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
   initialLeadId,
   activeFunnelId,
@@ -289,6 +315,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
     viewingAsCollaborator,
     validateLead,
     systemSlaConfig,
+    prefetchLeadConversations,
   } = useAdminState();
 
   const [unavailableModal, setUnavailableModal] = useState<{
@@ -1299,6 +1326,27 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
 
     return sortLeadsByCriteria(matching, filterState.sortBy || 'waiting_time', collabIdSet);
   }, [leads, currentFunnel, activeVenueId, filterState, search, leadOwnershipFilter, currentUser, effectiveUser, isManagerOrMaster, columns, collabIdSet, showRemovedLeads]);
+
+  // Cards visiveis por etapa (20 de inicio; +20 ao rolar). O total da coluna continua sendo o de TODOS os leads da etapa.
+  const [colVisible, setColVisible] = useState<Record<string, number>>({});
+  const showMoreInColumn = (colId: string) => setColVisible(prev => ({ ...prev, [colId]: (prev[colId] ?? KANBAN_COLUMN_INITIAL) + KANBAN_COLUMN_STEP }));
+  // Pre-carga das ultimas 20 mensagens dos cards visiveis (e dos proximos 20 de cada etapa) para a caixa de entrada do funil abrir pronta
+  useEffect(() => {
+    if (isPostSaleView || columns.length === 0) return;
+    const ids: string[] = [];
+    const byCol = new Map<string, Lead[]>();
+    filteredLeads.forEach(l => {
+      const cid = getLeadMatchedColumnId(l, columns);
+      const arr = byCol.get(cid) || [];
+      arr.push(l);
+      byCol.set(cid, arr);
+    });
+    byCol.forEach((arr, cid) => {
+      const n = (colVisible[cid] ?? KANBAN_COLUMN_INITIAL) + KANBAN_COLUMN_STEP;
+      arr.slice(0, n).forEach(l => ids.push(l.id));
+    });
+    if (ids.length > 0) void prefetchLeadConversations(ids, 20);
+  }, [filteredLeads, columns, colVisible, isPostSaleView, prefetchLeadConversations]);
 
   const removedLeadsCount = useMemo(() => {
     return leads.filter(l => {
@@ -3376,7 +3424,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                           Arraste um lead para cá
                         </div>
                       ) : (
-                        columnLeads.map(lead => {
+                        columnLeads.slice(0, colVisible[col.id] ?? KANBAN_COLUMN_INITIAL).map(lead => {
                           const sdrCollab = collaborators.find(c => (lead.sdrId && c.id === lead.sdrId) || (lead.sdrName && c.name?.toLowerCase() === lead.sdrName.toLowerCase()) || (lead.assignedTo && c.name?.toLowerCase() === lead.assignedTo.toLowerCase()));
                           const closerCollab = collaborators.find(c => (lead.closerId && c.id === lead.closerId) || (lead.closerName && c.name?.toLowerCase() === lead.closerName.toLowerCase()));
 
@@ -4877,6 +4925,9 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                             </div>
                           );
                         })
+                      )}
+                      {columnLeads.length > (colVisible[col.id] ?? KANBAN_COLUMN_INITIAL) && (
+                        <KanbanColumnMore remaining={columnLeads.length - (colVisible[col.id] ?? KANBAN_COLUMN_INITIAL)} onMore={() => showMoreInColumn(col.id)} />
                       )}
                     </div>
                   </div>

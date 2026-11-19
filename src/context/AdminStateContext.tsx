@@ -76,6 +76,7 @@ import { mediaStorageService } from '../services/mediaStorageService';
 import { uazapiSseService, isLidIdentifier } from '../services/uazapiSseService';
 import { ensureMessagingEnabled, refreshMessagingPause, setMessagingPausedFromFlag } from '../utils/messagingPause';
 import { chatCache } from '../utils/chatCache';
+import { getLeadConversationTime } from '../utils/leadSorting';
 import { createMonogramAvatar } from '../utils/avatarUtils';
 import { generateLeadCode, generateClientCode, buildHandoverActivity } from '../utils/leadUtils';
 import { isUuid } from '../utils/uuid';
@@ -4973,6 +4974,52 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       }));
     }
   }, []);
+
+  // ── Pre-carga PROGRESSIVA em segundo plano (desde a tela inicial) ─────────────────────────────────
+  // Prepara, sem o usuario pedir, as ultimas 20 mensagens de: (1) as 40 conversas mais recentes da caixa de entrada e
+  // (2) os 20 primeiros cards de cada etapa de cada funil comercial. Em lotes de 40, com pausa entre eles, so com a aba
+  // visivel e online, e com teto por sessao para nao estourar a cota gratuita do Supabase. O cache local faz as proximas
+  // sessoes baixarem so o que mudou.
+  const backgroundPrefetchedForRef = useRef<string>('');
+  const leadsLoadedForPrefetch = leads.length > 0;
+  useEffect(() => {
+    if (!currentUser || !leadsLoadedForPrefetch) return;
+    if ((navigator as any)?.connection?.saveData) return; // modo economia de dados do navegador
+    const sessionKey = `${currentUser.masterId || currentUser.id}:${currentUser.id}`;
+    if (backgroundPrefetchedForRef.current === sessionKey) return;
+    let cancelled = false;
+    const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
+    const timer = setTimeout(async () => {
+      backgroundPrefetchedForRef.current = sessionKey;
+      const SESSION_CAP = 300; // conversas pre-carregadas por sessao (~6.000 linhas no maximo)
+      const pool = leadsRef.current.filter(l => !l.isClient && !l.isArchived && !(l as any).isDeleted && !(l as any).isRemovedFromFunnel);
+      const recent = [...pool].sort((a, b) => getLeadConversationTime(b) - getLeadConversationTime(a));
+      const queue: string[] = [];
+      const seen = new Set<string>();
+      const push = (id: string) => { if (!seen.has(id) && queue.length < SESSION_CAP) { seen.add(id); queue.push(id); } };
+      // 1) caixa de entrada: 40 mais recentes
+      recent.slice(0, 40).forEach(l => push(l.id));
+      // 2) funis: 20 primeiros de cada etapa
+      const perStage = new Map<string, number>();
+      for (const l of recent) {
+        if (!l.funnelId) continue;
+        const key = `${l.funnelId}|${l.stage}`;
+        const n = perStage.get(key) || 0;
+        if (n >= 20) continue;
+        perStage.set(key, n + 1);
+        push(l.id);
+      }
+      for (let i = 0; i < queue.length && !cancelled; i += 40) {
+        // pausa quando a aba esta oculta ou sem internet; retoma sozinho
+        let waited = 0;
+        while (!cancelled && (document.visibilityState === 'hidden' || navigator.onLine === false) && waited < 120_000) { await sleep(2000); waited += 2000; }
+        if (cancelled) return;
+        await prefetchLeadConversations(queue.slice(i, i + 40), 20);
+        await sleep(1200); // respira entre lotes (nao disputa banda nem cota com o uso normal)
+      }
+    }, 2500);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [currentUser?.id, currentUser?.masterId, leadsLoadedForPrefetch, prefetchLeadConversations]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadLeadConversationDays = useCallback(async (leadId: string, days: number = 3): Promise<boolean> => {
     if (!leadId) return false;
