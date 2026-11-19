@@ -1937,9 +1937,10 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
   const sectionTitleStyle: React.CSSProperties = {
     display: 'flex',
     alignItems: 'center',
-    gap: '5px',
-    padding: '2px 1px 1px',
-    fontSize: '0.67rem',
+    gap: '6px',
+    padding: '0',
+    marginTop: '4px',
+    fontSize: '0.70rem',
     fontWeight: 800,
     color: 'var(--adm-text-muted)',
     textTransform: 'uppercase',
@@ -1973,7 +1974,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
   };
 
   const cardLabelStyle: React.CSSProperties = {
-    width: '92px',
+    width: '108px',
     flexShrink: 0,
     color: 'var(--adm-text-muted)',
     fontSize: '0.74rem',
@@ -3589,7 +3590,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
         {/* ABA 1: PRINCIPAL                                                     */}
         {/* ════════════════════════════════════════════════════════════════════ */}
         {activeTab === 'principal' && (
-          <div style={{ padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
 
             {/* Banner de Alerta para Campos Obrigatórios Pendentes (Apenas no Lead Específico) */}
             {shouldHighlightMissing && missingFieldKeys.size > 0 && (
@@ -5919,14 +5920,14 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
         {/* ABA 2: ORIGEM & RASTREAMENTO                                          */}
         {/* ════════════════════════════════════════════════════════════════════ */}
         {activeTab === 'origem' && (
-          <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
             
             {/* Card Principal: Tipo de Origem */}
             <div style={{
               background: 'var(--adm-bg-card)',
               border: '1px solid var(--adm-border)',
-              borderRadius: '12px',
-              padding: '16px',
+              borderRadius: '10px',
+              padding: '10px 12px',
               display: 'flex',
               flexDirection: 'column',
               gap: '10px',
@@ -6004,9 +6005,9 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
               {/* Informações de Origem em Layout Vertical (Uma abaixo da outra) */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '6px', paddingTop: '10px', borderTop: '1px solid var(--adm-border)' }}>
                 {/* 1. Casa Vinculada */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: 'var(--adm-bg-surface, #F8FAFC)', borderRadius: '8px', border: '1px solid var(--adm-border)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 0', background: 'transparent', borderRadius: 0, border: 'none', borderBottom: '1px dashed var(--adm-border)' }}>
                   <span style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)' }}>Casa Vinculada:</span>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', flexWrap: 'wrap', gap: '6px 8px' }}>
                     <strong style={{ fontSize: '0.80rem', color: 'var(--adm-text-title)' }}>
                       {leadVenue?.name || lead.venueName || 'F5 System'}
                     </strong>
@@ -6037,7 +6038,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                 </div>
 
                 {/* 2. Funil de Destino com Dropdown e Fechamento ao Clicar Fora */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: 'var(--adm-bg-surface, #F8FAFC)', borderRadius: '8px', border: '1px solid var(--adm-border)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 0', background: 'transparent', borderRadius: 0, border: 'none', borderBottom: '1px dashed var(--adm-border)' }}>
                   <span style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)' }}>Funil de Destino:</span>
                   <div ref={funnelPickerRef} style={{ position: 'relative', display: 'inline-block' }}>
                     <button
@@ -6133,7 +6134,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                 </div>
 
                 {/* 3. Data de Entrada no Funil */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: 'var(--adm-bg-surface, #F8FAFC)', borderRadius: '8px', border: '1px solid var(--adm-border)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 0', background: 'transparent', borderRadius: 0, border: 'none', borderBottom: '1px dashed var(--adm-border)' }}>
                   <span style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)' }}>Data de Entrada no Funil:</span>
                   <span style={{ fontSize: '0.80rem', fontWeight: 800, color: '#0284C7' }}>
                     {lead.funnelEnteredAt || lead.createdAt 
@@ -6143,7 +6144,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                 </div>
 
                 {/* 4. Atendente Inicial (Primeiro Atendimento - Fixo e Permanente) */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: 'var(--adm-bg-surface, #F8FAFC)', borderRadius: '8px', border: '1px solid var(--adm-border)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 0', background: 'transparent', borderRadius: 0, border: 'none', borderBottom: '1px dashed var(--adm-border)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <UserCheck size={13} color="#10B981" />
                     <span style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)' }}>Atendente Inicial (1º Atendimento):</span>
@@ -6160,8 +6161,8 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
               <div style={{
                 background: 'var(--adm-bg-card)',
                 border: '1px solid var(--adm-border)',
-                borderRadius: '12px',
-                padding: '16px',
+                borderRadius: '10px',
+                padding: '10px 12px',
                 display: 'flex',
                 flexDirection: 'column',
                 gap: '12px',
@@ -6243,8 +6244,8 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
               <div style={{
                 background: 'var(--adm-bg-card)',
                 border: '1px solid var(--adm-border)',
-                borderRadius: '12px',
-                padding: '16px',
+                borderRadius: '10px',
+                padding: '10px 12px',
                 display: 'flex',
                 flexDirection: 'column',
                 gap: '12px',
@@ -6344,8 +6345,8 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
               <div style={{
                 background: 'var(--adm-bg-card)',
                 border: '1px solid var(--adm-border)',
-                borderRadius: '12px',
-                padding: '16px',
+                borderRadius: '10px',
+                padding: '10px 12px',
                 display: 'flex',
                 flexDirection: 'column',
                 gap: '10px',
@@ -6390,8 +6391,8 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
               <div style={{
                 background: 'var(--adm-bg-input)',
                 border: '1px solid var(--adm-border)',
-                borderRadius: '14px',
-                padding: '16px',
+                borderRadius: '10px',
+                padding: '10px 12px',
                 display: 'flex',
                 flexDirection: 'column',
                 gap: '12px',
@@ -6452,19 +6453,19 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
         {/* ABA: JORNADA DO LEAD (MARCOS CRÍTICOS & PERMANÊNCIA POR ESTÁGIO)      */}
         {/* ════════════════════════════════════════════════════════════════════ */}
         {activeTab === 'jornada' && (
-          <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
 
             {/* Banner Executivo de Entrada e Idade no Pipeline (Enxuto e Elegante) */}
             <div style={{
-              background: 'linear-gradient(135deg, rgba(15,23,42,0.95) 0%, rgba(30,41,59,0.90) 100%)',
-              border: '1px solid rgba(255,255,255,0.12)',
-              borderRadius: '12px',
-              padding: '12px 16px',
+              background: 'var(--adm-bg-card)',
+              border: '1px solid var(--adm-border)',
+              borderRadius: '10px',
+              padding: '10px 12px',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
-              boxShadow: '0 4px 16px rgba(0,0,0,0.20)',
-              gap: '12px',
+              flexWrap: 'wrap',
+              gap: '8px',
             }}>
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -6473,17 +6474,17 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                     Jornada & Ciclo de Conversão
                   </span>
                 </div>
-                <h4 style={{ margin: '2px 0', fontSize: '0.98rem', fontWeight: 900, color: '#FFFFFF' }}>
+                <h4 style={{ margin: '2px 0', fontSize: '0.98rem', fontWeight: 900, color: 'var(--adm-text-title)' }}>
                   {lead.name || lead.code}
                 </h4>
-                <div style={{ fontSize: '0.70rem', color: 'rgba(255,255,255,0.65)' }}>
-                  Funil: <strong style={{ color: '#F8FAFC' }}>{journeyData.targetFunnel?.name || 'Comercial'}</strong> • Casa: <strong style={{ color: '#F8FAFC' }}>{leadVenue?.name || 'Unidade Geral'}</strong>
+                <div style={{ fontSize: '0.70rem', color: 'var(--adm-text-muted)' }}>
+                  Funil: <strong style={{ color: 'var(--adm-text-title)' }}>{journeyData.targetFunnel?.name || 'Comercial'}</strong> • Casa: <strong style={{ color: 'var(--adm-text-title)' }}>{leadVenue?.name || 'Unidade Geral'}</strong>
                 </div>
               </div>
 
               <div style={{
-                background: 'rgba(255,255,255,0.06)',
-                border: '1px solid rgba(255,255,255,0.1)',
+                background: 'var(--adm-bg-input)',
+                border: '1px solid var(--adm-border)',
                 borderRadius: '8px',
                 padding: '6px 12px',
                 textAlign: 'right',
@@ -6501,8 +6502,8 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
 
             {/* 3 MARCOS CRÍTICOS DE CONVERSÃO (VISITA, DEGUSTAÇÃO, FECHAMENTO) */}
             <div>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-                <span style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '2px', marginBottom: '8px' }}>
+                <span style={{ fontSize: '0.70rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
                   Marcos Vitais de Decisão
                 </span>
                 <span style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)' }}>
@@ -6516,8 +6517,8 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                 <div style={{
                   background: 'var(--adm-bg-card)',
                   border: `1.5px solid ${journeyData.hasVisit ? '#10B981' : 'var(--adm-border)'}`,
-                  borderRadius: '12px',
-                  padding: '14px',
+                  borderRadius: '10px',
+                  padding: '10px 12px',
                   display: 'flex',
                   flexDirection: 'column',
                   gap: '8px',
@@ -6552,7 +6553,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                       fontSize: '0.64rem',
                       fontWeight: 800,
                       padding: '2px 7px',
-                      borderRadius: '12px',
+                      borderRadius: '10px',
                       background: journeyData.hasVisit ? 'rgba(16,185,129,0.15)' : 'rgba(148,163,184,0.15)',
                       color: journeyData.hasVisit ? '#10B981' : '#94A3B8',
                     }}>
@@ -6614,8 +6615,8 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                 <div style={{
                   background: 'var(--adm-bg-card)',
                   border: `1.5px solid ${journeyData.hasTasting ? '#F59E0B' : 'var(--adm-border)'}`,
-                  borderRadius: '12px',
-                  padding: '14px',
+                  borderRadius: '10px',
+                  padding: '10px 12px',
                   display: 'flex',
                   flexDirection: 'column',
                   gap: '8px',
@@ -6650,7 +6651,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                       fontSize: '0.64rem',
                       fontWeight: 800,
                       padding: '2px 7px',
-                      borderRadius: '12px',
+                      borderRadius: '10px',
                       background: journeyData.hasTasting ? 'rgba(245,158,11,0.15)' : 'rgba(148,163,184,0.15)',
                       color: journeyData.hasTasting ? '#F59E0B' : '#94A3B8',
                     }}>
@@ -6712,8 +6713,8 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                 <div style={{
                   background: 'var(--adm-bg-card)',
                   border: `1.5px solid ${journeyData.isWon ? '#10B981' : journeyData.isLost ? '#EF4444' : '#14A9D7'}`,
-                  borderRadius: '12px',
-                  padding: '14px',
+                  borderRadius: '10px',
+                  padding: '10px 12px',
                   display: 'flex',
                   flexDirection: 'column',
                   gap: '8px',
@@ -6748,7 +6749,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                       fontSize: '0.64rem',
                       fontWeight: 800,
                       padding: '2px 7px',
-                      borderRadius: '12px',
+                      borderRadius: '10px',
                       background: journeyData.isWon ? 'rgba(16,185,129,0.15)' : journeyData.isLost ? 'rgba(239,68,68,0.15)' : 'rgba(20,169,215,0.15)',
                       color: journeyData.isWon ? '#10B981' : journeyData.isLost ? '#EF4444' : '#14A9D7',
                     }}>
@@ -6793,13 +6794,13 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
             <div style={{
               background: 'var(--adm-bg-card)',
               border: '1px solid var(--adm-border)',
-              borderRadius: '12px',
-              padding: '16px',
+              borderRadius: '10px',
+              padding: '10px 12px',
               display: 'flex',
               flexDirection: 'column',
               gap: '12px',
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '4px 8px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <History size={16} color="var(--adm-accent)" />
                   <span style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--adm-text-heading)', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
@@ -6819,14 +6820,15 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'space-between',
-                      padding: '10px 14px',
+                      flexWrap: 'wrap',
+                      padding: '8px 10px',
                       borderRadius: '10px',
                       background: item.isCurrent ? 'rgba(20,169,215,0.08)' : 'var(--adm-bg-surface, #F8FAFC)',
                       border: item.isCurrent ? '1.5px solid #14A9D7' : '1px solid var(--adm-border)',
                       gap: '12px',
                     }}
                   >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1, minWidth: '180px' }}>
                       <div style={{
                         width: '26px',
                         height: '26px',
@@ -6844,8 +6846,8 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                       </div>
 
                       <div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <span style={{ fontSize: '0.86rem', fontWeight: 900, color: 'var(--adm-text-heading)', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '4px 6px' }}>
+                          <span style={{ fontSize: '0.80rem', fontWeight: 800, color: 'var(--adm-text-heading)', textTransform: 'uppercase', letterSpacing: '0.3px', whiteSpace: 'nowrap' }}>
                             {item.stageName}
                           </span>
                           {item.isCurrent && (
@@ -6856,6 +6858,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                               color: '#FFFFFF',
                               padding: '1px 6px',
                               borderRadius: '4px',
+                              whiteSpace: 'nowrap',
                             }}>
                               Etapa Atual
                             </span>
@@ -6902,14 +6905,14 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
         {/* ABA 3: MQL (MARKETING QUALIFIED LEAD)                                */}
         {/* ════════════════════════════════════════════════════════════════════ */}
         {activeTab === 'mql' && (
-          <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
             
             {/* Nota do MQL: Indefinido / Ruim / Bom / Muito bom / Incrivel */}
             <div style={{
               background: 'var(--adm-bg-card)',
               border: `1.5px solid ${MQL_BAND_STYLE[mqlBand(mqlResult.score)].color}`,
-              borderRadius: '14px',
-              padding: '14px 16px',
+              borderRadius: '10px',
+              padding: '10px 12px',
               display: 'flex',
               flexDirection: 'column',
               gap: '10px',
@@ -6963,7 +6966,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
               )}
 
               {activeMqlQuestions.length === 0 ? (
-                <div style={{ padding: '24px', textAlign: 'center', color: 'var(--adm-text-muted)', background: 'var(--adm-bg-input)', borderRadius: '12px' }}>
+                <div style={{ padding: '24px', textAlign: 'center', color: 'var(--adm-text-muted)', background: 'var(--adm-bg-input)', borderRadius: '10px' }}>
                   Nenhum critério de ICP configurado para esta casa de festas.
                 </div>
               ) : (
@@ -6976,7 +6979,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                       style={{
                         background: 'var(--adm-bg-input)',
                         border: '1px solid var(--adm-border)',
-                        borderRadius: '12px',
+                        borderRadius: '10px',
                         padding: '10px 12px',
                         display: 'flex',
                         flexDirection: 'column',

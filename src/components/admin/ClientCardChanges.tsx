@@ -68,17 +68,18 @@ export const ClientEventTypeRow: React.FC<RowProps> = ({ client, masterId, user,
       <div style={rowStyle}>
         <span style={labelStyle}>Tipo do Evento</span>
         <div style={valueStyle}>
-          <Select
-            value={current}
-            disabled={!allowed}
-            onChange={(e) => { const v = e.target.value as EventKind; if (v !== current) setPending(v); }}
-            style={selectStyle}
-          >
-            {KIND_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </Select>
-          {!allowed && (
-            <span title="Somente a gerência altera o tipo do evento (a mudança altera o contrato)" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.66rem', color: 'var(--adm-text-muted)' }}>
-              <Lock size={11} /> Só gerência
+          {allowed ? (
+            <Select
+              value={current}
+              onChange={(e) => { const v = e.target.value as EventKind; if (v !== current) setPending(v); }}
+              style={selectStyle}
+            >
+              {KIND_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </Select>
+          ) : (
+            <span title="Somente a gerência altera o tipo do evento (a mudança altera o contrato)" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.78rem', fontWeight: 700, color: 'var(--adm-text-title)' }}>
+              {KIND_OPTIONS.find(o => o.value === current)?.label}
+              <Lock size={11} color="var(--adm-text-muted)" />
             </span>
           )}
         </div>

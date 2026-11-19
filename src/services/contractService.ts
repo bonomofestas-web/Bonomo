@@ -816,6 +816,15 @@ export const contractService = {
     }
   },
 
+  /** Ids dos clientes que ja tem contrato vinculado (so ids): o quadro usa para separar card de contrato de card de pessoa. */
+  async getLinkedClientIds(masterId: string): Promise<Set<string>> {
+    const out = new Set<string>();
+    if (!isSupabaseConfigured || !masterId) return out;
+    const { data } = await supabase.from('contracts').select('client_id').eq('master_id', masterId).not('client_id', 'is', null).limit(5000);
+    (data || []).forEach((r: any) => { if (r.client_id) out.add(r.client_id); });
+    return out;
+  },
+
   /** Contrato (documento do sistema) ligado a um card de cliente, ou null se o cliente ainda nao tem contrato. */
   async getContractByClientId(clientId: string, masterId: string): Promise<Contract | null> {
     if (!isSupabaseConfigured || !isUuid(clientId) || !masterId) return null;

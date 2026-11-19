@@ -20,6 +20,8 @@ import { AdminCreatePostSaleFunnelModal } from './AdminCreatePostSaleFunnelModal
 import { renderFunnelOrStageIcon } from '../../utils/funnelIconLibrary';
 import { getDefaultPostSaleFunnelId, filterExtraPostSaleLeads, matchesFunnelStrict as matchesFunnelStrictHelper } from '../../utils/funnelUtils';
 import { AdminContractKanbanCard } from './AdminContractKanbanCard';
+import { ClientPersonKanbanCard } from './ClientPersonKanbanCard';
+import { contractService } from '../../services/contractService';
 import { AdminLinkContractorModal } from './AdminLinkContractorModal';
 import { toast } from 'sonner';
 import type { Client, ClientStage, CommercialFunnel } from '../../types/admin';
@@ -348,6 +350,16 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const [linkLeadId, setLinkLeadId] = useState<string | null>(null);
+  // Clientes que ja tem contrato vinculado: card de contrato x card de pessoa (sem contrato)
+  const [contractClientIds, setContractClientIds] = useState<Set<string> | null>(null);
+  const boardMasterId = currentUser?.masterId || currentUser?.id || '';
+  useEffect(() => {
+    let alive = true;
+    const load = () => { if (boardMasterId) void contractService.getLinkedClientIds(boardMasterId).then(ids => { if (alive) setContractClientIds(ids); }); };
+    load();
+    window.addEventListener('f5:contracts-changed', load);
+    return () => { alive = false; window.removeEventListener('f5:contracts-changed', load); };
+  }, [boardMasterId]);
   const [inspectorClientId, setInspectorClientId] = useState<string | null>(null);
   const [previewLeadId, setPreviewLeadId] = useState<string | null>(null);
   const [isNewClientModalOpen, setIsNewClientModalOpen] = useState(false);
@@ -2635,12 +2647,35 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
                         Boolean(client.debutanteId && a.debutanteId === client.debutanteId)
                       );
 
+                      const isLoose = !(clients || []).some(c => c.id === client.id);
+                      const hasContract = contractClientIds ? contractClientIds.has(client.id) : Boolean(client.contractTitle);
+                      if (isLoose || !hasContract) {
+                        return (
+                          <ClientPersonKanbanCard
+                            key={client.id}
+                            client={client}
+                            isLooseLead={isLoose}
+                            isMultiSelectMode={isMultiSelectMode}
+                            isSelectedInMulti={isSelectedInMulti}
+                            onToggleSelect={toggleClientSelection}
+                            onDragStart={handleDragStart}
+                            onClick={() => {
+                              if (isMultiSelectMode) toggleClientSelection(client.id);
+                              else { setSelectedClientId(client.id); setViewMode("inbox"); }
+                            }}
+                            onOpenInspector={(id) => { setSelectedClientId(id); setViewMode("inbox"); }}
+                            onOpenWhatsApp={(id) => { setSelectedClientId(id); setViewMode("inbox"); }}
+                            onDeleteClient={(cli) => { deleteClient(cli.id); toast.success(`Cliente "${cli.name}" excluído.`); }}
+                            onLinkContractor={setLinkLeadId}
+                            venues={venues}
+                            collaborators={collaborators}
+                          />
+                        );
+                      }
                       return (
                         <AdminContractKanbanCard
                           key={client.id}
                           client={client}
-                          isLooseLead={!(clients || []).some(c => c.id === client.id)}
-                          onLinkContractor={setLinkLeadId}
                           isMultiSelectMode={isMultiSelectMode}
                           isSelectedInMulti={isSelectedInMulti}
                           onToggleSelect={toggleClientSelection}

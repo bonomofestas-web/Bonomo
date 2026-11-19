@@ -170,8 +170,8 @@ export const ClientContractSection: React.FC<Props> = ({ client, contract, loadi
           onApplied={(patch) => { updateClient(client.id, patch); setTick(t => t + 1); }}
         />
 
-        <div style={rowStyle}>
-          <span style={labelStyle}>Data do evento</span>
+        <div style={{ ...rowStyle, alignItems: 'flex-start' }}>
+          <span style={{ ...labelStyle, paddingTop: 6 }}>Data do evento</span>
           <div style={valueStyle}>
             <DateField
               disabled={readOnly}

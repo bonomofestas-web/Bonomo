@@ -67,7 +67,7 @@ export const AdminContractKanbanCard: React.FC<AdminContractKanbanCardProps> = (
 
   // 2. Unidade / Venue (ex: "Jardins", "Espaço Rio Lounge")
   const venueObj = venues.find(v => v.id === client.venueId);
-  const venueTitle = (venueObj?.name || client.venueName || 'Jardins').replace(/^Bonomo\s+/i, '');
+  const venueTitle = (venueObj?.name || client.venueName || '').replace(/^Bonomo\s+/i, '');
 
   // 3. Detecção Limpa do Tipo de Evento & Estilo da Tag
   const detectedEventType = React.useMemo(() => {
@@ -79,7 +79,7 @@ export const AdminContractKanbanCard: React.FC<AdminContractKanbanCardProps> = (
     if (raw.includes('boda') || raw.includes('prata') || raw.includes('ouro')) return 'Bodas';
     if (raw.includes('corp') || raw.includes('empresa') || raw.includes('confer')) return 'Corporativo';
     if (raw.includes('40a') || raw.includes('50a') || raw.includes('60a') || raw.includes('adulto')) return 'Aniversário Adulto';
-    return '15 Anos';
+    return 'Evento';
   }, [client.eventType, client.tags, client.name, client.notes]);
 
   const eventBadgeStyle = React.useMemo(() => {
@@ -156,20 +156,14 @@ export const AdminContractKanbanCard: React.FC<AdminContractKanbanCardProps> = (
     }
 
     // Role do Decisor (o cliente é Decisor; "Responsável" é termo interno exclusivo da equipe)
-    let roleText = 'Mãe';
+    let roleText = '';
     const relLower = String(client.payerRelationship || '').toLowerCase();
-    if (relLower.includes('mae') || relLower.includes('mãe') || relLower === 'mother') {
-      roleText = 'Mãe';
-    } else if (relLower.includes('pai') || relLower === 'father') {
-      roleText = 'Pai';
-    } else if (relLower.includes('aniversariante') || relLower.includes('debutante') || relLower === 'self') {
-      roleText = 'Próprio(a)';
-    } else if (relLower.includes('outro') || relLower.includes('familiar') || relLower === 'other') {
-      roleText = 'Familiar';
-    } else if (rawName && /\((father|pai)\)/i.test(rawName)) {
-      roleText = 'Pai';
-    } else {
-      roleText = 'Mãe';
+    if (relLower) {
+      if (relLower.includes('mae') || relLower.includes('mãe') || relLower === 'mother') roleText = 'Mãe';
+      else if (relLower.includes('pai') || relLower === 'father') roleText = 'Pai';
+      else if (relLower.includes('aniversariante') || relLower.includes('debutante') || relLower === 'self') roleText = 'Próprio(a)';
+      else if (relLower.includes('responsavel') || relLower.includes('responsável') || relLower === 'guardian') roleText = 'Responsável legal';
+      else if (relLower.includes('outro') || relLower.includes('familiar') || relLower === 'other') roleText = 'Familiar';
     }
 
     // Padrao unico: `Contratante • Protagonista + tipo`. Prefere o titulo gravado no contrato.
@@ -183,7 +177,7 @@ export const AdminContractKanbanCard: React.FC<AdminContractKanbanCardProps> = (
       contractCode: ctrCode,
     });
 
-    const decisor = `Decisor: ${contratante || 'Cliente'} (${roleText})`;
+    const decisor = `Decisor: ${contratante || 'Cliente'}${roleText ? ` (${roleText})` : ''}`;
 
     return { contractTitle: title, decisorLine: decisor };
   }, [client.payerName, client.name, client.birthdayPersonName, client.birthdayPersonAge, client.contractTitle, client.eventType, client.payerRelationship, detectedEventType, ctrCode]);
@@ -233,9 +227,9 @@ export const AdminContractKanbanCard: React.FC<AdminContractKanbanCardProps> = (
     c.name === client.assignedTo || 
     c.name === (client as any).commercialHistory?.closedBy
   );
-  const responsibleStaff = managerCollab?.name || client.assignedTo || (client as any).commercialHistory?.closedBy || (client as any).responsibleStaff || (collaborators.length > 0 ? collaborators[0]?.name : 'Equipe F5');
+  const responsibleStaff = managerCollab?.name || client.assignedTo || (client as any).commercialHistory?.closedBy || (client as any).responsibleStaff || '';
   const responsibleAvatar = managerCollab?.avatarUrl || (managerCollab as any)?.photoUrl;
-  const guestCount = client.guestCount || (client as any).estimatedGuests || 160;
+  const guestCount = client.guestCount || (client as any).estimatedGuests || 0;
 
   return (
     <div
@@ -246,6 +240,7 @@ export const AdminContractKanbanCard: React.FC<AdminContractKanbanCardProps> = (
         fontFamily: "'Inter', sans-serif",
         backgroundColor: isSelectedInMulti ? 'rgba(2, 132, 199, 0.05)' : 'var(--adm-bg-card, #FFFFFF)',
         border: isSelectedInMulti ? '1.5px solid #0284C7' : (isLooseLead ? '1.5px dashed #94A3B8' : '1px solid var(--adm-border, #E2E8F0)'),
+        borderLeft: isSelectedInMulti ? undefined : `4px solid ${eventBadgeStyle.color}`,
         borderRadius: '12px',
         padding: '12px 14px',
         display: 'flex',
@@ -610,6 +605,7 @@ export const AdminContractKanbanCard: React.FC<AdminContractKanbanCardProps> = (
           color: 'var(--adm-text-muted)',
         }}
       >
+        {venueTitle ? (
         <div 
           style={{
             display: 'inline-flex',
@@ -625,7 +621,9 @@ export const AdminContractKanbanCard: React.FC<AdminContractKanbanCardProps> = (
             {venueTitle}
           </span>
         </div>
+        ) : <span />}
 
+        {guestCount > 0 && (
         <div 
           style={{
             display: 'inline-flex',
@@ -637,6 +635,7 @@ export const AdminContractKanbanCard: React.FC<AdminContractKanbanCardProps> = (
           <Users size={12} color="var(--adm-text-muted)" style={{ flexShrink: 0 }} />
           <span style={{ fontWeight: 600 }}>{guestCount} convidados</span>
         </div>
+        )}
       </div>
 
       {/* ── 5. LINHA FINANCEIRA: Valor do Contrato Limpo (Sem tags de vaidade 'Em dia') ── */}
@@ -779,9 +778,9 @@ export const AdminContractKanbanCard: React.FC<AdminContractKanbanCardProps> = (
                 textOverflow: 'ellipsis',
                 maxWidth: '180px',
               }}
-              title={`Responsável F5: ${responsibleStaff}`}
+              title={`Responsável F5: ${responsibleStaff || 'Sem responsável'}`}
             >
-              {responsibleStaff}
+              {responsibleStaff || 'Sem responsável'}
             </span>
           </div>
         </div>

@@ -795,7 +795,7 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
               border: 'none',
               borderBottom: activeTab === 'ficha' ? '2px solid var(--adm-accent, #06B6D4)' : '2px solid transparent',
               padding: '5px 8px',
-              color: activeTab === 'ficha' ? 'var(--adm-text-title)' : 'var(--adm-text-muted)',
+              color: activeTab === 'ficha' ? '#FFFFFF' : 'rgba(255, 255, 255, 0.62)',
               fontSize: '0.72rem',
               fontWeight: activeTab === 'ficha' ? 800 : 600,
               cursor: 'pointer',
@@ -816,7 +816,7 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
               border: 'none',
               borderBottom: activeTab === 'debutante' ? '2px solid var(--adm-accent, #06B6D4)' : '2px solid transparent',
               padding: '5px 8px',
-              color: activeTab === 'debutante' ? 'var(--adm-text-title)' : 'var(--adm-text-muted)',
+              color: activeTab === 'debutante' ? '#FFFFFF' : 'rgba(255, 255, 255, 0.62)',
               fontSize: '0.72rem',
               fontWeight: activeTab === 'debutante' ? 800 : 600,
               cursor: 'pointer',
@@ -837,7 +837,7 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
               border: 'none',
               borderBottom: activeTab === 'comercial' ? '2px solid var(--adm-accent, #06B6D4)' : '2px solid transparent',
               padding: '5px 8px',
-              color: activeTab === 'comercial' ? 'var(--adm-text-title)' : 'var(--adm-text-muted)',
+              color: activeTab === 'comercial' ? '#FFFFFF' : 'rgba(255, 255, 255, 0.62)',
               fontSize: '0.72rem',
               fontWeight: activeTab === 'comercial' ? 800 : 600,
               cursor: 'pointer',
@@ -1221,106 +1221,6 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
                 <Users size={12} color="var(--adm-accent)" />
                 <span>Informações do Cliente</span>
               </div>
-              {!readOnly && (
-                <div style={{ position: 'relative' }}>
-                  <button
-                    type="button"
-                    onClick={() => setIsAddContactMenuOpen(!isAddContactMenuOpen)}
-                    style={{
-                      padding: '3px 8px',
-                      borderRadius: '6px',
-                      border: '1px solid var(--adm-border)',
-                      background: isAddContactMenuOpen ? 'var(--adm-accent-bg)' : 'var(--adm-bg-input)',
-                      color: 'var(--adm-accent, #06B6D4)',
-                      fontSize: '0.66rem',
-                      fontWeight: 700,
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                    }}
-                  >
-                    <Plus size={11} />
-                    <span>Adicionar Pessoa</span>
-                    <ChevronDown size={11} />
-                  </button>
-
-                  {isAddContactMenuOpen && (
-                    <div style={{
-                      position: 'absolute',
-                      top: '100%',
-                      right: 0,
-                      marginTop: '4px',
-                      background: 'var(--adm-bg-card, #ffffff)',
-                      border: '1px solid var(--adm-border)',
-                      borderRadius: '8px',
-                      boxShadow: '0 8px 20px rgba(0,0,0,0.15)',
-                      padding: '4px',
-                      minWidth: '190px',
-                      zIndex: 50,
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '2px',
-                    }}>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setNewContactRole('copayer');
-                          setNewContactIsDecisor(true);
-                          setIsAddingContact(true);
-                          setIsAddContactMenuOpen(false);
-                        }}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '6px',
-                          padding: '6px 10px',
-                          borderRadius: '6px',
-                          border: 'none',
-                          background: 'transparent',
-                          color: 'var(--adm-text-title)',
-                          fontSize: '0.72rem',
-                          fontWeight: 600,
-                          cursor: 'pointer',
-                          textAlign: 'left',
-                          width: '100%',
-                        }}
-                      >
-                        <UserPlus size={12} color="var(--adm-accent)" />
-                        <span>Adicionar Novo Contato</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setNewContactRole('dependent');
-                          setNewContactIsDecisor(false);
-                          setIsAddingContact(true);
-                          setIsAddContactMenuOpen(false);
-                        }}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '6px',
-                          padding: '6px 10px',
-                          borderRadius: '6px',
-                          border: 'none',
-                          background: 'transparent',
-                          color: 'var(--adm-text-title)',
-                          fontSize: '0.72rem',
-                          fontWeight: 600,
-                          cursor: 'pointer',
-                          textAlign: 'left',
-                          width: '100%',
-                        }}
-                      >
-                        <Users size={12} color="#10B981" />
-                        <span>Adicionar Dependente Familiar</span>
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )}
             </div>
 
             {/* 1. Card do Contratante / Pagante */}
@@ -1365,7 +1265,7 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
                       return '';
                     })()}
                     onChange={(e) => client && updateClient(client.id, { payerRelationship: (e.target.value || undefined) as any })}
-                    style={{ width: '100%', height: '30px', fontSize: '0.76rem', borderRadius: '8px', padding: '0 8px' }}
+                    style={{ width: '100%', height: '30px', fontSize: '0.76rem', fontWeight: 700, borderRadius: '8px', padding: '0 8px', background: 'rgba(59, 130, 246, 0.10)', color: '#3B82F6', border: '1px solid rgba(59, 130, 246, 0.35)' }}
                   >
                     <option value="">Não informado</option>
                     <option value="mother">Mãe</option>
@@ -1661,6 +1561,51 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
               );
             })}
 
+            {/* + circular (mesmo padrao do comercial) para adicionar contato ou dependente */}
+            {!readOnly && !isAddingContact && (
+              <div style={{ display: 'flex', justifyContent: 'center', margin: '4px 0', position: 'relative', flexDirection: 'column', alignItems: 'center' }}>
+                <button
+                  type="button"
+                  onClick={() => setIsAddContactMenuOpen(o => !o)}
+                  title="Adicionar contato vinculado"
+                  style={{
+                    width: '34px', height: '34px', borderRadius: '50%', border: '1.5px dashed var(--adm-accent)',
+                    background: 'var(--adm-bg-card)', color: 'var(--adm-accent)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    cursor: 'pointer', boxShadow: '0 2px 6px rgba(0,0,0,0.1)', transition: 'all 0.2s ease',
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--adm-accent)'; e.currentTarget.style.color = '#FFFFFF'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--adm-bg-card)'; e.currentTarget.style.color = 'var(--adm-accent)'; }}
+                >
+                  <Plus size={16} />
+                </button>
+                {isAddContactMenuOpen && (
+                  <>
+                    <div onClick={() => setIsAddContactMenuOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
+                    <div role="menu" style={{
+                      position: 'absolute', top: '100%', marginTop: '6px', zIndex: 41, minWidth: '200px', padding: '6px',
+                      background: 'var(--adm-bg-card)', border: '1px solid var(--adm-border)', borderRadius: '12px', boxShadow: '0 12px 28px rgba(0,0,0,0.35)',
+                      display: 'flex', flexDirection: 'column', gap: '2px',
+                    }}>
+                      {[
+                        { label: 'Novo contato', hint: 'Mãe, pai, responsável...', role: 'copayer', decisor: true },
+                        { label: 'Dependente', hint: 'Entra no grupo familiar', role: 'dependent', decisor: false },
+                      ].map(opt => (
+                        <button key={opt.role} type="button" role="menuitem"
+                          onClick={() => { setNewContactRole(opt.role as any); setNewContactIsDecisor(opt.decisor); setIsAddingContact(true); setIsAddContactMenuOpen(false); }}
+                          style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '1px', padding: '8px 10px', borderRadius: '8px', border: 'none', background: 'transparent', cursor: 'pointer', textAlign: 'left' }}
+                          onMouseEnter={e => { e.currentTarget.style.background = 'var(--adm-bg-input)'; }}
+                          onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+                        >
+                          <span style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>{opt.label}</span>
+                          <span style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)' }}>{opt.hint}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
             {/* ── CONTRATO: vincular / dados do evento / pessoas / valores (so com contrato) ── */}
             {client && (
               <ClientContractSection
@@ -1714,8 +1659,8 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
             <div style={{
               padding: '10px 12px',
               borderRadius: '10px',
-              background: 'linear-gradient(135deg, rgba(236, 72, 153, 0.10) 0%, rgba(212, 175, 55, 0.12) 100%)',
-              border: '1px solid rgba(236, 72, 153, 0.3)',
+              background: 'var(--adm-bg-card)',
+              border: '1px solid var(--adm-border)',
               display: 'flex',
               flexDirection: 'column',
               gap: '8px',
@@ -1740,9 +1685,9 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
                     style={{
                       padding: '4px 8px',
                       borderRadius: '6px',
-                      border: '1px solid rgba(212, 175, 55, 0.4)',
-                      background: 'rgba(212, 175, 55, 0.15)',
-                      color: copiedLink ? '#10B981' : '#D4AF37',
+                      border: '1px solid var(--adm-border)',
+                      background: 'var(--adm-bg-input)',
+                      color: copiedLink ? '#10B981' : 'var(--adm-text-title)',
                       fontSize: '0.68rem',
                       fontWeight: 700,
                       cursor: 'pointer',
@@ -1984,9 +1929,9 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 <div style={{
                   background: 'var(--adm-bg-card)',
-                  border: '1.5px solid rgba(16, 185, 129, 0.4)',
-                  borderRadius: '12px',
-                  padding: '12px 14px',
+                  border: '1px solid var(--adm-border)',
+                  borderRadius: '10px',
+                  padding: '10px 12px',
                   display: 'flex',
                   flexDirection: 'column',
                   gap: '8px',
@@ -2032,11 +1977,11 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
                   <div style={{
                     display: 'grid',
                     gridTemplateColumns: '1fr 1fr',
-                    gap: '6px',
-                    padding: '8px 10px',
-                    borderRadius: '8px',
-                    background: 'var(--adm-bg-input)',
-                    border: '1px solid var(--adm-border)',
+                    gap: '8px 12px',
+                    padding: '8px 0 0',
+                    background: 'transparent',
+                    border: 'none',
+                    borderTop: '1px dashed var(--adm-border)',
                     fontSize: '0.70rem',
                   }}>
                     <div>
@@ -2069,7 +2014,7 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
                 {/* Card Clicável do Lead Comercial (Modo Visualização / Espectador) */}
                 <div style={{
                   background: 'var(--adm-bg-card)',
-                  border: '1.5px solid var(--adm-border)',
+                  border: '1px solid var(--adm-border)',
                   borderRadius: '10px',
                   padding: '10px 12px',
                   display: 'flex',
@@ -2132,14 +2077,14 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
                   <div style={{
                     padding: '10px 12px',
                     borderRadius: '10px',
-                    background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.08) 0%, rgba(139, 92, 246, 0.05) 100%)',
-                    border: '1px solid rgba(99, 102, 241, 0.3)',
+                    background: 'var(--adm-bg-card)',
+                    border: '1px solid var(--adm-border)',
                     display: 'flex',
                     flexDirection: 'column',
                     gap: '4px',
                   }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.72rem', fontWeight: 800, color: '#6366F1' }}>
-                      <FileText size={12} />
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.72rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
+                      <FileText size={12} color="#6366F1" />
                       <span>Relatório do Closer (Passagem de Bastão)</span>
                     </div>
                     <div style={{ fontSize: '0.76rem', color: 'var(--adm-text-title)', lineHeight: 1.45, whiteSpace: 'pre-wrap' }}>
@@ -2152,9 +2097,9 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
               /* 2. SE ENTROU VIA CAIXA DE ENTRADA / WHATSAPP */
               <div style={{
                 background: 'var(--adm-bg-card)',
-                border: '1.5px solid rgba(37, 211, 102, 0.35)',
-                borderRadius: '12px',
-                padding: '14px',
+                border: '1px solid var(--adm-border)',
+                borderRadius: '10px',
+                padding: '10px 12px',
                 display: 'flex',
                 flexDirection: 'column',
                 gap: '10px',
@@ -2227,8 +2172,8 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
               <div style={{
                 background: 'var(--adm-bg-card)',
                 border: '1.5px solid rgba(6, 182, 212, 0.35)',
-                borderRadius: '12px',
-                padding: '14px',
+                borderRadius: '10px',
+                padding: '10px 12px',
                 display: 'flex',
                 flexDirection: 'column',
                 gap: '10px',
