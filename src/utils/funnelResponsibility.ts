@@ -32,6 +32,24 @@ export function getFunnelMemberRoles(funnel: CommercialFunnel | undefined, c: Co
   return { sdr: commercial, closer: commercial };
 }
 
+/**
+ * Papeis (SDR/Closer) de um colaborador em uma unidade, somando os funis COMERCIAIS dela.
+ * O cargo no cadastro e generico (crm, admin...): quem e SDR ou Closer vem da equipe de cada funil.
+ */
+export function getCommercialRolesInVenue(funnels: CommercialFunnel[], venueId: string, c: CollabLike): FunnelMemberRoles {
+  // Cargo definido no cadastro (acesso x cargo) prevalece sobre a equipe dos funis
+  const jobRoles = (c as { jobRoles?: string[] }).jobRoles || [];
+  if (jobRoles.some(r => r.startsWith('comercial:'))) {
+    return { sdr: jobRoles.includes('comercial:sdr'), closer: jobRoles.includes('comercial:closer') };
+  }
+  const venueFunnels = funnels.filter(f => !f.isPostSale && (f.venueId === venueId || (f.sharedVenueIds || []).includes(venueId)));
+  if (venueFunnels.length === 0) return getFunnelMemberRoles(undefined, c);
+  return venueFunnels.reduce<FunnelMemberRoles>((acc, f) => {
+    const r = getFunnelMemberRoles(f, c);
+    return { sdr: acc.sdr || r.sdr, closer: acc.closer || r.closer };
+  }, { sdr: false, closer: false });
+}
+
 /** Pode ver a etapa? Lista especifica > visibilidade por papel > livre. Gestao enxerga tudo. */
 export function canCollaboratorSeeStage(
   funnel: CommercialFunnel | undefined,

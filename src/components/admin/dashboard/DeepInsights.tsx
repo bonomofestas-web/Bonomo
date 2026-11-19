@@ -18,7 +18,7 @@ const td: React.CSSProperties = {
 };
 
 /* Linha secundaria de KPIs: volume, ticket, ciclo, comparecimento e perda */
-export const DeepKpiRow: React.FC<{ deep: CommercialDashboardData['deep'] }> = ({ deep }) => {
+export const DeepKpiRow: React.FC<{ deep: CommercialDashboardData['deep']; targets?: CommercialDashboardData['targets'] }> = ({ deep, targets }) => {
   const iconProps = { size: 15 } as const;
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
@@ -44,7 +44,7 @@ export const DeepKpiRow: React.FC<{ deep: CommercialDashboardData['deep'] }> = (
         value={deep.showRate.current === null ? '—' : pct1(deep.showRate.current)} pct={deep.showRate.pct}
         hasCurrent={deep.showRate.current !== null}
         previousLabel={deep.showRate.previous === null ? undefined : pct1(deep.showRate.previous)}
-        detail={`${deep.showRate.sample} agendamentos finalizados (realizados, faltas e cancelados)`}
+        detail={`${deep.showRate.sample} agendamentos finalizados${targets?.attendanceRate ? ` · Meta ${Math.round(targets.attendanceRate * 10) / 10}%` : ' (realizados, faltas e cancelados)'}`}
       />
       <KpiCard
         label="Taxa de perda" icon={<TrendingDown {...iconProps} />}
@@ -53,6 +53,77 @@ export const DeepKpiRow: React.FC<{ deep: CommercialDashboardData['deep'] }> = (
         detail="Leads criados no período que foram perdidos"
       />
     </div>
+  );
+};
+
+/* Esteira do lead: captados -> qualificados -> agendados -> compareceram -> ganhos, com perdidos e desistencias */
+export const LeadJourneyPanel: React.FC<{ journey: CommercialDashboardData['journey']; targets?: CommercialDashboardData['targets'] }> = ({ journey: j, targets }) => {
+  const rateTxt = (v: number | null) => (v === null ? '—' : pct1(v));
+  const Tile: React.FC<{ label: string; value: number | string; color?: string; hint?: string }> = ({ label, value, color, hint }) => (
+    <div title={hint} style={{
+      padding: '10px 12px', borderRadius: '10px', border: '1px solid var(--adm-border)', background: 'var(--adm-bg-input)',
+      display: 'flex', flexDirection: 'column', gap: '2px', minWidth: 0,
+    }}>
+      <span style={{ fontSize: '1.3rem', fontWeight: 800, lineHeight: 1.1, color: color || 'var(--adm-text-title)', fontVariantNumeric: 'tabular-nums' }}>
+        {typeof value === 'number' ? value.toLocaleString('pt-BR') : value}
+      </span>
+      <span style={{ fontSize: '0.66rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--adm-text-muted)' }}>{label}</span>
+    </div>
+  );
+  const Rate: React.FC<{ label: string; value: number | null; target?: number | null }> = ({ label, value, target }) => (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', fontVariantNumeric: 'tabular-nums' }}>
+        <span style={{ fontWeight: 700, color: 'var(--adm-text-title)' }}>{label}</span>
+        <span style={{ fontWeight: 800, color: 'var(--adm-text-title)' }}>
+          {rateTxt(value)}
+          {target ? <span style={{ fontWeight: 600, color: 'var(--adm-text-muted)' }}> · meta {Math.round(target * 10) / 10}%</span> : null}
+        </span>
+      </div>
+      <div style={{ height: '6px', borderRadius: '3px', background: 'var(--adm-bg-input)' }}>
+        <div style={{ width: `${Math.min(100, value ?? 0)}%`, height: '100%', borderRadius: '3px', background: '#14A9D7' }} />
+      </div>
+    </div>
+  );
+  const maxDrop = j.dropoff[0]?.count || 0;
+  return (
+    <Panel>
+      <SectionTitle hint="Leads criados no período e até onde chegaram">Esteira do lead</SectionTitle>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '10px' }}>
+        <Tile label="Captados" value={j.captured.current} />
+        <Tile label="Não desqualificados" value={j.notDisqualified} hint="Captados menos os com MQL abaixo de 10%" />
+        <Tile label="Qualificados" value={j.mqlInUse ? j.qualified : '—'} hint={j.mqlInUse ? 'MQL de 10% ou mais' : 'Nenhum lead com MQL respondido'} />
+        <Tile label="Agendados" value={j.scheduled} />
+        <Tile label="Compareceram" value={j.attended} />
+        <Tile label="Ganhos" value={j.won} color="#10B981" />
+        <Tile label="Perdidos" value={j.lost} color="#EF4444" />
+        <Tile label="Em aberto" value={j.open} />
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px', marginTop: '14px' }}>
+        <Rate label="Qualificado → agendado" value={j.qualToSchedRate} target={targets?.schedulingRate} />
+        <Rate label="Agendado → compareceu" value={j.schedToAttendRate} target={targets?.attendanceRate} />
+        <Rate label="Compareceu → fechou" value={j.attendToWonRate} target={targets?.closingRate} />
+        <Rate label="Taxa de ganho" value={j.winRate} />
+        <Rate label="Taxa de perda" value={j.lossRate} />
+      </div>
+      {j.dropoff.length > 0 && (
+        <div style={{ marginTop: '14px', borderTop: '1px solid var(--adm-border)', paddingTop: '12px' }}>
+          <div style={{ fontSize: '0.66rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--adm-text-muted)', marginBottom: '8px' }}>
+            Onde desistiram da esteira
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {j.dropoff.map(d => (
+              <div key={d.stage} style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.74rem', fontVariantNumeric: 'tabular-nums' }}>
+                <span style={{ width: '180px', flexShrink: 0, fontWeight: 700, color: 'var(--adm-text-title)' }}>{d.stage}</span>
+                <div style={{ flex: 1, height: '6px', borderRadius: '3px', background: 'var(--adm-bg-input)' }}>
+                  <div style={{ width: `${maxDrop > 0 ? (d.count / maxDrop) * 100 : 0}%`, height: '100%', borderRadius: '3px', background: 'linear-gradient(90deg, #F59E0B, #EF4444)' }} />
+                </div>
+                <strong style={{ width: '28px', textAlign: 'right', color: 'var(--adm-text-title)' }}>{d.count}</strong>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </Panel>
   );
 };
 

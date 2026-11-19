@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import { useJobRoleCatalog } from '../../hooks/useJobRoleCatalog';
 import { motion } from 'motion/react';
 import {
   LayoutDashboard, Building2, Users, Target,
@@ -107,6 +108,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
     reorderPinnedFunnels,
     announcements,
   } = useAdminState();
+  const { titleOf: roleTitleOf } = useJobRoleCatalog(currentUser?.masterId || currentUser?.id);
 
   const [isRefreshingLogo, setIsRefreshingLogo] = useState(false);
 
@@ -260,9 +262,9 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
   const isDevUser = Boolean(effectiveUser?.isDev);
   const userRole = effectiveUser?.role || 'master';
 
-  const effectiveSectors: ('comercial' | 'pos_venda' | 'gerencia' | 'financeiro')[] = useMemo(() => {
+  const effectiveSectors: ('comercial' | 'pos_venda' | 'gerencia' | 'financeiro' | 'marketing')[] = useMemo(() => {
     if (isDevUser || userRole === 'master') {
-      return ['comercial', 'pos_venda', 'gerencia', 'financeiro'];
+      return ['comercial', 'pos_venda', 'gerencia', 'financeiro', 'marketing'];
     }
     if (effectiveUser && 'sectors' in effectiveUser && Array.isArray((effectiveUser as any).sectors) && (effectiveUser as any).sectors.length > 0) {
       return (effectiveUser as any).sectors;
@@ -917,6 +919,8 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
       const hasRole = itemRoles.includes(userRole);
       const hasSectorMatch = (
         (effectiveSectors.includes('comercial') && (itemRoles.includes('crm') || itemRoles.includes('sdr') || itemRoles.includes('closer') || item.id === 'post-sale-visits-tastings')) ||
+        // Marketing consulta o Comercial (dashboard, funil e visitas); o modulo proprio de marketing ainda sera desenvolvido
+        (effectiveSectors.includes('marketing') && ['dashboard', 'crm', 'post-sale-visits-tastings'].includes(item.id)) ||
         (effectiveSectors.includes('pos_venda') && itemRoles.includes('pos_venda')) ||
         (effectiveSectors.includes('gerencia') && (itemRoles.includes('admin') || itemRoles.includes('master')))
       );
@@ -2203,7 +2207,29 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
             )
           )}
 
-          {/* 5. Setor Financeiro: Preparado */}
+          {/* 5. Setor Marketing: Preparado (modulo proprio ainda nao desenvolvido) */}
+          {!isCollapsed && effectiveSectors.includes('marketing') && (
+            <div>
+              <div style={{
+                fontSize: '0.56rem',
+                fontWeight: 800,
+                textTransform: 'uppercase',
+                color: '#8096A8',
+                letterSpacing: '0.6px',
+                padding: '4px 6px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+              }}>
+                <span>Marketing</span>
+                <span style={{ fontSize: '0.48rem', background: 'rgba(148, 163, 184, 0.12)', color: 'var(--adm-text-muted)', padding: '1px 4px', borderRadius: '3px' }}>
+                  Em Breve
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* 6. Setor Financeiro: Preparado */}
           {!isCollapsed && (
             <div>
               <div style={{
@@ -2292,7 +2318,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',
                 }}>
-                  {currentUser.customJobTitle?.trim() || (
+                  {roleTitleOf({ jobRoles: collaborators.find(x => x.id === currentUser.id)?.jobRoles, customJobTitle: currentUser.customJobTitle }) || (
                     currentUser.role === 'master' ? 'Diretoria Executiva' :
                       currentUser.role === 'dev' ? 'Desenvolvedor' :
                         currentUser.role === 'admin' || currentUser.role === 'gerencia' ? 'Gerência Geral' :

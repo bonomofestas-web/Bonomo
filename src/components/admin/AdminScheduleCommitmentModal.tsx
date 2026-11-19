@@ -1,3 +1,4 @@
+import { Select } from '../ui';
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { eventsOnDay, venueEventWarning } from '../../utils/venueEventDay';
 import { 
@@ -1776,7 +1777,7 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
                       : 'Selecione o SDR que executará as tarefas de confirmação.'}
                   </div>
                 </div>
-                <select
+                <Select
                   value={sdrId}
                   onChange={e => setSdrId(e.target.value)}
                   style={{
@@ -1798,7 +1799,7 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
                       </option>
                     );
                   })}
-                </select>
+                </Select>
               </div>
 
               {/* Confirmação 1 (Baseada em DIAS antes) */}

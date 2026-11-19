@@ -1,3 +1,4 @@
+import { Select } from '../ui';
 import { toast } from 'sonner';
 import React, { useState } from 'react';
 import { 
@@ -521,7 +522,7 @@ export const AdminDevAnnouncementsView: React.FC = () => {
                 <label style={{ display: 'block', fontSize: '0.72rem', color: '#14A9D7', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>
                   Categoria do Comunicado
                 </label>
-                <select
+                <Select
                   value={type}
                   onChange={(e: any) => setType(e.target.value)}
                   style={{
@@ -539,7 +540,7 @@ export const AdminDevAnnouncementsView: React.FC = () => {
                   <option value="update">Atualização do Sistema</option>
                   <option value="maintenance">Aviso Importante / Manutenção</option>
                   <option value="general">Comunicado Geral</option>
-                </select>
+                </Select>
               </div>
 
               {/* Mídia Anexa: Texto / Imagem / Vídeo */}

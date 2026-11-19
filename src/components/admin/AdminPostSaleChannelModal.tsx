@@ -1,3 +1,4 @@
+import { Select } from '../ui';
 import React, { useState } from 'react';
 import { 
   X, 
@@ -378,7 +379,7 @@ export const AdminPostSaleChannelModal: React.FC<AdminPostSaleChannelModalProps>
                 Opcional (se vazio, usa o chip padrão)
               </span>
             </div>
-            <select
+            <Select
               value={instanceId}
               onChange={e => setInstanceId(e.target.value)}
               style={{
@@ -406,7 +407,7 @@ export const AdminPostSaleChannelModal: React.FC<AdminPostSaleChannelModalProps>
                   </option>
                 );
               })}
-            </select>
+            </Select>
             <p style={{ margin: '5px 0 0 0', fontSize: '0.73rem', color: 'var(--adm-text-muted)' }}>
               Todas as mensagens enviadas nesta aba serão disparadas pelo chip exclusivo selecionado.
             </p>

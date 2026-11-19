@@ -1,13 +1,14 @@
-import React, { useState, useMemo } from 'react';
+import { Select } from '../ui';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { HeaderActions } from './HeaderActions';
 import { 
   Building2, 
-  Mail, Phone, Edit3, Trash2, 
-  UserPlus, ShieldCheck, Plus,
+  Mail, Phone, Trash2, 
+  UserPlus, ShieldCheck,
   CheckCircle2, Clock, Check, ArrowLeft,
   UserX, AlertTriangle, CheckSquare, Target, X,
-  Power, Lock, UserCheck, Shield, SlidersHorizontal,
-  ArrowRightLeft, Search, KeyRound, List, LayoutGrid, ArrowUpDown
+  Lock, UserCheck, Shield,
+  ArrowRightLeft, Search
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { ImageUploadField } from './ImageUploadField';
@@ -15,11 +16,51 @@ import { createMonogramAvatar } from '../../utils/avatarUtils';
 import { formatPhone, maskPhoneInput } from '../../utils/phoneFormatter';
 import { AdminCollabInviteModal } from './AdminCollabInviteModal';
 import type { Collaborator, AdminRole, LeadActivity, Lead } from '../../types/admin';
+import type { AdminTabType } from './AdminSidebar';
+import { GOALS_COLLAB_KEY } from './AdminVenueGoalsView';
+import { JOB_ROLE_OPTIONS, JOB_SECTORS, jobRoleLabel, slugifyRole, type CustomJobRole, type JobSector } from '../../utils/jobRoles';
+import { jobRoleService } from '../../services/jobRoleService';
+import { useJobRoleCatalog } from '../../hooks/useJobRoleCatalog';
+import { AdminJobRolesModal } from './AdminJobRolesModal';
+import { toast } from 'sonner';
+import { TeamDirectory } from './team/TeamDirectory';
+import { useTeamPresence } from '../../hooks/usePresence';
+import { presenceService, type PresenceRow } from '../../services/presenceService';
+import type { PresenceView } from './team/teamShared';
+import { CollaboratorProfile } from './team/CollaboratorProfile';
+import type { CollabPerms, TeamActions, TeamDataBundle } from './team/teamShared';
+import { jobRoleLabels, resolveProfileKind, summarizeAssets } from '../../utils/collaboratorAssets';
 
-export const AdminCollaboratorsView: React.FC = () => {
+
+const VIEW_LABEL: Record<string, string> = {
+  home: 'no Início', tasks: 'na Central de Tarefas', dashboard: 'no Dashboard', crm: 'no Funil Comercial', contacts: 'em Contatos',
+  leads: 'em Leads', contracts: 'em Contratos', followups: 'em Follow-ups', whatsapp: 'em Mensagens', 'quick-messages': 'em Mensagens Rápidas',
+  'post-sale-crm': 'no Funil de Pós-Venda', 'post-sale-clients': 'em Clientes do Pós-Venda', sources: 'em Origens', 'venue-goals': 'em Metas',
+  collaborators: 'em Colaboradores', calendar: 'na Agenda',
+};
+
+const describePresence = (r: PresenceRow): PresenceView => {
+  const label = r.entityLabel ? r.entityLabel : '';
+  let activity: string;
+  if (r.entityType === 'lead' && label) activity = `atendendo o lead ${label}`;
+  else if (r.entityType === 'client' && label) activity = `no contrato de ${label}`;
+  else if (r.entityType === 'task' && label) activity = `na tarefa ${label}`;
+  else if (r.entityType === 'appointment' && label) activity = `no compromisso ${label}`;
+  else activity = r.view ? (VIEW_LABEL[r.view] || 'navegando no sistema') : 'online';
+  return { online: Date.now() - r.lastSeenAt < presenceService.ONLINE_WINDOW_MS, activity, entityType: r.entityType, entityId: r.entityId || undefined };
+};
+
+interface AdminCollaboratorsViewProps {
+  onNavigateTab?: (tab: AdminTabType) => void;
+}
+
+export const AdminCollaboratorsView: React.FC<AdminCollaboratorsViewProps> = ({ onNavigateTab }) => {
   const { 
     collaborators, 
     venues, 
+    clients,
+    appointments,
+    funnels,
     deleteCollaborator, 
     addCollaborator,
     updateCollaborator,
@@ -29,6 +70,7 @@ export const AdminCollaboratorsView: React.FC = () => {
     sendCollaboratorInvite,
     updateLeadData,
     showSystemAlert,
+    featureFlags,
   } = useAdminState();
 
   const isCurrentUserManager = currentUser?.role === 'admin' || currentUser?.role === 'gerencia';
@@ -42,16 +84,75 @@ export const AdminCollaboratorsView: React.FC = () => {
   const [inviteSentEmail, setInviteSentEmail] = useState<string | null>(null);
 
   // Modos de Exibição (Lista primária como padrão, Cards) e Ordenação (Audio 6)
-  const [viewMode, setViewMode] = useState<'list' | 'card'>('list');
-  const [collabSearchQuery, setCollabSearchQuery] = useState('');
-  const [collabSortBy, setCollabSortBy] = useState<'name_asc' | 'name_desc' | 'created_desc' | 'created_asc' | 'role_priority'>('name_asc');
 
   // Estados do Formulário em Área de Conteúdo
   const [formName, setFormName] = useState('');
   const [formEmail, setFormEmail] = useState('');
   const [formPhone, setFormPhone] = useState('');
   const [formCustomJobTitle, setFormCustomJobTitle] = useState('');
-  const [formSectors, setFormSectors] = useState<('comercial' | 'pos_venda' | 'gerencia' | 'financeiro')[]>(['comercial']);
+  const [formJobRoles, setFormJobRoles] = useState<string[]>([]);
+
+  // Catalogo de cargos personalizados ("Outro"), por setor e por Master
+  const masterId = currentUser?.masterId || currentUser?.id || '';
+  const canManageRoles = currentUser?.role === 'master' || currentUser?.role === 'admin' || currentUser?.role === 'gerencia';
+  const [customRoles, setCustomRoles] = useState<CustomJobRole[]>([]);
+  const [isRolesModalOpen, setIsRolesModalOpen] = useState(false);
+  const [profileCollabId, setProfileCollabId] = useState<string | null>(null);
+  const [addingRoleSector, setAddingRoleSector] = useState<JobSector | null>(null);
+  const [addingRoleName, setAddingRoleName] = useState('');
+  const reloadRoles = useCallback(async () => { if (masterId) setCustomRoles(await jobRoleService.list(masterId)); }, [masterId]);
+  useEffect(() => { void reloadRoles(); }, [reloadRoles]);
+  const { aliases: roleAliases, titleOf: roleTitleOf, reload: reloadRoleCatalog } = useJobRoleCatalog(masterId || undefined);
+  const setRoleAlias = async (roleId: string, name: string): Promise<boolean> => {
+    const r = await jobRoleService.setLabel(masterId, roleId, name);
+    if (r === 'ok') { await reloadRoleCatalog(); toast.success(name.trim() ? 'Nome de exibição atualizado.' : 'Nome padrão restaurado.'); return true; }
+    toast.error(r === 'forbidden' ? 'Sem permissão para alterar os nomes dos cargos.' : r === 'missing_table' ? 'Recurso ainda não disponível neste banco.' : r === 'invalid' ? 'Use de 2 a 60 caracteres.' : 'Não foi possível salvar o nome.');
+    return false;
+  };
+
+  const createRole = async (sector: JobSector, name: string): Promise<CustomJobRole | null> => {
+    const res = await jobRoleService.create(masterId, sector, name, { id: currentUser?.id, name: currentUser?.name });
+    if (!res.ok) {
+      toast.error(
+        res.reason === 'invalid' ? 'Digite um nome de cargo entre 2 e 60 letras.'
+          : res.reason === 'missing_table' ? 'A tabela de cargos ainda não existe no banco. Aplique as migrations.'
+            : res.reason === 'forbidden' ? 'O banco recusou a gravação (sessão expirada ou sem permissão). Saia do sistema e entre de novo.'
+              : 'Não foi possível criar o cargo.',
+      );
+      return null;
+    }
+    await reloadRoles();
+    return res.role;
+  };
+
+  const deleteRole = async (role: CustomJobRole) => {
+    const holders = collaborators.filter(c => c.jobRoles?.includes(role.id));
+    const msg = holders.length > 0
+      ? `Excluir o cargo "${role.name}"? Ele será removido de ${holders.length} ${holders.length === 1 ? 'pessoa' : 'pessoas'}.`
+      : `Excluir o cargo "${role.name}"?`;
+    if (!window.confirm(msg)) return;
+    if (!(await jobRoleService.remove(masterId, role.sector, role.slug))) { toast.error('Não foi possível excluir o cargo.'); return; }
+    holders.forEach(c => updateCollaborator(c.id, { jobRoles: (c.jobRoles || []).filter(r => r !== role.id) }));
+    setFormJobRoles(prev => prev.filter(r => r !== role.id));
+    await reloadRoles();
+    toast.success('Cargo excluído.');
+  };
+
+  const roleUsage = useMemo(() => {
+    const out: Record<string, number> = {};
+    collaborators.forEach(c => (c.jobRoles || []).forEach(r => { out[r] = (out[r] || 0) + 1; }));
+    return out;
+  }, [collaborators]);
+
+  const rolesModal = isRolesModalOpen ? (
+    <AdminJobRolesModal
+      customRoles={customRoles} aliases={roleAliases} onSetAlias={setRoleAlias} usage={roleUsage} canEdit={canManageRoles}
+      onCreate={async (sector, name) => Boolean(await createRole(sector, name))}
+      onDelete={deleteRole}
+      onClose={() => setIsRolesModalOpen(false)}
+    />
+  ) : null;
+  const [formSectors, setFormSectors] = useState<('comercial' | 'pos_venda' | 'gerencia' | 'financeiro' | 'marketing')[]>(['comercial']);
   const [formSelectedVenueIds, setFormSelectedVenueIds] = useState<string[]>([]);
   const [formAvatarUrl, setFormAvatarUrl] = useState('');
   const [formActive, setFormActive] = useState(true);
@@ -107,55 +208,18 @@ export const AdminCollaboratorsView: React.FC = () => {
     );
   }, [tasks, collabToDelete]);
 
-  const rolePriority: Record<string, number> = {
-    master: 1,
-    dev: 2,
-    admin: 3,
-    closer: 4,
-    sdr: 5,
-    pos_venda: 6,
-    crm: 7,
-  };
+  // Contratos, vendas adicionais e compromissos tambem sao reatribuidos ao excluir
+  const affectedPostSale = useMemo(() => {
+    if (!collabToDelete) return { contracts: 0, upsells: 0, appointments: 0 };
+    return {
+      contracts: clients.filter(c => c.assignedSuccessManagerId === collabToDelete.id).length,
+      upsells: clients.reduce((n, c) => n + (c.upsellSales || []).filter(u => u.responsibleId === collabToDelete.id).length, 0),
+      appointments: appointments.filter(a => a.responsibleCollaboratorId === collabToDelete.id).length,
+    };
+  }, [clients, appointments, collabToDelete]);
+  const affectedOthers = affectedPostSale.contracts + affectedPostSale.upsells + affectedPostSale.appointments;
 
-  const sortedCollaborators = useMemo(() => {
-    let list = [...collaborators];
 
-    if (collabSearchQuery.trim()) {
-      const q = collabSearchQuery.toLowerCase().trim();
-      list = list.filter(c => 
-        (c.name || '').toLowerCase().includes(q) ||
-        (c.email || '').toLowerCase().includes(q) ||
-        (c.customJobTitle || '').toLowerCase().includes(q) ||
-        (c.phone || '').includes(q)
-      );
-    }
-
-    list.sort((a, b) => {
-      if (collabSortBy === 'name_asc') {
-        return (a.name || '').localeCompare(b.name || '', 'pt-BR');
-      }
-      if (collabSortBy === 'name_desc') {
-        return (b.name || '').localeCompare(a.name || '', 'pt-BR');
-      }
-      if (collabSortBy === 'created_desc') {
-        const timeA = new Date(a.createdAt || 0).getTime();
-        const timeB = new Date(b.createdAt || 0).getTime();
-        return timeB - timeA;
-      }
-      if (collabSortBy === 'created_asc') {
-        const timeA = new Date(a.createdAt || 0).getTime();
-        const timeB = new Date(b.createdAt || 0).getTime();
-        return timeA - timeB;
-      }
-      // role_priority (padrão)
-      const priorityA = rolePriority[a.role] || 99;
-      const priorityB = rolePriority[b.role] || 99;
-      if (priorityA !== priorityB) return priorityA - priorityB;
-      return (a.name || '').localeCompare(b.name || '', 'pt-BR');
-    });
-
-    return list;
-  }, [collaborators, collabSearchQuery, collabSortBy]);
 
   const isPendingFirstAccess = (c: Collaborator): boolean => {
     if (c.role === 'master') return false;
@@ -164,6 +228,16 @@ export const AdminCollaboratorsView: React.FC = () => {
     // Se já possui uma senha válida/real configurada no banco, o primeiro acesso já foi concluído
     if (c.password && c.password.trim().length >= 6 && !c.password.includes('••')) return false;
     return Boolean(c.isFirstAccess);
+  };
+
+  const handleOpenSuperManagement = (collab: Collaborator, tab: 'leads' | 'tasks' = 'leads') => {
+    setCollabForManagement(collab);
+    setManagementTab(tab);
+    setManagementSearchQuery('');
+    setSelectedLeadIdsForTransfer([]);
+    setTransferSuccessMessage(null);
+    const eligibleOthers = collaborators.filter(c => c.id !== collab.id && c.active && c.role !== 'dev');
+    setTransferTargetCollabId(eligibleOthers[0]?.id || '');
   };
 
   const handleSendInviteEmail = async (collab: Collaborator) => {
@@ -191,6 +265,7 @@ export const AdminCollaboratorsView: React.FC = () => {
     setFormEmail('');
     setFormPhone('');
     setFormCustomJobTitle('');
+    setFormJobRoles([]);
     setFormSectors(['comercial']);
     setFormSelectedVenueIds(venues.map(v => v.id));
     setFormAvatarUrl('');
@@ -199,6 +274,12 @@ export const AdminCollaboratorsView: React.FC = () => {
   };
 
   const handleOpenCreate = handleOpenAdd;
+
+  // Atalho: abre Metas > Equipe ja com o modal de metas deste colaborador
+  const openGoals = (collaboratorId: string) => {
+    try { sessionStorage.setItem(GOALS_COLLAB_KEY, collaboratorId); } catch { /* sem sessionStorage */ }
+    onNavigateTab?.('venue-goals');
+  };
 
   const handleOpenEdit = (collab: Collaborator) => {
     const isTargetManagerOrAbove = collab.role === 'admin' || collab.role === 'master' || collab.role === 'gerencia';
@@ -213,7 +294,8 @@ export const AdminCollaboratorsView: React.FC = () => {
     setFormEmail(collab.email || '');
     setFormPhone(collab.phone ? formatPhone(collab.phone) : '');
     setFormCustomJobTitle(collab.customJobTitle || '');
-    const existingSectors: ('comercial' | 'pos_venda' | 'gerencia' | 'financeiro')[] = collab.sectors && collab.sectors.length > 0
+    setFormJobRoles(collab.jobRoles || []);
+    const existingSectors: ('comercial' | 'pos_venda' | 'gerencia' | 'financeiro' | 'marketing')[] = collab.sectors && collab.sectors.length > 0
       ? collab.sectors
       : collab.role === 'pos_venda' ? ['pos_venda', 'comercial']
       : collab.role === 'admin' || collab.role === 'master' || collab.role === 'gerencia' ? ['gerencia', 'comercial', 'pos_venda']
@@ -259,6 +341,8 @@ export const AdminCollaboratorsView: React.FC = () => {
       email: formEmail.trim().toLowerCase(),
       phone: formPhone.trim() || undefined,
       customJobTitle: formCustomJobTitle.trim() || undefined,
+      // Cargo so vale para setores marcados (acesso x cargo)
+      jobRoles: formJobRoles.filter(r => formSectors.includes(r.split(':')[0] as JobSector)),
       sectors: formSectors,
       role: computedRole,
       department: formSectors[0] || 'comercial',
@@ -311,9 +395,8 @@ export const AdminCollaboratorsView: React.FC = () => {
 
 
   const getCollabRoleTitle = (collab: Collaborator) => {
-    if (collab.customJobTitle && collab.customJobTitle.trim()) {
-      return collab.customJobTitle.trim();
-    }
+    const shownTitle = roleTitleOf(collab);
+    if (shownTitle) return shownTitle;
     if (collab.role === 'master') return 'Diretoria Geral';
     if (collab.isDev || collab.role === 'dev') return 'Desenvolvedor';
     if (collab.role === 'admin') return 'Administrador';
@@ -324,152 +407,10 @@ export const AdminCollaboratorsView: React.FC = () => {
     return '';
   };
 
-  type SectorKey = 'gerencia' | 'comercial' | 'pos_venda' | 'financeiro';
 
-  const SECTOR_TAG_CONFIG: Record<SectorKey, { label: string; color: string; bg: string; border: string; icon?: boolean }> = {
-    gerencia: {
-      label: 'Gerência',
-      color: 'var(--adm-gold, #D4AF37)',
-      bg: 'rgba(212, 175, 55, 0.12)',
-      border: 'rgba(212, 175, 55, 0.35)',
-      icon: true,
-    },
-    comercial: {
-      label: 'Comercial',
-      color: '#14A9D7',
-      bg: 'rgba(20, 169, 215, 0.12)',
-      border: 'rgba(20, 169, 215, 0.35)',
-    },
-    pos_venda: {
-      label: 'Pós-Venda',
-      color: '#06B6D4',
-      bg: 'rgba(6, 182, 212, 0.12)',
-      border: 'rgba(6, 182, 212, 0.35)',
-    },
-    financeiro: {
-      label: 'Financeiro',
-      color: '#10B981',
-      bg: 'rgba(16, 185, 129, 0.12)',
-      border: 'rgba(16, 185, 129, 0.35)',
-    },
-  };
 
-  const getCollabSectors = (collab: Collaborator): SectorKey[] => {
-    const validOrder: SectorKey[] = ['gerencia', 'comercial', 'pos_venda', 'financeiro'];
-    const found = new Set<SectorKey>();
 
-    if (Array.isArray(collab.sectors)) {
-      collab.sectors.forEach(s => {
-        if (validOrder.includes(s as SectorKey)) found.add(s as SectorKey);
-      });
-    }
 
-    if (Array.isArray(collab.permissions)) {
-      collab.permissions.forEach(p => {
-        if (typeof p === 'string' && p.startsWith('sector:')) {
-          const sec = p.replace('sector:', '') as SectorKey;
-          if (validOrder.includes(sec)) found.add(sec);
-        }
-      });
-    }
-
-    if (collab.department && validOrder.includes(collab.department as SectorKey)) {
-      found.add(collab.department as SectorKey);
-    }
-
-    if (collab.role === 'master' || collab.role === 'admin' || collab.role === 'gerencia') {
-      found.add('gerencia');
-      if (found.size === 1) {
-        found.add('comercial');
-        found.add('pos_venda');
-      }
-    } else if (collab.role === 'pos_venda') {
-      found.add('pos_venda');
-    } else if ((collab.role as string) === 'financeiro') {
-      found.add('financeiro');
-    } else if (found.size === 0) {
-      found.add('comercial');
-    }
-
-    return validOrder.filter(k => found.has(k));
-  };
-
-  const renderSectorTags = (collab: Collaborator) => {
-    const sectors = getCollabSectors(collab);
-    return sectors.map(sec => {
-      const cfg = SECTOR_TAG_CONFIG[sec];
-      return (
-        <span
-          key={sec}
-          style={{
-            background: cfg.bg,
-            color: cfg.color,
-            border: `1px solid ${cfg.border}`,
-            borderRadius: '6px',
-            padding: '2px 7px',
-            fontSize: '0.66rem',
-            fontWeight: 800,
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '3px',
-            whiteSpace: 'nowrap',
-          }}
-        >
-          {cfg.icon && <ShieldCheck size={11} />}
-          {cfg.label}
-        </span>
-      );
-    });
-  };
-
-  const getCollabVenueDisplay = (collab: Collaborator) => {
-    if (collab.role === 'master') {
-      return {
-        label: 'Todas as Unidades (Rede)',
-        title: 'Todas as Unidades (Rede)',
-        isAll: true,
-        matchedVenues: venues,
-      };
-    }
-
-    const explicitIds = Array.isArray(collab.venueIds) && collab.venueIds.length > 0
-      ? collab.venueIds
-      : (collab.venueId && collab.venueId !== 'all' ? [collab.venueId] : []);
-
-    const matchedVenues = explicitIds
-      .map(id => venues.find(v => v.id === id))
-      .filter((v): v is NonNullable<typeof v> => Boolean(v));
-
-    const coversAllVenues =
-      (venues.length > 0 && matchedVenues.length >= venues.length) ||
-      (collab.venueId === 'all' && explicitIds.length === 0);
-
-    if (coversAllVenues) {
-      return {
-        label: 'Todas as Unidades (Rede)',
-        title: venues.map(v => v.name).join(', ') || 'Todas as Unidades (Rede)',
-        isAll: true,
-        matchedVenues: venues,
-      };
-    }
-
-    if (matchedVenues.length > 0) {
-      const names = matchedVenues.map(v => v.name).join(', ');
-      return {
-        label: names,
-        title: names,
-        isAll: false,
-        matchedVenues,
-      };
-    }
-
-    return {
-      label: 'Nenhuma unidade vinculada',
-      title: 'Nenhuma unidade vinculada',
-      isAll: false,
-      matchedVenues: [],
-    };
-  };
 
   const getCollabLeads = (collab: Collaborator) => {
     return leads.filter(l => 
@@ -511,15 +452,6 @@ export const AdminCollaboratorsView: React.FC = () => {
     return getCollabTasks(collabForManagement);
   }, [tasks, collabForManagement]);
 
-  const handleOpenSuperManagement = (collab: Collaborator, tab: 'leads' | 'tasks' = 'leads') => {
-    setCollabForManagement(collab);
-    setManagementTab(tab);
-    setManagementSearchQuery('');
-    setSelectedLeadIdsForTransfer([]);
-    setTransferSuccessMessage(null);
-    const eligibleOthers = collaborators.filter(c => c.id !== collab.id && c.active && c.role !== 'dev');
-    setTransferTargetCollabId(eligibleOthers[0]?.id || '');
-  };
 
   const handleExecuteLeadTransfer = async () => {
     if (!collabForManagement || selectedLeadIdsForTransfer.length === 0) return;
@@ -624,6 +556,81 @@ export const AdminCollaboratorsView: React.FC = () => {
     }
   };
 
+  /* ───── Dados do Time (ativos em memoria, sem consulta nova ao banco) ───── */
+  const todayISO = new Date().toISOString().slice(0, 10);
+  const assetMap = useMemo(
+    () => summarizeAssets({ leads, clients, tasks, appointments, funnels, todayISO }),
+    [leads, clients, tasks, appointments, funnels, todayISO],
+  );
+  const kindMap = useMemo(() => {
+    const m = new Map<string, ReturnType<typeof resolveProfileKind>>();
+    collaborators.forEach(c => {
+      const ids = Array.isArray(c.venueIds) && c.venueIds.length > 0 ? c.venueIds : (c.venueId && c.venueId !== 'all' ? [c.venueId] : venues.map(v => v.id));
+      m.set(c.id, resolveProfileKind(c, funnels, ids));
+    });
+    return m;
+  }, [collaborators, funnels, venues]);
+
+  const permsOf = (c: Collaborator): CollabPerms => {
+    const isSelf = Boolean(c.id === currentUser?.id || (currentUser?.email && c.email.toLowerCase() === currentUser.email.toLowerCase()));
+    const isMaster = c.role === 'master';
+    const targetManagerOrAbove = c.role === 'admin' || c.role === 'master' || c.role === 'gerencia';
+    return {
+      isSelf, isMaster, isPending: isPendingFirstAccess(c),
+      canToggle: !isSelf && !isMaster && (!isCurrentUserManager || !targetManagerOrAbove),
+      canEdit: !isSelf && (!isCurrentUserManager || !targetManagerOrAbove),
+      canDelete: !isSelf && !isMaster && (!isCurrentUserManager || !targetManagerOrAbove),
+    };
+  };
+
+  const teamData: TeamDataBundle = {
+    venues,
+    assets: assetMap,
+    kindOf: c => kindMap.get(c.id) || 'outro',
+    permsOf,
+    jobLabelsOf: c => jobRoleLabels(c, customRoles, roleAliases),
+    titleOf: c => roleTitleOf(c),
+  };
+
+  // Presenca ao vivo: so Master/Gerencia veem, so com a chave ligada, e so enquanto esta tela esta aberta
+  const canSeePresence = (currentUser?.role === 'master' || currentUser?.role === 'admin' || currentUser?.role === 'gerencia')
+    && featureFlags.team_presence !== 'disabled' && featureFlags.team_presence !== 'coming_soon';
+  const presenceRows = useTeamPresence({ enabled: canSeePresence, masterId: masterId || undefined });
+  const presenceMap = useMemo(() => {
+    const m = new Map<string, PresenceView>();
+    presenceRows.forEach((r, id) => m.set(id, describePresence(r)));
+    return m;
+  }, [presenceRows]);
+
+  // Editor: alteracoes nao salvas e validacao inline
+  const [editorBaseline, setEditorBaseline] = useState('');
+  const editorSnapshot = JSON.stringify([formName, formEmail, formPhone, formCustomJobTitle, formJobRoles, formSectors, formSelectedVenueIds, formAvatarUrl, formActive]);
+  useEffect(() => { if (isFormOpen) { const t = setTimeout(() => setEditorBaseline(editorSnapshot), 120); return () => clearTimeout(t); } setEditorBaseline(''); }, [isFormOpen]); // eslint-disable-line react-hooks/exhaustive-deps
+  const editorDirty = isFormOpen && editorBaseline !== '' && editorSnapshot !== editorBaseline;
+  const nameError = formName.trim().length === 0 ? 'Informe o nome completo.' : '';
+  const emailError = formEmail.trim().length === 0 ? 'Informe o e-mail.' : !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formEmail.trim()) ? 'E-mail inválido.' : '';
+  const venueError = formSelectedVenueIds.length === 0 ? 'Selecione ao menos uma unidade.' : '';
+  const editorInvalid = Boolean(nameError || emailError);
+  const closeEditor = () => {
+    if (editorDirty && !window.confirm('Descartar as alterações não salvas?')) return;
+    setIsFormOpen(false);
+  };
+  const scrollToSection = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+  const profileCollab = profileCollabId ? collaborators.find(x => x.id === profileCollabId) || null : null;
+
+  const teamActions: TeamActions = {
+    onOpen: c => setProfileCollabId(c.id),
+    onEdit: handleOpenEdit,
+    onToggleActive: c => updateCollaborator(c.id, { active: !c.active }),
+    onDelete: handleOpenDelete,
+    onGoals: c => openGoals(c.id),
+    onTransfer: c => handleOpenSuperManagement(c),
+    onInviteLink: c => setCollabForInviteModal(c),
+    onInviteEmail: c => { void handleSendInviteEmail(c); },
+    onOpenMasterProfile: () => handleOpenMasterProfile(),
+  };
+
   if (isFormOpen) {
     return (
       <div style={{
@@ -636,89 +643,74 @@ export const AdminCollaboratorsView: React.FC = () => {
         animation: 'fadeIn 0.25s ease-out',
         fontFamily: "'Plus Jakarta Sans', sans-serif",
       }}>
-        {/* Header with Back and Save actions */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', borderBottom: '1px solid var(--adm-border)', paddingBottom: '16px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <button
-              type="button"
-              onClick={() => setIsFormOpen(false)}
-              style={{
-                background: 'var(--adm-bg-card)',
-                border: '1px solid var(--adm-border)',
-                borderRadius: '10px',
-                padding: '8px 14px',
-                color: 'var(--adm-text-title)',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                fontSize: '0.80rem',
-                fontWeight: 700,
-                transition: 'all 0.15s ease',
-              }}
-              onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--adm-accent)'; }}
-              onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--adm-border)'; }}
-            >
-              <ArrowLeft size={16} />
-              <span>Voltar</span>
+        {/* Barra fixa: voltar, titulo, estado e salvar */}
+        <div style={{
+          position: 'sticky', top: 0, zIndex: 30, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px',
+          padding: '12px 16px', borderRadius: '14px', background: 'var(--adm-bg-card)', border: '1px solid var(--adm-border)', boxShadow: '0 6px 20px rgba(0,0,0,0.18)',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
+            <button type="button" onClick={closeEditor} className="adm-btn adm-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <ArrowLeft size={16} /><span>Voltar</span>
             </button>
-            <div>
-              <h1 style={{
-                fontSize: '1.45rem',
-                fontWeight: 800,
-                color: 'var(--adm-text-title)',
-                letterSpacing: '-0.4px',
-                margin: 0,
-              }}>
-                {collaboratorToEdit ? `Editar Colaborador: ${collaboratorToEdit.name}` : 'Cadastrar Novo Colaborador'}
+            <div style={{ minWidth: 0 }}>
+              <h1 style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--adm-text-title)', letterSpacing: '-0.3px', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {collaboratorToEdit ? `Editar: ${collaboratorToEdit.name}` : 'Novo colaborador'}
               </h1>
-              <p style={{ fontSize: '0.78rem', color: 'var(--adm-text-muted)', margin: '2px 0 0 0' }}>
-                Configure os dados, cargo executivo e o nível de acesso por setores no F5 System.
+              <p style={{ fontSize: '0.72rem', color: editorDirty ? '#F59E0B' : 'var(--adm-text-muted)', margin: '2px 0 0 0', fontWeight: editorDirty ? 700 : 500 }}>
+                {editorDirty ? 'Alterações não salvas' : 'Nenhuma alteração'}
               </p>
             </div>
           </div>
-
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <button
-              type="button"
-              onClick={() => setIsFormOpen(false)}
-              style={{
-                background: 'transparent',
-                border: '1px solid var(--adm-border)',
-                color: 'var(--adm-text-muted)',
-                borderRadius: '12px',
-                padding: '9px 18px',
-                fontSize: '0.82rem',
-                fontWeight: 700,
-                cursor: 'pointer',
-              }}
-            >
-              Cancelar
-            </button>
-            <button
-              type="button"
-              onClick={() => handleSaveCollaborator()}
-              className="adm-btn-primary"
-              style={{
-                borderRadius: '12px',
-                padding: '9px 22px',
-                fontSize: '0.84rem',
-                fontWeight: 800,
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-              }}
-            >
-              <Check size={16} />
-              <span>{collaboratorToEdit ? 'Salvar Alterações' : 'Criar Colaborador'}</span>
+            <button type="button" onClick={closeEditor} className="adm-btn adm-btn-secondary">Cancelar</button>
+            <button type="button" onClick={() => handleSaveCollaborator()} disabled={editorInvalid} className="adm-btn-primary"
+              style={{ borderRadius: '12px', padding: '9px 22px', fontSize: '0.84rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '6px', opacity: editorInvalid ? 0.5 : 1, cursor: editorInvalid ? 'not-allowed' : 'pointer' }}>
+              <Check size={16} /><span>{collaboratorToEdit ? 'Salvar alterações' : 'Criar colaborador'}</span>
             </button>
           </div>
         </div>
 
         {/* 2-Column Responsive Layout */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '20px' }}>
+        <style>{`@media (max-width: 960px) { .team-editor-layout { grid-template-columns: minmax(0, 1fr) !important; } .team-editor-side { position: static !important; } }`}</style>
+        <div className="team-editor-layout" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 230px) minmax(0, 1fr)', gap: '20px', alignItems: 'start' }}>
+          <aside className="team-editor-side" style={{ position: 'sticky', top: 92, display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            <nav style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {[
+                { id: 'ed-dados', label: 'Dados', bad: Boolean(nameError || emailError) },
+                { id: 'ed-acesso', label: 'Acesso e unidades', bad: Boolean(venueError) },
+                { id: 'ed-cargo', label: 'Cargo', bad: false },
+                { id: 'ed-metas', label: 'Metas e regras', bad: false },
+                { id: 'ed-status', label: 'Status', bad: false },
+              ].map(i => (
+                <button key={i.id} type="button" onClick={() => scrollToSection(i.id)} style={{
+                  textAlign: 'left', padding: '9px 12px', borderRadius: '10px', border: '1px solid transparent', background: 'transparent', cursor: 'pointer',
+                  fontSize: '0.82rem', fontWeight: 700, color: i.bad ? '#EF4444' : 'var(--adm-text-title)', display: 'flex', justifyContent: 'space-between',
+                }}>{i.label}{i.bad && <span aria-hidden>!</span>}</button>
+              ))}
+            </nav>
+            <div className="saas-card" style={{ padding: '14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ fontSize: '0.66rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--adm-text-muted)' }}>O que essa pessoa vê</div>
+              {formSectors.length === 0 && <div style={{ fontSize: '0.76rem', color: 'var(--adm-text-muted)' }}>Selecione um setor para definir o acesso.</div>}
+              {formSectors.map(sec => (
+                <div key={sec} style={{ fontSize: '0.76rem', color: 'var(--adm-text-title)' }}>
+                  <strong>{({ gerencia: 'Gerência', comercial: 'Comercial', pos_venda: 'Pós-Venda', marketing: 'Marketing', financeiro: 'Financeiro' } as Record<string, string>)[sec]}</strong>
+                  <div style={{ color: 'var(--adm-text-muted)' }}>{({
+                    gerencia: 'Dashboard executivo, tarefas, origens, metas e equipe.',
+                    comercial: 'Funil comercial, mensagens, visitas e dashboard.',
+                    pos_venda: 'Funis de pós-venda, contratos e compromissos.',
+                    marketing: 'Visão do comercial para acompanhar resultados.',
+                    financeiro: 'Área financeira.',
+                  } as Record<string, string>)[sec]}</div>
+                </div>
+              ))}
+              <div style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)', borderTop: '1px solid var(--adm-border)', paddingTop: 8 }}>
+                {formSelectedVenueIds.length >= venues.length && venues.length > 0 ? 'Todas as unidades' : `${formSelectedVenueIds.length} unidade(s)`}
+              </div>
+            </div>
+          </aside>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '20px' }}>
           {/* Card 1: Identificação & Cargo */}
-          <div className="saas-card" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <div id="ed-dados" className="saas-card" style={{ scrollMarginTop: 96, padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', borderBottom: '1px solid var(--adm-border)', paddingBottom: '12px' }}>
               <UserPlus size={18} color="var(--adm-accent)" />
               <h2 style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--adm-text-title)', margin: 0 }}>
@@ -736,11 +728,12 @@ export const AdminCollaboratorsView: React.FC = () => {
                 placeholder="Ex: Amanda Silveira"
                 value={formName}
                 onChange={(e) => setFormName(e.target.value)}
+                aria-invalid={Boolean(nameError)}
                 style={{
                   width: '100%',
                   boxSizing: 'border-box',
                   background: 'var(--adm-bg-input)',
-                  border: '1px solid var(--adm-border)',
+                  border: `1px solid ${nameError ? '#EF4444' : 'var(--adm-border)'}`,
                   borderRadius: '10px',
                   padding: '10px 14px',
                   color: 'var(--adm-text-title)',
@@ -748,6 +741,7 @@ export const AdminCollaboratorsView: React.FC = () => {
                   outline: 'none',
                 }}
               />
+              {nameError && <div role="alert" style={{ marginTop: 4, fontSize: '0.72rem', fontWeight: 700, color: '#EF4444' }}>{nameError}</div>}
             </div>
 
             <div>
@@ -760,11 +754,12 @@ export const AdminCollaboratorsView: React.FC = () => {
                 placeholder="amanda@bonomofestas.com.br"
                 value={formEmail}
                 onChange={(e) => setFormEmail(e.target.value)}
+                aria-invalid={Boolean(emailError)}
                 style={{
                   width: '100%',
                   boxSizing: 'border-box',
                   background: 'var(--adm-bg-input)',
-                  border: '1px solid var(--adm-border)',
+                  border: `1px solid ${emailError ? '#EF4444' : 'var(--adm-border)'}`,
                   borderRadius: '10px',
                   padding: '10px 14px',
                   color: 'var(--adm-text-title)',
@@ -772,6 +767,7 @@ export const AdminCollaboratorsView: React.FC = () => {
                   outline: 'none',
                 }}
               />
+              {emailError && <div role="alert" style={{ marginTop: 4, fontSize: '0.72rem', fontWeight: 700, color: '#EF4444' }}>{emailError}</div>}
             </div>
 
             <div>
@@ -813,33 +809,7 @@ export const AdminCollaboratorsView: React.FC = () => {
               </div>
             </div>
 
-            {/* Cargo do Colaborador (Texto Livre) */}
-            <div>
-              <label style={{ display: 'block', fontSize: '0.76rem', fontWeight: 700, color: 'var(--adm-text-title)', marginBottom: '6px' }}>
-                Cargo do Colaborador
-              </label>
-              <input
-                type="text"
-                placeholder="Ex: Consultor Comercial, Coordenador de Pós-Venda, Líder de Atendimento..."
-                value={formCustomJobTitle}
-                onChange={(e) => setFormCustomJobTitle(e.target.value)}
-                style={{
-                  width: '100%',
-                  boxSizing: 'border-box',
-                  background: 'var(--adm-bg-input)',
-                  border: '1px solid var(--adm-border)',
-                  borderRadius: '10px',
-                  padding: '10px 14px',
-                  color: 'var(--adm-text-title)',
-                  fontSize: '0.86rem',
-                  fontWeight: 600,
-                  outline: 'none',
-                }}
-              />
-              <span style={{ fontSize: '0.70rem', color: 'var(--adm-text-muted)', display: 'block', marginTop: '4px' }}>
-                Este cargo será exibido nas fichas de atendimento, tarefas e identificação da equipe.
-              </span>
-            </div>
+
 
             {/* Foto de Perfil */}
             <div>
@@ -855,7 +825,7 @@ export const AdminCollaboratorsView: React.FC = () => {
           {/* Card 2: Nível de Acesso por Setores & Casas de Festa */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
             {/* Setores */}
-            <div className="saas-card" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div id="ed-acesso" className="saas-card" style={{ scrollMarginTop: 96, padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', borderBottom: '1px solid var(--adm-border)', paddingBottom: '12px' }}>
                 <ShieldCheck size={18} color="var(--adm-accent)" />
                 <div>
@@ -924,7 +894,7 @@ export const AdminCollaboratorsView: React.FC = () => {
                     } else {
                       // Ao marcar Pós-Venda, garante que o Comercial em leitura também está disponível
                       setFormSectors(prev => {
-                        const next: ('gerencia' | 'comercial' | 'pos_venda' | 'financeiro')[] = [...prev];
+                        const next: ('gerencia' | 'comercial' | 'pos_venda' | 'financeiro' | 'marketing')[] = [...prev];
                         if (!next.includes('pos_venda')) next.push('pos_venda');
                         if (!next.includes('comercial')) next.push('comercial');
                         return next;
@@ -975,7 +945,7 @@ export const AdminCollaboratorsView: React.FC = () => {
                     } else {
                       // Regra do F5 System: Gerência marca AUTOMATICAMENTE Pós-Venda e Comercial!
                       setFormSectors(prev => {
-                        const next: ('gerencia' | 'comercial' | 'pos_venda' | 'financeiro')[] = [...prev];
+                        const next: ('gerencia' | 'comercial' | 'pos_venda' | 'financeiro' | 'marketing')[] = [...prev];
                         if (!next.includes('gerencia')) next.push('gerencia');
                         if (!next.includes('comercial')) next.push('comercial');
                         if (!next.includes('pos_venda')) next.push('pos_venda');
@@ -1027,6 +997,42 @@ export const AdminCollaboratorsView: React.FC = () => {
                   </div>
                 </div>
 
+                {/* Setor de Marketing */}
+                <div
+                  onClick={() => {
+                    const isSelected = formSectors.includes('marketing');
+                    if (isSelected) {
+                      setFormSectors(formSectors.filter(s => s !== 'marketing'));
+                    } else {
+                      // Marketing enxerga o Comercial (consulta); o modulo proprio de marketing ainda sera desenvolvido
+                      setFormSectors(prev => {
+                        const next: ('gerencia' | 'comercial' | 'pos_venda' | 'financeiro' | 'marketing')[] = [...prev];
+                        if (!next.includes('marketing')) next.push('marketing');
+                        if (!next.includes('comercial')) next.push('comercial');
+                        return next;
+                      });
+                    }
+                  }}
+                  style={{
+                    display: 'flex', alignItems: 'flex-start', gap: '12px', padding: '12px 14px', borderRadius: '12px', cursor: 'pointer',
+                    border: formSectors.includes('marketing') ? '1.5px solid #EC4899' : '1px solid var(--adm-border)',
+                    background: formSectors.includes('marketing') ? 'rgba(236, 72, 153, 0.08)' : 'var(--adm-bg-input)',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  <input type="checkbox" checked={formSectors.includes('marketing')} onChange={() => {}} style={{ marginTop: '3px', cursor: 'pointer', accentColor: '#EC4899' }} />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: '0.86rem', fontWeight: 800, color: formSectors.includes('marketing') ? '#EC4899' : 'var(--adm-text-title)' }}>Setor de Marketing</span>
+                      <span style={{ fontSize: '0.62rem', fontWeight: 700, background: 'rgba(236, 72, 153, 0.18)', color: '#EC4899', padding: '1px 6px', borderRadius: '4px' }}>+ Comercial (Leitura)</span>
+                      <span style={{ fontSize: '0.6rem', fontWeight: 800, background: 'rgba(255, 255, 255, 0.08)', color: 'var(--adm-text-muted)', padding: '1px 5px', borderRadius: '4px' }}>Módulo em breve</span>
+                    </div>
+                    <p style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)', margin: '3px 0 0 0', lineHeight: 1.35 }}>
+                      Campanhas, gestão de tráfego e metas de marketing (em desenvolvimento), com consulta ao setor comercial.
+                    </p>
+                  </div>
+                </div>
+
                 {/* 4. Setor Financeiro (Em Breve) */}
                 <div
                   style={{
@@ -1059,13 +1065,111 @@ export const AdminCollaboratorsView: React.FC = () => {
               </div>
             </div>
 
+            {/* Cargo (filtro de quem e SDR, Closer, gerente...): separado do acesso */}
+            <div id="ed-cargo" className="saas-card" style={{ scrollMarginTop: 96, padding: '24px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', borderBottom: '1px solid var(--adm-border)', paddingBottom: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <UserCheck size={18} color="var(--adm-accent)" />
+                  <div>
+                    <h2 style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--adm-text-title)', margin: 0 }}>3. Cargo</h2>
+                    <span style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)' }}>
+                      O acesso define o que a pessoa vê. O cargo define o que ela é: filtra SDR, Closer, metas, gestores.
+                    </span>
+                  </div>
+                </div>
+                {canManageRoles && (
+                  <button type="button" onClick={() => setIsRolesModalOpen(true)} style={{ background: 'transparent', border: 'none', color: 'var(--adm-accent)', fontSize: '0.74rem', fontWeight: 800, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                    Gerenciar cargos
+                  </button>
+                )}
+              </div>
+
+              {JOB_SECTORS.filter(g => formSectors.includes(g.id)).map(g => {
+                const fixed = JOB_ROLE_OPTIONS[g.id];
+                const custom = customRoles.filter(r => r.sector === g.id);
+                const options = [
+                  ...fixed.map(o => ({ id: o.id, label: roleAliases[o.id] || o.label, description: o.description })),
+                  ...custom.map(o => ({ id: o.id, label: roleAliases[o.id] || o.name, description: 'Cargo personalizado' })),
+                  // Cargo ainda selecionado mas ja excluido do catalogo: continua visivel ate salvar
+                  ...formJobRoles.filter(id => id.startsWith(`${g.id}:`) && !fixed.some(o => o.id === id) && !custom.some(o => o.id === id))
+                    .map(id => ({ id, label: jobRoleLabel(id, customRoles, roleAliases), description: '' })),
+                ];
+                const isAdding = addingRoleSector === g.id;
+                return (
+                  <div key={g.id} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <span style={{ fontSize: '0.7rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', color: g.color }}>{g.label}</span>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                      {options.map(opt => {
+                        const active = formJobRoles.includes(opt.id);
+                        return (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            aria-pressed={active}
+                            title={opt.description}
+                            onClick={() => setFormJobRoles(active ? formJobRoles.filter(r => r !== opt.id) : [...formJobRoles, opt.id])}
+                            style={{
+                              padding: '8px 14px', borderRadius: '999px', fontSize: '0.78rem', fontWeight: 800, cursor: 'pointer',
+                              border: `1.5px solid ${active ? g.color : 'var(--adm-border)'}`,
+                              background: active ? `${g.color}1F` : 'var(--adm-bg-input)',
+                              color: active ? g.color : 'var(--adm-text-title)',
+                            }}
+                          >
+                            {opt.label}
+                          </button>
+                        );
+                      })}
+                      {!isAdding && (
+                        <button type="button" onClick={() => { setAddingRoleSector(g.id); setAddingRoleName(''); }}
+                          style={{ padding: '8px 14px', borderRadius: '999px', fontSize: '0.78rem', fontWeight: 800, cursor: 'pointer', border: '1.5px dashed var(--adm-border)', background: 'transparent', color: 'var(--adm-text-muted)' }}>
+                          + Outro
+                        </button>
+                      )}
+                    </div>
+                    {isAdding && (
+                      <form
+                        onSubmit={async e => {
+                          e.preventDefault();
+                          const role = await createRole(g.id, addingRoleName);
+                          if (role) {
+                            setFormJobRoles(prev => (prev.includes(role.id) ? prev : [...prev, role.id]));
+                            setAddingRoleSector(null);
+                            setAddingRoleName('');
+                          }
+                        }}
+                        style={{ display: 'flex', gap: '8px', alignItems: 'center' }}
+                      >
+                        <input
+                          autoFocus className="adm-input" maxLength={60} value={addingRoleName} onChange={e => setAddingRoleName(e.target.value)}
+                          placeholder={`Digite o cargo em ${g.label} (ex.: ${g.id === 'marketing' ? 'Gestor de tráfego' : g.id === 'gerencia' ? 'Coordenador' : 'Analista'})`}
+                          style={{ flex: 1, height: '38px', borderRadius: '10px', padding: '0 12px', fontSize: '0.8rem' }}
+                        />
+                        <button type="submit" disabled={slugifyRole(addingRoleName).length === 0} className="adm-btn-primary" style={{ height: '38px', padding: '0 16px', borderRadius: '10px', fontWeight: 800, fontSize: '0.76rem' }}>Adicionar</button>
+                        <button type="button" onClick={() => setAddingRoleSector(null)} className="adm-btn-secondary" style={{ height: '38px', padding: '0 14px', borderRadius: '10px', fontWeight: 700, fontSize: '0.76rem' }}>Cancelar</button>
+                      </form>
+                    )}
+                    {g.id === 'comercial' && !formJobRoles.some(r => r.startsWith('comercial:')) && (
+                      <span style={{ fontSize: '0.7rem', color: 'var(--adm-text-muted)' }}>
+                        Sem cargo definido: o sistema usa a equipe configurada em cada funil. SDR e Closer podem ser marcados juntos.
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+
+              {formSectors.length === 0 && (
+                <span style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)' }}>Marque ao menos um setor em "Nível de Acesso" para escolher o cargo.</span>
+              )}
+              {rolesModal}
+            </div>
+
             {/* Casas de Festas Vinculadas */}
-            <div className="saas-card" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            <div id="ed-metas" className="saas-card" style={{ scrollMarginTop: 96, padding: '24px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--adm-border)', paddingBottom: '12px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <Building2 size={18} color="var(--adm-accent)" />
                   <h2 style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--adm-text-title)', margin: 0 }}>
-                    3. Casas de Festas Vinculadas
+                    4. Casas de Festas Vinculadas
                   </h2>
                 </div>
                 <button
@@ -1129,7 +1233,7 @@ export const AdminCollaboratorsView: React.FC = () => {
             </div>
 
             {/* Status Ativo */}
-            <div className="saas-card" style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div id="ed-status" className="saas-card" style={{ scrollMarginTop: 96, padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div>
                 <span style={{ fontSize: '0.84rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
                   Acesso Ativo no Sistema
@@ -1151,6 +1255,7 @@ export const AdminCollaboratorsView: React.FC = () => {
               </label>
             </div>
           </div>
+          </div>
         </div>
       </div>
     );
@@ -1169,7 +1274,12 @@ export const AdminCollaboratorsView: React.FC = () => {
     }}>
       {/* Título no breadcrumb; ação primária no menu superior */}
       <HeaderActions>
-
+        {canManageRoles && (
+          <button type="button" onClick={() => setIsRolesModalOpen(true)} className="adm-btn-secondary"
+            style={{ padding: '8px 16px', borderRadius: '12px', fontWeight: 800, fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <UserCheck size={15} /> <span>Cargos</span>
+          </button>
+        )}
         <button
           onClick={handleOpenCreate}
           className="adm-btn-primary"
@@ -1184,1050 +1294,39 @@ export const AdminCollaboratorsView: React.FC = () => {
           <span>Novo Colaborador</span>
         </button>
       </HeaderActions>
+      {rolesModal}
 
-      {/* Barra de Filtros, Ordenação e Alternador de Modos (Lista / Cards) */}
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        flexWrap: 'wrap',
-        gap: '12px',
-        background: 'var(--adm-bg-card)',
-        border: '1px solid var(--adm-border)',
-        borderRadius: '14px',
-        padding: '10px 14px',
-      }}>
-        {/* Lado Esquerdo: Campo de Busca */}
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '8px',
-          background: 'var(--adm-bg-input)',
-          border: '1px solid var(--adm-border)',
-          borderRadius: '10px',
-          padding: '0 12px',
-          height: '38px',
-          minWidth: '240px',
-          maxWidth: '360px',
-          flex: 1,
-        }}>
-          <Search size={15} color="var(--adm-text-muted)" />
-          <input
-            type="text"
-            value={collabSearchQuery}
-            onChange={(e) => setCollabSearchQuery(e.target.value)}
-            placeholder="Buscar por nome, cargo, e-mail..."
-            style={{
-              background: 'transparent',
-              border: 'none',
-              outline: 'none',
-              color: 'var(--adm-text-title)',
-              fontSize: '0.82rem',
-              fontWeight: 600,
-              width: '100%',
-            }}
-          />
-          {collabSearchQuery && (
-            <button
-              type="button"
-              onClick={() => setCollabSearchQuery('')}
-              style={{
-                background: 'transparent',
-                border: 'none',
-                color: 'var(--adm-text-muted)',
-                cursor: 'pointer',
-                padding: '2px',
-                display: 'flex',
-                alignItems: 'center',
-              }}
-            >
-              <X size={13} />
-            </button>
-          )}
-        </div>
-
-        {/* Lado Direito: Seletor de Ordenação + Alternador de Visualização (Lista / Cards) */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-          {/* Ordenação */}
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-            background: 'var(--adm-bg-input)',
-            border: '1px solid var(--adm-border)',
-            borderRadius: '10px',
-            padding: '0 10px',
-            height: '38px',
-          }}>
-            <ArrowUpDown size={14} color="var(--adm-text-muted)" />
-            <select
-              value={collabSortBy}
-              onChange={(e) => setCollabSortBy(e.target.value as any)}
-              style={{
-                background: 'transparent',
-                border: 'none',
-                outline: 'none',
-                color: 'var(--adm-text-title)',
-                fontSize: '0.80rem',
-                fontWeight: 700,
-                cursor: 'pointer',
-              }}
-            >
-              <option value="name_asc" style={{ background: 'var(--adm-bg-card)', color: 'var(--adm-text-title)' }}>Nome: A → Z</option>
-              <option value="name_desc" style={{ background: 'var(--adm-bg-card)', color: 'var(--adm-text-title)' }}>Nome: Z → A</option>
-              <option value="created_desc" style={{ background: 'var(--adm-bg-card)', color: 'var(--adm-text-title)' }}>Mais Recente</option>
-              <option value="created_asc" style={{ background: 'var(--adm-bg-card)', color: 'var(--adm-text-title)' }}>Mais Antigo</option>
-              <option value="role_priority" style={{ background: 'var(--adm-bg-card)', color: 'var(--adm-text-title)' }}>Hierarquia de Cargo</option>
-            </select>
-          </div>
-
-          {/* Alternador Lista / Cards (Audio 6: Lista Primário) */}
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            background: 'var(--adm-bg-input)',
-            border: '1px solid var(--adm-border)',
-            borderRadius: '10px',
-            padding: '3px',
-            gap: '2px',
-          }}>
-            <button
-              type="button"
-              onClick={() => setViewMode('list')}
-              title="Visualização em Lista (Padrão)"
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                padding: '6px 12px',
-                borderRadius: '8px',
-                border: 'none',
-                background: viewMode === 'list' ? 'var(--adm-bg-card)' : 'transparent',
-                color: viewMode === 'list' ? 'var(--adm-accent)' : 'var(--adm-text-muted)',
-                boxShadow: viewMode === 'list' ? '0 1px 4px rgba(0, 0, 0, 0.12)' : 'none',
-                fontSize: '0.78rem',
-                fontWeight: 800,
-                cursor: 'pointer',
-                transition: 'all 0.15s ease',
-              }}
-            >
-              <List size={14} />
-              <span>Lista</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setViewMode('card')}
-              title="Visualização em Cards"
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                padding: '6px 12px',
-                borderRadius: '8px',
-                border: 'none',
-                background: viewMode === 'card' ? 'var(--adm-bg-card)' : 'transparent',
-                color: viewMode === 'card' ? 'var(--adm-accent)' : 'var(--adm-text-muted)',
-                boxShadow: viewMode === 'card' ? '0 1px 4px rgba(0, 0, 0, 0.12)' : 'none',
-                fontSize: '0.78rem',
-                fontWeight: 800,
-                cursor: 'pointer',
-                transition: 'all 0.15s ease',
-              }}
-            >
-              <LayoutGrid size={14} />
-              <span>Cards</span>
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Collaborators List */}
-      {collaborators.length === 0 ? (
-        <div style={{
-          background: 'var(--adm-bg-card)',
-          border: '1px dashed var(--adm-border)',
-          borderRadius: '16px',
-          padding: '48px 24px',
-          textAlign: 'center',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          gap: '14px',
-        }}>
-          <div style={{
-            width: '54px',
-            height: '54px',
-            borderRadius: '16px',
-            background: 'var(--adm-accent-bg)',
-            color: 'var(--adm-accent)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}>
-            <ShieldCheck size={28} />
-          </div>
-          <div>
-            <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--adm-text-title)', margin: '0 0 6px 0' }}>
-              Nenhum Colaborador Cadastrado
-            </h3>
-            <p style={{ fontSize: '0.82rem', color: 'var(--adm-text-muted)', margin: 0, maxWidth: '420px', lineHeight: 1.5 }}>
-              Cadastre membros da sua equipe comercial (SDR, Closer, Gerente) para atender leads e distribuir atendimentos.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={handleOpenCreate}
-            style={{
-              background: 'var(--adm-accent)',
-              color: '#FFFFFF',
-              border: 'none',
-              borderRadius: '10px',
-              padding: '10px 20px',
-              fontSize: '0.84rem',
-              fontWeight: 800,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              boxShadow: '0 4px 14px rgba(20, 169, 215, 0.3)',
-            }}
-          >
-            <Plus size={16} />
-            <span>Cadastrar Primeiro Colaborador</span>
-          </button>
-        </div>
-      ) : sortedCollaborators.length === 0 ? (
-        <div style={{
-          background: 'var(--adm-bg-card)',
-          border: '1px dashed var(--adm-border)',
-          borderRadius: '16px',
-          padding: '36px 20px',
-          textAlign: 'center',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          gap: '10px',
-        }}>
-          <Search size={24} color="var(--adm-text-muted)" />
-          <h4 style={{ fontSize: '0.95rem', fontWeight: 800, color: 'var(--adm-text-title)', margin: 0 }}>
-            Nenhum colaborador encontrado
-          </h4>
-          <p style={{ fontSize: '0.78rem', color: 'var(--adm-text-muted)', margin: 0 }}>
-            Tente buscar com outro termo ou limpe o campo de busca.
-          </p>
-        </div>
-      ) : viewMode === 'list' ? (
-        /* MODO LISTA PRIMÁRIO (Tabela elegante) */
-        <div className="saas-card" style={{ padding: 0, overflow: 'hidden', border: '1px solid var(--adm-border)', borderRadius: '16px' }}>
-          <div style={{ overflowX: 'auto', width: '100%' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '920px' }}>
-              <thead>
-                <tr style={{ background: 'var(--adm-bg-input)', borderBottom: '1px solid var(--adm-border)' }}>
-                  <th style={{ padding: '14px 18px', fontSize: '0.70rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                    Colaborador & Função
-                  </th>
-                  <th style={{ padding: '14px 16px', fontSize: '0.70rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                    Nível de Acesso
-                  </th>
-                  <th style={{ padding: '14px 16px', fontSize: '0.70rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                    Unidade(s)
-                  </th>
-                  <th style={{ padding: '14px 16px', fontSize: '0.70rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'center' }}>
-                    Leads & Tarefas
-                  </th>
-                  <th style={{ padding: '14px 16px', fontSize: '0.70rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                    Status
-                  </th>
-                  <th style={{ padding: '14px 18px', fontSize: '0.70rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'right' }}>
-                    Ações
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {sortedCollaborators.map(collab => {
-                  const venueDisplay = getCollabVenueDisplay(collab);
-                  const isSelf = collab.id === currentUser?.id || (currentUser?.email && collab.email.toLowerCase() === currentUser.email.toLowerCase());
-                  const isMasterRole = collab.role === 'master';
-                  const isTargetManagerOrAbove = collab.role === 'admin' || collab.role === 'master' || collab.role === 'gerencia';
-                  const canToggle = !isSelf && !isMasterRole && (!isCurrentUserManager || !isTargetManagerOrAbove);
-                  const canEdit = !isSelf && (!isCurrentUserManager || !isTargetManagerOrAbove);
-                  const canDelete = !isSelf && collab.role !== 'master' && (!isCurrentUserManager || !isTargetManagerOrAbove);
-                  const collabLeads = getCollabLeads(collab);
-                  const collabTasks = getCollabTasks(collab);
-                  const roleTitle = getCollabRoleTitle(collab);
-                  const isPending = isPendingFirstAccess(collab);
-
-                  return (
-                    <tr
-                      key={collab.id}
-                      style={{
-                        borderBottom: '1px solid var(--adm-border)',
-                        opacity: collab.active ? 1 : 0.65,
-                        transition: 'background-color 0.15s ease',
-                      }}
-                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--adm-bg-input)'}
-                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                    >
-                      {/* 1. Colaborador: Foto, Nome e Função abaixo */}
-                      <td style={{ padding: '12px 18px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                          <img
-                            src={(collab.avatarUrl && !collab.avatarUrl.includes('unsplash.com')) ? collab.avatarUrl : createMonogramAvatar(collab.name)}
-                            alt={collab.name}
-                            style={{
-                              width: '40px',
-                              height: '40px',
-                              borderRadius: '50%',
-                              objectFit: 'cover',
-                              border: `1.5px solid ${collab.active ? (isMasterRole ? 'var(--adm-gold, #D4AF37)' : 'var(--adm-accent)') : 'rgba(100, 116, 139, 0.4)'}`,
-                              flexShrink: 0,
-                            }}
-                          />
-                          <div style={{ minWidth: 0 }}>
-                            <div style={{
-                              fontSize: '0.88rem',
-                              fontWeight: 800,
-                              color: 'var(--adm-text-title)',
-                              whiteSpace: 'nowrap',
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                            }}>
-                              {collab.name}
-                            </div>
-                            <div style={{
-                              fontSize: '0.74rem',
-                              fontWeight: 700,
-                              color: isMasterRole ? 'var(--adm-gold, #D4AF37)' : 'var(--adm-text-muted)',
-                              marginTop: '1px',
-                              whiteSpace: 'nowrap',
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                            }}>
-                              {roleTitle || 'Cargo não informado'}
-                            </div>
-                            <div style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)', marginTop: '1px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                              <span>{collab.email}</span>
-                              {collab.phone && <span>• {formatPhone(collab.phone)}</span>}
-                            </div>
-                          </div>
-                        </div>
-                      </td>
-
-                      {/* 2. Nível de Acesso */}
-                      <td style={{ padding: '12px 16px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexWrap: 'wrap' }}>
-                          {renderSectorTags(collab)}
-                        </div>
-                      </td>
-
-                      {/* 3. Unidades */}
-                      <td style={{ padding: '12px 16px' }} title={venueDisplay.title}>
-                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px', fontSize: '0.76rem', color: 'var(--adm-text-title)', maxWidth: '240px' }}>
-                          <Building2 size={13} color="var(--adm-accent)" style={{ flexShrink: 0, marginTop: '2px' }} />
-                          <span style={{ lineHeight: 1.35, wordBreak: 'break-word' }}>
-                            {venueDisplay.label}
-                          </span>
-                        </div>
-                      </td>
-
-                      {/* 5. Leads & Tarefas */}
-                      <td style={{ padding: '12px 16px', textAlign: 'center' }}>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                          <button
-                            type="button"
-                            onClick={() => handleOpenSuperManagement(collab, 'leads')}
-                            title="Ver leads vinculados"
-                            style={{
-                              padding: '4px 8px',
-                              borderRadius: '8px',
-                              background: 'rgba(20, 169, 215, 0.1)',
-                              border: '1px solid rgba(20, 169, 215, 0.25)',
-                              color: 'var(--adm-accent)',
-                              fontSize: '0.72rem',
-                              fontWeight: 800,
-                              cursor: 'pointer',
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '4px',
-                            }}
-                          >
-                            <Target size={12} />
-                            <span>{collabLeads.length}</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleOpenSuperManagement(collab, 'tasks')}
-                            title="Ver tarefas vinculadas"
-                            style={{
-                              padding: '4px 8px',
-                              borderRadius: '8px',
-                              background: 'rgba(139, 92, 246, 0.1)',
-                              border: '1px solid rgba(139, 92, 246, 0.25)',
-                              color: '#8B5CF6',
-                              fontSize: '0.72rem',
-                              fontWeight: 800,
-                              cursor: 'pointer',
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '4px',
-                            }}
-                          >
-                            <CheckSquare size={12} />
-                            <span>{collabTasks.length}</span>
-                          </button>
-                        </div>
-                      </td>
-
-                      {/* 6. Status */}
-                      <td style={{ padding: '12px 16px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          {canToggle ? (
-                            <button
-                              type="button"
-                              onClick={() => updateCollaborator(collab.id, { active: !collab.active })}
-                              title={collab.active ? 'Ativo • Clique para desativar' : 'Inativo • Clique para reativar'}
-                              style={{
-                                width: '28px',
-                                height: '28px',
-                                borderRadius: '8px',
-                                background: collab.active ? 'rgba(16, 185, 129, 0.15)' : 'rgba(100, 116, 139, 0.15)',
-                                border: `1.5px solid ${collab.active ? 'rgba(16, 185, 129, 0.5)' : 'rgba(100, 116, 139, 0.35)'}`,
-                                color: collab.active ? '#10B981' : '#64748B',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                cursor: 'pointer',
-                              }}
-                            >
-                              <Power size={13} />
-                            </button>
-                          ) : (
-                            <span style={{
-                              width: '8px',
-                              height: '8px',
-                              borderRadius: '50%',
-                              background: collab.active ? '#10B981' : '#64748B',
-                              display: 'inline-block',
-                            }} />
-                          )}
-                          <div>
-                            <span style={{
-                              fontSize: '0.75rem',
-                              fontWeight: 700,
-                              color: collab.active ? '#10B981' : '#64748B',
-                            }}>
-                              {collab.active ? 'Ativo' : 'Inativo'}
-                            </span>
-                            {isPending && (
-                              <span style={{ display: 'block', fontSize: '0.62rem', color: '#F59E0B', fontWeight: 700 }}>
-                                Convite Pendente
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </td>
-
-                      {/* 7. Ações */}
-                      <td style={{ padding: '12px 18px', textAlign: 'right' }}>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                          {isPending && (
-                            <button
-                              type="button"
-                              onClick={() => setCollabForInviteModal(collab)}
-                              title="Link de Acesso"
-                              style={{
-                                padding: '5px 8px',
-                                borderRadius: '7px',
-                                background: 'rgba(245, 158, 11, 0.12)',
-                                border: '1px solid rgba(245, 158, 11, 0.3)',
-                                color: '#F59E0B',
-                                fontSize: '0.70rem',
-                                fontWeight: 700,
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '4px',
-                              }}
-                            >
-                              <KeyRound size={12} />
-                              <span>Link</span>
-                            </button>
-                          )}
-
-                          {(isSelf || isMasterRole) ? (
-                            <button
-                              type="button"
-                              onClick={handleOpenMasterProfile}
-                              title="Editar Meu Perfil"
-                              style={{
-                                padding: '5px 10px',
-                                borderRadius: '7px',
-                                background: 'rgba(212, 175, 55, 0.12)',
-                                border: '1px solid rgba(212, 175, 55, 0.35)',
-                                color: 'var(--adm-gold, #D4AF37)',
-                                fontSize: '0.72rem',
-                                fontWeight: 700,
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '4px',
-                              }}
-                            >
-                              <UserCheck size={12} />
-                              <span>Meu Perfil</span>
-                            </button>
-                          ) : canEdit ? (
-                            <button
-                              type="button"
-                              onClick={() => handleOpenEdit(collab)}
-                              title="Editar Colaborador"
-                              style={{
-                                padding: '5px 8px',
-                                borderRadius: '7px',
-                                background: 'var(--adm-bg-input)',
-                                border: '1px solid var(--adm-border)',
-                                color: 'var(--adm-text-title)',
-                                fontSize: '0.72rem',
-                                fontWeight: 700,
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '4px',
-                              }}
-                            >
-                              <Edit3 size={12} />
-                              <span>Editar</span>
-                            </button>
-                          ) : null}
-                          {canDelete && (
-                            <button
-                              type="button"
-                              onClick={() => handleOpenDelete(collab)}
-                              title="Remover Colaborador"
-                              style={{
-                                padding: '5px 8px',
-                                borderRadius: '7px',
-                                background: 'rgba(239, 68, 68, 0.08)',
-                                border: '1px solid rgba(239, 68, 68, 0.25)',
-                                color: 'var(--adm-red)',
-                                fontSize: '0.72rem',
-                                fontWeight: 700,
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '4px',
-                              }}
-                            >
-                              <Trash2 size={12} />
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
+      {/* Time: faixa de resumo, filtros e lista agrupada por setor */}
+      {profileCollab ? (
+        <CollaboratorProfile
+          collaborator={profileCollab}
+          collaborators={collaborators}
+          kind={teamData.kindOf(profileCollab)}
+          perms={permsOf(profileCollab)}
+          jobLabels={teamData.jobLabelsOf(profileCollab)}
+          title={teamData.titleOf(profileCollab)}
+          venues={venues}
+          leads={leads}
+          clients={clients}
+          tasks={tasks}
+          appointments={appointments}
+          funnels={funnels}
+          assets={assetMap}
+          presence={presenceMap.get(profileCollab.id)}
+          kindOf={teamData.kindOf}
+          actions={teamActions}
+          sendingInviteEmail={sendingInviteEmail === profileCollab.email}
+          onBack={() => setProfileCollabId(null)}
+        />
       ) : (
-        /* MODO CARDS */
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
-          gap: '18px',
-        }}>
-          {sortedCollaborators.map(collab => {
-          const venueDisplay = getCollabVenueDisplay(collab);
-          const isSelf = collab.id === currentUser?.id || (currentUser?.email && collab.email.toLowerCase() === currentUser.email.toLowerCase());
-          const isMasterRole = collab.role === 'master';
-          const isTargetManagerOrAbove = collab.role === 'admin' || collab.role === 'master' || collab.role === 'gerencia';
-          const canToggle = !isSelf && !isMasterRole && (!isCurrentUserManager || !isTargetManagerOrAbove);
-          const canEdit = !isSelf && (!isCurrentUserManager || !isTargetManagerOrAbove);
-          const canDelete = !isSelf && collab.role !== 'master' && (!isCurrentUserManager || !isTargetManagerOrAbove);
-          const collabLeads = getCollabLeads(collab);
-          const collabTasks = getCollabTasks(collab);
-
-          return (
-            <div
-              key={collab.id}
-              className="saas-card"
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '12px',
-                opacity: collab.active ? 1 : 0.65,
-                filter: collab.active ? 'none' : 'grayscale(100%)',
-                transition: 'all 0.25s ease',
-              }}
-            >
-              {/* Profile Row: Foto + Nome + Cargo Pré-definido */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
-                  <img
-                    src={(collab.avatarUrl && !collab.avatarUrl.includes('unsplash.com')) ? collab.avatarUrl : createMonogramAvatar(collab.name)}
-                    alt={collab.name}
-                    style={{
-                      width: '46px',
-                      height: '46px',
-                      borderRadius: '50%',
-                      objectFit: 'cover',
-                      border: `1.5px solid ${collab.active ? (isMasterRole ? 'var(--adm-gold, #D4AF37)' : 'var(--adm-accent)') : 'rgba(100, 116, 139, 0.4)'}`,
-                      filter: collab.active ? 'none' : 'grayscale(100%)',
-                      transition: 'all 0.2s ease',
-                      flexShrink: 0,
-                    }}
-                  />
-                  <div style={{ minWidth: 0 }}>
-                    <h3 style={{
-                      fontSize: '0.96rem',
-                      fontWeight: 800,
-                      color: 'var(--adm-text-title)',
-                      margin: 0,
-                      whiteSpace: 'nowrap',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                    }}>
-                      {collab.name}
-                    </h3>
-                    {/* Cargo Personalizado cadastrado na empresa (Audio 1) */}
-                    {getCollabRoleTitle(collab) ? (
-                      <div style={{
-                        fontSize: '0.74rem',
-                        fontWeight: 700,
-                        color: isMasterRole ? 'var(--adm-gold, #D4AF37)' : 'var(--adm-text-title)',
-                        marginTop: '2px',
-                        whiteSpace: 'nowrap',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                      }}>
-                        {getCollabRoleTitle(collab)}
-                      </div>
-                    ) : (
-                      <div style={{
-                        fontSize: '0.70rem',
-                        fontWeight: 500,
-                        color: 'var(--adm-text-muted)',
-                        fontStyle: 'italic',
-                        marginTop: '2px',
-                      }}>
-                        Cargo não informado
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Botão de Power Liga/Desliga */}
-                {canToggle && (
-                  <button
-                    type="button"
-                    onClick={() => updateCollaborator(collab.id, { active: !collab.active })}
-                    title={collab.active ? 'Colaborador Ativo • Clique para desativar' : 'Colaborador Desativado • Clique para reativar'}
-                    style={{
-                      width: '34px',
-                      height: '34px',
-                      borderRadius: '10px',
-                      background: collab.active ? 'rgba(16, 185, 129, 0.15)' : 'rgba(100, 116, 139, 0.15)',
-                      border: `1.5px solid ${collab.active ? 'rgba(16, 185, 129, 0.5)' : 'rgba(100, 116, 139, 0.35)'}`,
-                      color: collab.active ? '#10B981' : '#64748B',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      cursor: 'pointer',
-                      transition: 'all 0.2s ease',
-                      boxShadow: collab.active ? '0 0 10px rgba(16, 185, 129, 0.25)' : 'none',
-                      flexShrink: 0,
-                    }}
-                    onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.08)'; }}
-                    onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)'; }}
-                  >
-                    <Power size={17} />
-                  </button>
-                )}
-              </div>
-
-              {/* Status de Ativação / Primeiro Acesso */}
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: '8px',
-                padding: '7px 12px',
-                borderRadius: '10px',
-                background: !collab.active 
-                  ? 'rgba(239, 68, 68, 0.08)'
-                  : isPendingFirstAccess(collab)
-                    ? 'rgba(245, 158, 11, 0.1)'
-                    : 'rgba(16, 185, 129, 0.08)',
-                border: `1px solid ${
-                  !collab.active 
-                    ? 'rgba(239, 68, 68, 0.25)' 
-                    : isPendingFirstAccess(collab) 
-                      ? 'rgba(245, 158, 11, 0.35)' 
-                      : 'rgba(16, 185, 129, 0.25)'
-                }`,
-                fontSize: '0.72rem',
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  {!collab.active ? (
-                    <>
-                      <div style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#EF4444' }} />
-                      <span style={{ color: '#EF4444', fontWeight: 700 }}>Acesso Desativado</span>
-                    </>
-                  ) : isPendingFirstAccess(collab) ? (
-                    <>
-                      <Clock size={13} color="#F59E0B" />
-                      <span style={{ color: '#F59E0B', fontWeight: 700 }}>Aguardando 1º Acesso</span>
-                    </>
-                  ) : (
-                    <>
-                      <CheckCircle2 size={13} color="#10B981" />
-                      <span style={{ color: '#10B981', fontWeight: 700 }}>
-                        {collab.activatedAt ? `Ativado em ${new Date(collab.activatedAt).toLocaleDateString('pt-BR')}` : 'Conta Ativa & Operante'}
-                      </span>
-                    </>
-                  )}
-                </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  {collab.active && isPendingFirstAccess(collab) && collab.role !== 'master' && (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => setCollabForInviteModal(collab)}
-                        title="Copiar Link de Entrada ou enviar diretamente no WhatsApp do colaborador"
-                        style={{
-                          background: 'rgba(212, 175, 55, 0.14)',
-                          border: '1px solid rgba(212, 175, 55, 0.4)',
-                          color: 'var(--adm-gold, #D4AF37)',
-                          borderRadius: '6px',
-                          padding: '3px 8px',
-                          fontSize: '0.66rem',
-                          fontWeight: 700,
-                          cursor: 'pointer',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '4px',
-                          transition: 'all 0.15s ease',
-                        }}
-                        onMouseEnter={e => {
-                          e.currentTarget.style.background = 'rgba(212, 175, 55, 0.25)';
-                          e.currentTarget.style.borderColor = 'var(--adm-gold, #D4AF37)';
-                        }}
-                        onMouseLeave={e => {
-                          e.currentTarget.style.background = 'rgba(212, 175, 55, 0.14)';
-                          e.currentTarget.style.borderColor = 'rgba(212, 175, 55, 0.4)';
-                        }}
-                      >
-                        <KeyRound size={11} />
-                        <span>Link de Entrada</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => handleSendInviteEmail(collab)}
-                        disabled={sendingInviteEmail === collab.email}
-                        title="Disparar e-mail de convite oficial com instruções de 1º acesso"
-                        style={{
-                          background: 'rgba(20, 169, 215, 0.12)',
-                          border: '1px solid rgba(20, 169, 215, 0.3)',
-                          color: '#14A9D7',
-                          borderRadius: '6px',
-                          padding: '3px 8px',
-                          fontSize: '0.66rem',
-                          fontWeight: 700,
-                          cursor: sendingInviteEmail === collab.email ? 'wait' : 'pointer',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '4px',
-                        }}
-                      >
-                        {inviteSentEmail === collab.email ? (
-                          <>
-                            <Check size={11} color="#10B981" />
-                            <span style={{ color: '#10B981' }}>Enviado!</span>
-                          </>
-                        ) : (
-                          <>
-                            <Mail size={11} />
-                            <span>{sendingInviteEmail === collab.email ? '...' : 'E-mail'}</span>
-                          </>
-                        )}
-                      </button>
-                    </>
-                  )}
-                </div>
-              </div>
-
-              {/* Details: E-mail, Telefone, Casa e Último Acesso */}
-              <div style={{
-                background: 'var(--adm-bg-input)',
-                borderRadius: '12px',
-                padding: '11px 13px',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '7px',
-                fontSize: '0.75rem',
-                color: 'var(--adm-text-muted)',
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Mail size={13} color="var(--adm-accent)" style={{ flexShrink: 0 }} />
-                  <span style={{ color: 'var(--adm-text-title)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{collab.email}</span>
-                </div>
-
-                {collab.phone && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <Phone size={13} color="var(--adm-accent)" style={{ flexShrink: 0 }} />
-                    <span>{formatPhone(collab.phone)}</span>
-                  </div>
-                )}
-
-                {/* Casa / Unidade (Audio 1: Master é soberano de tudo) */}
-                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }} title={venueDisplay.title}>
-                  {isMasterRole ? (
-                    <>
-                      <ShieldCheck size={13} color="var(--adm-gold, #D4AF37)" style={{ flexShrink: 0, marginTop: '2px' }} />
-                      <span style={{ color: 'var(--adm-gold, #D4AF37)', fontWeight: 700 }}>
-                        Acesso Master (Todas as Unidades da Rede)
-                      </span>
-                    </>
-                  ) : (
-                    <>
-                      <Building2 size={13} color="var(--adm-accent)" style={{ flexShrink: 0, marginTop: '2px' }} />
-                      <span style={{ lineHeight: 1.35, wordBreak: 'break-word' }}>{venueDisplay.label}</span>
-                    </>
-                  )}
-                </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', borderTop: '1px dashed var(--adm-border)', paddingTop: '6px', marginTop: '2px' }}>
-                  <Clock size={13} color={isPendingFirstAccess(collab) ? '#F59E0B' : '#10B981'} style={{ flexShrink: 0 }} />
-                  <span>
-                    <strong style={{ color: 'var(--adm-text-title)' }}>Último Acesso:</strong>{' '}
-                    <span style={{ color: isPendingFirstAccess(collab) ? '#F59E0B' : 'var(--adm-text-body)', fontWeight: isPendingFirstAccess(collab) ? 700 : 500 }}>
-                      {isPendingFirstAccess(collab)
-                        ? 'Nunca acessou o sistema'
-                        : collab.lastLoginAt
-                          ? `${new Date(collab.lastLoginAt).toLocaleDateString('pt-BR')} às ${new Date(collab.lastLoginAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`
-                          : collab.activatedAt
-                            ? `Ativado em ${new Date(collab.activatedAt).toLocaleDateString('pt-BR')}`
-                            : 'Nunca acessou o sistema'}
-                    </span>
-                  </span>
-                </div>
-              </div>
-
-              {/* Tags de Nível de Acesso / Setores */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                <span style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)', fontWeight: 600, marginRight: '2px' }}>
-                  Nível de Acesso:
-                </span>
-                {renderSectorTags(collab)}
-              </div>
-
-              {/* Mini Faixa de Super Gestão: Leads e Tarefas Vinculadas (Audio 1) */}
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: '1fr 1fr',
-                gap: '8px',
-                marginTop: '2px',
-              }}>
-                <div 
-                  onClick={() => handleOpenSuperManagement(collab, 'leads')}
-                  style={{
-                    padding: '7px 10px',
-                    borderRadius: '10px',
-                    background: 'rgba(20, 169, 215, 0.08)',
-                    border: '1px solid rgba(20, 169, 215, 0.22)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    cursor: 'pointer',
-                    transition: 'all 0.15s ease',
-                  }}
-                  title="Clique para ver e remanejar os leads deste colaborador"
-                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--adm-accent)'; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'rgba(20, 169, 215, 0.22)'; }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <Target size={13} color="var(--adm-accent)" />
-                    <span style={{ fontSize: '0.70rem', color: 'var(--adm-text-muted)', fontWeight: 600 }}>Leads</span>
-                  </div>
-                  <span style={{ fontSize: '0.84rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
-                    {collabLeads.length}
-                  </span>
-                </div>
-
-                <div 
-                  onClick={() => handleOpenSuperManagement(collab, 'tasks')}
-                  style={{
-                    padding: '7px 10px',
-                    borderRadius: '10px',
-                    background: 'rgba(139, 92, 246, 0.08)',
-                    border: '1px solid rgba(139, 92, 246, 0.22)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    cursor: 'pointer',
-                    transition: 'all 0.15s ease',
-                  }}
-                  title="Clique para ver as tarefas vinculadas a este colaborador"
-                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#A78BFA'; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'rgba(139, 92, 246, 0.22)'; }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <CheckSquare size={13} color="#A78BFA" />
-                    <span style={{ fontSize: '0.70rem', color: 'var(--adm-text-muted)', fontWeight: 600 }}>Tarefas</span>
-                  </div>
-                  <span style={{ fontSize: '0.84rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
-                    {collabTasks.length}
-                  </span>
-                </div>
-              </div>
-
-              {/* Actions Row: Super Gestão / Editar / Remover / Perfil Master */}
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                borderTop: '1px solid var(--adm-border)',
-                paddingTop: '11px',
-                gap: '8px',
-              }}>
-                {collab.isDev ? (
-                  <span style={{
-                    fontSize: '0.72rem',
-                    fontWeight: 800,
-                    color: '#14A9D7',
-                    background: 'rgba(20, 169, 215, 0.12)',
-                    padding: '5px 12px',
-                    borderRadius: '8px',
-                    border: '1px solid rgba(20, 169, 215, 0.3)',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '5px',
-                  }}>
-                    <Shield size={12} />
-                    <span>Conta Desenvolvedor</span>
-                  </span>
-                ) : (isSelf || isMasterRole) ? (
-                  <button
-                    type="button"
-                    onClick={handleOpenMasterProfile}
-                    style={{
-                      fontSize: '0.76rem',
-                      fontWeight: 700,
-                      color: 'var(--adm-gold, #D4AF37)',
-                      background: 'rgba(212, 175, 55, 0.12)',
-                      padding: '6px 14px',
-                      borderRadius: '8px',
-                      border: '1px solid rgba(212, 175, 55, 0.35)',
-                      cursor: 'pointer',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      transition: 'all 0.15s ease',
-                    }}
-                    onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(212, 175, 55, 0.22)'; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(212, 175, 55, 0.12)'; }}
-                    title="Editar meus dados pessoais de login e contato"
-                  >
-                    <UserCheck size={14} />
-                    <span>Editar Meu Perfil</span>
-                  </button>
-                ) : isCurrentUserManager && isTargetManagerOrAbove ? (
-                  <span style={{
-                    fontSize: '0.72rem',
-                    fontWeight: 700,
-                    color: 'var(--adm-text-muted)',
-                    background: 'var(--adm-bg-elevated)',
-                    padding: '4px 10px',
-                    borderRadius: '8px',
-                    border: '1px solid var(--adm-border)',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '4px',
-                  }}>
-                    <Lock size={12} /> Perfil Gerencial Protegido
-                  </span>
-                ) : (
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: '8px' }}>
-                    <button
-                      type="button"
-                      onClick={() => handleOpenSuperManagement(collab)}
-                      style={{
-                        background: 'rgba(20, 169, 215, 0.12)',
-                        border: '1px solid rgba(20, 169, 215, 0.35)',
-                        color: '#14A9D7',
-                        borderRadius: '10px',
-                        padding: '6px 12px',
-                        fontSize: '0.74rem',
-                        fontWeight: 800,
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '5px',
-                        transition: 'all 0.15s ease',
-                      }}
-                      title="Abrir Central de Super Gestão (Leads & Tarefas)"
-                    >
-                      <SlidersHorizontal size={13} />
-                      <span>Super Gestão</span>
-                    </button>
-
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      {canEdit && (
-                        <button
-                          type="button"
-                          onClick={() => handleOpenEdit(collab)}
-                          style={{
-                            background: 'var(--adm-bg-elevated)',
-                            border: '1px solid var(--adm-border)',
-                            color: 'var(--adm-text-title)',
-                            borderRadius: '10px',
-                            padding: '6px 12px',
-                            fontSize: '0.74rem',
-                            fontWeight: 700,
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                            transition: 'all 0.15s ease',
-                          }}
-                        >
-                          <Edit3 size={13} color="var(--adm-accent)" />
-                          <span>Editar</span>
-                        </button>
-                      )}
-
-                      {canDelete && (
-                        <button
-                          type="button"
-                          onClick={() => handleOpenDelete(collab)}
-                          style={{
-                            background: 'transparent',
-                            border: 'none',
-                            color: 'var(--adm-red)',
-                            fontSize: '0.74rem',
-                            fontWeight: 700,
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                          }}
-                        >
-                          <Trash2 size={13} />
-                          <span>Remover</span>
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          );
-        })}
-        </div>
+        <TeamDirectory
+          collaborators={collaborators}
+          data={teamData}
+          actions={teamActions}
+          presence={canSeePresence ? presenceMap : undefined}
+          sendingInviteEmail={sendingInviteEmail}
+          inviteSentEmail={inviteSentEmail}
+        />
       )}
 
       {/* ── MODAL DE REVINCULAÇÃO & EXCLUSÃO DE COLABORADOR ───────────────────── */}
@@ -2369,11 +1468,26 @@ export const AdminCollaboratorsView: React.FC = () => {
                 </div>
               </div>
 
+              {affectedOthers > 0 && (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px' }}>
+                  {[
+                    { label: 'Contratos', value: affectedPostSale.contracts },
+                    { label: 'Vendas adicionais', value: affectedPostSale.upsells },
+                    { label: 'Compromissos', value: affectedPostSale.appointments },
+                  ].map(i => (
+                    <div key={i.label} style={{ padding: '10px 12px', borderRadius: '12px', background: 'var(--adm-bg-input)', border: '1px solid var(--adm-border)' }}>
+                      <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--adm-text-muted)' }}>{i.label}</div>
+                      <div style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>{i.value}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               {/* Reatribuição Options */}
-              {affectedLeads.length > 0 || affectedTasks.length > 0 ? (
+              {affectedLeads.length > 0 || affectedTasks.length > 0 || affectedOthers > 0 ? (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                   <label style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--adm-text-title)' }}>
-                    O que fazer com os leads e tarefas em andamento?
+                    O que fazer com os leads, contratos, compromissos e tarefas em andamento?
                   </label>
 
                   {/* Opção A: Reatribuir */}
@@ -2407,7 +1521,7 @@ export const AdminCollaboratorsView: React.FC = () => {
                     {reassignMode === 'transfer' && (
                       <div style={{ paddingLeft: '22px' }}>
                         {availableAssignees.length > 0 ? (
-                          <select
+                          <Select
                             value={selectedAssigneeId}
                             onChange={(e) => setSelectedAssigneeId(e.target.value)}
                             style={{
@@ -2428,7 +1542,7 @@ export const AdminCollaboratorsView: React.FC = () => {
                                 {collab.name} ({collab.role.toUpperCase()})
                               </option>
                             ))}
-                          </select>
+                          </Select>
                         ) : (
                           <p style={{ margin: 0, fontSize: '0.74rem', color: 'var(--adm-text-muted)' }}>
                             Nenhum outro colaborador ativo disponível para transferência.
@@ -3066,7 +2180,7 @@ export const AdminCollaboratorsView: React.FC = () => {
                           <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 700, color: 'var(--adm-text-muted)', marginBottom: '4px', textTransform: 'uppercase' }}>
                             Novo Responsável
                           </label>
-                          <select
+                          <Select
                             value={transferTargetCollabId}
                             onChange={(e) => setTransferTargetCollabId(e.target.value)}
                             style={{
@@ -3089,7 +2203,7 @@ export const AdminCollaboratorsView: React.FC = () => {
                                   {c.name} ({getCollabRoleTitle(c)})
                                 </option>
                               ))}
-                          </select>
+                          </Select>
                         </div>
 
                         {/* Seletor de Papel */}
@@ -3097,7 +2211,7 @@ export const AdminCollaboratorsView: React.FC = () => {
                           <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 700, color: 'var(--adm-text-muted)', marginBottom: '4px', textTransform: 'uppercase' }}>
                             Atribuir Como
                           </label>
-                          <select
+                          <Select
                             value={transferRoleMode}
                             onChange={(e) => setTransferRoleMode(e.target.value as any)}
                             style={{
@@ -3115,7 +2229,7 @@ export const AdminCollaboratorsView: React.FC = () => {
                             <option value="all">Responsabilidade Completa (SDR + Closer)</option>
                             <option value="sdr">Apenas SDR / Pré-Vendas</option>
                             <option value="closer">Apenas Closer / Vendas</option>
-                          </select>
+                          </Select>
                         </div>
 
                         {/* Botão de Transferência */}

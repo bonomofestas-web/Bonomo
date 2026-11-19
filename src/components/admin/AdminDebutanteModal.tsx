@@ -1,3 +1,4 @@
+import { DateField, Select } from '../ui';
 import React, { useState, useEffect } from 'react';
 import { 
   X, User, Calendar, Phone, Mail, Building2, 
@@ -298,7 +299,7 @@ export const AdminDebutanteModal: React.FC<AdminDebutanteModalProps> = ({
               <label style={{ fontSize: '0.76rem', fontWeight: 700, color: 'var(--adm-text-title)', display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <Link size={14} /> Vincular a Cliente de Pós-Venda (Opcional)
               </label>
-              <select
+              <Select
                 value={selectedClientId}
                 onChange={(e) => handleSelectClient(e.target.value)}
                 style={{
@@ -313,7 +314,7 @@ export const AdminDebutanteModal: React.FC<AdminDebutanteModalProps> = ({
                     {c.birthdayPersonName || c.name} ({c.code}) - Festa: {new Date(c.eventDate).toLocaleDateString('pt-BR')} ({c.venueName})
                   </option>
                 ))}
-              </select>
+              </Select>
               <span style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)' }}>
                 Selecione um cliente para preencher os dados automaticamente ou deixe em branco para criar conta avulsa.
               </span>
@@ -366,7 +367,7 @@ export const AdminDebutanteModal: React.FC<AdminDebutanteModalProps> = ({
               </label>
               <div style={{ position: 'relative' }}>
                 <Building2 size={16} color="var(--adm-accent)" style={{ position: 'absolute', left: '12px', top: '12px' }} />
-                <select
+                <Select
                   value={venueId}
                   onChange={(e) => setVenueId(e.target.value)}
                   style={{
@@ -379,7 +380,7 @@ export const AdminDebutanteModal: React.FC<AdminDebutanteModalProps> = ({
                       {v.name}
                     </option>
                   ))}
-                </select>
+                </Select>
               </div>
             </div>
 
@@ -412,8 +413,7 @@ export const AdminDebutanteModal: React.FC<AdminDebutanteModalProps> = ({
                 </label>
                 <div style={{ position: 'relative' }}>
                   <Calendar size={16} color="var(--adm-accent)" style={{ position: 'absolute', left: '12px', top: '12px' }} />
-                  <input
-                    type="date"
+                  <DateField
                     required
                     value={partyDate}
                     onChange={(e) => setPartyDate(e.target.value)}
@@ -577,7 +577,7 @@ export const AdminDebutanteModal: React.FC<AdminDebutanteModalProps> = ({
                     <label style={labelStyle}>
                       Modelo de Jornada Aplicado
                     </label>
-                    <select
+                    <Select
                       value={journeyTemplateChoice}
                       onChange={(e) => setJourneyTemplateChoice(e.target.value)}
                       style={{
@@ -589,7 +589,7 @@ export const AdminDebutanteModal: React.FC<AdminDebutanteModalProps> = ({
                       {templates.map(t => (
                         <option key={t.id} value={t.id}>{t.name}</option>
                       ))}
-                    </select>
+                    </Select>
                   </div>
                 )}
               </div>

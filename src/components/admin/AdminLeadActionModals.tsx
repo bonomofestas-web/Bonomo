@@ -1,3 +1,4 @@
+import { DateField, Select } from '../ui';
 import React, { useState, useMemo } from 'react';
 import { 
   X, CheckSquare, GitBranch, Tag as TagIcon, 
@@ -173,7 +174,7 @@ export const AdminMoveFunnelModal: React.FC<AdminMoveFunnelModalProps> = ({
             <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 700, color: 'var(--adm-text-secondary, #475569)', marginBottom: '4px' }}>
               Funil de Destino
             </label>
-            <select
+            <Select
               value={selectedFunnelId}
               onChange={(e) => handleFunnelChange(e.target.value)}
               style={{
@@ -191,7 +192,7 @@ export const AdminMoveFunnelModal: React.FC<AdminMoveFunnelModalProps> = ({
               {funnels.map(f => (
                 <option key={f.id} value={f.id}>{f.name}</option>
               ))}
-            </select>
+            </Select>
           </div>
 
           {stages.length > 0 && (
@@ -199,7 +200,7 @@ export const AdminMoveFunnelModal: React.FC<AdminMoveFunnelModalProps> = ({
               <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 700, color: 'var(--adm-text-secondary, #475569)', marginBottom: '4px' }}>
                 Etapa Inicial
               </label>
-              <select
+              <Select
                 value={selectedStageId}
                 onChange={(e) => setSelectedStageId(e.target.value)}
                 style={{
@@ -217,7 +218,7 @@ export const AdminMoveFunnelModal: React.FC<AdminMoveFunnelModalProps> = ({
                 {stages.map(s => (
                   <option key={s.id} value={s.id}>{s.name}</option>
                 ))}
-              </select>
+              </Select>
             </div>
           )}
 
@@ -431,7 +432,7 @@ export const AdminBulkMoveFunnelModal: React.FC<AdminBulkMoveFunnelModalProps> =
             <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 700, color: 'var(--adm-text-secondary, #475569)', marginBottom: '4px' }}>
               Funil de Destino
             </label>
-            <select
+            <Select
               value={selectedFunnelId}
               onChange={(e) => handleFunnelChange(e.target.value)}
               style={{
@@ -449,7 +450,7 @@ export const AdminBulkMoveFunnelModal: React.FC<AdminBulkMoveFunnelModalProps> =
               {funnels.map(f => (
                 <option key={f.id} value={f.id}>{f.name}</option>
               ))}
-            </select>
+            </Select>
           </div>
 
           {stages.length > 0 && (
@@ -457,7 +458,7 @@ export const AdminBulkMoveFunnelModal: React.FC<AdminBulkMoveFunnelModalProps> =
               <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 700, color: 'var(--adm-text-secondary, #475569)', marginBottom: '4px' }}>
                 Etapa Inicial no Destino
               </label>
-              <select
+              <Select
                 value={selectedStageId}
                 onChange={(e) => setSelectedStageId(e.target.value)}
                 style={{
@@ -475,7 +476,7 @@ export const AdminBulkMoveFunnelModal: React.FC<AdminBulkMoveFunnelModalProps> =
                 {stages.map(s => (
                   <option key={s.id} value={s.id}>{(s as any).name || (s as any).title || s.id}</option>
                 ))}
-              </select>
+              </Select>
             </div>
           )}
 
@@ -663,8 +664,7 @@ export const AdminQuickTaskModal: React.FC<AdminQuickTaskModalProps> = ({
               <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 700, color: 'var(--adm-text-secondary, #475569)', marginBottom: '4px' }}>
                 Data Limite
               </label>
-              <input
-                type="date"
+              <DateField
                 value={dueDate}
                 onChange={(e) => setDueDate(e.target.value)}
                 style={{
@@ -686,7 +686,7 @@ export const AdminQuickTaskModal: React.FC<AdminQuickTaskModalProps> = ({
               <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 700, color: 'var(--adm-text-secondary, #475569)', marginBottom: '4px' }}>
                 Prioridade
               </label>
-              <select
+              <Select
                 value={priority}
                 onChange={(e) => setPriority(e.target.value as any)}
                 style={{
@@ -704,7 +704,7 @@ export const AdminQuickTaskModal: React.FC<AdminQuickTaskModalProps> = ({
                 <option value="low">Baixa</option>
                 <option value="medium">Média</option>
                 <option value="high">Alta / Urgente</option>
-              </select>
+              </Select>
             </div>
           </div>
 

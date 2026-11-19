@@ -1,3 +1,5 @@
+import { DateField, Select } from '../ui';
+import { usePresenceContext } from '../../hooks/usePresence';
 import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { 
   ChevronDown, Trash2, Check, Archive,
@@ -44,9 +46,11 @@ import type {
   LeadActivity,
   LeadEventType,
   LeadTemperature,
-  LeadMqlLevel,
+  MqlSnapshotQuestion,
   CommercialCommitmentType
 } from '../../types/admin';
+import { MQL_BAND_STYLE, buildMqlSnapshot, computeMqlScore, mqlBand, mqlLevelFromScore } from '../../utils/mqlScore';
+import { MqlScoreBar } from './MqlScoreBar';
 
 interface AdminLeadInspectorProps {
   lead: Lead;
@@ -365,7 +369,7 @@ const SubContactCard: React.FC<SubContactCardProps> = ({
       <div style={cardRowStyle}>
         <span style={cardLabelStyle}>Relação</span>
         <div style={cardValueStyle}>
-          <select
+          <Select
             value={contact.role}
             disabled={effectiveReadOnly}
             onChange={(e) => {
@@ -402,7 +406,7 @@ const SubContactCard: React.FC<SubContactCardProps> = ({
             <option value="noivo">Noivo(a)</option>
             <option value="tio">Tio(a)</option>
             <option value="outro">Outro</option>
-          </select>
+          </Select>
         </div>
       </div>
 
@@ -474,8 +478,7 @@ const SubContactCard: React.FC<SubContactCardProps> = ({
           <div style={cardRowStyle}>
             <span style={cardLabelStyle}>Aniversário</span>
             <div style={cardValueStyle}>
-              <input
-                type="date"
+              <DateField
                 value={draftBirthday}
                 disabled={effectiveReadOnly}
                 onClick={(e) => { try { (e.target as any).showPicker?.(); } catch {} }}
@@ -496,8 +499,7 @@ const SubContactCard: React.FC<SubContactCardProps> = ({
           <div style={cardRowStyle}>
             <span style={cardLabelStyle}>Data Evento</span>
             <div style={cardValueStyle}>
-              <input
-                type="date"
+              <DateField
                 value={draftEventDate}
                 disabled={effectiveReadOnly}
                 onClick={(e) => { try { (e.target as any).showPicker?.(); } catch {} }}
@@ -659,6 +661,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
     appointments,
     systemSlaConfig,
   } = useAdminState();
+  usePresenceContext(lead ? { type: 'lead', id: lead.id, label: lead.debutanteName } : null);
 
   const [isCloseDealModalOpen, setIsCloseDealModalOpen] = useState(false);
   const [isMissingFieldsModalOpen, setIsMissingFieldsModalOpen] = useState(false);
@@ -1418,7 +1421,8 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
     
     // Pergunta deve estar vinculada à casa deste lead (ou all) E ao funil deste lead (ou all)
     return mqlQuestions.filter(q => {
-      const matchesFunnel = !lead.funnelId || !q.funnelId || q.funnelId === lead.funnelId || (q.funnelIds && q.funnelIds.includes(lead.funnelId));
+      // Funil sem MQL vinculado = sem MQL (nem barra, nem aba): o funil do lead precisa estar no vinculo do formato
+      const matchesFunnel = !!lead.funnelId && (q.funnelId === lead.funnelId || !!q.funnelIds?.includes(lead.funnelId));
       const matchesVenue = (q.venueId && (q.venueId === lead.venueId || (q.venueId === 'all' && (!q.venueIds || q.venueIds.length === 0)))) ||
                            (q.venueIds && q.venueIds.length > 0 && q.venueIds.includes(lead.venueId));
       return matchesFunnel && matchesVenue;
@@ -1428,35 +1432,33 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
   // Current MQL state
   const [mqlAnswers, setMqlAnswers] = useState<Record<string, string>>(lead.mqlAnswers || {});
 
+  // MQL da epoca: se o lead ja foi respondido, usa a copia congelada (snapshot) das perguntas.
+  // Assim editar ou apagar o MQL depois nao muda a nota nem a ficha de leads ja respondidos.
+  const activeMqlQuestions = useMemo<MqlSnapshotQuestion[]>(
+    () => (lead.mqlSnapshot?.questions && lead.mqlSnapshot.questions.length > 0 ? lead.mqlSnapshot.questions : venueMqlQuestions),
+    [lead.mqlSnapshot, venueMqlQuestions],
+  );
+  const mqlIsFrozen = Boolean(lead.mqlSnapshot?.questions?.length);
+  // O MQL atual do funil mudou desde que este lead foi respondido?
+  const mqlHasNewerVersion = mqlIsFrozen && venueMqlQuestions.length > 0 && (
+    venueMqlQuestions.length !== activeMqlQuestions.length
+    || venueMqlQuestions.some(q => {
+      const old = activeMqlQuestions.find(o => o.id === q.id);
+      return !old || old.title !== q.title || JSON.stringify(old.options.map(o => [o.id, o.label, o.points])) !== JSON.stringify(q.options.map(o => [o.id, o.label, o.points]));
+    })
+  );
+
   // Calculate MQL dynamically (com suporte a estado Indefinido quando nada for marcado)
   const mqlResult = useMemo(() => {
-    const answeredKeys = Object.keys(mqlAnswers).filter(k => Boolean(mqlAnswers[k]));
-    if (venueMqlQuestions.length === 0 || answeredKeys.length === 0) {
+    const computed = computeMqlScore(activeMqlQuestions, mqlAnswers);
+    if (!computed) {
       if (typeof lead.mqlScore === 'number' && lead.mqlScore > 0 && lead.mqlAnswers && Object.keys(lead.mqlAnswers).length > 0) {
-        return { score: lead.mqlScore, level: lead.mqlLevel || 'cold', isDefined: true };
+        return { score: lead.mqlScore, level: lead.mqlLevel || mqlLevelFromScore(lead.mqlScore), isDefined: true };
       }
       return { score: undefined, level: undefined, isDefined: false };
     }
-    let totalMax = 0;
-    let earned = 0;
-
-    venueMqlQuestions.forEach(q => {
-      const maxPts = q.options.length > 0 ? Math.max(...q.options.map(o => o.points)) : 100;
-      totalMax += maxPts;
-      const selectedId = mqlAnswers[q.id];
-      if (selectedId) {
-        const opt = q.options.find(o => o.id === selectedId);
-        if (opt) earned += opt.points;
-      }
-    });
-
-    const score = totalMax > 0 ? Math.round((earned / totalMax) * 100) : 0;
-    let level: LeadMqlLevel = 'cold';
-    if (score >= 80) level = 'top';
-    else if (score >= 50) level = 'qualified';
-
-    return { score, level, isDefined: true };
-  }, [venueMqlQuestions, mqlAnswers, lead.mqlScore, lead.mqlLevel, lead.mqlAnswers]);
+    return { score: computed.score, level: computed.level, isDefined: true };
+  }, [activeMqlQuestions, mqlAnswers, lead.mqlScore, lead.mqlLevel, lead.mqlAnswers]);
 
   const handleSelectMqlOption = (questionId: string, optionId: string) => {
     const updated = { ...mqlAnswers };
@@ -1468,31 +1470,27 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
     }
     setMqlAnswers(updated);
 
-    const answeredKeys = Object.keys(updated).filter(k => Boolean(updated[k]));
-    if (answeredKeys.length === 0) {
-      // Quando nenhuma alternativa estiver selecionada: ICP torna-se Indefinido
+    const computed = computeMqlScore(activeMqlQuestions, updated);
+    if (!computed) {
+      // Quando nenhuma alternativa estiver selecionada: ICP torna-se Indefinido e o lead
+      // volta a adotar o MQL atual do funil na proxima resposta.
       saveLeadMqlAnswers(lead.id, updated, undefined as any, undefined as any);
+      updateLeadData(lead.id, { mqlSnapshot: null as any });
       return;
     }
 
-    // Compute updated score
-    let totalMax = 0;
-    let earned = 0;
-    venueMqlQuestions.forEach(q => {
-      const maxPts = q.options.length > 0 ? Math.max(...q.options.map(o => o.points)) : 100;
-      totalMax += maxPts;
-      const optId = updated[q.id];
-      if (optId) {
-        const opt = q.options.find(o => o.id === optId);
-        if (opt) earned += opt.points;
-      }
-    });
-    const score = totalMax > 0 ? Math.round((earned / totalMax) * 100) : 0;
-    let level: LeadMqlLevel = 'cold';
-    if (score >= 80) level = 'top';
-    else if (score >= 50) level = 'qualified';
+    // Primeira resposta: grava o snapshot do MQL vigente. Depois dela o snapshot nao muda.
+    const profileName = venueMqlQuestions.find(q => q.profileName)?.profileName;
+    const profileId = venueMqlQuestions.find(q => q.profileId)?.profileId;
+    const snapshot = mqlIsFrozen ? undefined : buildMqlSnapshot(venueMqlQuestions, { id: profileId, name: profileName });
+    saveLeadMqlAnswers(lead.id, updated, computed.score, computed.level, snapshot);
+  };
 
-    saveLeadMqlAnswers(lead.id, updated, score, level);
+  // Troca o lead para o MQL atual do funil (descarta respostas e snapshot antigos)
+  const handleUseCurrentMql = () => {
+    setMqlAnswers({});
+    saveLeadMqlAnswers(lead.id, {}, undefined as any, undefined as any);
+    updateLeadData(lead.id, { mqlSnapshot: null as any });
   };
 
   // Trava de segurança para leads com resultado final (Ganho / Perdido)
@@ -1806,8 +1804,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                 </span>
               </label>
             ) : field.type === 'date' ? (
-              <input
-                type="date"
+              <DateField
                 value={currentValue}
                 onClick={(e) => {
                   try { (e.target as any).showPicker?.(); } catch {}
@@ -1834,7 +1831,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                 onBlurCapture={(e) => { e.target.style.borderBottomColor = 'transparent'; }}
               />
             ) : field.type === 'select' ? (
-              <select
+              <Select
                 value={currentValue}
                 onChange={(e) => {
                   const updatedCustom = { ...(lead.customFieldValues || {}), [field.id]: e.target.value };
@@ -1846,7 +1843,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                 {(field.options || []).map(opt => (
                   <option key={opt} value={opt}>{opt}</option>
                 ))}
-              </select>
+              </Select>
             ) : field.type === 'multi_select' ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
                 {(field.options || []).map(opt => {
@@ -3255,6 +3252,41 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
               <span>Principal</span>
             </button>
 
+            {/* MQL: sempre a segunda aba (acesso rapido), so quando o funil esta vinculado a um MQL */}
+            {activeMqlQuestions.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setActiveTab('mql')}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  borderBottom: activeTab === 'mql' ? '2px solid #14A9D7' : '2px solid transparent',
+                  padding: '3px 8px',
+                  color: activeTab === 'mql' ? '#FFFFFF' : 'rgba(255,255,255,0.6)',
+                  fontSize: '0.70rem',
+                  fontWeight: activeTab === 'mql' ? 800 : 600,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                <IcpTargetUserIcon size={13} color={activeTab === 'mql' ? '#14A9D7' : 'rgba(255,255,255,0.6)'} />
+                <span>MQL</span>
+                <span style={{
+                  fontSize: '0.58rem',
+                  background: `${MQL_BAND_STYLE[mqlBand(mqlResult.score)].color}33`,
+                  color: MQL_BAND_STYLE[mqlBand(mqlResult.score)].color,
+                  padding: '1px 5px',
+                  borderRadius: '4px',
+                  fontWeight: 800,
+                }}>
+                  {mqlResult.isDefined ? `${MQL_BAND_STYLE[mqlBand(mqlResult.score)].label} (${mqlResult.score}%)` : 'Indefinido'}
+                </span>
+              </button>
+            )}
+
             <button
               type="button"
               onClick={() => setActiveTab('origem')}
@@ -3308,39 +3340,16 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
               )}
             </button>
 
-            {venueMqlQuestions.length > 0 && (
-              <button
-                type="button"
-                onClick={() => setActiveTab('mql')}
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  borderBottom: activeTab === 'mql' ? '2px solid #14A9D7' : '2px solid transparent',
-                  padding: '3px 8px',
-                  color: activeTab === 'mql' ? '#FFFFFF' : 'rgba(255,255,255,0.6)',
-                  fontSize: '0.70rem',
-                  fontWeight: activeTab === 'mql' ? 800 : 600,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '4px',
-                  transition: 'all 0.15s ease',
-                }}
-              >
-                <IcpTargetUserIcon size={13} color={activeTab === 'mql' ? '#14A9D7' : 'rgba(255,255,255,0.6)'} />
-                <span>ICP</span>
-                <span style={{
-                  fontSize: '0.58rem',
-                  background: !mqlResult.isDefined ? 'rgba(148,163,184,0.18)' : mqlResult.level === 'top' ? 'rgba(16,185,129,0.2)' : mqlResult.level === 'qualified' ? 'rgba(245,158,11,0.2)' : 'rgba(239,68,68,0.2)',
-                  color: !mqlResult.isDefined ? '#94A3B8' : mqlResult.level === 'top' ? '#10B981' : mqlResult.level === 'qualified' ? '#F59E0B' : '#EF4444',
-                  padding: '1px 5px',
-                  borderRadius: '4px',
-                  fontWeight: 800
-                }}>
-                  {!mqlResult.isDefined ? 'Indefinido' : `${mqlResult.level === 'top' ? 'ICP A' : mqlResult.level === 'qualified' ? 'ICP B' : 'ICP C'} (${mqlResult.score}%)`}
-                </span>
-              </button>
-            )}
+          </div>
+        )}
+
+        {/* ── BARRA DE MQL (so quando o funil tem qualificacao configurada) ── */}
+        {!isPostSale && activeMqlQuestions.length > 0 && (
+          <div
+            onClick={() => setActiveTab('mql')}
+            style={{ marginTop: '6px', cursor: 'pointer' }}
+          >
+            <MqlScoreBar score={mqlResult.score} />
           </div>
         )}
 
@@ -4798,7 +4807,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                 <div style={cardRowStyle}>
                   <span style={cardLabelStyle}>Relação</span>
                   <div style={cardValueStyle}>
-                    <select
+                    <Select
                       value={lead.primaryContactRole || 'indefinido'}
                       disabled={effectiveReadOnly}
                       onChange={(e) => handleUpdate({ primaryContactRole: e.target.value as LeadContactRole })}
@@ -4824,7 +4833,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                       <option value="noivo">Noivo(a)</option>
                       <option value="tio">Tio(a)</option>
                       <option value="outro">Outro</option>
-                    </select>
+                    </Select>
                   </div>
                 </div>
 
@@ -4895,8 +4904,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                         Aniversário {isFieldMissing('debutanteBirthDate') && <span style={{ color: '#EF4444' }}>*</span>}
                       </span>
                       <div style={cardValueStyle}>
-                        <input
-                          type="date"
+                        <DateField
                           value={draftBirthday}
                           disabled={effectiveReadOnly}
                           onClick={(e) => { try { (e.target as any).showPicker?.(); } catch {} }}
@@ -4918,8 +4926,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                     <div style={cardRowStyle}>
                       <span style={cardLabelStyle}>Data Evento</span>
                       <div style={cardValueStyle}>
-                        <input
-                          type="date"
+                        <DateField
                           value={lead.eventDate || lead.partyDate || ''}
                           disabled={effectiveReadOnly}
                           onClick={(e) => { try { (e.target as any).showPicker?.(); } catch {} }}
@@ -5265,7 +5272,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                       }}
                     />
 
-                    <select
+                    <Select
                       value={newContactRole}
                       onChange={(e) => setNewContactRole(e.target.value as LeadContactRole)}
                       style={{
@@ -5294,7 +5301,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                       <option value="noivo">Noivo(a)</option>
                       <option value="tio">Tio(a)</option>
                       <option value="outro">Outro</option>
-                    </select>
+                    </Select>
 
                     <input
                       type="text"
@@ -5326,8 +5333,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                           <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 700, color: 'var(--adm-text-muted)', marginBottom: '3px' }}>
                             Aniversário
                           </label>
-                          <input
-                            type="date"
+                          <DateField
                             value={newContactBirthday}
                             onChange={(e) => setNewContactBirthday(e.target.value)}
                             onClick={(e) => { try { (e.target as any).showPicker?.(); } catch {} }}
@@ -5348,8 +5354,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                           <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 700, color: 'var(--adm-text-muted)', marginBottom: '3px' }}>
                             Data do Evento
                           </label>
-                          <input
-                            type="date"
+                          <DateField
                             value={newContactEventDate}
                             onChange={(e) => setNewContactEventDate(e.target.value)}
                             onClick={(e) => { try { (e.target as any).showPicker?.(); } catch {} }}
@@ -6293,7 +6298,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                     <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 600, color: 'var(--adm-text-muted)', marginBottom: '4px' }}>
                       Alterar sub-origem do lead
                     </label>
-                    <select
+                    <Select
                       value={lead.subSource || ''}
                       disabled={readOnly}
                       onChange={(e) => handleUpdate({ subSource: e.target.value || undefined })}
@@ -6304,7 +6309,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                       {leadSource.configuration.subSources.map(sub => (
                         <option key={sub.id} value={sub.name}>{sub.name} (Gatilho: "{sub.keyword}")</option>
                       ))}
-                    </select>
+                    </Select>
                   </div>
                 )}
               </div>
@@ -6829,67 +6834,24 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
         {activeTab === 'mql' && (
           <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
             
-            {/* ICP Score Gauge Banner (Clean, High-Contrast Card) */}
+            {/* Nota do MQL: Indefinido / Ruim / Bom / Muito bom / Incrivel */}
             <div style={{
               background: 'var(--adm-bg-card)',
-              border: `1.5px solid ${
-                mqlResult.level === 'top' ? '#10B981' : mqlResult.level === 'qualified' ? '#F59E0B' : '#EF4444'
-              }`,
-              borderRadius: '16px',
-              padding: '18px',
+              border: `1.5px solid ${MQL_BAND_STYLE[mqlBand(mqlResult.score)].color}`,
+              borderRadius: '14px',
+              padding: '14px 16px',
               display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: '16px',
-              boxShadow: '0 4px 16px rgba(0,0,0,0.06)',
+              flexDirection: 'column',
+              gap: '10px',
             }}>
-              <div>
-                <span style={{ fontSize: '0.7rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.6px', color: 'var(--adm-text-muted)' }}>
-                  Nota do Perfil de Cliente Ideal (ICP)
+              <MqlScoreBar score={mqlResult.score} />
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap', fontSize: '0.7rem', color: 'var(--adm-text-muted)' }}>
+                <span>
+                  <strong style={{ color: 'var(--adm-text-title)' }}>
+                    {activeMqlQuestions.filter(q => Boolean(mqlAnswers[q.id])).length} de {activeMqlQuestions.length}
+                  </strong> respondidas
                 </span>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
-                  <span style={{
-                    width: '10px',
-                    height: '10px',
-                    borderRadius: '50%',
-                    background: mqlResult.level === 'top' ? '#10B981' : mqlResult.level === 'qualified' ? '#F59E0B' : '#EF4444',
-                    display: 'inline-block',
-                    flexShrink: 0,
-                  }} />
-                  <span style={{
-                    fontSize: '1.25rem',
-                    fontWeight: 700,
-                    color: mqlResult.level === 'top' ? '#10B981' : mqlResult.level === 'qualified' ? '#F59E0B' : '#EF4444',
-                  }}>
-                    {mqlResult.level === 'top' ? 'Nota ICP A (Lead Top)' : mqlResult.level === 'qualified' ? 'Nota ICP B (Médio)' : 'Nota ICP C (Baixo / Ruim)'}
-                  </span>
-                </div>
-                <div style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)', marginTop: '4px' }}>
-                  {mqlResult.level === 'top'
-                    ? 'Lead com perfil ideal, alta urgência e alinhamento com a casa.'
-                    : mqlResult.level === 'qualified'
-                    ? 'Lead com perfil intermediário, em negociação de data ou proposta.'
-                    : 'Lead com baixo alinhamento orçamentário ou apenas pesquisando valores.'}
-                </div>
-              </div>
-
-              {/* Score Badge */}
-              <div style={{
-                width: '64px',
-                height: '64px',
-                borderRadius: '50%',
-                background: 'var(--adm-bg-input)',
-                border: `3px solid ${mqlResult.level === 'top' ? '#10B981' : mqlResult.level === 'qualified' ? '#F59E0B' : '#EF4444'}`,
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexShrink: 0,
-              }}>
-                <span style={{ fontSize: '1.05rem', fontWeight: 900, color: 'var(--adm-text-title)' }}>{mqlResult.score}%</span>
-                <span style={{ fontSize: '0.6rem', fontWeight: 800, color: mqlResult.level === 'top' ? '#10B981' : mqlResult.level === 'qualified' ? '#F59E0B' : '#EF4444' }}>
-                  {mqlResult.level === 'top' ? 'ICP A' : mqlResult.level === 'qualified' ? 'ICP B' : 'ICP C'}
-                </span>
+                <span>Confirme cada resposta com o lead: o MQL não vem da ficha nem de campanhas.</span>
               </div>
             </div>
 
@@ -6900,16 +6862,42 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                   Critérios de Qualificação ICP
                 </span>
                 <span style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)' }}>
-                  {venueMqlQuestions.length} perguntas cadastradas
+                  {activeMqlQuestions.length} perguntas cadastradas
                 </span>
               </div>
 
-              {venueMqlQuestions.length === 0 ? (
+              {mqlIsFrozen && (
+                <div style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap',
+                  padding: '8px 12px', borderRadius: '10px', border: '1px solid var(--adm-border)',
+                  background: 'var(--adm-bg-input)', fontSize: '0.7rem', color: 'var(--adm-text-muted)',
+                }}>
+                  <span>
+                    MQL de {lead.mqlSnapshot?.capturedAt ? new Date(lead.mqlSnapshot.capturedAt).toLocaleDateString('pt-BR') : 'época anterior'}
+                    {lead.mqlSnapshot?.profileName ? ` (${lead.mqlSnapshot.profileName})` : ''}
+                    {mqlHasNewerVersion ? ': o MQL do funil foi alterado desde então.' : '.'}
+                  </span>
+                  {mqlHasNewerVersion && !effectiveReadOnly && (
+                    <button
+                      type="button"
+                      onClick={handleUseCurrentMql}
+                      style={{
+                        background: 'transparent', border: '1px solid var(--adm-border)', borderRadius: '8px',
+                        padding: '4px 10px', fontSize: '0.68rem', fontWeight: 800, color: 'var(--adm-text-title)', cursor: 'pointer',
+                      }}
+                    >
+                      Usar MQL atual (limpa respostas)
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {activeMqlQuestions.length === 0 ? (
                 <div style={{ padding: '24px', textAlign: 'center', color: 'var(--adm-text-muted)', background: 'var(--adm-bg-input)', borderRadius: '12px' }}>
                   Nenhum critério de ICP configurado para esta casa de festas.
                 </div>
               ) : (
-                venueMqlQuestions.map((q, qIdx) => {
+                activeMqlQuestions.map((q, qIdx) => {
                   const selectedOptId = mqlAnswers[q.id];
 
                   return (
@@ -6918,11 +6906,11 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                       style={{
                         background: 'var(--adm-bg-input)',
                         border: '1px solid var(--adm-border)',
-                        borderRadius: '14px',
-                        padding: '14px',
+                        borderRadius: '12px',
+                        padding: '10px 12px',
                         display: 'flex',
                         flexDirection: 'column',
-                        gap: '10px',
+                        gap: '8px',
                       }}
                     >
                       <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
@@ -6963,13 +6951,13 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                           return (
                             <div
                               key={opt.id}
-                              onClick={() => handleSelectMqlOption(q.id, opt.id)}
+                              onClick={() => { if (!effectiveReadOnly) handleSelectMqlOption(q.id, opt.id); }}
                               style={{
-                                padding: '9px 12px',
-                                borderRadius: '10px',
+                                padding: '7px 10px',
+                                borderRadius: '9px',
                                 border: `1.5px solid ${isOptionSelected ? conf.color : 'var(--adm-border)'}`,
                                 background: isOptionSelected ? conf.bg : 'var(--adm-bg-card)',
-                                cursor: 'pointer',
+                                cursor: effectiveReadOnly ? 'default' : 'pointer',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'space-between',
@@ -6978,18 +6966,10 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                               }}
                             >
                               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
-                                <span style={{
-                                  fontSize: '0.65rem',
-                                  fontWeight: 800,
-                                  padding: '2px 6px',
-                                  borderRadius: '5px',
-                                  background: conf.bg,
-                                  color: conf.color,
-                                  border: `1px solid ${conf.border}`,
-                                  flexShrink: 0,
-                                }}>
-                                  {conf.icon} {conf.label}
-                                </span>
+                                <span
+                                  title={conf.label}
+                                  style={{ width: '8px', height: '8px', borderRadius: '50%', background: conf.color, flexShrink: 0 }}
+                                />
                                 <span style={{
                                   fontSize: '0.78rem',
                                   color: isOptionSelected ? 'var(--adm-text-title)' : 'var(--adm-text-body)',
@@ -7616,7 +7596,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                 Motivo da {deletePermanently ? 'Exclusão' : 'Remoção'} *
               </label>
 
-              <select
+              <Select
                 value={removalReasonCategory}
                 onChange={(e) => setRemovalReasonCategory(e.target.value)}
                 style={{
@@ -7638,7 +7618,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                 <option value="no_interest">Sem Interesse / Desistiu</option>
                 <option value="duplicate">Duplicado / Contato em Outro Número</option>
                 <option value="other">Outro Motivo</option>
-              </select>
+              </Select>
 
               <textarea
                 value={removalReasonNotes}

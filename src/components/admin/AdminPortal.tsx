@@ -48,7 +48,6 @@ import { AdminClientsListView } from './AdminClientsListView';
 import { AdminContactsView } from './AdminContactsView';
 import { AdminContractsView } from './AdminContractsView';
 import { AdminGlobalSearch } from './AdminGlobalSearch';
-import { Toaster } from 'sonner';
 import { Menu, X, Eye, Plus, Megaphone, Headset, ChevronDown, Check, Layers } from 'lucide-react';
 import { type FeatureFlagId, type SystemAnnouncement } from '../../types/admin';
 
@@ -62,6 +61,7 @@ const TAB_FEATURE_FLAG: Partial<Record<AdminTabType, FeatureFlagId>> = {
 
 
 import { useActiveTimeTracker } from '../../hooks/useActiveTimeTracker';
+import { usePresencePublisher } from '../../hooks/usePresence';
 
 export const AdminPortal: React.FC<AdminPortalProps> = ({
   onOpenDebutanteApp,
@@ -83,6 +83,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     isInitialSyncComplete,
     updateCollaborator,
     isRefreshing,
+    featureFlags,
   } = useAdminState();
 
   // Track active focus time for collaborators
@@ -99,6 +100,15 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       if (saved) return saved;
     } catch { }
     return 'home';
+  });
+
+  // Presenca ao vivo da equipe (sem Realtime; parada pela chave remota team_presence)
+  usePresencePublisher({
+    enabled: featureFlags.team_presence !== 'disabled' && featureFlags.team_presence !== 'coming_soon' && Boolean(currentUser),
+    collaboratorId: currentUser?.id,
+    masterId: currentUser?.masterId || currentUser?.id,
+    venueId: currentUser?.venueIds?.length === 1 ? currentUser.venueIds[0] : null,
+    view: String(activeTab),
   });
   const [isSplashDismissed, setIsSplashDismissed] = useState(false);
   const [activeFunnelId, setActiveFunnelId] = useState<string | null>(() => {
@@ -860,7 +870,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       case 'benefits':
         return <AdminBenefitsCatalogView onBack={() => handleSelectTab('debutantes')} />;
       case 'collaborators':
-        return <AdminCollaboratorsView />;
+        return <AdminCollaboratorsView onNavigateTab={(tab) => handleSelectTab(tab)} />;
       case 'templates':
         return <AdminJourneysConfigView onBack={() => handleSelectTab('debutantes')} />;
       case 'appointments':
@@ -1049,7 +1059,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               else if (activeTab === 'team-calendar') { category = 'Workspace'; title = 'Agenda'; }
               else if (activeTab === 'contacts') { category = 'Comercial'; title = 'Central de Contatos'; }
               else if (activeTab === 'crm') { category = 'Comercial'; title = activeFunnel ? `Funil • ${activeFunnel.name}` : 'Funil Comercial'; }
-              else if (activeTab === 'dashboard') { category = 'Comercial'; title = 'Dashboard'; }
+              else if (activeTab === 'dashboard') { category = 'Comercial'; title = 'Dashboard Comercial'; }
               else if (activeTab === 'contracts') { category = 'Pós-Venda'; title = 'Central de Contratos'; }
               else if (activeTab === 'whatsapp') { category = 'Ferramentas'; title = 'Mensagens'; }
               else if (activeTab === 'quick-messages') { category = 'Ferramentas'; title = 'Mensagens Rápidas'; }
@@ -1559,7 +1569,6 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         />
       )}
 
-      <Toaster richColors position="top-right" theme={theme === 'light' ? 'light' : 'dark'} closeButton />
 
       <style>{`
         @media (max-width: 900px) {

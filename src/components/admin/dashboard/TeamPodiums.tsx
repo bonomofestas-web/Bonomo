@@ -9,7 +9,7 @@ const GOLD = '#D4AF37';
 const SILVER = '#CBD5E1';
 const BRONZE = '#CD7F32';
 const MEDAL = [GOLD, SILVER, BRONZE];
-const PLATFORM_H = [118, 86, 64]; // 1o, 2o, 3o
+const PLATFORM_H = [170, 122, 84]; // 1o, 2o, 3o (desnivel maior para o 3o respirar)
 
 export const Avatar: React.FC<{ name: string; url?: string; size: number; ring?: string }> = ({ name, url, size, ring }) => {
   const initials = name.split(' ').filter(Boolean).slice(0, 2).map(p => p[0]?.toUpperCase()).join('');
@@ -139,19 +139,27 @@ export const ClosersPodium: React.FC<{ closers: CloserRank[] }> = ({ closers }) 
   />
 );
 
-export const SdrsPodium: React.FC<{ sdrs: SdrRank[] }> = ({ sdrs }) => (
-  <Podium
-    title="Pódio de SDRs" hint="Por agendamentos realizados" empty="Nenhum agendamento realizado por SDRs no período."
-    items={sdrs.slice(0, 6).map(s => ({
-      id: s.id, name: s.name, avatarUrl: s.avatarUrl, role: 'sdr',
-      main: `${s.appointments} agend.`,
-      sub: `Visita ${s.visits} · Degust. ${s.tastings}`,
-      extra: (
-        <span style={{ marginTop: '4px', fontSize: '0.64rem', fontWeight: 700, color: 'var(--adm-text-muted)' }}>
-          {s.closingParticipations} {s.closingParticipations === 1 ? 'fechamento' : 'fechamentos'}
-        </span>
-      ),
-      pct: pctDelta(s.appointments, s.appointmentsPrev), hasCurrent: s.appointments > 0,
-    }))}
-  />
-);
+const pctTxt = (v: number | null) => (v === null ? '—' : `${Math.round(v)}%`);
+
+export const SdrsPodium: React.FC<{ sdrs: SdrRank[] }> = ({ sdrs }) => {
+  const toItem = (s: SdrRank): PodiumItem => ({
+    id: s.id, name: s.name, avatarUrl: s.avatarUrl, role: 'sdr',
+    // A nota (score) fica so no calculo; o pódio exibe os resultados e a ordem ja vem dela.
+    main: `${s.appointments} agend.`,
+    sub: `Comparecimento ${pctTxt(s.schedToAttendRate)}`,
+    extra: (
+      <span style={{ marginTop: '4px', fontSize: '0.64rem', fontWeight: 700, color: 'var(--adm-text-muted)' }}>
+        Agendamento {pctTxt(s.qualToSchedRate)}
+      </span>
+    ),
+    pct: pctDelta(s.appointments, s.appointmentsPrev), hasCurrent: s.appointments > 0,
+  });
+  return (
+    <Podium
+      title="Pódio de SDRs"
+      hint="Ordenado pela nota de desempenho do período"
+      empty="Nenhuma atividade de SDR no período."
+      items={sdrs.slice(0, 6).map(toItem)}
+    />
+  );
+};

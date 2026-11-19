@@ -1,3 +1,4 @@
+import { Select } from '../ui';
 import React, { useState, useEffect } from 'react';
 import { X, Tag, Plus, AlertCircle } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
@@ -175,7 +176,7 @@ export const AdminAddSubSourceModal: React.FC<AdminAddSubSourceModalProps> = ({
             <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 800, color: 'var(--adm-text-title)', marginBottom: '6px' }}>
               Funil de Destino Específico (Opcional)
             </label>
-            <select
+            <Select
               value={subFunnelId}
               onChange={(e) => setSubFunnelId(e.target.value)}
               className="adm-input"
@@ -185,7 +186,7 @@ export const AdminAddSubSourceModal: React.FC<AdminAddSubSourceModalProps> = ({
               {funnels.map(f => (
                 <option key={f.id} value={f.id}>{f.name}</option>
               ))}
-            </select>
+            </Select>
             <div style={{ fontSize: '0.70rem', color: 'var(--adm-text-muted)', marginTop: '4px' }}>
               Deixe vazio para usar o mesmo funil de destino da origem principal.
             </div>

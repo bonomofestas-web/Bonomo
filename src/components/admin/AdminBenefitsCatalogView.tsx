@@ -1,3 +1,4 @@
+import { Select } from '../ui';
 import React, { useState } from 'react';
 import { HeaderActions } from './HeaderActions';
 import { 
@@ -216,7 +217,7 @@ export const AdminBenefitsCatalogView: React.FC<AdminBenefitsCatalogViewProps> =
           </div>
 
           {activeSubTab === 'benefits' && (
-            <select
+            <Select
               value={categoryFilter}
               onChange={(e) => setCategoryFilter(e.target.value)}
               style={{
@@ -236,7 +237,7 @@ export const AdminBenefitsCatalogView: React.FC<AdminBenefitsCatalogViewProps> =
               <option value="entretenimento">Entretenimento</option>
               <option value="gastronomia">Gastronomia</option>
               <option value="vip">Experiência VIP</option>
-            </select>
+            </Select>
           )}
         </div>
       </div>

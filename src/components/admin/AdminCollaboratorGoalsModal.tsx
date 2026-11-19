@@ -1,3 +1,4 @@
+import { DateField, Select } from '../ui';
 import React, { useState } from 'react';
 import { Target, X } from 'lucide-react';
 import { toast } from 'sonner';
@@ -99,10 +100,10 @@ export const AdminCollaboratorGoalsModal: React.FC<Props> = ({ collaborator, onC
 
         <div>
           <label style={labelStyle}>Ciclo</label>
-          <select value={cycle} onChange={e => setCycle(e.target.value as 'monthly' | 'weekly')} className="adm-input" style={inputStyle}>
+          <Select value={cycle} onChange={e => setCycle(e.target.value as 'monthly' | 'weekly')} className="adm-input" style={inputStyle}>
             <option value="monthly">Mensal</option>
             <option value="weekly">Semanal</option>
-          </select>
+          </Select>
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
@@ -124,11 +125,11 @@ export const AdminCollaboratorGoalsModal: React.FC<Props> = ({ collaborator, onC
           </div>
           <div>
             <label style={labelStyle}>Válida a partir de</label>
-            <input type="date" value={validFrom} onChange={e => setValidFrom(e.target.value)} className="adm-input" style={inputStyle} />
+            <DateField value={validFrom} onChange={e => setValidFrom(e.target.value)} className="adm-input" style={inputStyle} />
           </div>
           <div>
             <label style={labelStyle}>Válida até</label>
-            <input type="date" value={validUntil} onChange={e => setValidUntil(e.target.value)} className="adm-input" style={inputStyle} />
+            <DateField value={validUntil} onChange={e => setValidUntil(e.target.value)} className="adm-input" style={inputStyle} />
           </div>
         </div>
 

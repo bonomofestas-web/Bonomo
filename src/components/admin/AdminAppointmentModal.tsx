@@ -1,3 +1,4 @@
+import { DateField, Select } from '../ui';
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   X, Calendar, Clock, MapPin, FileText, UserCheck, AlertCircle, 
@@ -360,7 +361,7 @@ export const AdminAppointmentModal: React.FC<AdminAppointmentModalProps> = ({
 
               {!appointmentToEdit ? (
                 <div style={{ marginBottom: '8px' }}>
-                  <select
+                  <Select
                     value={debutanteId}
                     onChange={(e) => setDebutanteId(e.target.value)}
                     style={inputStyle}
@@ -370,7 +371,7 @@ export const AdminAppointmentModal: React.FC<AdminAppointmentModalProps> = ({
                         {d.name} • Festa: {d.partyDate ? d.partyDate.split('-').reverse().join('/') : 'A definir'}
                       </option>
                     ))}
-                  </select>
+                  </Select>
                 </div>
               ) : null}
 
@@ -535,8 +536,7 @@ export const AdminAppointmentModal: React.FC<AdminAppointmentModalProps> = ({
                 </label>
                 <div style={{ position: 'relative' }}>
                   <Calendar size={15} color="var(--adm-accent)" style={{ position: 'absolute', left: '12px', top: '12px', pointerEvents: 'none' }} />
-                  <input
-                    type="date"
+                  <DateField
                     required
                     min={todayStr}
                     value={date}
@@ -579,7 +579,7 @@ export const AdminAppointmentModal: React.FC<AdminAppointmentModalProps> = ({
               </label>
               <div style={{ position: 'relative' }}>
                 <UserCheck size={16} color="var(--adm-accent)" style={{ position: 'absolute', left: '12px', top: '12px', pointerEvents: 'none' }} />
-                <select
+                <Select
                   value={responsibleCollaboratorId}
                   onChange={(e) => setResponsibleCollaboratorId(e.target.value)}
                   style={{ ...inputStyle, paddingLeft: '38px', cursor: 'pointer' }}
@@ -601,7 +601,7 @@ export const AdminAppointmentModal: React.FC<AdminAppointmentModalProps> = ({
                       </option>
                     );
                   })}
-                </select>
+                </Select>
               </div>
             </div>
 

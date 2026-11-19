@@ -1,3 +1,4 @@
+import { Select } from '../ui';
 import React, { useState, useMemo } from 'react';
 import { 
   AlertTriangle, 
@@ -354,7 +355,7 @@ export const AdminFunnelDeleteModal: React.FC<AdminFunnelDeleteModalProps> = ({
                 <label style={{ fontSize: '0.78rem', color: 'var(--adm-text-muted)', fontWeight: 600 }}>
                   Redirecionar novos leads dos canais para:
                 </label>
-                <select
+                <Select
                   value={selectedDestFunnelId}
                   onChange={(e) => setSelectedDestFunnelId(e.target.value)}
                   style={{
@@ -371,7 +372,7 @@ export const AdminFunnelDeleteModal: React.FC<AdminFunnelDeleteModalProps> = ({
                   {otherFunnels.map(f => (
                     <option key={f.id} value={f.id}>{f.name}</option>
                   ))}
-                </select>
+                </Select>
               </div>
             )}
           </div>
@@ -848,7 +849,7 @@ export const AdminFunnelDeleteModal: React.FC<AdminFunnelDeleteModalProps> = ({
 
                           {/* Right: Target Stage Dropdown */}
                           <div style={{ flex: 1, maxWidth: '280px' }}>
-                            <select
+                            <Select
                               value={targetStageId}
                               onChange={(e) => handleStageChange(srcStage.id, e.target.value)}
                               style={{
@@ -868,7 +869,7 @@ export const AdminFunnelDeleteModal: React.FC<AdminFunnelDeleteModalProps> = ({
                                   {destStage.name}
                                 </option>
                               ))}
-                            </select>
+                            </Select>
                           </div>
                         </div>
                       );

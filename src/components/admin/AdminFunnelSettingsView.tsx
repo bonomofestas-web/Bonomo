@@ -1,3 +1,4 @@
+import { Select } from '../ui';
 import { toast } from 'sonner';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
@@ -1523,7 +1524,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                       Nenhuma casa relacionada a este funil.
                       {unlinkedVenues.length > 0 && (
                         <div style={{ marginTop: '8px' }}>
-                          <select
+                          <Select
                             value=""
                             onChange={(e) => {
                               if (e.target.value) setSharedVenueIds(prev => [...prev, e.target.value]);
@@ -1543,7 +1544,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                             {unlinkedVenues.map(v => (
                               <option key={v.id} value={v.id}>{v.name}</option>
                             ))}
-                          </select>
+                          </Select>
                         </div>
                       )}
                     </div>
@@ -2225,7 +2226,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
 
                     {unlinkedVenues.length > 0 && (
                       <div style={{ marginTop: '4px' }}>
-                        <select
+                        <Select
                           value=""
                           onChange={(e) => {
                             if (e.target.value) setSharedVenueIds(prev => [...prev, e.target.value]);
@@ -2250,7 +2251,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                               {v.name}
                             </option>
                           ))}
-                        </select>
+                        </Select>
                       </div>
                     )}
                   </div>
@@ -2701,7 +2702,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                           ] as const).map(f => (
                             <label key={f.label} style={{ display: 'flex', flexDirection: 'column', gap: '3px', fontSize: '0.60rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase' }}>
                               {f.label}
-                              <select
+                              <Select
                                 value={f.value}
                                 onChange={(e) => f.onChange(e.target.value)}
                                 style={{
@@ -2717,7 +2718,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                                 }}
                               >
                                 {f.options.map(([val, text]) => <option key={val} value={val}>{text}</option>)}
-                              </select>
+                              </Select>
                             </label>
                           ))}
                         </div>
@@ -3239,7 +3240,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                                 <label style={{ fontSize: '0.64rem', color: 'var(--adm-text-muted)', fontWeight: 600 }}>
                                   Tipo de Compromisso:
                                 </label>
-                                <select
+                                <Select
                                   value={selectedScheduleType}
                                   onChange={(e) => setSelectedScheduleType(e.target.value as any)}
                                   style={{
@@ -3255,7 +3256,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                                 >
                                   <option value="visit">Visita Comercial (Casa de Festas)</option>
                                   <option value="tasting">Degustação Gastronômica</option>
-                                </select>
+                                </Select>
                                 <p style={{ fontSize: '0.62rem', color: 'var(--adm-text-muted)', margin: 0, lineHeight: 1.3 }}>
                                   Ao mover um lead para esta etapa, a janela de agendamento abrirá automaticamente com a ficha do lead pronta para marcar a data e horário.
                                 </p>
@@ -3268,7 +3269,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                                 <label style={{ fontSize: '0.64rem', color: 'var(--adm-text-muted)', fontWeight: 600 }}>
                                   Funil Comercial de Destino:
                                 </label>
-                                <select
+                                <Select
                                   value={selectedTargetFunnelId}
                                   onChange={(e) => {
                                     setSelectedTargetFunnelId(e.target.value);
@@ -3290,14 +3291,14 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                                   {funnels.filter(f => f.id !== activeFunnel?.id && !f.isPostSale && f.category !== 'Pós-Venda').map(f => (
                                     <option key={f.id} value={f.id}>{f.name}</option>
                                   ))}
-                                </select>
+                                </Select>
 
                                 {selectedTargetFunnelId && (
                                   <>
                                     <label style={{ fontSize: '0.64rem', color: 'var(--adm-text-muted)', fontWeight: 600 }}>
                                       Etapa de Destino:
                                     </label>
-                                    <select
+                                    <Select
                                       value={selectedTargetStageId}
                                       onChange={(e) => setSelectedTargetStageId(e.target.value)}
                                       style={{
@@ -3314,7 +3315,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                                       {funnels.find(f => f.id === selectedTargetFunnelId)?.stages?.map(st => (
                                         <option key={st.id} value={st.id}>{st.name}</option>
                                       ))}
-                                    </select>
+                                    </Select>
                                   </>
                                 )}
                               </div>
@@ -3326,7 +3327,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                                 <label style={{ fontSize: '0.64rem', color: 'var(--adm-text-muted)', fontWeight: 600 }}>
                                   Funil de Pós-Venda de Destino:
                                 </label>
-                                <select
+                                <Select
                                   value={selectedTargetFunnelId}
                                   onChange={(e) => {
                                     setSelectedTargetFunnelId(e.target.value);
@@ -3351,14 +3352,14 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                                       <option key={f.id} value={f.id}>{f.name}</option>
                                     ))
                                   )}
-                                </select>
+                                </Select>
 
                                 {selectedTargetFunnelId && (
                                   <>
                                     <label style={{ fontSize: '0.64rem', color: 'var(--adm-text-muted)', fontWeight: 600 }}>
                                       Etapa Inicial no Pós-Venda:
                                     </label>
-                                    <select
+                                    <Select
                                       value={selectedTargetStageId}
                                       onChange={(e) => setSelectedTargetStageId(e.target.value)}
                                       style={{
@@ -3378,7 +3379,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                                       ]).map(st => (
                                         <option key={st.id} value={st.id}>{st.name}</option>
                                       ))}
-                                    </select>
+                                    </Select>
                                   </>
                                 )}
                                 <p style={{ fontSize: '0.62rem', color: 'var(--adm-text-muted)', margin: 0, lineHeight: 1.3 }}>
@@ -4130,7 +4131,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                 <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 800, color: '#FFFFFF', marginBottom: '4px' }}>
                   Casa de Festas (Unidade) *
                 </label>
-                <select
+                <Select
                   value={questionVenueIdInput}
                   onChange={(e) => setQuestionVenueIdInput(e.target.value)}
                   className="adm-input"
@@ -4142,7 +4143,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                       {v.name}
                     </option>
                   ))}
-                </select>
+                </Select>
               </div>
 
               <div>
@@ -4258,7 +4259,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
               <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 800, color: '#FFFFFF', marginBottom: '6px' }}>
                 Etapa de Destino:
               </label>
-              <select
+              <Select
                 value={migrationTargetStageId}
                 onChange={(e) => setMigrationTargetStageId(e.target.value)}
                 style={{
@@ -4277,7 +4278,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                     {s.name}
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '10px', marginTop: '6px' }}>
@@ -5024,7 +5025,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                       <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--adm-text-muted)' }}>
                         Seção de Exibição no Lead *
                       </label>
-                      <select
+                      <Select
                         value={newFieldSection}
                         onChange={(e) => setNewFieldSection(e.target.value as FunnelCustomFieldSection)}
                         style={{
@@ -5042,14 +5043,14 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                         <option value="party_data">2. Dados da Festa / Evento</option>
                         <option value="contractor">3. Contratante & Aniversariante</option>
                         <option value="custom">4. Seção Personalizada...</option>
-                      </select>
+                      </Select>
                     </div>
 
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                       <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--adm-text-muted)' }}>
                         Tipo de Dado *
                       </label>
-                      <select
+                      <Select
                         value={newFieldType}
                         onChange={(e) => setNewFieldType(e.target.value as FunnelFieldType)}
                         style={{
@@ -5069,7 +5070,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                         <option value="todo">Checklist (Pendente / Concluído)</option>
                         <option value="select">Seleção Única (Dropdown)</option>
                         <option value="multi_select">Seleção Múltipla (Pills)</option>
-                      </select>
+                      </Select>
                     </div>
                   </div>
 

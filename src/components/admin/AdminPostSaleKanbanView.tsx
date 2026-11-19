@@ -1,3 +1,4 @@
+import { Select } from '../ui';
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { HeaderActions } from './HeaderActions';
 import { 
@@ -3159,7 +3160,7 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
                 <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--adm-text-muted)', marginBottom: '5px' }}>
                   Funil Comercial de Destino
                 </label>
-                <select
+                <Select
                   value={targetCommercialFunnelId}
                   onChange={(e) => {
                     const fId = e.target.value;
@@ -3173,14 +3174,14 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
                   {funnels.filter(f => !f.isPostSale && f.category !== 'Pós-Venda').map(f => (
                     <option key={f.id} value={f.id}>{f.name}</option>
                   ))}
-                </select>
+                </Select>
               </div>
 
               <div>
                 <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--adm-text-muted)', marginBottom: '5px' }}>
                   Etapa Inicial no Comercial
                 </label>
-                <select
+                <Select
                   value={targetCommercialStageId}
                   onChange={(e) => setTargetCommercialStageId(e.target.value)}
                   className="adm-input"
@@ -3189,7 +3190,7 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
                   {(funnels.find(f => f.id === targetCommercialFunnelId)?.stages || []).map(st => (
                     <option key={st.id} value={st.id}>{st.name}</option>
                   ))}
-                </select>
+                </Select>
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '6px' }}>

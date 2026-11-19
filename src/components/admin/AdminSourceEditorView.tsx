@@ -1,3 +1,4 @@
+import { Select } from '../ui';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { FunnelMultiSelect } from './FunnelMultiSelect';
 import { 
@@ -1910,7 +1911,7 @@ export const AdminSourceEditorView: React.FC<AdminSourceEditorViewProps> = ({
 
               {/* Ação em lote para migrar todos */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                <select
+                <Select
                   value={migrationTargetFunnelId || funnelId || ''}
                   onChange={(e) => setMigrationTargetFunnelId(e.target.value)}
                   className="adm-input"
@@ -1936,7 +1937,7 @@ export const AdminSourceEditorView: React.FC<AdminSourceEditorViewProps> = ({
                       <option key={f.id} value={f.id}>{f.name}</option>
                     ))}
                   </optgroup>
-                </select>
+                </Select>
 
                 <button
                   type="button"

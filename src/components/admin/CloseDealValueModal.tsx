@@ -1,3 +1,4 @@
+import { DateField, Select } from '../ui';
 import React, { useState, useMemo } from 'react';
 import { X, CheckCircle2, DollarSign, Package, FileText, UserCheck, User, ChevronDown, ChevronUp } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
@@ -603,7 +604,7 @@ export const CloseDealValueModal: React.FC<CloseDealValueModalProps> = ({
                   </span>
                 )}
               </div>
-              <select
+              <Select
                 value={installmentsCount}
                 onChange={(e) => setInstallmentsCount(Number(e.target.value))}
                 style={{ ...inputStyle, fontWeight: 700 }}
@@ -611,7 +612,7 @@ export const CloseDealValueModal: React.FC<CloseDealValueModalProps> = ({
                 {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 14, 15, 18, 20, 24].map(num => (
                   <option key={num} value={num}>{num}x {num === 1 ? '(À Vista / Sem Parcelamento)' : `Parcelas (Restante: R$ ${remainingNum.toLocaleString('pt-BR')})`}</option>
                 ))}
-              </select>
+              </Select>
             </div>
 
             <div>
@@ -844,8 +845,7 @@ export const CloseDealValueModal: React.FC<CloseDealValueModalProps> = ({
                   </div>
                   <div>
                     <label style={labelStyle}>Data de Nasc. Debutante</label>
-                    <input
-                      type="date"
+                    <DateField
                       value={birthdayPersonBirthdate}
                       onChange={(e) => setBirthdayPersonBirthdate(e.target.value)}
                       style={inputStyle}

@@ -1,5 +1,7 @@
+import { Select } from '../ui';
 import React, { useState } from 'react';
-import { Award, CalendarCheck, Clock, Percent } from 'lucide-react';
+import { Award, Building2, CalendarCheck, Clock, Percent, Timer } from 'lucide-react';
+import { useAdminState } from '../../context/AdminStateContext';
 import { useCommercialDashboardData } from '../../hooks/useCommercialDashboardData';
 import { DEFAULT_PERIOD, type PeriodSelection } from '../../utils/dashboardPeriod';
 import { DashboardPeriodSelector } from './dashboard/DashboardPeriodSelector';
@@ -14,7 +16,7 @@ import { GoalTrack } from './dashboard/GoalTrack';
 import { AlertsPanel } from './dashboard/AlertsPanel';
 import { AppointmentsChart } from './dashboard/AppointmentsChart';
 import {
-  DeepKpiRow, PipelinePanel, LossReasons, LeadHeatmap, SourceEfficiencyTable, VenueComparison,
+  DeepKpiRow, LeadJourneyPanel, PipelinePanel, LossReasons, LeadHeatmap, SourceEfficiencyTable, VenueComparison,
 } from './dashboard/DeepInsights';
 import type { AdminTabType } from './AdminSidebar';
 
@@ -36,23 +38,47 @@ const responseColor = (current: number | null, target: number | null): string | 
 };
 
 export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({ onNavigateTab }) => {
+  const { venues } = useAdminState();
   const [period, setPeriod] = useState<PeriodSelection>(DEFAULT_PERIOD);
-  const data = useCommercialDashboardData(period);
+  const [venueScope, setVenueScope] = useState<string>('all');
+  const data = useCommercialDashboardData(period, venueScope);
   const { kpis, resolved } = data;
 
   const iconProps = { size: 15 } as const;
 
   return (
     <div style={{
-      display: 'flex', flexDirection: 'column', gap: '20px', padding: '24px 28px 60px', width: '100%',
+      display: 'flex', flexDirection: 'column', gap: '20px', padding: '16px 28px 60px', width: '100%',
       boxSizing: 'border-box',
     }}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-        <h2 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
-          Dashboard Comercial
-        </h2>
+      {/* Titulo fica no cabecalho do portal; aqui so os filtros (periodo e comparacao a esquerda, unidade a direita) */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '16px', flexWrap: 'wrap' }}>
         <DashboardPeriodSelector value={period} resolved={resolved} onChange={setPeriod} />
+        {venues.length > 1 && (
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+            <Building2 size={15} color="var(--adm-text-muted)" />
+            <Select
+              className="adm-input"
+              value={venueScope}
+              onChange={e => setVenueScope(e.target.value)}
+              aria-label="Filtrar por unidade"
+              style={{ height: '34px', borderRadius: '8px', fontSize: '0.78rem', fontWeight: 700, padding: '0 10px', minWidth: '180px' }}
+            >
+              <option value="all">Todas as unidades</option>
+              {venues.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
+            </Select>
+          </label>
+        )}
       </div>
+
+      {period.compareMode === 'baseline' && data.baselineMissing && !data.loading && (
+        <div style={{
+          fontSize: '0.76rem', color: 'var(--adm-text-muted)', padding: '8px 12px', borderRadius: '10px',
+          border: '1px dashed var(--adm-border)',
+        }}>
+          Sem base cadastrada para {venueScope === 'all' ? 'as unidades' : 'esta unidade'}. Preencha em Casas de Festa, seção Métricas base, para comparar.
+        </div>
+      )}
 
       {data.loading ? (
         <>
@@ -62,26 +88,25 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({ onNaviga
         </>
       ) : (
         <>
-          <AlertsPanel data={data} />
-
-          {/* Foco no time: podios, esteira de metas e radar da equipe logo no topo */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '16px' }}>
-            <ClosersPodium closers={data.closers} />
-            <SdrsPodium sdrs={data.sdrs} />
-          </div>
-
-          <GoalTrack rows={data.collaborators} expectedPct={data.pacing.expectedPct} />
-
-          <CollaboratorRadar rows={data.collaborators} loadingPresence={data.loadingPresence} truncated={data.presenceTruncated} />
-
-          {/* Faixa 1 — Termometro de meta e ritmo + KPIs */}
+          {/* 1. Faturamento fechado vs meta */}
           <PacingThermometer
             pacing={data.pacing}
             revenuePct={kpis.revenue.pct}
             comparedLabel={resolved.comparedLabel}
             onConfigureGoals={onNavigateTab ? () => onNavigateTab('venue-goals') : undefined}
+            venueRows={data.venueRows}
           />
 
+          {/* 2. Alertas (so icone + texto curto) */}
+          <AlertsPanel data={data} />
+
+          {/* 3. Podios */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '16px' }}>
+            <ClosersPodium closers={data.closers} />
+            <SdrsPodium sdrs={data.sdrs} />
+          </div>
+
+          {/* 4. KPIs principais: contratos fechados ... taxa de perda */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
             <KpiCard
               label="Contratos fechados"
@@ -92,6 +117,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({ onNaviga
               previousLabel={String(kpis.closings.previous)}
               spark={data.evolution.map(e => e.closings)}
               sparkColor="#D4AF37"
+              detail={data.targets.closings !== null ? <>Meta: <strong>{Math.round(data.targets.closings * 10) / 10}</strong></> : undefined}
             />
             <KpiCard
               label="Agendamentos realizados"
@@ -106,6 +132,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({ onNaviga
                 <>
                   Visita comercial <strong>{kpis.visits.current}</strong>
                   {' · '}Degustação <strong>{kpis.tastings.current}</strong>
+                  {data.targets.appointments !== null && <>{' · '}Meta <strong>{Math.round(data.targets.appointments * 10) / 10}</strong></>}
                 </>
               }
             />
@@ -128,11 +155,31 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({ onNaviga
               previousLabel={formatMinutes(kpis.response.previous)}
               detail={kpis.response.target ? <>Meta: <strong>{formatMinutes(kpis.response.target)}</strong></> : 'Sem meta de tempo definida'}
             />
+            <KpiCard
+              label="Tempo médio de resposta"
+              icon={<Timer {...iconProps} />}
+              value={formatMinutes(kpis.avgResponse.current)}
+              valueColor={responseColor(kpis.avgResponse.current, kpis.avgResponse.target)}
+              pct={kpis.avgResponse.pct}
+              hasCurrent={kpis.avgResponse.current !== null}
+              lowerIsBetter
+              previousLabel={formatMinutes(kpis.avgResponse.previous)}
+              detail={kpis.avgResponse.target
+                ? <>Meta: <strong>{formatMinutes(kpis.avgResponse.target)}</strong></>
+                : 'Qualquer mensagem, só comercial'}
+            />
           </div>
 
-          <DeepKpiRow deep={data.deep} />
+          <DeepKpiRow deep={data.deep} targets={data.targets} />
 
-          {/* Faixa 2 — Funil, evolucao e origens */}
+          <LeadJourneyPanel journey={data.journey} targets={data.targets} />
+
+          {/* 5. Esteira de metas da equipe e radar */}
+          <GoalTrack rows={data.collaborators} expectedPct={data.pacing.expectedPct} />
+
+          <CollaboratorRadar rows={data.collaborators} loadingPresence={data.loadingPresence} truncated={data.presenceTruncated} />
+
+          {/* 6. Funil, evolucao e origens */}
           <FunnelStrip steps={data.funnel} />
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '16px' }}>

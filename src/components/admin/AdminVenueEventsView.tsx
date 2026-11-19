@@ -1,3 +1,4 @@
+import { DateField, Select } from '../ui';
 import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'motion/react';
@@ -25,7 +26,8 @@ import { useAdminState } from '../../context/AdminStateContext';
 import type { AdminTask, VenueEvent, VenueEventStatus } from '../../types/admin';
 import { AdminCalendarMonthView } from './tasks/AdminCalendarMonthView';
 import { AdminCalendarWeekView } from './tasks/AdminCalendarWeekView';
-import { AdminCalendarDayView } from './tasks/AdminCalendarDayView';
+import { AdminCalendarDayView } from './tasks/AdminCalendarDayView';
+
 import { VENUE_DAY_TAKEN, venueDayTakenMessage } from '../../utils/venueEventDay';
 import { eventTypeLabels } from '../../utils/roleLabels';
 
@@ -479,7 +481,7 @@ export const AdminVenueEventsView: React.FC = () => {
             style={{ ...filterControlStyle, width: '100%', paddingLeft: '34px' }}
           />
         </div>
-        <select
+        <Select
           value={effectiveVenueFilter}
           disabled={Boolean(activeVenueId && activeVenueId !== 'all' && activeVenueId !== 'multi')}
           onChange={(e) => setVenueFilter(e.target.value)}
@@ -487,19 +489,19 @@ export const AdminVenueEventsView: React.FC = () => {
         >
           <option value="all">Todas as Unidades</option>
           {scopedVenues.map(v => (<option key={v.id} value={v.id}>{v.name}</option>))}
-        </select>
-        <select value={linkFilter} onChange={(e) => setLinkFilter(e.target.value as 'all' | 'linked' | 'unlinked')} style={filterControlStyle}>
+        </Select>
+        <Select value={linkFilter} onChange={(e) => setLinkFilter(e.target.value as 'all' | 'linked' | 'unlinked')} style={filterControlStyle}>
           <option value="all">Todos os Vínculos</option>
           <option value="linked">Com Cliente Vinculado</option>
           <option value="unlinked">Sem Cliente (Avulso)</option>
-        </select>
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as 'all' | VenueEventStatus)} style={filterControlStyle}>
+        </Select>
+        <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as 'all' | VenueEventStatus)} style={filterControlStyle}>
           <option value="all">Todos os Status</option>
           <option value="scheduled">Agendados</option>
           <option value="confirmed">Confirmados</option>
           <option value="completed">Realizados</option>
           <option value="cancelled">Cancelados</option>
-        </select>
+        </Select>
 
         <div style={{ flex: 1 }} />
 
@@ -977,7 +979,7 @@ export const AdminVenueEventsView: React.FC = () => {
                 <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, marginBottom: '5px', color: 'var(--adm-text-muted, #475569)' }}>
                   Unidade / Casa *
                 </label>
-                <select
+                <Select
                   value={formVenueId}
                   onChange={(e) => setFormVenueId(e.target.value)}
                   required
@@ -997,15 +999,14 @@ export const AdminVenueEventsView: React.FC = () => {
                       {v.name}
                     </option>
                   ))}
-                </select>
+                </Select>
               </div>
 
               <div>
                 <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, marginBottom: '5px', color: 'var(--adm-text-muted, #475569)' }}>
                   Data do Evento *
                 </label>
-                <input
-                  type="date"
+                <DateField
                   value={formDate}
                   onChange={(e) => setFormDate(e.target.value)}
                   required
@@ -1049,7 +1050,7 @@ export const AdminVenueEventsView: React.FC = () => {
                 <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, marginBottom: '5px', color: 'var(--adm-text-muted, #475569)' }}>
                   Tipo de Evento
                 </label>
-                <select
+                <Select
                   value={formEventType}
                   onChange={(e) => setFormEventType(e.target.value)}
                   style={{
@@ -1067,14 +1068,14 @@ export const AdminVenueEventsView: React.FC = () => {
                       {opt}
                     </option>
                   ))}
-                </select>
+                </Select>
               </div>
 
               <div>
                 <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, marginBottom: '5px', color: 'var(--adm-text-muted, #475569)' }}>
                   Status
                 </label>
-                <select
+                <Select
                   value={formStatus}
                   onChange={(e) => setFormStatus(e.target.value as VenueEventStatus)}
                   style={{
@@ -1091,7 +1092,7 @@ export const AdminVenueEventsView: React.FC = () => {
                   <option value="confirmed">Confirmado</option>
                   <option value="completed">Realizado</option>
                   <option value="cancelled">Cancelado (libera dia)</option>
-                </select>
+                </Select>
               </div>
             </div>
 
@@ -1187,7 +1188,7 @@ export const AdminVenueEventsView: React.FC = () => {
                   fontSize: '0.76rem',
                 }}
               />
-              <select
+              <Select
                 value={formClientId}
                 onChange={(e) => handleSelectClientInForm(e.target.value)}
                 style={{
@@ -1208,7 +1209,7 @@ export const AdminVenueEventsView: React.FC = () => {
                     {cli.partyDate ? ` - Festa ${formatDateBr(cli.partyDate)}` : ''}
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
 
             {/* Regra de negocio: uma festa por dia por unidade; visitas e degustacoes seguem liberadas */}

@@ -1,3 +1,4 @@
+import { DateField, Select } from '../ui';
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
   ArrowLeft, FileText, Plus, ExternalLink, Check, Copy, Trash2, 
@@ -1335,8 +1336,7 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
             <div style={cardRowStyle}>
               <span style={cardLabelStyle}>Data Nascimento</span>
               <div style={cardValueStyle}>
-                <input
-                  type="date"
+                <DateField
                   value={client.birthdayPersonBirthdate || ''}
                   onChange={(e) => updateClient(client.id, { birthdayPersonBirthdate: e.target.value })}
                   style={seamlessInputStyle}
@@ -1349,8 +1349,7 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
             <div style={cardRowStyle}>
               <span style={cardLabelStyle}>Data da Festa</span>
               <div style={cardValueStyle}>
-                <input
-                  type="date"
+                <DateField
                   value={client.eventDate || ''}
                   onChange={(e) => updateClient(client.id, { eventDate: e.target.value })}
                   style={{ ...seamlessInputStyle, fontWeight: 700, color: '#F59E0B' }}
@@ -1378,7 +1377,7 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
             <div style={cardRowStyle}>
               <span style={cardLabelStyle}>Casa de Festas</span>
               <div style={cardValueStyle}>
-                <select
+                <Select
                   value={client.venueId || ''}
                   onChange={(e) => {
                     const matched = venues.find(v => v.id === e.target.value);
@@ -1389,7 +1388,7 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
                   {venues.map(v => (
                     <option key={v.id} value={v.id}>{v.name}</option>
                   ))}
-                </select>
+                </Select>
               </div>
             </div>
 
@@ -1467,7 +1466,7 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
             <div style={cardRowStyle}>
               <span style={cardLabelStyle}>Parentesco</span>
               <div style={cardValueStyle}>
-                <select
+                <Select
                   value={client.payerRelationship || 'mother'}
                   onChange={(e) => updateClient(client.id, { payerRelationship: e.target.value as any })}
                   style={cardSelectStyle}
@@ -1477,7 +1476,7 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
                   <option value="guardian">Responsável Legal</option>
                   <option value="self">A própria Aniversariante</option>
                   <option value="other">Outro</option>
-                </select>
+                </Select>
               </div>
             </div>
 
@@ -1702,7 +1701,7 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
                     {duplicatePhoneMessage(newContactPhoneConflict, 'cliente')}
                   </div>
                 )}
-                <select
+                <Select
                   value={newContactRole}
                   onChange={(e) => setNewContactRole(e.target.value as any)}
                   style={cardSelectStyle}
@@ -1711,7 +1710,7 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
                   <option value="mother">Mãe</option>
                   <option value="guardian">Responsável</option>
                   <option value="other">Outro</option>
-                </select>
+                </Select>
                 <input
                   type="email"
                   placeholder="E-mail (opcional)..."
@@ -1764,7 +1763,7 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
             <div style={cardRowStyle}>
               <span style={cardLabelStyle}>Status Contrato</span>
               <div style={cardValueStyle}>
-                <select
+                <Select
                   value={client.contractStatus || 'aguardando_sinal'}
                   onChange={(e) => updateClient(client.id, { contractStatus: e.target.value as any })}
                   style={{
@@ -1777,7 +1776,7 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
                   <option value="sinal_pago">Sinal Pago</option>
                   <option value="contrato_enviado">Contrato Enviado</option>
                   <option value="contrato_assinado">Contrato Assinado</option>
-                </select>
+                </Select>
               </div>
             </div>
 
@@ -1785,8 +1784,7 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
             <div style={cardRowStyle}>
               <span style={cardLabelStyle}>Assinado em</span>
               <div style={cardValueStyle}>
-                <input
-                  type="date"
+                <DateField
                   value={client.contractSignedAt || ''}
                   onChange={(e) => updateClient(client.id, { contractSignedAt: e.target.value })}
                   style={seamlessInputStyle}
@@ -1844,7 +1842,7 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
                   onFocus={(e) => { e.currentTarget.style.borderBottomColor = '#F59E0B'; }}
                   onBlur={(e) => { e.currentTarget.style.borderBottomColor = 'transparent'; }}
                 />
-                <select
+                <Select
                   value={client.contractInstallmentsCount || 10}
                   onChange={(e) => updateClient(client.id, { contractInstallmentsCount: Number(e.target.value) || 1 })}
                   style={{ ...cardSelectStyle, width: '70px', fontSize: '0.72rem' }}
@@ -1852,7 +1850,7 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
                   {[1,2,3,4,5,6,7,8,9,10,12,15,18,24].map(n => (
                     <option key={n} value={n}>{n}x</option>
                   ))}
-                </select>
+                </Select>
               </div>
             </div>
 
@@ -2312,7 +2310,7 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
                     <Zap size={13} color="#10B981" />
                     <span>Disparando através de:</span>
                     {connectedSenderSources.length > 1 ? (
-                      <select
+                      <Select
                         value={selectedSenderSourceId}
                         onChange={(e) => setSelectedSenderSourceId(e.target.value)}
                         style={{ background: 'transparent', border: 'none', color: '#10B981', fontWeight: 800, fontSize: '0.72rem', cursor: 'pointer', outline: 'none' }}
@@ -2322,7 +2320,7 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
                             {src.name} ({(src.configuration as any)?.connectedPhone || 'Conectado'})
                           </option>
                         ))}
-                      </select>
+                      </Select>
                     ) : (
                       <span style={{ fontWeight: 800, color: 'var(--adm-text-title)' }}>
                         {activeSenderSource?.name || 'WhatsApp Pós-Venda'} {activeSenderSource ? `(${(activeSenderSource.configuration as any)?.connectedPhone || 'Conectado'})` : ''}
@@ -3433,7 +3431,7 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
               <label style={{ fontSize: '0.76rem', fontWeight: 700, color: 'var(--adm-text-muted)' }}>Tipo de Documento</label>
-              <select
+              <Select
                 value={docType}
                 onChange={(e) => setDocType(e.target.value as any)}
                 style={cardSelectStyle}
@@ -3443,7 +3441,7 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
                 <option value="receipt">Comprovante de Pagamento</option>
                 <option value="id_document">Documento Pessoal</option>
                 <option value="other">Outro / Layout / Anexo</option>
-              </select>
+              </Select>
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -3669,7 +3667,7 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
                 <label style={{ fontSize: '0.76rem', fontWeight: 700, color: 'var(--adm-text-title)' }}>
                   Categoria *
                 </label>
-                <select
+                <Select
                   value={upsellCategory}
                   onChange={(e) => setUpsellCategory(e.target.value)}
                   style={{
@@ -3689,7 +3687,7 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
                   <option value="estrutura">Estrutura & Horas Extras</option>
                   <option value="alimentacao">Gastronomia & Extras</option>
                   <option value="outro">Outro Serviço</option>
-                </select>
+                </Select>
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
@@ -3723,8 +3721,7 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
                 <label style={{ fontSize: '0.76rem', fontWeight: 700, color: 'var(--adm-text-title)' }}>
                   Data da Venda *
                 </label>
-                <input
-                  type="date"
+                <DateField
                   value={upsellDate}
                   onChange={(e) => setUpsellDate(e.target.value)}
                   required
@@ -3764,7 +3761,7 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
                   Tipo / Condição *
                 </label>
                 <div style={{ display: 'flex', gap: '6px' }}>
-                  <select
+                  <Select
                     value={upsellPaymentType}
                     onChange={(e) => {
                       const newType = e.target.value as 'a_vista' | 'parcelado' | 'sinal';
@@ -3790,10 +3787,10 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
                     <option value="a_vista">À Vista (Em Caixa)</option>
                     <option value="sinal">Sinal / Entrada</option>
                     <option value="parcelado">Parcelado (A Receber)</option>
-                  </select>
+                  </Select>
 
                   {upsellPaymentType === 'parcelado' && (
-                    <select
+                    <Select
                       value={upsellInstallmentsCount}
                       onChange={(e) => setUpsellInstallmentsCount(Number(e.target.value) || 1)}
                       style={{
@@ -3811,7 +3808,7 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
                       {[2,3,4,5,6,7,8,9,10,12,15,18,24].map(n => (
                         <option key={n} value={n}>{n}x</option>
                       ))}
-                    </select>
+                    </Select>
                   )}
                 </div>
               </div>
@@ -3823,7 +3820,7 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
                 <label style={{ fontSize: '0.76rem', fontWeight: 700, color: 'var(--adm-text-title)' }}>
                   Forma de Pagamento
                 </label>
-                <select
+                <Select
                   value={upsellPaymentMethod}
                   onChange={(e) => setUpsellPaymentMethod(e.target.value)}
                   style={{
@@ -3843,14 +3840,14 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
                   <option value="Transferência / Ted">Transferência / Ted</option>
                   <option value="Dinheiro">Dinheiro</option>
                   <option value="Outro">Outro</option>
-                </select>
+                </Select>
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
                 <label style={{ fontSize: '0.76rem', fontWeight: 700, color: 'var(--adm-text-title)' }}>
                   Status do Pagamento
                 </label>
-                <select
+                <Select
                   value={upsellPaymentStatus}
                   onChange={(e) => setUpsellPaymentStatus(e.target.value as any)}
                   style={{
@@ -3866,7 +3863,7 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
                   <option value="pago">Pago / Quitado</option>
                   <option value="pendente">Pendente / A Cobrar</option>
                   <option value="parcelado">Parcelado</option>
-                </select>
+                </Select>
               </div>
             </div>
 
@@ -3875,7 +3872,7 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
               <label style={{ fontSize: '0.76rem', fontWeight: 700, color: 'var(--adm-text-title)' }}>
                 Vendedor / Responsável
               </label>
-              <select
+              <Select
                 value={upsellResponsibleId}
                 onChange={(e) => setUpsellResponsibleId(e.target.value)}
                 style={{
@@ -3892,7 +3889,7 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
                 {collaborators.map(c => (
                   <option key={c.id} value={c.id}>{c.name} ({c.role})</option>
                 ))}
-              </select>
+              </Select>
             </div>
 
             {/* Observações */}

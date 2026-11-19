@@ -26,10 +26,13 @@ export const collaboratorService = {
           ? row.sectors
           : (sectorPerms.length > 0 ? sectorPerms : (resolvedDepartment ? [resolvedDepartment as NonNullable<Collaborator['sectors']>[number]] : undefined));
 
+        const jobRoles = rawPerms.filter(p => p.startsWith('jobrole:')).map(p => p.replace('jobrole:', ''));
+
         return {
           id: row.id,
           name: row.name,
           email: row.email,
+          jobRoles,
           role: row.role || 'sdr',
           venueId: row.venue_id || 'all',
           venueIds: row.venue_ids || [],
@@ -86,7 +89,7 @@ export const collaboratorService = {
       if (collab.goals !== undefined) payload.goals = collab.goals;
 
       // Preserva metadados de setores e cargo na coluna permissions (que é array no Supabase)
-      if (collab.sectors || collab.department || collab.permissions || collab.customJobTitle !== undefined) {
+      if (collab.sectors || collab.department || collab.permissions || collab.customJobTitle !== undefined || collab.jobRoles !== undefined) {
         let perms = Array.isArray(collab.permissions) ? [...collab.permissions] : [];
         if (collab.department && !perms.includes(`dept:${collab.department}`)) {
           perms.push(`dept:${collab.department}`);
@@ -101,6 +104,11 @@ export const collaboratorService = {
           if (collab.customJobTitle && collab.customJobTitle.trim()) {
             perms.push(`job_title:${encodeURIComponent(collab.customJobTitle.trim())}`);
           }
+        }
+        // Cargos por setor: substitui o conjunto inteiro (cargo removido some do cadastro)
+        if (collab.jobRoles !== undefined) {
+          perms = perms.filter(p => !p.startsWith('jobrole:'));
+          collab.jobRoles.forEach(r => perms.push(`jobrole:${r}`));
         }
         payload.permissions = perms;
       }

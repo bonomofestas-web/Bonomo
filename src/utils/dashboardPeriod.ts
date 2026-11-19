@@ -1,5 +1,5 @@
 export type PeriodPreset = 'today' | '7d' | 'this_month' | '30d' | 'this_year' | 'custom';
-export type CompareMode = 'auto' | 'custom';
+export type CompareMode = 'auto' | 'custom' | 'baseline';
 
 export interface DateRange {
   start: Date; // 00:00:00.000 do primeiro dia
@@ -138,7 +138,9 @@ export const resolvePeriod = (sel: PeriodSelection, now: Date = new Date()): Res
     goalRange,
     elapsedFraction: totalGoalDays > 0 ? elapsedDays / totalGoalDays : 1,
     currentLabel: sel.preset === 'this_month' ? fmtMonth(current.start) : labelOf(current),
-    comparedLabel: sel.compareMode === 'custom' || sel.preset !== 'this_month' ? labelOf(compared) : fmtMonth(compared.start),
+    comparedLabel: sel.compareMode === 'baseline'
+      ? 'base da unidade'
+      : sel.compareMode === 'custom' || sel.preset !== 'this_month' ? labelOf(compared) : fmtMonth(compared.start),
   };
 };
 

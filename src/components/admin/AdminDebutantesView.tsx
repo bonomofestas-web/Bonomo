@@ -1,3 +1,4 @@
+import { Select } from '../ui';
 import { SafeAvatar } from './SafeAvatar';
 import { HeaderActions } from './HeaderActions';
 import React, { useState, useMemo } from 'react';
@@ -351,7 +352,7 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
 
               {/* Right: Event Category Select + Cards/List Switch */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <select
+                <Select
                   value={filterEventType}
                   onChange={(e) => setFilterEventType(e.target.value as any)}
                   style={{
@@ -375,7 +376,7 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
                   <option value="graduation">Formatura</option>
                   <option value="corporate">Corporativo</option>
                   <option value="other">Outros</option>
-                </select>
+                </Select>
 
               {/* View Mode Toggle: Grid vs List (Right Side) */}
               <div style={{

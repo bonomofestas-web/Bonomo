@@ -1,3 +1,4 @@
+import { Select } from '../ui';
 import { toast } from 'sonner';
 import { HeaderActions } from './HeaderActions';
 import React, { useState, useMemo } from 'react';
@@ -798,7 +799,7 @@ export const AdminLeadsListView: React.FC<AdminLeadsListViewProps> = ({
 
           {/* Filtro por Casa de Festas */}
           <div>
-            <select
+            <Select
               value={selectedVenueFilter}
               onChange={(e) => setSelectedVenueFilter(e.target.value)}
               style={{
@@ -818,12 +819,12 @@ export const AdminLeadsListView: React.FC<AdminLeadsListViewProps> = ({
               {venues.map(v => (
                 <option key={v.id} value={v.id}>{v.name}</option>
               ))}
-            </select>
+            </Select>
           </div>
 
           {/* Filtro por Colaborador */}
           <div>
-            <select
+            <Select
               value={selectedCollabFilter}
               onChange={(e) => setSelectedCollabFilter(e.target.value)}
               style={{
@@ -843,12 +844,12 @@ export const AdminLeadsListView: React.FC<AdminLeadsListViewProps> = ({
               {collaborators.map(c => (
                 <option key={c.id} value={c.id}>{c.name} ({c.role.toUpperCase()})</option>
               ))}
-            </select>
+            </Select>
           </div>
 
           {/* Filtro por Funil */}
           <div>
-            <select
+            <Select
               value={selectedFunnelFilter}
               onChange={(e) => {
                 const val = e.target.value;
@@ -876,12 +877,12 @@ export const AdminLeadsListView: React.FC<AdminLeadsListViewProps> = ({
               {funnels.map(f => (
                 <option key={f.id} value={f.id}>{f.name} ({f.category || 'Geral'})</option>
               ))}
-            </select>
+            </Select>
           </div>
 
           {/* Filtro por Origem */}
           <div>
-            <select
+            <Select
               value={selectedSourceFilter}
               onChange={(e) => setSelectedSourceFilter(e.target.value)}
               style={{
@@ -906,12 +907,12 @@ export const AdminLeadsListView: React.FC<AdminLeadsListViewProps> = ({
               {sources && sources.map(s => (
                 <option key={s.id} value={s.id}>{s.name}</option>
               ))}
-            </select>
+            </Select>
           </div>
 
           {/* Filtro por Data de Criação */}
           <div>
-            <select
+            <Select
               value={selectedDateRange}
               onChange={(e) => setSelectedDateRange(e.target.value as any)}
               style={{
@@ -933,7 +934,7 @@ export const AdminLeadsListView: React.FC<AdminLeadsListViewProps> = ({
               <option value="30days">Últimos 30 dias</option>
               <option value="this_month">Este Mês</option>
               <option value="this_year">Este Ano</option>
-            </select>
+            </Select>
           </div>
         </div>
 
@@ -1747,7 +1748,7 @@ export const AdminLeadsListView: React.FC<AdminLeadsListViewProps> = ({
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem', color: 'var(--adm-text-muted, #64748B)' }}>
               <span>Por página:</span>
-              <select
+              <Select
                 value={pageSize}
                 onChange={(e) => {
                   setPageSize(Number(e.target.value));
@@ -1768,7 +1769,7 @@ export const AdminLeadsListView: React.FC<AdminLeadsListViewProps> = ({
                 <option value={25}>25</option>
                 <option value={50}>50</option>
                 <option value={100}>100</option>
-              </select>
+              </Select>
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -1884,7 +1885,7 @@ export const AdminLeadsListView: React.FC<AdminLeadsListViewProps> = ({
                 <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 800, color: 'var(--adm-text-title, #0F172A)', marginBottom: '6px' }}>
                   Funil de Destino:
                 </label>
-                <select
+                <Select
                   value={targetFunnelId}
                   onChange={(e) => {
                     setTargetFunnelId(e.target.value);
@@ -1907,14 +1908,14 @@ export const AdminLeadsListView: React.FC<AdminLeadsListViewProps> = ({
                   {funnels.map(f => (
                     <option key={f.id} value={f.id}>{f.name} ({f.category || 'Geral'})</option>
                   ))}
-                </select>
+                </Select>
               </div>
 
               <div>
                 <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 800, color: 'var(--adm-text-title, #0F172A)', marginBottom: '6px' }}>
                   Etapa de Entrada no Funil:
                 </label>
-                <select
+                <Select
                   value={targetStageId}
                   onChange={(e) => setTargetStageId(e.target.value)}
                   style={{
@@ -1939,7 +1940,7 @@ export const AdminLeadsListView: React.FC<AdminLeadsListViewProps> = ({
                       <option value="meeting_scheduled">Reunião Agendada</option>
                     </>
                   )}
-                </select>
+                </Select>
               </div>
             </div>
 
@@ -2040,7 +2041,7 @@ export const AdminLeadsListView: React.FC<AdminLeadsListViewProps> = ({
                 <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--adm-text-muted)', marginBottom: '5px' }}>
                   Funil de Pós-Venda de Destino
                 </label>
-                <select
+                <Select
                   value={targetPostSaleFunnelId}
                   onChange={(e) => {
                     const fId = e.target.value;
@@ -2054,14 +2055,14 @@ export const AdminLeadsListView: React.FC<AdminLeadsListViewProps> = ({
                   {funnels.filter(f => f.isPostSale || f.category === 'Pós-Venda').map(f => (
                     <option key={f.id} value={f.id}>{f.name}</option>
                   ))}
-                </select>
+                </Select>
               </div>
 
               <div>
                 <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--adm-text-muted)', marginBottom: '5px' }}>
                   Etapa Inicial no Pós-Venda
                 </label>
-                <select
+                <Select
                   value={targetPostSaleStageId}
                   onChange={(e) => setTargetPostSaleStageId(e.target.value)}
                   className="adm-input"
@@ -2070,7 +2071,7 @@ export const AdminLeadsListView: React.FC<AdminLeadsListViewProps> = ({
                   {(funnels.find(f => f.id === targetPostSaleFunnelId)?.stages || []).map(st => (
                     <option key={st.id} value={st.id}>{st.name}</option>
                   ))}
-                </select>
+                </Select>
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '6px' }}>

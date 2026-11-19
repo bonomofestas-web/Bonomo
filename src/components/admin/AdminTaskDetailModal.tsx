@@ -1,3 +1,5 @@
+import { DateField, Select } from '../ui';
+import { usePresenceContext } from '../../hooks/usePresence';
 import { toast } from 'sonner';
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { 
@@ -112,6 +114,7 @@ export const AdminTaskDetailModal: React.FC<AdminTaskDetailModalProps> = ({
     updateTask, 
     deleteTask
   } = useAdminState();
+  usePresenceContext(isOpen && task ? { type: 'task', id: task.id, label: task.title } : null);
 
   const isCreateMode = task === null;
   const userRole = currentUser?.role || 'closer';
@@ -2240,8 +2243,7 @@ export const AdminTaskDetailModal: React.FC<AdminTaskDetailModalProps> = ({
                               />
                             </div>
                             {hasEndDate && (
-                              <input
-                                type="date"
+                              <DateField
                                 value={endDate}
                                 onChange={(e) => {
                                   setEndDate(e.target.value);
@@ -2928,7 +2930,7 @@ export const AdminTaskDetailModal: React.FC<AdminTaskDetailModalProps> = ({
                           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '0.72rem', color: 'var(--adm-text-muted)', paddingLeft: '18px' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                               <span>1ª Notificação:</span>
-                              <select
+                              <Select
                                 value={reminder1Days}
                                 onChange={(e) => setReminder1Days(Number(e.target.value))}
                                 style={{ background: 'var(--adm-bg-input)', border: '1px solid var(--adm-border)', borderRadius: '4px', padding: '2px 4px', fontSize: '0.72rem', color: 'var(--adm-text-title)' }}
@@ -2937,11 +2939,11 @@ export const AdminTaskDetailModal: React.FC<AdminTaskDetailModalProps> = ({
                                 <option value={5}>5 dias antes</option>
                                 <option value={3}>3 dias antes</option>
                                 <option value={2}>2 dias antes</option>
-                              </select>
+                              </Select>
                             </div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                               <span>2ª Notificação (Confirmação):</span>
-                              <select
+                              <Select
                                 value={reminder2Days}
                                 onChange={(e) => setReminder2Days(Number(e.target.value))}
                                 style={{ background: 'var(--adm-bg-input)', border: '1px solid var(--adm-border)', borderRadius: '4px', padding: '2px 4px', fontSize: '0.72rem', color: 'var(--adm-text-title)' }}
@@ -2949,7 +2951,7 @@ export const AdminTaskDetailModal: React.FC<AdminTaskDetailModalProps> = ({
                                 <option value={1}>24h antes</option>
                                 <option value={2}>48h antes</option>
                                 <option value={0}>No dia do evento</option>
-                              </select>
+                              </Select>
                             </div>
                           </div>
                         )}

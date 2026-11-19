@@ -1,3 +1,4 @@
+import { Select } from '../../ui';
 import React, { useState, useMemo } from 'react';
 import {
   Calendar, Utensils, Search, RotateCcw,
@@ -692,7 +693,7 @@ export const AdminVisitsTastingsView: React.FC<AdminVisitsTastingsViewProps> = (
         {/* Filtros Dropdowns Estruturados */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
           {/* Filtro de Casas de Festa */}
-          <select
+          <Select
             value={selectedVenueFilter}
             onChange={(e) => {
               setSelectedVenueFilter(e.target.value);
@@ -716,10 +717,10 @@ export const AdminVisitsTastingsView: React.FC<AdminVisitsTastingsViewProps> = (
             {venues?.map(v => (
               <option key={v.id} value={v.id}>{v.name}</option>
             ))}
-          </select>
+          </Select>
 
           {/* Filtro de Tipo */}
-          <select
+          <Select
             value={currentTab}
             onChange={(e) => setCurrentTab(e.target.value as any)}
             style={{
@@ -738,10 +739,10 @@ export const AdminVisitsTastingsView: React.FC<AdminVisitsTastingsViewProps> = (
             <option value="visits">Visitas Comerciais</option>
             <option value="tastings">Degustações Gastronômicas</option>
             <option value="history">Histórico & Realizadas</option>
-          </select>
+          </Select>
 
           {/* Filtro Status Integrado */}
-          <select
+          <Select
             value={selectedStatusFilter}
             onChange={(e) => setSelectedStatusFilter(e.target.value)}
             style={{
@@ -761,10 +762,10 @@ export const AdminVisitsTastingsView: React.FC<AdminVisitsTastingsViewProps> = (
             <option value="scheduled">Agendado</option>
             <option value="rescheduled">Remarcado</option>
             <option value="completed">Realizado</option>
-          </select>
+          </Select>
 
           {/* Filtro Consultor / Closer */}
-          <select
+          <Select
             value={selectedCloserFilter}
             onChange={(e) => setSelectedCloserFilter(e.target.value)}
             style={{
@@ -783,7 +784,7 @@ export const AdminVisitsTastingsView: React.FC<AdminVisitsTastingsViewProps> = (
             {collaborators?.map(c => (
               <option key={c.id} value={c.name}>{c.name}</option>
             ))}
-          </select>
+          </Select>
 
           {/* Botão Limpar Filtros */}
           <button

@@ -20,6 +20,7 @@ import type {
   TaskStatus,
   CommercialFunnel,
   MqlQuestion,
+  MqlSnapshot,
   LeadMqlLevel,
   FeatureFlagId,
   FeatureFlagStatus,
@@ -236,6 +237,7 @@ const DEFAULT_FEATURE_FLAGS: Record<FeatureFlagId, FeatureFlagStatus> = {
   master_dashboard: 'active',
   commercial_dashboard: 'active',
   goals: 'active',
+  team_presence: 'active',
 };
 
 const DEFAULT_ADMIN_USER: AdminUser | null = null;
@@ -614,7 +616,7 @@ export interface AdminContextType {
   addMqlQuestion: (data: Omit<MqlQuestion, 'id'>) => string;
   updateMqlQuestion: (id: string, data: Partial<MqlQuestion>) => void;
   deleteMqlQuestion: (id: string) => void;
-  saveLeadMqlAnswers: (leadId: string, answers: Record<string, string>, score: number, level: LeadMqlLevel) => void;
+  saveLeadMqlAnswers: (leadId: string, answers: Record<string, string>, score: number, level: LeadMqlLevel, snapshot?: MqlSnapshot) => void;
   resetVenueLeadsMql: (venueId: string) => void;
 
   // Commercial Funnel Lead Goal
@@ -3706,6 +3708,16 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           assignedTo = newCollab ? newCollab.name : 'Sem responsável';
         }
 
+        const moveCommitment = (cm?: Lead['visitCommitment']) => {
+          if (!cm) return cm;
+          const owner = cm.responsibleId || cm.responsibleCollaboratorId;
+          if (owner !== id) return cm;
+          changed = true;
+          return { ...cm, responsibleId: newCollab?.id, responsibleCollaboratorId: newCollab?.id, responsibleName: newCollab?.name };
+        };
+        const visitCommitment = moveCommitment(lead.visitCommitment);
+        const tastingCommitment = moveCommitment(lead.tastingCommitment);
+
         if (changed) {
           const updatedLead = {
             ...lead,
@@ -3714,6 +3726,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             closerId,
             closerName,
             assignedTo,
+            visitCommitment,
+            tastingCommitment,
           };
           leadService.upsert(updatedLead).catch((e: any) => console.warn('Falha ao persistir lead reatribuído no Supabase:', e));
           return updatedLead;
@@ -3760,6 +3774,30 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
       safeLocalStorageSet(STORAGE_KEY_TASKS, JSON.stringify(remaining));
       return remaining;
+    });
+
+    // 2b. POS-VENDA: contratos administrados e vendas adicionais (uma gravacao por contrato afetado)
+    setClients(prev => {
+      let touched = false;
+      const updated = prev.map(c => {
+        const managed = c.assignedSuccessManagerId === id;
+        const hasUpsell = (c.upsellSales || []).some(u => u.responsibleId === id);
+        if (!managed && !hasUpsell) return c;
+        touched = true;
+        const next: Client = {
+          ...c,
+          ...(managed ? { assignedSuccessManagerId: newCollab?.id, assignedSuccessManagerName: newCollab?.name } : {}),
+          ...(hasUpsell ? { upsellSales: (c.upsellSales || []).map(u => (u.responsibleId === id ? { ...u, responsibleId: newCollab?.id, responsibleName: newCollab?.name } : u)) } : {}),
+        };
+        clientService.upsert(next).catch((e: any) => console.warn('Falha ao persistir contrato reatribuido:', e));
+        return next;
+      });
+      return touched ? updated : prev;
+    });
+
+    // 2c. COMPROMISSOS (calendario unificado)
+    appointments.filter(a => a.responsibleCollaboratorId === id).forEach(a => {
+      void updateAppointment(a.id, { responsibleCollaboratorId: (newCollab?.id ?? null) as any, responsibleName: newCollab?.name ?? '' });
     });
 
     // 3. Remove colaborador da lista e do banco de dados
@@ -3918,11 +3956,12 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     mqlService.delete(id);
   };
 
-  const saveLeadMqlAnswers = (leadId: string, answers: Record<string, string>, score: number, level: LeadMqlLevel) => {
+  const saveLeadMqlAnswers = (leadId: string, answers: Record<string, string>, score: number, level: LeadMqlLevel, snapshot?: MqlSnapshot) => {
     updateLeadData(leadId, {
       mqlAnswers: answers,
       mqlScore: score,
       mqlLevel: level,
+      ...(snapshot ? { mqlSnapshot: snapshot } : {}),
     });
   };
 

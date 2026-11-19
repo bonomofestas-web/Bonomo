@@ -1,3 +1,4 @@
+import { Select } from '../ui';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   X, Compass, PhoneCall, FileText, Gift,
@@ -590,7 +591,7 @@ export const AdminSourceModal: React.FC<AdminSourceModalProps> = ({
               <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 800, color: 'var(--adm-text-title)', marginBottom: '6px' }}>
                 Casa de Festa (Unidade) <span style={{ color: '#EF4444' }}>*</span>
               </label>
-              <select
+              <Select
                 value={venueId}
                 disabled={type === 'referral'}
                 onChange={(e) => {
@@ -614,14 +615,14 @@ export const AdminSourceModal: React.FC<AdminSourceModalProps> = ({
                 {venues.map(v => (
                   <option key={v.id} value={v.id}>{v.name}</option>
                 ))}
-              </select>
+              </Select>
             </div>
 
             <div>
               <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 800, color: type === 'referral' ? 'var(--adm-accent)' : 'var(--adm-text-title)', marginBottom: '6px' }}>
                 {type === 'referral' ? 'Funil de Destino dos Leads Indicados *' : 'Funil de Destino (Opcional)'}
               </label>
-              <select
+              <Select
                 value={funnelId}
                 onChange={(e) => setFunnelId(e.target.value)}
                 className="adm-input"
@@ -651,7 +652,7 @@ export const AdminSourceModal: React.FC<AdminSourceModalProps> = ({
                     <option value="post_sale_default">Sucesso do Cliente (Pós-Venda Padrão)</option>
                   )}
                 </optgroup>
-              </select>
+              </Select>
             </div>
           </div>
 
@@ -684,7 +685,7 @@ export const AdminSourceModal: React.FC<AdminSourceModalProps> = ({
               <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: 'var(--adm-text-title)', marginBottom: '6px' }}>
                 Status da Origem
               </label>
-              <select
+              <Select
                 value={status}
                 disabled={type === 'referral'}
                 onChange={(e) => setStatus(e.target.value as 'active' | 'inactive')}
@@ -700,7 +701,7 @@ export const AdminSourceModal: React.FC<AdminSourceModalProps> = ({
               >
                 <option value="active">Ativa (Recebendo)</option>
                 <option value="inactive">Inativa (Pausada)</option>
-              </select>
+              </Select>
             </div>
           </div>
 
@@ -1170,7 +1171,7 @@ export const AdminSourceModal: React.FC<AdminSourceModalProps> = ({
                       className="adm-input"
                       style={{ height: '34px', fontSize: '0.74rem', borderRadius: '6px' }}
                     />
-                    <select
+                    <Select
                       value={newSubFunnelId}
                       onChange={(e) => setNewSubFunnelId(e.target.value)}
                       className="adm-input"
@@ -1193,7 +1194,7 @@ export const AdminSourceModal: React.FC<AdminSourceModalProps> = ({
                           <option value="post_sale_default">Sucesso do Cliente</option>
                         )}
                       </optgroup>
-                    </select>
+                    </Select>
                     <button
                       type="button"
                       onClick={handleAddSubSource}
@@ -1319,7 +1320,7 @@ export const AdminSourceModal: React.FC<AdminSourceModalProps> = ({
                         className="adm-input"
                         style={{ flex: 2, height: '32px', fontSize: '0.74rem', borderRadius: '6px' }}
                       />
-                      <select
+                      <Select
                         value={field.type}
                         onChange={(e) => handleUpdateField(field.id, { type: e.target.value as FormFieldType })}
                         className="adm-input"
@@ -1331,7 +1332,7 @@ export const AdminSourceModal: React.FC<AdminSourceModalProps> = ({
                         <option value="date">Data</option>
                         <option value="number">Número</option>
                         <option value="textarea">Área de Texto</option>
-                      </select>
+                      </Select>
                       <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.68rem', color: 'var(--adm-text-muted)', cursor: 'pointer' }}>
                         <input
                           type="checkbox"

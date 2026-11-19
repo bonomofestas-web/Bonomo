@@ -29,6 +29,7 @@ function mapLeadToDatabase(lead: Partial<Lead>): Record<string, any> {
   if (lead.mqlScore !== undefined) payload.mql_score = lead.mqlScore;
   if (lead.mqlLevel !== undefined) payload.mql_level = lead.mqlLevel;
   if (lead.mqlAnswers !== undefined) payload.mql_answers = lead.mqlAnswers;
+  if (lead.mqlSnapshot !== undefined) payload.mql_snapshot = lead.mqlSnapshot;
 
   if (lead.sdrId !== undefined) payload.sdr_id = (lead.sdrId && isUuid(lead.sdrId)) ? lead.sdrId : null;
   if (lead.sdrName !== undefined) payload.sdr_name = lead.sdrName || null;
@@ -323,6 +324,7 @@ export function formatLeadFromDb(row: any, leadActivities: LeadActivity[] = [], 
     mqlScore: row.mql_score !== null && row.mql_score !== undefined ? Number(row.mql_score) : undefined,
     mqlLevel: row.mql_level || undefined,
     mqlAnswers: row.mql_answers || undefined,
+    mqlSnapshot: row.mql_snapshot || undefined,
     visitCommitment: row.visit_commitment || undefined,
     tastingCommitment: row.tasting_commitment || undefined,
     customFieldValues: row.custom_field_values || {},
@@ -347,6 +349,9 @@ export function formatLeadFromDb(row: any, leadActivities: LeadActivity[] = [], 
     updatedAt: row.updated_at || new Date().toISOString(),
   };
 }
+
+const RECEIPT_TITLE = 'Mensagem Visualizada';
+const RECEIPT_TITLE_FILTER = '"Mensagem Visualizada"';
 
 export const leadService = {
   async getAll(options?: { messageDays?: number; includeActivities?: boolean; masterId?: string }): Promise<Lead[]> {
@@ -1084,11 +1089,13 @@ export const leadService = {
       }
       if (!isUuid(finalLeadId)) return [];
 
-      const { data, error } = await supabase
+      // Mesma regra da carga inicial: o limite conta so mensagens/notas; recibos vem apenas dentro do periodo retornado.
+      const { data: older, error } = await supabase
         .from('lead_activities')
         .select('*')
         .eq('lead_id', finalLeadId)
         .lt('timestamp', beforeTimestamp)
+        .or(`title.is.null,title.neq.${RECEIPT_TITLE_FILTER}`)
         .order('timestamp', { ascending: false })
         .limit(limit);
 
@@ -1096,8 +1103,21 @@ export const leadService = {
         console.error('Erro ao buscar mensagens anteriores do lead:', error);
         return [];
       }
+      const olderRows = older || [];
+      let olderReceipts: any[] = [];
+      if (olderRows.length >= limit) {
+        const { data: rcp } = await supabase.from('lead_activities').select('*').eq('lead_id', finalLeadId).eq('title', RECEIPT_TITLE)
+          .lt('timestamp', beforeTimestamp).gte('timestamp', olderRows[olderRows.length - 1].timestamp).order('timestamp', { ascending: false }).limit(60);
+        olderReceipts = rcp || [];
+      } else {
+        // Chegou ao comeco das mensagens: traz tambem os recibos que sobraram antes do ponto atual
+        const { data: rcp } = await supabase.from('lead_activities').select('*').eq('lead_id', finalLeadId).eq('title', RECEIPT_TITLE)
+          .lt('timestamp', beforeTimestamp).order('timestamp', { ascending: false }).limit(60);
+        olderReceipts = rcp || [];
+      }
+      const data = [...olderRows, ...olderReceipts].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
-      if (!data || data.length === 0) return [];
+      if (data.length === 0) return [];
 
       // Retorna em ordem cronológica crescente (mais antigas primeiro) e deduplicada
       const formatted = data
@@ -1330,22 +1350,35 @@ export const leadService = {
       // retornando instantaneamente (<300ms) sem múltiplos round-trips sequenciais bloqueantes
       // Piso de 100: notas/auditorias dividem a janela com as mensagens de chat.
       const fetchLimit = Math.max(100, (days || 3) * 35);
-      const { data: acts, error: actsErr } = await supabase
-        .from('lead_activities')
-        .select('*')
-        .eq('lead_id', finalLeadId)
-        .order('timestamp', { ascending: false })
-        .limit(fetchLimit);
+      // Recibos de visualizacao NAO entram na janela de mensagens: um lead com centenas de recibos
+      // recentes enchia a janela inteira e a conversa parecia vazia (e "carregar mais" so trazia recibos).
+      // Mensagens/notas vem sem recibos; os recibos entram so dentro do periodo ja carregado.
+      // As duas consultas rodam juntas (uma ida ao banco, nao duas em sequencia)
+      const [{ data: msgActs, error: actsErr }, { data: rcp }] = await Promise.all([
+        supabase
+          .from('lead_activities')
+          .select('*')
+          .eq('lead_id', finalLeadId)
+          .or(`title.is.null,title.neq.${RECEIPT_TITLE_FILTER}`)
+          .order('timestamp', { ascending: false })
+          .limit(fetchLimit),
+        supabase.from('lead_activities').select('*').eq('lead_id', finalLeadId).eq('title', RECEIPT_TITLE).order('timestamp', { ascending: false }).limit(60),
+      ]);
 
       if (actsErr) {
         console.warn('Erro ao carregar histórico da conversa:', actsErr.message);
         return { activities: [], hasOlder: false, error: true };
       }
-      if (!acts || acts.length === 0) {
+      const msgs = msgActs || [];
+      const hasOlder = msgs.length >= fetchLimit;
+      const oldestMsgTs = msgs.length > 0 ? msgs[msgs.length - 1].timestamp : null;
+      // Com historico mais antigo, so os recibos dentro do periodo carregado
+      const receipts = (rcp || []).filter(r => !(hasOlder && oldestMsgTs) || new Date(r.timestamp).getTime() >= new Date(oldestMsgTs as string).getTime());
+      const acts = [...msgs, ...receipts];
+      if (acts.length === 0) {
         return { activities: [], hasOlder: false };
       }
 
-      const hasOlder = acts.length >= fetchLimit;
       const formatted = acts.map(a => formatActivityFromDb(a)).reverse();
       const deduplicated = mergeAndSortActivities([], formatted, finalLeadId);
 
@@ -1773,6 +1806,7 @@ export const leadService = {
       master.mqlScore = secondaryLead.mqlScore;
       master.mqlLevel = secondaryLead.mqlLevel;
       master.mqlAnswers = secondaryLead.mqlAnswers;
+      master.mqlSnapshot = secondaryLead.mqlSnapshot;
     }
     if (secondaryLead.tags && secondaryLead.tags.length > 0) {
       const tagSet = new Set(master.tags || []);

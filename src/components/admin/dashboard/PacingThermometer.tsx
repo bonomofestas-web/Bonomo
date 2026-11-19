@@ -2,7 +2,9 @@ import React from 'react';
 import { Target } from 'lucide-react';
 import { Cell, Pie, PieChart, ResponsiveContainer } from 'recharts';
 import { DeltaBadge, Panel, formatBRL } from './DashboardKpi';
-import type { CommercialDashboardData } from '../../../hooks/useCommercialDashboardData';
+import type { CommercialDashboardData, VenueRow } from '../../../hooks/useCommercialDashboardData';
+
+const UNIT_COLORS = ['#14A9D7', '#D4AF37', '#8B5CF6', '#10B981', '#F59E0B', '#EC4899', '#06B6D4'];
 
 type PacingLevel = 'none' | 'green' | 'yellow' | 'red';
 
@@ -29,9 +31,11 @@ interface Props {
   revenuePct: number | null;
   comparedLabel: string;
   onConfigureGoals?: () => void;
+  /** Com varias unidades no escopo: divisao do faturamento entre elas. */
+  venueRows?: VenueRow[];
 }
 
-export const PacingThermometer: React.FC<Props> = ({ pacing, revenuePct, comparedLabel, onConfigureGoals }) => {
+export const PacingThermometer: React.FC<Props> = ({ pacing, revenuePct, comparedLabel, onConfigureGoals, venueRows }) => {
   const level = getPacingLevel(pacing);
   const { color, label } = LEVELS[level];
   const fill = pacing.target > 0 ? Math.min(100, (pacing.revenue / pacing.target) * 100) : 0;
@@ -123,6 +127,29 @@ export const PacingThermometer: React.FC<Props> = ({ pacing, revenuePct, compare
               Configurar metas
             </button>
           )}
+        </div>
+      )}
+
+      {venueRows && venueRows.length > 1 && pacing.revenue > 0 && (
+        <div style={{ borderTop: '1px solid var(--adm-border)', paddingTop: '12px' }}>
+          <div style={{ fontSize: '0.66rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--adm-text-muted)', marginBottom: '8px' }}>
+            Faturamento por unidade
+          </div>
+          <div style={{ display: 'flex', height: '10px', borderRadius: '999px', overflow: 'hidden', background: 'var(--adm-bg-input)' }}>
+            {venueRows.map((v, i) => {
+              const share = (v.revenue / pacing.revenue) * 100;
+              return share > 0 ? <div key={v.id} title={`${v.name}: ${Math.round(share)}%`} style={{ width: `${share}%`, background: UNIT_COLORS[i % UNIT_COLORS.length] }} /> : null;
+            })}
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 18px', marginTop: '10px' }}>
+            {venueRows.map((v, i) => (
+              <span key={v.id} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.74rem', color: 'var(--adm-text-title)', fontVariantNumeric: 'tabular-nums' }}>
+                <span style={{ width: '9px', height: '9px', borderRadius: '50%', background: UNIT_COLORS[i % UNIT_COLORS.length] }} />
+                <strong>{v.name}</strong> {formatBRL(v.revenue)}
+                <span style={{ color: 'var(--adm-text-muted)' }}>{Math.round((v.revenue / pacing.revenue) * 100)}%</span>
+              </span>
+            ))}
+          </div>
         </div>
       )}
     </Panel>

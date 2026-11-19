@@ -1,7 +1,16 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { responseTimeService, summarizeResponsePairs, type ResponsePair } from '../services/responseTimeService';
 import { useAdminState } from '../context/AdminStateContext';
-import { goalsService, type VenueGoalRecord } from '../services/goalsService';
+import { goalsService, type VenueBaseline, type VenueGoalRecord } from '../services/goalsService';
 import { leadService } from '../services/leadService';
+import { MQL_QUALIFIED_MIN } from '../utils/mqlScore';
+import { buildJourneyCohort, commitmentDone, hasMql, isDisqualified, pctOf, wasAttended, wasScheduled } from '../utils/leadJourney';
+import {
+  goalPlanService, overlapDays, periodDays, toISO,
+  type CollaboratorGoal, type GoalPeriod,
+} from '../services/goalPlanService';
+import { useGoalRollover } from './useGoalRollover';
+import { getCommercialRolesInVenue, isCommercialCollaborator } from '../utils/funnelResponsibility';
 import {
   bucketCount, bucketIndex, bucketLabel, inRange as baseInRange, pctDelta, pickGranularity, rangeDays, resolvePeriod,
   type DateRange, type PeriodSelection, type ResolvedPeriod,
@@ -69,14 +78,51 @@ export interface SdrRank {
   appointmentsPrev: number;
   closingParticipations: number;
   avatarUrl?: string;
+  qualified: number;          // leads criados na janela dentro da base de qualificacao
+  scheduledLeads: number;     // desses, quantos foram agendados
+  attendedFinished: number;   // agendamentos finalizados (realizados, faltas, cancelados) na janela
+  attendedDone: number;       // agendamentos realizados na janela
+  qualToSchedRate: number | null;   // % qualificado -> agendado
+  schedToAttendRate: number | null; // % agendado -> compareceu
+  closingRate: number | null;       // % qualificado -> fechou (participacao em fechamento)
+  score: number | null;       // nota 0-100 (null = sem dados suficientes)
+  ranked: boolean;            // false = volume abaixo do minimo para disputar posicao
 }
+
+/** Esteira do lead (coorte: leads criados na janela). */
+export interface LeadJourney {
+  captured: Delta;
+  mqlInUse: boolean;        // ha ao menos um lead com MQL respondido na coorte
+  qualified: number;        // mqlScore >= MQL_QUALIFIED_MIN
+  disqualified: number;     // mqlScore < MQL_QUALIFIED_MIN
+  withoutMql: number;       // sem MQL respondido
+  notDisqualified: number;  // captados - desqualificados
+  scheduled: number;
+  attended: number;
+  won: number;
+  lost: number;
+  open: number;
+  qualToSchedRate: number | null;
+  schedToAttendRate: number | null;
+  attendToWonRate: number | null;
+  winRate: number | null;   // ganhos / captados
+  lossRate: number | null;  // perdidos / captados
+  dropoff: { stage: string; count: number }[]; // etapa em que os perdidos desistiram
+}
+
+export { MQL_QUALIFIED_MIN };
+/** Pesos da nota do SDR (so o que ele controla): qualificado->agendado e agendado->compareceu. */
+export const SDR_SCORE_WEIGHTS = { qualToSched: 0.4, schedToAttend: 0.6 } as const;
+/** Forca da suavizacao rumo a media do time (tentativas "virtuais"): evita 1 de 1 = 100%, sem excluir ninguem. */
+export const SDR_SMOOTHING_K = 5;
 
 export interface CollaboratorRow {
   id: string;
   name: string;
   role: string;
   avatarUrl?: string;
-  avgResponseMinutes: number | null;
+  avgResponseMinutes: number | null; // 1a resposta (so comercial)
+  avgReplyMinutes: number | null;    // media de qualquer mensagem respondida (so comercial)
   deliveries: number; // fechamentos (closer) ou agendamentos (sdr)
   deliveriesLabel: string;
   goals?: CollaboratorGoals;
@@ -123,9 +169,14 @@ export interface VenueRow {
 
 export interface CommercialDashboardData {
   loading: boolean;
+  /** Metas do periodo ativo, proporcionais a janela (null = sem meta). */
+  targets: { closings: number | null; appointments: number | null; schedulingRate: number | null; attendanceRate: number | null; closingRate: number | null };
+  responseTruncated: boolean; // leitura de conversas atingiu o limite: tempos de resposta podem estar incompletos
   closedWithoutDate: number; // contratos do periodo sem data de fechamento (usam a ultima edicao)
+  baselineMissing: boolean;  // comparando com "Base da unidade", mas nenhuma casa do escopo tem base cadastrada
   presenceTruncated: boolean;
   deep: DeepKpis;
+  journey: LeadJourney;
   pipeline: PipelineSnapshot;
   lossReasons: LossReasonRow[];
   lostCount: number;
@@ -142,6 +193,8 @@ export interface CommercialDashboardData {
     tastings: Delta;
     conversion: Delta;
     response: { current: number | null; previous: number | null; pct: number | null; target: number | null };
+    /** Tempo medio de resposta a QUALQUER mensagem (so comercial; "Conversa Encerrada" conta como respondida). */
+    avgResponse: { current: number | null; previous: number | null; pct: number | null; target: number | null };
     revenue: Delta;
   };
   pacing: { revenue: number; target: number; expected: number; pct: number | null; expectedPct: number };
@@ -174,7 +227,6 @@ const inRange = (iso: string | undefined | null, range: DateRange): boolean => {
 };
 void baseInRange;
 
-const commitmentDone = (c?: CommercialCommitment): boolean => !!c && c.status === 'completed';
 const commitmentDate = (c?: CommercialCommitment): string | undefined => c?.completedAt || c?.date || c?.scheduledAt;
 
 const mean = (values: number[]): number | null =>
@@ -216,20 +268,56 @@ const targetForRange = (goals: VenueGoalRecord[], venueIds: string[], range: Dat
   return total;
 };
 
-const clientLeadKey = (c: Client): string | undefined => c.commercialLeadId || c.originalLeadId;
+/**
+ * Quantos "meses" a janela representa, pelos dias reais de cada mes (meta mensal / dias do mes * dias da janela).
+ * Ex.: meta de R$ 400 mil em um mes de 31 dias: janela de 7 dias = 7/31 da meta.
+ */
+const monthsEquivalent = (range: DateRange): number => {
+  let total = 0;
+  const cursor = new Date(range.start.getFullYear(), range.start.getMonth(), 1);
+  while (cursor <= range.end) {
+    const y = cursor.getFullYear();
+    const m = cursor.getMonth() + 1;
+    const monthStart = new Date(y, m - 1, 1);
+    const monthEnd = new Date(y, m, 0, 23, 59, 59, 999);
+    const overlapStart = monthStart > range.start ? monthStart : range.start;
+    const overlapEnd = monthEnd < range.end ? monthEnd : range.end;
+    total += Math.max(0, rangeDays({ start: overlapStart, end: overlapEnd })) / new Date(y, m, 0).getDate();
+    cursor.setMonth(cursor.getMonth() + 1);
+  }
+  return total;
+};
+
+const clientLeadKey =(c: Client): string | undefined => c.commercialLeadId || c.originalLeadId;
 
 /* ───────────── Hook ───────────── */
 
-export const useCommercialDashboardData = (selection: PeriodSelection): CommercialDashboardData => {
+export const useCommercialDashboardData = (selection: PeriodSelection, venueScope: string = 'all'): CommercialDashboardData => {
   const { leads, clients, collaborators, funnels, venues, activeVenueId, currentUser } = useAdminState();
   const masterId = currentUser?.masterId || currentUser?.id || '';
 
   // Venues no escopo: dados de `venues` ja vem isolados por Master no contexto.
+  // venueScope ('all' | id) e o filtro proprio do dashboard; dentro dele vale tambem o activeVenueId global.
   const venueIds = useMemo(() => {
     const all = venues.map(v => v.id);
-    if (!activeVenueId || activeVenueId === 'all' || activeVenueId === 'multi') return all;
-    return all.includes(activeVenueId) ? [activeVenueId] : all;
-  }, [venues, activeVenueId]);
+    const base = !activeVenueId || activeVenueId === 'all' || activeVenueId === 'multi' || !all.includes(activeVenueId)
+      ? all
+      : [activeVenueId];
+    if (venueScope && venueScope !== 'all' && base.includes(venueScope)) return [venueScope];
+    return base;
+  }, [venues, activeVenueId, venueScope]);
+
+  // Metricas base das casas (comparacao "Base da unidade")
+  const [baselines, setBaselines] = useState<VenueBaseline[]>([]);
+  const wantsBaseline = selection.compareMode === 'baseline';
+  useEffect(() => {
+    let cancelled = false;
+    if (!masterId || !wantsBaseline) return;
+    goalsService.listVenueBaselines(masterId)
+      .then(rows => { if (!cancelled) setBaselines(rows); })
+      .catch(() => { if (!cancelled) setBaselines([]); });
+    return () => { cancelled = true; };
+  }, [masterId, wantsBaseline]);
 
   const resolved = useMemo(() => resolvePeriod(selection), [selection]);
 
@@ -264,11 +352,79 @@ export const useCommercialDashboardData = (selection: PeriodSelection): Commerci
     return () => { cancelled = true; };
   }, [masterId, goalYear, goalEndYear, realtimeTick]);
 
+  // Metas por periodo (novo modelo): metas da unidade e metas individuais ATIVAS que tocam a janela
+  const [goalPeriods, setGoalPeriods] = useState<GoalPeriod[]>([]);
+  const [collabGoals, setCollabGoals] = useState<CollaboratorGoal[]>([]);
+  const [goalsTick, setGoalsTick] = useState(0);
+  useGoalRollover(() => setGoalsTick(t => t + 1)); // virada de periodo: grava resultado e abre o proximo
+  const planStart = toISO(resolved.goalRange.start < resolved.current.start ? resolved.goalRange.start : resolved.current.start);
+  const planEnd = toISO(resolved.goalRange.end > resolved.current.end ? resolved.goalRange.end : resolved.current.end);
+  useEffect(() => {
+    let cancelled = false;
+    if (!masterId) return;
+    goalPlanService.listPeriods(masterId, { statuses: ['active'], overlapStart: planStart, overlapEnd: planEnd })
+      .then(async ps => {
+        if (cancelled) return;
+        setGoalPeriods(ps);
+        const gs = await goalPlanService.listCollaboratorGoals(masterId, { periodIds: ps.map(p => p.id) });
+        if (!cancelled) setCollabGoals(gs.filter(g => g.status === 'active'));
+      })
+      .catch(() => { if (!cancelled) { setGoalPeriods([]); setCollabGoals([]); } });
+    return () => { cancelled = true; };
+  }, [masterId, planStart, planEnd, realtimeTick, goalsTick]);
+
+  // Tempo de resposta (so COMERCIAL): pares "mensagem do cliente -> resposta da equipe ou Conversa Encerrada".
+  // Leads de funis de pos-venda nunca entram (4 em cada 5 conversas do banco local sao de pos-venda).
+  const commercialFunnelIds = useMemo(() => new Set(funnels.filter(f => !f.isPostSale).map(f => f.id)), [funnels]);
+  const responseInput = useMemo(() => {
+    const ids: string[] = [];
+    const created = new Map<string, number>();
+    const owner = new Map<string, string>();
+    leads.forEach(l => {
+      if (!venueIds.includes(l.venueId) || l.isRemovedFromFunnel) return;
+      if (l.funnelId && !commercialFunnelIds.has(l.funnelId)) return; // funil de pos-venda (ou fora do escopo): fora
+      ids.push(l.id);
+      created.set(l.id, new Date(l.createdAt).getTime());
+      const o = l.sdrId || l.closerId;
+      if (o) owner.set(l.id, o);
+    });
+    return { ids, created, owner };
+  }, [leads, venueIds, commercialFunnelIds]);
+  const responseInputRef = useRef(responseInput);
+  responseInputRef.current = responseInput;
+  const collaboratorsRef = useRef(collaborators);
+  collaboratorsRef.current = collaborators;
+
+  const [responsePairs, setResponsePairs] = useState<ResponsePair[]>([]);
+  const [responseTruncated, setResponseTruncated] = useState(false);
+  const respStart = Math.min(resolved.current.start.getTime(), resolved.compared.start.getTime());
+  const respEnd = Math.max(resolved.current.end.getTime(), resolved.compared.end.getTime());
+  const respKey = `${masterId}|${venueIds.join(',')}|${respStart}|${respEnd}|${responseInput.ids.length}`;
+  useEffect(() => {
+    let cancelled = false;
+    const { ids, owner } = responseInputRef.current;
+    if (!masterId || ids.length === 0) {
+      setResponsePairs([]);
+      setResponseTruncated(false);
+      return;
+    }
+    responseTimeService
+      .fetchPairs({
+        leadIds: ids, startMs: respStart, endMs: respEnd, ownerByLead: owner,
+        collaboratorIds: new Set(collaboratorsRef.current.map(c => c.id)),
+      })
+      .then(r => { if (!cancelled) { setResponsePairs(r.pairs); setResponseTruncated(r.truncated); } })
+      .catch(() => { if (!cancelled) { setResponsePairs([]); setResponseTruncated(false); } });
+    return () => { cancelled = true; };
+    // respKey ja resume escopo, janela e quantidade de leads; os dados em si vem pelos refs
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [respKey]);
+
   // Presenca: primeira e ultima atividade (lead_activities) de cada colaborador por dia, na janela atual.
   const [presence, setPresence] = useState<Record<string, { minutes: number; days: number; messages: number; conversations: number }>>({});
   const [loadingPresence, setLoadingPresence] = useState(true);
   const collabIdsKey = useMemo(
-    () => collaborators.filter(c => c.active && (c.role === 'sdr' || c.role === 'closer')).map(c => c.id).sort().join(','),
+    () => collaborators.filter(c => c.active && isCommercialCollaborator(c)).map(c => c.id).sort().join(','),
     [collaborators],
   );
   const presenceStart = resolved.current.start.getTime();
@@ -339,7 +495,6 @@ export const useCommercialDashboardData = (selection: PeriodSelection): Commerci
         if (commitmentDone(l.visitCommitment) && inRange(commitmentDate(l.visitCommitment), range)) visits += 1;
         if (commitmentDone(l.tastingCommitment) && inRange(commitmentDate(l.tastingCommitment), range)) tastings += 1;
       });
-      const responses = created.map(l => Number(l.responseTimeMinutes)).filter(v => Number.isFinite(v) && v > 0);
       return {
         leadsCreated: created.length,
         closings: closed.length,
@@ -348,15 +503,79 @@ export const useCommercialDashboardData = (selection: PeriodSelection): Commerci
         tastings,
         appointments: visits + tastings,
         conversionRate: created.length > 0 ? (cohortClosed / created.length) * 100 : 0,
-        avgResponseMinutes: mean(responses),
+        avgResponseMinutes: null, // preenchido abaixo com o tempo real de 1a resposta (responseTimeService)
       };
     };
 
     const cur = kpisFor(current);
-    const prev = kpisFor(compared);
+    const prevPeriod = kpisFor(compared);
+
+    // Tempo de resposta real (so comercial): 1a resposta e media de qualquer mensagem
+    const respCur = summarizeResponsePairs(responsePairs, { start: current.start.getTime(), end: current.end.getTime() }, responseInput.created);
+    const respPrev = summarizeResponsePairs(responsePairs, { start: compared.start.getTime(), end: compared.end.getTime() }, responseInput.created);
+    cur.avgResponseMinutes = respCur.total.avgFirst;
+    prevPeriod.avgResponseMinutes = respPrev.total.avgFirst;
+
+    /* Base da unidade: agrega as metricas-base das casas do escopo (absolutos somados, taxas ponderadas por leads/mes) */
+    const myBaselines = wantsBaseline ? baselines.filter(b => venueIds.includes(b.venueId)) : [];
+    const baselineMissing = wantsBaseline && myBaselines.length === 0;
+    const sumOf = (pick: (b: VenueBaseline) => number | null): number | null => {
+      const vals = myBaselines.map(pick).filter((v): v is number => v !== null);
+      return vals.length ? vals.reduce((a, b) => a + b, 0) : null;
+    };
+    const weighted = (pick: (b: VenueBaseline) => number | null, weight: (b: VenueBaseline) => number | null): number | null => {
+      const rows = myBaselines.map(b => ({ v: pick(b), w: weight(b) })).filter((r): r is { v: number; w: number | null } => r.v !== null);
+      if (rows.length === 0) return null;
+      const totalW = rows.reduce((s, r) => s + (r.w ?? 0), 0);
+      return totalW > 0 ? rows.reduce((s, r) => s + r.v * (r.w ?? 0), 0) / totalW : mean(rows.map(r => r.v));
+    };
+    const byLeads = (b: VenueBaseline) => b.leadsPerMonth;
+    const monthScale = monthsEquivalent(current); // base e mensal; proporcional aos dias reais do periodo
+    const scaled = (v: number | null): number => (v === null ? 0 : v * monthScale);
+    const bl = wantsBaseline ? {
+      leads: sumOf(b => b.leadsPerMonth),
+      appointments: sumOf(b => b.appointmentsPerMonth),
+      contracts: sumOf(b => b.contractsPerMonth),
+      revenue: sumOf(b => b.monthlyRevenue ?? (b.contractsPerMonth !== null && b.avgTicket !== null ? b.contractsPerMonth * b.avgTicket : null)),
+      conversion: weighted(b => b.conversionRate, byLeads),
+      ticket: weighted(b => b.avgTicket, b => b.contractsPerMonth),
+      response: weighted(b => b.responseTimeMinutes, byLeads),
+      avgResponse: weighted(b => b.avgResponseMinutes, byLeads),
+      show: weighted(b => b.schedToAttendRate, b => b.appointmentsPerMonth),
+      loss: weighted(b => b.lossRate, byLeads),
+    } : null;
+    const prev: WindowKpis = bl
+      ? {
+          ...prevPeriod,
+          leadsCreated: scaled(bl.leads),
+          closings: scaled(bl.contracts),
+          revenue: scaled(bl.revenue),
+          appointments: scaled(bl.appointments),
+          visits: 0,
+          tastings: 0,
+          conversionRate: bl.conversion ?? 0,
+          avgResponseMinutes: bl.response,
+        }
+      : prevPeriod;
+
+    // Meta do tempo medio de resposta (qualquer mensagem), dos periodos ativos do novo modelo
+    const avgResponseTarget = (() => {
+      const curStartISO = toISO(current.start);
+      const curEndISO = toISO(current.end);
+      const t = goalPeriods
+        .filter(p => venueIds.includes(p.venueId) && p.avgResponseTargetMinutes > 0 && overlapDays(p, curStartISO, curEndISO) > 0)
+        .map(p => p.avgResponseTargetMinutes);
+      return t.length ? Math.round(t.reduce((a, b) => a + b, 0) / t.length) : null;
+    })();
 
     // Meta de tempo de resposta: media das metas das unidades no escopo nos meses que o periodo cobre.
     const responseTarget = (() => {
+      const curStartISO = toISO(current.start);
+      const curEndISO = toISO(current.end);
+      const planTargets = goalPeriods
+        .filter(p => venueIds.includes(p.venueId) && p.responseTimeTargetMinutes > 0 && overlapDays(p, curStartISO, curEndISO) > 0)
+        .map(p => p.responseTimeTargetMinutes);
+      if (planTargets.length) return Math.round(planTargets.reduce((a, b) => a + b, 0) / planTargets.length);
       const targets = venueGoals
         .filter(g => {
           if (!venueIds.includes(g.venueId) || g.responseTimeTargetMinutes <= 0) return false;
@@ -369,8 +588,35 @@ export const useCommercialDashboardData = (selection: PeriodSelection): Commerci
       return targets.length ? Math.round(targets.reduce((a, b) => a + b, 0) / targets.length) : null;
     })();
 
+    // Metas de volume (contratos, leads, agendamentos) proporcionais aos dias da janela; taxas = media dos periodos ativos
+    const curS = toISO(current.start);
+    const curE = toISO(current.end);
+    const prorated = (pick: (p: GoalPeriod) => number): number | null => {
+      const mine = goalPeriods.filter(p => venueIds.includes(p.venueId) && overlapDays(p, curS, curE) > 0);
+      const total = mine.reduce((s, p) => s + pick(p) * (overlapDays(p, curS, curE) / periodDays(p)), 0);
+      return total > 0 ? total : null;
+    };
+    const rateTarget = (pick: (p: GoalPeriod) => number): number | null => {
+      const t = goalPeriods.filter(p => venueIds.includes(p.venueId) && pick(p) > 0 && overlapDays(p, curS, curE) > 0).map(pick);
+      return t.length ? t.reduce((a, b) => a + b, 0) / t.length : null;
+    };
+    const targets = {
+      closings: prorated(p => p.closingsTarget),
+      appointments: prorated(p => p.appointmentsTarget),
+      schedulingRate: rateTarget(p => p.schedulingRateTarget),
+      attendanceRate: rateTarget(p => p.attendanceRateTarget),
+      closingRate: rateTarget(p => p.closingRateTarget),
+    };
+
     /* Pacing (termometro) */
-    const target = targetForRange(venueGoals, venueIds, resolved.goalRange);
+    // Meta de faturamento: periodos ativos do novo modelo (proporcional aos dias da janela); sem periodo, usa a meta antiga
+    const goalStartISO = toISO(resolved.goalRange.start);
+    const goalEndISO = toISO(resolved.goalRange.end);
+    const target = venueIds.reduce((sum, vid) => {
+      const mine = goalPeriods.filter(p => p.venueId === vid && overlapDays(p, goalStartISO, goalEndISO) > 0);
+      if (mine.length === 0) return sum + targetForRange(venueGoals, [vid], resolved.goalRange);
+      return sum + mine.reduce((s, p) => s + p.revenueTarget * (overlapDays(p, goalStartISO, goalEndISO) / periodDays(p)), 0);
+    }, 0);
     const expected = target * resolved.elapsedFraction;
     const pacing = {
       revenue: cur.revenue,
@@ -490,7 +736,17 @@ export const useCommercialDashboardData = (selection: PeriodSelection): Commerci
       };
     };
     const dCur = deepFor(current);
-    const dPrev = deepFor(compared);
+    const dPrevPeriod = deepFor(compared);
+    const dPrev: typeof dPrevPeriod = bl
+      ? {
+          leads: scaled(bl.leads),
+          avgTicket: bl.ticket ?? 0,
+          cycle: null,
+          show: bl.show,
+          showSample: dPrevPeriod.showSample,
+          lossRate: bl.loss ?? 0,
+        }
+      : dPrevPeriod;
     const nullableDelta = (a: number | null, b: number | null) => ({
       current: a, previous: b, pct: a !== null && b !== null ? pctDelta(a, b) : null,
     });
@@ -500,6 +756,41 @@ export const useCommercialDashboardData = (selection: PeriodSelection): Commerci
       salesCycleDays: nullableDelta(dCur.cycle, dPrev.cycle),
       showRate: { ...nullableDelta(dCur.show, dPrev.show), sample: dCur.showSample },
       lossRate: delta(dCur.lossRate, dPrev.lossRate),
+    };
+
+    /* ───── Esteira do lead (coorte criada na janela) ───── */
+    // Regras da esteira compartilhadas com as metas: src/utils/leadJourney.ts
+    const rate = pctOf;
+    const journeyFor = (range: DateRange) =>
+      buildJourneyCohort(scopedLeads.filter(l => inRange(l.createdAt, range)), isClosed, isLost);
+    const jCur = journeyFor(current);
+    const jPrev = journeyFor(compared);
+    const dropMap = new Map<string, number>();
+    const bumpDrop = (k: string) => dropMap.set(k, (dropMap.get(k) || 0) + 1);
+    jCur.lost.forEach(l => {
+      if (isDisqualified(l)) bumpDrop('Desqualificado pelo MQL');
+      else if (wasAttended(l)) bumpDrop('Compareceu, não fechou');
+      else if (wasScheduled(l)) bumpDrop('Agendado, não compareceu');
+      else bumpDrop('Antes do agendamento');
+    });
+    const journey: LeadJourney = {
+      captured: delta(jCur.coh.length, jPrev.coh.length),
+      mqlInUse: jCur.mqlInUse,
+      qualified: jCur.mqlInUse ? jCur.base.length : 0,
+      disqualified: jCur.coh.filter(isDisqualified).length,
+      withoutMql: jCur.mqlInUse ? jCur.coh.filter(l => !hasMql(l)).length : jCur.coh.length,
+      notDisqualified: jCur.coh.length - jCur.coh.filter(isDisqualified).length,
+      scheduled: jCur.scheduled.length,
+      attended: jCur.attended.length,
+      won: jCur.won.length,
+      lost: jCur.lost.length,
+      open: jCur.coh.length - jCur.won.length - jCur.lost.length,
+      qualToSchedRate: rate(jCur.scheduled.length, jCur.base.length),
+      schedToAttendRate: rate(jCur.attended.length, jCur.scheduled.length),
+      attendToWonRate: rate(jCur.wonFromAttended.length, jCur.attended.length),
+      winRate: rate(jCur.won.length, jCur.coh.length),
+      lossRate: rate(jCur.lost.length, jCur.coh.length),
+      dropoff: [...dropMap.entries()].map(([stage, count]) => ({ stage, count })).sort((a, b) => b.count - a.count),
     };
 
     // Pipeline aberto hoje (nao depende do periodo)
@@ -609,7 +900,11 @@ export const useCommercialDashboardData = (selection: PeriodSelection): Commerci
     const ensureSdr = (id: string, name: string) => {
       let row = sdrMap.get(id);
       if (!row) {
-        row = { id, name, visits: 0, tastings: 0, appointments: 0, appointmentsPrev: 0, closingParticipations: 0 };
+        row = {
+          id, name, visits: 0, tastings: 0, appointments: 0, appointmentsPrev: 0, closingParticipations: 0,
+          qualified: 0, scheduledLeads: 0, attendedFinished: 0, attendedDone: 0,
+          qualToSchedRate: null, schedToAttendRate: null, closingRate: null, score: null, ranked: false,
+        };
         sdrMap.set(id, row);
       }
       return row;
@@ -630,16 +925,68 @@ export const useCommercialDashboardData = (selection: PeriodSelection): Commerci
         if (inRange(d, compared)) ensureSdr(l.sdrId, sdrName).appointmentsPrev += 1;
       }
       if (isClosed(l) && inRange(closedDate(l), current)) ensureSdr(l.sdrId, sdrName).closingParticipations += 1;
+      // Comparecimento: agendamentos finalizados na janela (realizado, falta ou cancelado)
+      [v, t].forEach(c => {
+        if (!c || !inRange(commitmentDate(c), current)) return;
+        if (c.status === 'completed') { const r = ensureSdr(l.sdrId as string, sdrName); r.attendedDone += 1; r.attendedFinished += 1; }
+        else if (c.status === 'no_show' || c.status === 'cancelled') ensureSdr(l.sdrId as string, sdrName).attendedFinished += 1;
+      });
     });
-    const sdrs = [...sdrMap.values()]
-      .map(r => ({ ...r, avatarUrl: collaborators.find(c => c.id === r.id)?.avatarUrl }))
-      .filter(r => r.appointments > 0 || r.closingParticipations > 0)
-      .sort((a, b) => b.appointments - a.appointments || b.closingParticipations - a.closingParticipations);
+    // Qualificados e agendados: coorte de leads do SDR criados na janela
+    jCur.base.forEach(l => {
+      if (!l.sdrId) return;
+      const r = ensureSdr(l.sdrId, nameOf(l.sdrId, l.sdrName));
+      r.qualified += 1;
+      if (wasScheduled(l)) r.scheduledLeads += 1;
+    });
+    // Nota do SDR (so agendamento e comparecimento; fechamento e do Closer). Fica no calculo, nao e exibida.
+    // Cada taxa e suavizada rumo a media do time no periodo: (acertos + k*media) / (tentativas + k).
+    // Nao ha volume minimo: amostra pequena apenas pesa menos, entao 1 de 1 nao vira 100%.
+    const sdrList = [...sdrMap.values()];
+    const sum = (pick: (r: SdrRank) => number) => sdrList.reduce((s, r) => s + pick(r), 0);
+    const teamQualToSched = rate(sum(r => r.scheduledLeads), sum(r => r.qualified));
+    const teamSchedToAttend = rate(sum(r => r.attendedDone), sum(r => r.attendedFinished));
+    const smooth = (wins: number, tries: number, bench: number | null): number | null => {
+      if (bench === null) return tries > 0 ? (wins / tries) * 100 : null;
+      return ((wins + (SDR_SMOOTHING_K * bench) / 100) / (tries + SDR_SMOOTHING_K)) * 100;
+    };
+    const sdrs = sdrList
+      .map(r => {
+        const qualToSchedRate = rate(r.scheduledLeads, r.qualified);
+        const schedToAttendRate = rate(r.attendedDone, r.attendedFinished);
+        const closingRate = rate(r.closingParticipations, r.qualified);
+        const adjSched = smooth(r.scheduledLeads, r.qualified, teamQualToSched);
+        const adjAttend = smooth(r.attendedDone, r.attendedFinished, teamSchedToAttend);
+        const score = adjSched !== null && adjAttend !== null
+          ? SDR_SCORE_WEIGHTS.qualToSched * Math.min(100, adjSched) + SDR_SCORE_WEIGHTS.schedToAttend * Math.min(100, adjAttend)
+          : adjSched ?? adjAttend;
+        return {
+          ...r, qualToSchedRate, schedToAttendRate, closingRate, score,
+          ranked: score !== null,
+          avatarUrl: collaborators.find(c => c.id === r.id)?.avatarUrl,
+        };
+      })
+      .filter(r => r.scheduledLeads > 0 || r.attendedFinished > 0 || r.appointments > 0)
+      .sort((a, b) =>
+        Number(b.ranked) - Number(a.ranked)
+        || (b.score ?? -1) - (a.score ?? -1)
+        || b.closingParticipations - a.closingParticipations // desempate: maior participacao em venda
+        || b.attendedDone - a.attendedDone
+        || b.appointments - a.appointments);
 
     /* Linhas por colaborador (TMA, entregas, progresso da meta individual) */
     const inVenueScope = (c: (typeof collaborators)[number]): boolean =>
       !c.venueId || c.venueId === 'all' || venueIds.includes(c.venueId) || (c.venueIds || []).some(id => venueIds.includes(id));
-    const scopedCollabs = collaborators.filter(c => c.active && (c.role === 'sdr' || c.role === 'closer') && inVenueScope(c));
+    // O cargo no cadastro e generico (crm, admin...): SDR e Closer vem da equipe dos funis comerciais da unidade
+    const roleFlags = (c: (typeof collaborators)[number]) => venueIds.reduce(
+      (acc, vid) => { const r = getCommercialRolesInVenue(funnels, vid, c); return { sdr: acc.sdr || r.sdr, closer: acc.closer || r.closer }; },
+      { sdr: false, closer: false },
+    );
+    const scopedCollabs = collaborators.filter(c => {
+      if (!c.active || !inVenueScope(c)) return false;
+      const f = roleFlags(c);
+      return f.sdr || f.closer;
+    });
     const leadsByCloser = new Map<string, Lead[]>();
     const leadsBySdr = new Map<string, Lead[]>();
     scopedLeads.forEach(l => {
@@ -647,32 +994,54 @@ export const useCommercialDashboardData = (selection: PeriodSelection): Commerci
       if (l.sdrId) { const a = leadsBySdr.get(l.sdrId); if (a) a.push(l); else leadsBySdr.set(l.sdrId, [l]); }
     });
     const collabRows: CollaboratorRow[] = scopedCollabs.map(c => {
-      const isCloser = c.role === 'closer';
+      const flags = roleFlags(c);
+      const isCloser = flags.closer && (!flags.sdr || (leadsByCloser.get(c.id)?.length || 0) >= (leadsBySdr.get(c.id)?.length || 0));
       const mine = (isCloser ? leadsByCloser : leadsBySdr).get(c.id) || [];
-      const responses = mine
-        .filter(l => inRange(l.createdAt, current))
-        .map(l => Number(l.responseTimeMinutes))
-        .filter(v => Number.isFinite(v) && v > 0);
       const closedMine = mine.filter(l => isClosed(l) && inRange(closedDate(l), current));
       const deliveries = isCloser
         ? closedMine.length
         : (sdrMap.get(c.id)?.appointments ?? 0);
-      const responsesPrev = mine
-        .filter(l => inRange(l.createdAt, compared))
-        .map(l => Number(l.responseTimeMinutes))
-        .filter(v => Number.isFinite(v) && v > 0);
       const deliveriesPrev = isCloser
         ? mine.filter(l => isClosed(l) && inRange(closedDate(l), compared)).length
         : (sdrMap.get(c.id)?.appointmentsPrev ?? 0);
       const g = c.goals;
       let goalPct: number | null = null;
       let goalDetail: string | null = null;
-      if (g) {
+      const money = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
+
+      // Metas do novo modelo: uma pessoa em varias unidades vira um unico card (soma das metas de cada unidade,
+      // proporcionais aos dias da janela em cada periodo).
+      const plan = { revenue: 0, closings: 0, appointments: 0, response: [] as number[] };
+      collabGoals.forEach(cg => {
+        if (cg.collaboratorId !== c.id || !venueIds.includes(cg.venueId)) return;
+        const p = goalPeriods.find(x => x.id === cg.periodId);
+        if (!p) return;
+        const od = overlapDays(p, toISO(current.start), toISO(current.end));
+        if (od <= 0) return;
+        const share = od / periodDays(p);
+        if (cg.metric === 'revenue') plan.revenue += cg.targetValue * share;
+        else if (cg.metric === 'closings') plan.closings += cg.targetValue * share;
+        else if (cg.metric === 'appointments') plan.appointments += cg.targetValue * share;
+        else plan.response.push(cg.targetValue);
+      });
+      const hasPlan = plan.revenue > 0 || plan.closings > 0 || plan.appointments > 0;
+      const planResponse = plan.response.length ? Math.round(plan.response.reduce((a, b) => a + b, 0) / plan.response.length) : null;
+      if (hasPlan) {
         const revenueMine = closedMine.reduce((s, l) => s + valueOf(l), 0);
-        // Metas individuais sao mensais (ou semanais): escala pelo tamanho do periodo selecionado.
-        const cycleDays = g.cycle === 'weekly' ? 7 : 30;
-        const scale = Math.max(rangeDays(current) / cycleDays, 0.0001);
-        const money = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
+        if (plan.revenue > 0) {
+          goalPct = Math.round((revenueMine / plan.revenue) * 100);
+          goalDetail = `${money(revenueMine)} de ${money(plan.revenue)}`;
+        } else if (plan.closings > 0) {
+          goalPct = Math.round((closedMine.length / plan.closings) * 100);
+          goalDetail = `${closedMine.length} de ${Math.round(plan.closings * 10) / 10} contratos`;
+        } else {
+          goalPct = Math.round((deliveries / plan.appointments) * 100);
+          goalDetail = `${deliveries} de ${Math.round(plan.appointments * 10) / 10} agendamentos`;
+        }
+      } else if (g) {
+        const revenueMine = closedMine.reduce((s, l) => s + valueOf(l), 0);
+        // Metas individuais mensais dividem pelos dias reais de cada mes; semanais por 7 dias.
+        const scale = Math.max(g.cycle === 'weekly' ? rangeDays(current) / 7 : monthsEquivalent(current), 0.0001);
         if (g.revenueTarget) {
           goalPct = Math.round((revenueMine / (g.revenueTarget * scale)) * 100);
           goalDetail = `${money(revenueMine)} de ${money(g.revenueTarget * scale)}`;
@@ -689,18 +1058,19 @@ export const useCommercialDashboardData = (selection: PeriodSelection): Commerci
         name: c.name,
         role: c.role,
         avatarUrl: c.avatarUrl,
-        avgResponseMinutes: mean(responses),
+        avgResponseMinutes: respCur.byResponder.get(c.id)?.avgFirst ?? null,
+        avgReplyMinutes: respCur.byResponder.get(c.id)?.avgAll ?? null,
         deliveries,
         deliveriesLabel: isCloser ? 'fechamentos' : 'agendamentos',
         goals: g,
         goalPct,
-        responseTarget: g?.responseTimeTargetMinutes || responseTarget,
+        responseTarget: planResponse || g?.responseTimeTargetMinutes || responseTarget,
         activeMinutes: presence[c.id]?.minutes ?? null,
         activeDays: presence[c.id]?.days ?? 0,
         messages: presence[c.id]?.messages ?? 0,
         conversations: presence[c.id]?.conversations ?? 0,
         deliveriesPrev,
-        avgResponsePrev: mean(responsesPrev),
+        avgResponsePrev: respPrev.byResponder.get(c.id)?.avgFirst ?? null,
         goalDetail,
       };
     });
@@ -711,9 +1081,13 @@ export const useCommercialDashboardData = (selection: PeriodSelection): Commerci
 
     return {
       loading: loadingGoals,
+      responseTruncated,
+      targets,
       closedWithoutDate,
       presenceTruncated,
+      baselineMissing,
       deep,
+      journey,
       pipeline,
       lossReasons,
       lostCount: lostCohort.length,
@@ -737,6 +1111,15 @@ export const useCommercialDashboardData = (selection: PeriodSelection): Commerci
             : null,
           target: responseTarget,
         },
+        avgResponse: (() => {
+          const previous = bl ? bl.avgResponse : respPrev.total.avgAll;
+          return {
+            current: respCur.total.avgAll,
+            previous,
+            pct: respCur.total.avgAll !== null && previous !== null ? pctDelta(respCur.total.avgAll, previous) : null,
+            target: avgResponseTarget,
+          };
+        })(),
         revenue: delta(cur.revenue, prev.revenue),
       },
       pacing,
@@ -748,5 +1131,5 @@ export const useCommercialDashboardData = (selection: PeriodSelection): Commerci
       collaborators: collabRows,
       hasData: scopedLeads.length > 0,
     };
-  }, [resolved, leads, clients, collaborators, funnels, venueIds, venueGoals, loadingGoals, presence, presenceTruncated, loadingPresence]);
+  }, [resolved, leads, clients, collaborators, funnels, venueIds, venueGoals, loadingGoals, presence, presenceTruncated, loadingPresence, wantsBaseline, baselines, goalPeriods, collabGoals, responsePairs, responseInput, responseTruncated]);
 };

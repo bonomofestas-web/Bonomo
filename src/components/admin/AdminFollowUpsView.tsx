@@ -1,3 +1,4 @@
+import { DateField, Select } from '../ui';
 import React, { useState, useMemo } from 'react';
 import { HeaderActions } from './HeaderActions';
 import { 
@@ -221,8 +222,7 @@ export const AdminFollowUpsView: React.FC<AdminFollowUpsViewProps> = ({ onOpenLe
             <ChevronLeft size={16} />
           </button>
 
-          <input
-            type="date"
+          <DateField
             value={selectedDate}
             onChange={(e) => setSelectedDate(e.target.value)}
             style={{
@@ -288,7 +288,7 @@ export const AdminFollowUpsView: React.FC<AdminFollowUpsViewProps> = ({ onOpenLe
           {/* Collaborator Filter */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
             <Users size={14} color="var(--adm-text-muted)" />
-            <select
+            <Select
               value={selectedCollabId}
               onChange={(e) => setSelectedCollabId(e.target.value)}
               style={{
@@ -307,11 +307,11 @@ export const AdminFollowUpsView: React.FC<AdminFollowUpsViewProps> = ({ onOpenLe
               {collaborators.filter(c => c.active).map(c => (
                 <option key={c.id} value={c.id}>{c.name} ({c.role.toUpperCase()})</option>
               ))}
-            </select>
+            </Select>
           </div>
 
           {/* Status Filter */}
-          <select
+          <Select
             value={filterStatus}
             onChange={(e) => setFilterStatus(e.target.value as any)}
             style={{
@@ -329,7 +329,7 @@ export const AdminFollowUpsView: React.FC<AdminFollowUpsViewProps> = ({ onOpenLe
             <option value="all">Todos os Status</option>
             <option value="pending">Apenas Pendentes</option>
             <option value="completed">Concluídos</option>
-          </select>
+          </Select>
 
           {/* Search Box */}
           <div style={{ position: 'relative' }}>

@@ -1,3 +1,4 @@
+import { Select } from '../ui';
 import { animateList } from '../../utils/animateList';
 import { canCollaboratorSeeStage } from '../../utils/funnelResponsibility';
 import { HeaderActions, headerPrimaryButtonStyle } from './HeaderActions';
@@ -44,6 +45,7 @@ import { AdminAgendaAvailabilityModal } from './AdminAgendaAvailabilityModal';
 import { agendaAvailabilityService } from '../../services/agendaAvailabilityService';
 import { renderFunnelOrStageIcon } from '../../utils/funnelIconLibrary';
 import { formatPhone } from '../../utils/phoneFormatter';
+import { MQL_BAND_STYLE, hasMqlAnswers, mqlBand } from '../../utils/mqlScore';
 import { validateLeadForWon } from '../../utils/leadValidation';
 import { sortLeadsByCriteria, getLeadPendingWaitingTime, getLeadWaitTimeSla } from '../../utils/leadSorting';
 import { isPhoneMatch } from '../../services/leadService';
@@ -331,12 +333,18 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
   };
 
   const hasIcpConfigured = (targetLead: Lead) => {
+    // Lead ja respondido mantem o MQL da epoca, mesmo que o MQL do funil seja editado ou apagado
+    if (targetLead.mqlSnapshot?.questions?.length) return true;
     if (!mqlQuestions || mqlQuestions.length === 0) return false;
-    // ICP é exclusivo por unidade/casa de festas
-    return mqlQuestions.some(q =>
-      (q.venueId && q.venueId === targetLead.venueId) ||
-      (q.venueIds && q.venueIds.length > 0 && q.venueIds.includes(targetLead.venueId))
-    );
+    // MQL e por funil (1 funil = 1 MQL) dentro da unidade do lead
+    return mqlQuestions.some(q => {
+      const inVenue = (q.venueId && q.venueId === targetLead.venueId) ||
+        (q.venueIds && q.venueIds.length > 0 && q.venueIds.includes(targetLead.venueId));
+      if (!inVenue) return false;
+      const qFunnels = q.funnelIds && q.funnelIds.length > 0 ? q.funnelIds : (q.funnelId ? [q.funnelId] : []);
+      // Funil sem MQL vinculado = sem MQL
+      return !!targetLead.funnelId && qFunnels.includes(targetLead.funnelId);
+    });
   };
 
   const renderLeadOriginBadge = (lead: Lead) => {
@@ -4070,20 +4078,21 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
 
                                 // D) Sistema de ICP (Perfil de Cliente Ideal - Exclusivo por Unidade)
                                 if (hasIcpConfigured(lead)) {
-                                  const hasCpAnswers = Boolean(lead.mqlAnswers && Object.keys(lead.mqlAnswers).length > 0) || 
-                                    (typeof lead.mqlScore === 'number' && lead.mqlScore > 0);
+                                  // Sem resposta = Indefinido (o banco guarda 0 por padrao, isso nao conta)
+                                  const hasCpAnswers = hasMqlAnswers(lead.mqlAnswers);
 
                                   if (hasCpAnswers) {
                                     const score = lead.mqlScore ?? 0;
-                                    const isTop = score >= 80 || lead.mqlLevel === 'top';
-                                    const isQualified = (score >= 50 && score < 80) || lead.mqlLevel === 'qualified';
+                                    const mqlBandNow = mqlBand(score);
+                                    const isTop = mqlBandNow === 'green' || mqlBandNow === 'top';
+                                    const isQualified = mqlBandNow === 'yellow';
                                     const cpColor = isTop ? '#059669' : isQualified ? '#D97706' : '#DC2626';
                                     const cpBg = isTop ? 'rgba(16, 185, 129, 0.12)' : isQualified ? 'rgba(245, 158, 11, 0.12)' : 'rgba(239, 68, 68, 0.12)';
                                     const cpBorder = isTop ? 'rgba(16, 185, 129, 0.3)' : isQualified ? 'rgba(245, 158, 11, 0.3)' : 'rgba(239, 68, 68, 0.3)';
 
                                     chips.push({
                                       id: 'icp_score',
-                                      label: `% ICP ${score}%`,
+                                      label: `MQL ${MQL_BAND_STYLE[mqlBandNow].label.split(' · ')[0]} ${score}%`,
                                       icon: <IcpTargetUserIcon size={10} color={cpColor} />,
                                       bg: cpBg,
                                       color: cpColor,
@@ -5589,7 +5598,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                 <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--adm-text-muted)', marginBottom: '5px' }}>
                   Funil de Pós-Venda de Destino
                 </label>
-                <select
+                <Select
                   value={targetPostSaleFunnelId}
                   onChange={(e) => {
                     const fId = e.target.value;
@@ -5603,14 +5612,14 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                   {funnels.filter(f => f.isPostSale || f.category === 'Pós-Venda').map(f => (
                     <option key={f.id} value={f.id}>{f.name}</option>
                   ))}
-                </select>
+                </Select>
               </div>
 
               <div>
                 <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--adm-text-muted)', marginBottom: '5px' }}>
                   Etapa Inicial no Pós-Venda
                 </label>
-                <select
+                <Select
                   value={targetPostSaleStageId}
                   onChange={(e) => setTargetPostSaleStageId(e.target.value)}
                   className="adm-input"
@@ -5619,7 +5628,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                   {(funnels.find(f => f.id === targetPostSaleFunnelId)?.stages || []).map(st => (
                     <option key={st.id} value={st.id}>{st.name}</option>
                   ))}
-                </select>
+                </Select>
               </div>
 
               {/* Opção de Transferência de Mensagens e Histórico */}

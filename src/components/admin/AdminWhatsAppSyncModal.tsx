@@ -1,3 +1,4 @@
+import { DateField } from '../ui';
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import {
   RotateCcw, CheckCircle2, AlertCircle, X, Minimize2, Maximize2, Loader2, Circle,
@@ -515,9 +516,9 @@ export const AdminWhatsAppSyncModal: React.FC<WhatsAppSyncModalProps> = ({ isOpe
         </div>
         {period === 'custom' && (
           <div style={{ display: 'flex', gap: '10px', marginTop: '10px', alignItems: 'center' }}>
-            <input type="date" value={customStart} onChange={e => setCustomStart(e.target.value)} style={{ ...card, padding: '8px 10px', color: 'inherit' }} />
+            <DateField value={customStart} onChange={e => setCustomStart(e.target.value)} style={{ ...card, padding: '8px 10px', color: 'inherit' }} />
             <span style={muted}>até</span>
-            <input type="date" value={customEnd} onChange={e => setCustomEnd(e.target.value)} style={{ ...card, padding: '8px 10px', color: 'inherit' }} />
+            <DateField value={customEnd} onChange={e => setCustomEnd(e.target.value)} style={{ ...card, padding: '8px 10px', color: 'inherit' }} />
           </div>
         )}
         <div style={{ fontSize: '0.72rem', marginTop: '10px', lineHeight: 1.5, ...muted }}>

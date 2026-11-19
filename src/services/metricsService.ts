@@ -1,5 +1,6 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { isUuid } from '../utils/uuid';
+import { MQL_QUALIFIED_MIN } from '../utils/mqlScore';
 import type { 
   RevenueMetrics, 
   FunnelConversionMetrics, 
@@ -292,9 +293,8 @@ export const metricsService = {
       // Etapa 2: Leads Qualificados
       const qualifiedLeadIds = new Set<string>();
       leads.forEach(l => {
-        const isMql = (l.mql_score !== undefined && l.mql_score !== null && l.mql_score >= 50) ||
-          l.mql_level === 'mql' ||
-          l.mql_level === 'sql' ||
+        // MQL de 10% ou mais qualifica; abaixo disso o lead e desqualificado por natureza
+        const isMql = (l.mql_score !== undefined && l.mql_score !== null && l.mql_score >= MQL_QUALIFIED_MIN) ||
           l.is_validated === true;
 
         const isBeyondEntry = l.stage !== 'new_lead' && l.stage !== 'inbox' && l.stage !== 'entrada';

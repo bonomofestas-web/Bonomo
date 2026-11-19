@@ -1,3 +1,5 @@
+import { DateField, Select } from '../ui';
+import { usePresenceContext } from '../../hooks/usePresence';
 import React, { useState, useMemo, useCallback } from 'react';
 import { 
   ChevronDown, Check, 
@@ -160,6 +162,7 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
     linkClientDebutante,
     addDebutanteAccount
   } = useAdminState();
+  usePresenceContext(lead ? { type: 'client', id: lead.id, label: lead.debutanteName } : null);
 
   const [activeTab, setActiveTab] = useState<'ficha' | 'debutante' | 'comercial'>('ficha');
   const [copiedLink, setCopiedLink] = useState(false);
@@ -1151,7 +1154,7 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
               <div style={cardRowStyle}>
                 <span style={cardLabelStyle}>Tipo de Evento</span>
                 <div style={cardValueStyle}>
-                  <select
+                  <Select
                     disabled={readOnly}
                     value={client?.eventType || (lead as any).eventType || ''}
                     onChange={(e) => {
@@ -1171,7 +1174,7 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
                     <option value="corporativo">Corporativo</option>
                     <option value="formatura">Formatura</option>
                     <option value="outro">Outro Evento</option>
-                  </select>
+                  </Select>
                 </div>
               </div>
 
@@ -1195,8 +1198,7 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
                 <span style={cardLabelStyle}>Data da Festa</span>
                 <div style={cardValueStyle}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px', width: '100%' }}>
-                    <input
-                      type="date"
+                    <DateField
                       disabled={readOnly}
                       value={partyDateStr ? partyDateStr.split('T')[0] : ''}
                       onChange={(e) => client && updateClient(client.id, { eventDate: e.target.value, partyDate: e.target.value })}
@@ -1257,7 +1259,7 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
               <div style={cardRowStyle}>
                 <span style={cardLabelStyle}>Unidade</span>
                 <div style={cardValueStyle}>
-                  <select
+                  <Select
                     disabled={readOnly}
                     value={client?.venueId || lead.venueId || ''}
                     onChange={(e) => {
@@ -1273,7 +1275,7 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
                     {venues.map(v => (
                       <option key={v.id} value={v.id}>{v.name}</option>
                     ))}
-                  </select>
+                  </Select>
                 </div>
               </div>
             </div>
@@ -1479,7 +1481,7 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
                   <span style={{ fontSize: '0.74rem', color: '#F59E0B', fontWeight: 700 }}>
                     {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(installmentsRemaining)}
                   </span>
-                  <select
+                  <Select
                     disabled={readOnly}
                     value={installmentsCount}
                     onChange={(e) => client && updateClient(client.id, { contractInstallmentsCount: Number(e.target.value) || 10 })}
@@ -1497,7 +1499,7 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
                     {[1,2,3,4,5,6,7,8,9,10,12,14,15,18,20,24].map(n => (
                       <option key={n} value={n}>{n}x</option>
                     ))}
-                  </select>
+                  </Select>
                   {installmentsCount > 1 && installmentsRemaining > 0 && (
                     <span style={{ fontSize: '0.62rem', color: 'var(--adm-text-muted)', whiteSpace: 'nowrap' }}>
                       ({new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(parcelValue)}/mês)
@@ -1889,7 +1891,7 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
                 />
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
-                  <select
+                  <Select
                     value={newContactRole}
                     onChange={(e) => setNewContactRole(e.target.value as any)}
                     style={{
@@ -1907,7 +1909,7 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
                     <option value="guardian">Responsável Legal</option>
                     <option value="dependent">Dependente Familiar</option>
                     <option value="other">Outro Contato</option>
-                  </select>
+                  </Select>
 
                   <input
                     type="text"

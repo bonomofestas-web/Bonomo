@@ -1,3 +1,4 @@
+import { DateField, Select } from '../ui';
 import React, { useState, useMemo } from 'react';
 import { HeaderActions } from './HeaderActions';
 import { 
@@ -665,7 +666,7 @@ export const AdminAppointmentsView: React.FC<AdminAppointmentsViewProps> = ({ on
             {/* Seletor de Casa */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <Building2 size={15} color="#64748B" />
-              <select
+              <Select
                 value={selectedVenueFilter}
                 onChange={(e) => setSelectedVenueFilter(e.target.value)}
                 style={{
@@ -683,11 +684,11 @@ export const AdminAppointmentsView: React.FC<AdminAppointmentsViewProps> = ({ on
                 {venues.map(v => (
                   <option key={v.id} value={v.id}>{v.name}</option>
                 ))}
-              </select>
+              </Select>
             </div>
 
             {/* Seletor de Status */}
-            <select
+            <Select
               value={selectedStatusFilter}
               onChange={(e) => setSelectedStatusFilter(e.target.value)}
               style={{
@@ -708,10 +709,10 @@ export const AdminAppointmentsView: React.FC<AdminAppointmentsViewProps> = ({ on
               <option value="no_show">Não Compareceram</option>
               <option value="rescheduled">Reagendados</option>
               <option value="cancelled">Cancelados</option>
-            </select>
+            </Select>
 
             {/* Seletor de Categoria */}
-            <select
+            <Select
               value={selectedTypeFilter}
               onChange={(e) => setSelectedTypeFilter(e.target.value)}
               style={{
@@ -728,7 +729,7 @@ export const AdminAppointmentsView: React.FC<AdminAppointmentsViewProps> = ({ on
               <option value="all">Todas as Categorias</option>
               <option value="visit">Visitas Comerciais</option>
               <option value="tasting">Degustações</option>
-            </select>
+            </Select>
           </div>
         </div>
 
@@ -742,8 +743,7 @@ export const AdminAppointmentsView: React.FC<AdminAppointmentsViewProps> = ({ on
             borderTop: '1px solid var(--adm-border, #E2E8F0)',
           }}>
             <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#64748B' }}>De:</span>
-            <input
-              type="date"
+            <DateField
               value={customStartDate}
               onChange={(e) => setCustomStartDate(e.target.value)}
               style={{
@@ -754,8 +754,7 @@ export const AdminAppointmentsView: React.FC<AdminAppointmentsViewProps> = ({ on
               }}
             />
             <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#64748B' }}>Até:</span>
-            <input
-              type="date"
+            <DateField
               value={customEndDate}
               onChange={(e) => setCustomEndDate(e.target.value)}
               style={{
@@ -1328,8 +1327,7 @@ export const AdminAppointmentsView: React.FC<AdminAppointmentsViewProps> = ({ on
                   <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 700, color: '#64748B', marginBottom: '4px' }}>
                     Data do Agendamento:
                   </label>
-                  <input
-                    type="date"
+                  <DateField
                     value={editDate}
                     onChange={(e) => setEditDate(e.target.value)}
                     style={{
@@ -1368,7 +1366,7 @@ export const AdminAppointmentsView: React.FC<AdminAppointmentsViewProps> = ({ on
                   <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 700, color: '#64748B', marginBottom: '4px' }}>
                     Closer Responsável:
                   </label>
-                  <select
+                  <Select
                     value={editCloserId}
                     onChange={(e) => setEditCloserId(e.target.value)}
                     style={{
@@ -1384,13 +1382,13 @@ export const AdminAppointmentsView: React.FC<AdminAppointmentsViewProps> = ({ on
                     {collaborators.map(c => (
                       <option key={c.id} value={c.id}>{c.name}</option>
                     ))}
-                  </select>
+                  </Select>
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 700, color: '#64748B', marginBottom: '4px' }}>
                     Status do Agendamento:
                   </label>
-                  <select
+                  <Select
                     value={editStatus}
                     onChange={(e) => setEditStatus(e.target.value as any)}
                     style={{
@@ -1408,7 +1406,7 @@ export const AdminAppointmentsView: React.FC<AdminAppointmentsViewProps> = ({ on
                     <option value="no_show">Não Compareceu</option>
                     <option value="rescheduled">Reagendado</option>
                     <option value="cancelled">Cancelado</option>
-                  </select>
+                  </Select>
                 </div>
               </div>
 

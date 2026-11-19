@@ -43,6 +43,13 @@ export const AdminDevFeatureFlagsView: React.FC = () => {
       category: 'Comercial & CRM',
       status: featureFlags.goals || 'active',
     },
+    {
+      id: 'team_presence',
+      name: 'Presença ao vivo da equipe',
+      description: 'Mostra quem está online e no que está trabalhando. Desligue para parar toda gravação e leitura de presença (economia de banda).',
+      category: 'Administrativo',
+      status: featureFlags.team_presence || 'active',
+    },
   ];
 
   const handleStatusChange = (id: FeatureFlagId, status: FeatureFlagStatus, name: string) => {
@@ -56,6 +63,7 @@ export const AdminDevFeatureFlagsView: React.FC = () => {
       case 'master_dashboard': return <Crown size={20} color="#14A9D7" />;
       case 'commercial_dashboard': return <Sliders size={20} color="#10B981" />;
       case 'goals': return <Sliders size={20} color="#F59E0B" />;
+      case 'team_presence': return <Sliders size={20} color="#10B981" />;
       default: return <Sliders size={20} color="#14A9D7" />;
     }
   };

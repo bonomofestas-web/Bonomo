@@ -1,3 +1,4 @@
+import { DateField } from '../ui';
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Send, MessageSquare, Sparkles, 
@@ -1080,8 +1081,7 @@ export const AdminCrmWorkspaceView: React.FC<AdminCrmWorkspaceViewProps> = ({
                       outline: 'none',
                     }}
                   />
-                  <input
-                    type="date"
+                  <DateField
                     value={quickTaskDueDate}
                     onChange={(e) => setQuickTaskDueDate(e.target.value)}
                     style={{

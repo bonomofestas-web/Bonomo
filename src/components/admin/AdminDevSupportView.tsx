@@ -1,3 +1,4 @@
+import { Select } from '../ui';
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { 
   Headset, Search, Send, Image as ImageIcon, Video, 
@@ -538,7 +539,7 @@ export const AdminDevSupportView: React.FC = () => {
           {/* Seletor de Setor Moderno */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
             <span style={{ fontSize: '0.74rem', color: colors.textSubtitle, fontWeight: 600 }}>Setor:</span>
-            <select
+            <Select
               value={moduleFilter}
               onChange={(e) => setModuleFilter(e.target.value)}
               style={{
@@ -561,14 +562,14 @@ export const AdminDevSupportView: React.FC = () => {
               <option value="collaborators" style={{ background: colors.toolbarBg, color: colors.textTitle }}>Colaboradores</option>
               <option value="whatsapp" style={{ background: colors.toolbarBg, color: colors.textTitle }}>WhatsApp</option>
               <option value="other" style={{ background: colors.toolbarBg, color: colors.textTitle }}>Outros</option>
-            </select>
+            </Select>
           </div>
 
           {/* Seletor de Status (visível no modo Lista) */}
           {viewMode === 'list' && (
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <span style={{ fontSize: '0.74rem', color: colors.textSubtitle, fontWeight: 600 }}>Status:</span>
-              <select
+              <Select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
                 style={{
@@ -587,7 +588,7 @@ export const AdminDevSupportView: React.FC = () => {
                 <option value="new" style={{ background: colors.toolbarBg, color: colors.textTitle }}>Novos</option>
                 <option value="in_progress" style={{ background: colors.toolbarBg, color: colors.textTitle }}>Em Andamento</option>
                 <option value="resolved" style={{ background: colors.toolbarBg, color: colors.textTitle }}>Resolvidos</option>
-              </select>
+              </Select>
             </div>
           )}
 

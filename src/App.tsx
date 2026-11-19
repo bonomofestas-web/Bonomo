@@ -607,10 +607,17 @@ const RootAppRouter: React.FC = () => {
   );
 };
 
+// Unico Toaster do app (antes havia outro dentro do AdminPortal e toda notificacao saia duplicada).
+// Le o tema do portal para combinar com o restante da interface.
+const AppToaster: React.FC = () => {
+  const { theme } = useAdminState();
+  return <Toaster position="top-right" richColors closeButton theme={theme === 'light' ? 'light' : 'dark'} />;
+};
+
 export default function App() {
   return (
     <AdminStateProvider>
-      <Toaster position="top-right" richColors closeButton />
+      <AppToaster />
       <RootAppRouter />
     </AdminStateProvider>
   );

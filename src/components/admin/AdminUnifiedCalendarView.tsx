@@ -1,3 +1,4 @@
+import { DateField, Select } from '../ui';
 import React, { useState, useMemo } from 'react';
 import { 
   Calendar as CalendarIcon, Clock, Plus, 
@@ -449,7 +450,7 @@ export const AdminUnifiedCalendarView: React.FC<AdminUnifiedCalendarViewProps> =
               padding: '4px 10px',
             }}>
               <Users size={14} color="var(--adm-accent)" />
-              <select
+              <Select
                 value={selectedMemberFilter}
                 onChange={(e) => setSelectedMemberFilter(e.target.value)}
                 style={{
@@ -468,7 +469,7 @@ export const AdminUnifiedCalendarView: React.FC<AdminUnifiedCalendarViewProps> =
                     {c.name} {c.id === currentUser?.id ? '(Você)' : ''}
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
           )}
 
@@ -483,7 +484,7 @@ export const AdminUnifiedCalendarView: React.FC<AdminUnifiedCalendarViewProps> =
             padding: '4px 10px',
           }}>
             <Building2 size={14} color="var(--adm-accent)" />
-            <select
+            <Select
               value={activeVenueId || 'all'}
               onChange={(e) => setActiveVenueId(e.target.value)}
               style={{
@@ -500,7 +501,7 @@ export const AdminUnifiedCalendarView: React.FC<AdminUnifiedCalendarViewProps> =
               {venues.map(v => (
                 <option key={v.id} value={v.id} style={{ background: '#1A1622' }}>{v.name}</option>
               ))}
-            </select>
+            </Select>
           </div>
 
           {/* Toggle Mês / Lista Semanal */}
@@ -1295,7 +1296,7 @@ export const AdminUnifiedCalendarView: React.FC<AdminUnifiedCalendarViewProps> =
                   <label style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase' }}>
                     Selecionar Lead da Esteira Comercial:
                   </label>
-                  <select
+                  <Select
                     value={formSelectedLeadId}
                     onChange={(e) => setFormSelectedLeadId(e.target.value)}
                     style={{
@@ -1316,7 +1317,7 @@ export const AdminUnifiedCalendarView: React.FC<AdminUnifiedCalendarViewProps> =
                         {l.name} • {l.phone} {l.venueName ? `(${l.venueName})` : ''}
                       </option>
                     ))}
-                  </select>
+                  </Select>
                 </div>
               )}
 
@@ -1326,7 +1327,7 @@ export const AdminUnifiedCalendarView: React.FC<AdminUnifiedCalendarViewProps> =
                   <label style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase' }}>
                     Selecionar Aniversariante / Cliente:
                   </label>
-                  <select
+                  <Select
                     value={formSelectedDebutanteId}
                     onChange={(e) => setFormSelectedDebutanteId(e.target.value)}
                     style={{
@@ -1347,7 +1348,7 @@ export const AdminUnifiedCalendarView: React.FC<AdminUnifiedCalendarViewProps> =
                         {d.name} • Festa: {d.partyDate}
                       </option>
                     ))}
-                  </select>
+                  </Select>
                 </div>
               )}
 
@@ -1381,8 +1382,7 @@ export const AdminUnifiedCalendarView: React.FC<AdminUnifiedCalendarViewProps> =
                   <label style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase' }}>
                     Data:
                   </label>
-                  <input
-                    type="date"
+                  <DateField
                     value={formDate}
                     onChange={(e) => setFormDate(e.target.value)}
                     required
@@ -1431,7 +1431,7 @@ export const AdminUnifiedCalendarView: React.FC<AdminUnifiedCalendarViewProps> =
                   <label style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase' }}>
                     Unidade:
                   </label>
-                  <select
+                  <Select
                     value={formVenueId || ''}
                     onChange={(e) => {
                       setFormVenueId(e.target.value);
@@ -1453,14 +1453,14 @@ export const AdminUnifiedCalendarView: React.FC<AdminUnifiedCalendarViewProps> =
                     {venues.map(v => (
                       <option key={v.id} value={v.id}>{v.name}</option>
                     ))}
-                  </select>
+                  </Select>
                 </div>
 
                 <div>
                   <label style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase' }}>
                     Responsável:
                   </label>
-                  <select
+                  <Select
                     value={formResponsibleId}
                     onChange={(e) => setFormResponsibleId(e.target.value)}
                     style={{
@@ -1478,7 +1478,7 @@ export const AdminUnifiedCalendarView: React.FC<AdminUnifiedCalendarViewProps> =
                     {collaborators.map(c => (
                       <option key={c.id} value={c.id}>{c.name} ({c.role})</option>
                     ))}
-                  </select>
+                  </Select>
                 </div>
               </div>
 

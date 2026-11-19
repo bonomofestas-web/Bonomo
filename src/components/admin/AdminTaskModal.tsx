@@ -1,3 +1,4 @@
+import { DateField } from '../ui';
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   X, CheckSquare, 
@@ -390,8 +391,7 @@ export const AdminTaskModal: React.FC<AdminTaskModalProps> = ({
                     </button>
                   </div>
                 </div>
-                <input
-                  type="date"
+                <DateField
                   required
                   value={dueDate}
                   onChange={(e) => setDueDate(e.target.value)}

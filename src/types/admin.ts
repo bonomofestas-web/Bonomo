@@ -23,7 +23,8 @@ export type AdminRole =
 export type FeatureFlagId =
   | 'master_dashboard'
   | 'commercial_dashboard'
-  | 'goals';
+  | 'goals'
+  | 'team_presence';
 
 export type FeatureFlagStatus = 'active' | 'coming_soon' | 'disabled';
 
@@ -76,8 +77,8 @@ export interface AdminUser {
   activatedAt?: string;
   lastLoginAt?: string;
   masterId?: string; // ID da conta Master proprietária (caso subordinado)
-  sectors?: ('comercial' | 'pos_venda' | 'gerencia' | 'financeiro')[];
-  primarySector?: 'comercial' | 'pos_venda' | 'gerencia' | 'financeiro';
+  sectors?: ('comercial' | 'pos_venda' | 'gerencia' | 'financeiro' | 'marketing')[];
+  primarySector?: 'comercial' | 'pos_venda' | 'gerencia' | 'financeiro' | 'marketing';
   permissions?: string[];
   pinnedFunnelIds?: string[];
   customJobTitle?: string; // Título / Cargo executivo personalizado
@@ -99,9 +100,10 @@ export interface Collaborator {
   lastLoginAt?: string;
   password?: string;
   customJobTitle?: string; // Cargo/Título executivo customizado (ex: 'Coordenador Geral', 'Líder Comercial')
-  department?: 'diretoria' | 'gerencia' | 'comercial' | 'pos_venda' | 'financeiro';
-  sectors?: ('comercial' | 'pos_venda' | 'gerencia' | 'financeiro')[]; // Setores que o colaborador participa
-  primarySector?: 'comercial' | 'pos_venda' | 'gerencia' | 'financeiro'; // Setor prioritário de abertura
+  jobRoles?: string[]; // Cargos por setor ('comercial:sdr', 'comercial:closer', 'comercial:gerente', 'gerencia:gerente_geral'...). Acesso = sectors; cargo = jobRoles
+  department?: 'diretoria' | 'gerencia' | 'comercial' | 'pos_venda' | 'financeiro' | 'marketing';
+  sectors?: ('comercial' | 'pos_venda' | 'gerencia' | 'financeiro' | 'marketing')[]; // Setores que o colaborador participa
+  primarySector?: 'comercial' | 'pos_venda' | 'gerencia' | 'financeiro' | 'marketing'; // Setor prioritário de abertura
   permissions?: string[]; // Permissões e metadados persistidos no Supabase
   pinnedFunnelIds?: string[]; // IDs dos funis fixados no menu lateral pelo usuário
   theme?: ThemeMode;
@@ -501,8 +503,38 @@ export interface MqlOption {
   situation?: MqlOptionSituation;
 }
 
+/** Copia congelada do MQL no momento em que o lead foi respondido (editar/apagar o MQL nao altera o lead). */
+export interface MqlSnapshotQuestion {
+  id: string;
+  title: string;
+  description?: string;
+  options: MqlOption[];
+}
+
+export interface MqlSnapshot {
+  profileId?: string;
+  profileName?: string;
+  capturedAt: string; // ISO
+  questions: MqlSnapshotQuestion[];
+}
+
+/** Perfil de qualificacao: nome, autor, data e funis vinculados (1 funil = 1 perfil). */
+export interface MqlProfile {
+  id: string;
+  masterId: string;
+  name: string;
+  isActive: boolean;
+  createdById?: string;
+  createdByName?: string;
+  createdAt: string;
+  updatedAt?: string;
+  funnelIds: string[];
+}
+
 export interface MqlQuestion {
   id: string;
+  profileId?: string; // perfil de qualificacao dono da pergunta
+  masterId?: string;
   venueId?: string;
   venueIds?: string[]; // IDs de múltiplas casas de festa vinculadas (legado)
   funnelId?: string; // ID do funil vinculado
@@ -574,6 +606,7 @@ export interface Lead {
   mqlScore?: number;               // Porcentagem calculada (0 a 100%)
   mqlLevel?: LeadMqlLevel;         // 'top' (🟢 Top) | 'qualified' (🟡 Qualificado) | 'cold' (🔴 Frio)
   mqlAnswers?: Record<string, string>; // questionId -> optionId
+  mqlSnapshot?: MqlSnapshot;       // MQL da epoca em que o lead foi respondido (imutavel por edicao do MQL)
 
   // Campos Customizados definidos pelo Funil
   customFieldValues?: Record<string, any>;

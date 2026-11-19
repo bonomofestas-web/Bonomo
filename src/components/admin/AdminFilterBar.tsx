@@ -1,3 +1,4 @@
+import { DateField } from '../ui';
 import React, { useState, useRef, useEffect } from 'react';
 import { 
   Calendar, Building2, UserCheck, Users, Clock, 
@@ -288,8 +289,7 @@ export const AdminFilterBar: React.FC<AdminFilterBarProps> = ({
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '10px' }}>
                     <div>
                       <label style={{ fontSize: '0.64rem', color: 'var(--adm-text-muted)', display: 'block', marginBottom: '3px' }}>De:</label>
-                      <input
-                        type="date"
+                      <DateField
                         value={tempStartDate}
                         onChange={(e) => setTempStartDate(e.target.value)}
                         style={{
@@ -307,8 +307,7 @@ export const AdminFilterBar: React.FC<AdminFilterBarProps> = ({
                     </div>
                     <div>
                       <label style={{ fontSize: '0.64rem', color: 'var(--adm-text-muted)', display: 'block', marginBottom: '3px' }}>Até:</label>
-                      <input
-                        type="date"
+                      <DateField
                         value={tempEndDate}
                         onChange={(e) => setTempEndDate(e.target.value)}
                         style={{

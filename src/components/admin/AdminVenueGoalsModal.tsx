@@ -1,3 +1,4 @@
+import { DateField, Select } from '../ui';
 import React, { useState, useEffect } from 'react';
 import { X, Target, DollarSign, Award, Users, Clock, Check, Building2 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
@@ -268,7 +269,7 @@ export const AdminVenueGoalsModal: React.FC<AdminVenueGoalsModalProps> = ({
               <label style={labelStyle}>
                 <span>Ciclo / Periodicidade</span>
               </label>
-              <select
+              <Select
                 value={period}
                 onChange={(e) => setPeriod(e.target.value as any)}
                 style={{ ...inputStyle, fontWeight: 600, fontSize: '0.84rem' }}
@@ -276,15 +277,14 @@ export const AdminVenueGoalsModal: React.FC<AdminVenueGoalsModalProps> = ({
                 <option value="monthly">Mensal (Padrão)</option>
                 <option value="quarterly">Trimestral</option>
                 <option value="yearly">Anual</option>
-              </select>
+              </Select>
             </div>
 
             <div>
               <label style={labelStyle}>
                 <span>Data Limite / Fechamento</span>
               </label>
-              <input
-                type="date"
+              <DateField
                 value={deadlineDate}
                 onChange={(e) => setDeadlineDate(e.target.value)}
                 style={{ ...inputStyle, fontSize: '0.84rem' }}

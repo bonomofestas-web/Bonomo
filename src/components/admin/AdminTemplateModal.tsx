@@ -1,3 +1,4 @@
+import { Select } from '../ui';
 import React, { useState, useEffect } from 'react';
 import { 
   X, Sparkles, Gift, Crown, Save, Trash2, Eye
@@ -315,7 +316,7 @@ export const AdminTemplateModal: React.FC<AdminTemplateModalProps> = ({
                 </div>
 
                 {/* Select from catalog */}
-                <select
+                <Select
                   value=""
                   onChange={(e) => {
                     handleAddMilestoneFromCatalog(e.target.value);
@@ -337,7 +338,7 @@ export const AdminTemplateModal: React.FC<AdminTemplateModalProps> = ({
                   {benefitsCatalog.map(b => (
                     <option key={b.id} value={b.id}>{b.name} ({b.pointsRequired} pts)</option>
                   ))}
-                </select>
+                </Select>
               </div>
 
               {milestones.length === 0 ? (
@@ -446,7 +447,7 @@ export const AdminTemplateModal: React.FC<AdminTemplateModalProps> = ({
                   </p>
                 </div>
 
-                <select
+                <Select
                   value=""
                   onChange={(e) => {
                     handleAddVipFromCatalog(e.target.value);
@@ -468,7 +469,7 @@ export const AdminTemplateModal: React.FC<AdminTemplateModalProps> = ({
                   {vipCatalog.map(v => (
                     <option key={v.id} value={v.id}>{v.name} ({v.salesRequired} vendas)</option>
                   ))}
-                </select>
+                </Select>
               </div>
 
               {vipRewards.length === 0 ? (

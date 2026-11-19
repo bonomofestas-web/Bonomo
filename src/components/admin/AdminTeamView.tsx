@@ -1,3 +1,5 @@
+import { Select } from '../ui';
+import { useJobRoleCatalog } from '../../hooks/useJobRoleCatalog';
 import { animateList } from '../../utils/animateList';
 import { HeaderActions } from './HeaderActions';
 import React, { useState, useMemo } from 'react';
@@ -30,6 +32,7 @@ const HIERARCHY_ORDER: Record<string, number> = {
 
 export const AdminTeamView: React.FC = () => {
   const { collaborators, venues, currentUser, activeVenueId } = useAdminState();
+  const { titleOf: roleTitleOf } = useJobRoleCatalog(currentUser?.masterId || currentUser?.id);
   const [selectedVenueFilter, setSelectedVenueFilter] = useState<string>(activeVenueId || 'all');
   const [collabForInviteModal, setCollabForInviteModal] = useState<Collaborator | null>(null);
 
@@ -102,7 +105,7 @@ export const AdminTeamView: React.FC = () => {
         {venues.length > 1 && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Building2 size={15} color="#94A3B8" />
-            <select
+            <Select
               value={selectedVenueFilter}
               onChange={(e) => setSelectedVenueFilter(e.target.value)}
               style={{
@@ -120,7 +123,7 @@ export const AdminTeamView: React.FC = () => {
               {venues.map(v => (
                 <option key={v.id} value={v.id}>{v.name}</option>
               ))}
-            </select>
+            </Select>
           </div>
         )}
       </HeaderActions>
@@ -242,14 +245,14 @@ export const AdminTeamView: React.FC = () => {
 
                 <div style={{
                   fontSize: '0.74rem',
-                  color: collab.customJobTitle ? 'var(--adm-accent)' : 'var(--adm-text-muted)',
+                  color: roleTitleOf(collab) ? 'var(--adm-accent)' : 'var(--adm-text-muted)',
                   fontWeight: 600,
                   whiteSpace: 'nowrap',
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',
                   marginTop: '2px',
-                }} title={collab.customJobTitle ? undefined : 'Cargo não cadastrado. Exibindo nível de acesso.'}>
-                  {collab.customJobTitle || roleConfig.label}
+                }} title={roleTitleOf(collab) ? undefined : 'Cargo não cadastrado. Exibindo nível de acesso.'}>
+                  {roleTitleOf(collab) || roleConfig.label}
                 </div>
               </div>
 

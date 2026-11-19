@@ -1,3 +1,4 @@
+import { Select } from '../ui';
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   FileText, CheckCircle2, Search, Building2,
@@ -446,7 +447,7 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
           {venues.length > 1 && (
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <Building2 size={14} color={colors.textMuted} />
-              <select
+              <Select
                 value={selectedVenueFilter}
                 onChange={e => setSelectedVenueFilter(e.target.value)}
                 style={{
@@ -463,7 +464,7 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
                 {venues.map(v => (
                   <option key={v.id} value={v.id}>{v.name}</option>
                 ))}
-              </select>
+              </Select>
             </div>
           )}
 

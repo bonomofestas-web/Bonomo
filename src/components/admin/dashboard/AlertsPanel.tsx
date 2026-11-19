@@ -1,10 +1,12 @@
 import React from 'react';
 import { AlertOctagon, AlertTriangle, CheckCircle2 } from 'lucide-react';
-import { Panel, SectionTitle, formatMinutes } from './DashboardKpi';
+import { formatMinutes } from './DashboardKpi';
 import { getPacingLevel } from './PacingThermometer';
 import type { CommercialDashboardData } from '../../../hooks/useCommercialDashboardData';
 
-interface Alert { id: string; level: 'critical' | 'warning'; text: string }
+interface Alert { id: string; level: 'critical' | 'warning' | 'positive'; text: string }
+
+const LEVEL_ORDER: Record<Alert['level'], number> = { critical: 0, warning: 1, positive: 2 };
 
 export const buildAlerts = (d: CommercialDashboardData): Alert[] => {
   const out: Alert[] = [];
@@ -15,6 +17,23 @@ export const buildAlerts = (d: CommercialDashboardData): Alert[] => {
     out.push({
       id: 'pacing', level: pacing === 'red' ? 'critical' : 'warning',
       text: `Faturamento em ${d.pacing.pct ?? 0}% da meta com ${expectedPct}% do período decorrido.`,
+    });
+  } else if (pacing === 'green' && d.pacing.target > 0) {
+    out.push({
+      id: 'pacing', level: 'positive',
+      text: `Faturamento em ${d.pacing.pct ?? 0}% da meta, dentro do ritmo esperado (${expectedPct}% do período).`,
+    });
+  }
+  if (d.kpis.closings.pct !== null && d.kpis.closings.pct >= 30 && d.kpis.closings.previous >= 3) {
+    out.push({
+      id: 'closings-up', level: 'positive',
+      text: `Contratos fechados subiram ${Math.round(d.kpis.closings.pct)}% contra o período comparado.`,
+    });
+  }
+  if (d.deep.showRate.current !== null && d.deep.showRate.sample >= 5 && d.deep.showRate.current >= 80) {
+    out.push({
+      id: 'show-good', level: 'positive',
+      text: `Comparecimento em ${Math.round(d.deep.showRate.current)}% dos agendamentos finalizados.`,
     });
   }
 
@@ -78,35 +97,36 @@ export const buildAlerts = (d: CommercialDashboardData): Alert[] => {
     }
   });
 
-  return out.sort((a, b) => (a.level === b.level ? 0 : a.level === 'critical' ? -1 : 1));
+  return out.sort((a, b) => LEVEL_ORDER[a.level] - LEVEL_ORDER[b.level]);
 };
 
+const LEVEL_STYLE: Record<Alert['level'], { color: string; Icon: typeof AlertOctagon }> = {
+  critical: { color: '#EF4444', Icon: AlertOctagon },
+  warning: { color: '#F59E0B', Icon: AlertTriangle },
+  positive: { color: '#10B981', Icon: CheckCircle2 },
+};
+
+/** Faixa de alertas sem titulo: o proprio icone/cor comunica o nivel (positivo, mediano, negativo). */
 export const AlertsPanel: React.FC<{ data: CommercialDashboardData }> = ({ data }) => {
   const alerts = buildAlerts(data);
+  const shown: Alert[] = alerts.length === 0
+    ? [{ id: 'none', level: 'positive', text: 'Nenhum alerta no período.' }]
+    : alerts;
   return (
-    <Panel>
-      <SectionTitle hint="Gerados automaticamente a partir das metas e do período">Alertas</SectionTitle>
-      {alerts.length === 0 ? (
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8rem', color: '#10B981', fontWeight: 700 }}>
-          <CheckCircle2 size={16} /> Nenhum alerta no período.
-        </div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          {alerts.map(a => {
-            const color = a.level === 'critical' ? '#EF4444' : '#F59E0B';
-            const Icon = a.level === 'critical' ? AlertOctagon : AlertTriangle;
-            return (
-              <div key={a.id} style={{
-                display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '9px 12px', borderRadius: '10px',
-                border: `1px solid ${color}55`, background: `${color}14`, fontSize: '0.78rem', color: 'var(--adm-text-title)',
-              }}>
-                <Icon size={15} color={color} style={{ flexShrink: 0, marginTop: '2px' }} />
-                <span>{a.text}</span>
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </Panel>
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+      {shown.map(a => {
+        const { color, Icon } = LEVEL_STYLE[a.level];
+        return (
+          <div key={a.id} title={a.text} style={{
+            display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '7px 12px', borderRadius: '999px',
+            border: `1px solid ${color}55`, background: `${color}14`, fontSize: '0.76rem', color: 'var(--adm-text-title)',
+            maxWidth: '100%',
+          }}>
+            <Icon size={15} color={color} style={{ flexShrink: 0 }} />
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.text}</span>
+          </div>
+        );
+      })}
+    </div>
   );
 };

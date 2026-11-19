@@ -1,821 +1,738 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import { Select } from '../ui';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
-import { goalsService, type VenueGoalRecord } from '../../services/goalsService';
-import { metricsService } from '../../services/metricsService';
-import { getGoalStatus, goalPercent } from '../../utils/goalStatus';
-import { HeaderActions } from './HeaderActions';
-import { 
-  Target, DollarSign, Award, Users, Clock, 
-  Plus, Calendar,
-  TrendingUp, Edit3, X
+import {
+  AlertTriangle, Building2, CalendarRange, History, Lock, Pencil, Plus, Repeat, Target, Trash2, Users, X, Zap,
 } from 'lucide-react';
+import { HeaderActions } from './HeaderActions';
 import { useAdminState } from '../../context/AdminStateContext';
-import { AdminCollaboratorGoalsModal } from './AdminCollaboratorGoalsModal';
-import { AdminGoalsNetworkPanel } from './AdminGoalsNetworkPanel';
-import type { VenueGoals, TeamGoals, Collaborator } from '../../types/admin';
+import { goalsService } from '../../services/goalsService';
+import {
+  GOAL_KIND_LABEL, GOAL_METRICS, GOAL_METRIC_LABEL, PERIOD_FIELD, endForKind, fromISO, goalMetricDef, goalPlanService, periodTarget, todayISO, toISO,
+  type CollaboratorGoal, type GoalPeriod, type GoalResult, type GoalStatus,
+} from '../../services/goalPlanService';
+import { summarizeVenueResponseWindow, type ResponderStats, type ResponseWindowStats } from '../../services/responseTimeService';
+import { ADDITIVE_METRICS, collaboratorActual, computeGoalActuals, goalPct, venueActual, type GoalMetricKey } from '../../utils/goalActuals';
+import { useGoalRollover } from '../../hooks/useGoalRollover';
+import type { Collaborator } from '../../types/admin';
+import { getCommercialRolesInVenue, type FunnelMemberRoles } from '../../utils/funnelResponsibility';
+import { GoalWizard, type WizardResult } from './goals/GoalWizard';
+import { CollaboratorGoalsModal } from './goals/CollaboratorGoalsModal';
+import {
+  MetricChip, ProgressBar, StatusChip, UnitBadge, barColor, card, eyebrow, formatMetricValue,
+} from './goals/GoalUi';
 
-type GoalType = 'sales' | 'revenue' | 'leads' | 'visits';
+/** Atalho vindo da tela Colaboradores: abre a aba Equipe ja com o modal da pessoa. */
+export const GOALS_COLLAB_KEY = 'f5:goals-collab';
 
-interface GoalCardConfig {
-  id: string;
-  type: GoalType;
-  title: string;
-  subtitle: string;
-  icon: React.ReactNode;
-  iconColor: string;
-  iconBg: string;
-  currentValue: number;
-  targetValue: number;
-  unit: string;
-  prefix?: string;
-  deadline?: string;
-}
+const roleText = (r?: FunnelMemberRoles): string => (r?.sdr && r?.closer ? 'SDR e Closer' : r?.closer ? 'Closer' : 'SDR');
+const UNIT_COLORS = ['#14A9D7', '#D4AF37', '#8B5CF6', '#10B981', '#F59E0B', '#EC4899', '#06B6D4'];
+const fmtDate = (iso: string) => fromISO(iso).toLocaleDateString('pt-BR');
+const firstOfMonth = () => { const n = new Date(); return toISO(new Date(n.getFullYear(), n.getMonth(), 1)); };
 
-interface TeamGoalCardProps {
-  role: 'sdr' | 'closer';
-  goal: TeamGoals;
-  progress: { revenue: number; closings: number; appointments: number };
-  onSave: (goal: TeamGoals) => Promise<void>;
-}
-
-const TeamGoalCard: React.FC<TeamGoalCardProps> = ({ role, goal, progress, onSave }) => {
-  const [draft, setDraft] = useState({
-    revenue: String(goal.revenueTarget || ''),
-    appointments: String(goal.appointmentsTarget || ''),
-    closings: String(goal.closingsTarget || ''),
-    response: String(goal.responseTimeTargetMinutes || ''),
-  });
-  const [saving, setSaving] = useState(false);
-
-  const num = (v: string) => (v.trim() === '' ? 0 : Number(v));
-
-  // SDR acompanha agendamentos; Closer acompanha faturamento e fechamentos
-  const rows = role === 'sdr'
-    ? [
-        { label: 'Agendamentos', achieved: progress.appointments, target: num(draft.appointments) },
-        { label: 'Participações em fechamento', achieved: progress.closings, target: num(draft.closings) },
-      ]
-    : [
-        { label: 'Faturamento (R$)', achieved: progress.revenue, target: num(draft.revenue), money: true },
-        { label: 'Fechamentos', achieved: progress.closings, target: num(draft.closings) },
-      ];
-
-  const handleSave = async () => {
-    const values = [num(draft.revenue), num(draft.appointments), num(draft.closings), num(draft.response)];
-    if (values.some(v => !Number.isFinite(v) || v < 0)) {
-      toast.warning('Use apenas valores numéricos iguais ou maiores que zero.');
-      return;
-    }
-    setSaving(true);
-    await onSave({
-      ...goal,
-      revenueTarget: values[0],
-      appointmentsTarget: values[1],
-      closingsTarget: values[2],
-      responseTimeTargetMinutes: values[3],
-    });
-    setSaving(false);
-  };
-
-  const field = (label: string, key: keyof typeof draft) => (
-    <div>
-      <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 800, color: 'var(--adm-text-muted)', marginBottom: '4px' }}>{label}</label>
-      <input
-        type="number"
-        min="0"
-        value={draft[key]}
-        onChange={e => setDraft(d => ({ ...d, [key]: e.target.value }))}
-        className="adm-input"
-        style={{ width: '100%', height: '36px', borderRadius: '8px', fontSize: '0.82rem' }}
-      />
-    </div>
-  );
-
-  return (
-    <div style={{
-      background: 'var(--adm-bg-card)', border: '1px solid var(--adm-border)', borderRadius: '16px',
-      padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: '14px',
-    }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-        <Users size={18} color="var(--adm-accent)" />
-        <span style={{ fontSize: '0.95rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
-          {role === 'sdr' ? 'Equipe SDR' : 'Equipe Closer'}
-        </span>
-      </div>
-
-      {rows.map(r => {
-        const pct = goalPercent(r.achieved, r.target);
-        const st = getGoalStatus(pct);
-        return (
-          <div key={r.label} style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.76rem', fontVariantNumeric: 'tabular-nums' }}>
-              <span style={{ color: 'var(--adm-text-muted)', fontWeight: 700 }}>{r.label}</span>
-              <span style={{ color: st.color, fontWeight: 800 }}>
-                {r.money ? `R$ ${r.achieved.toLocaleString('pt-BR')}` : r.achieved} / {r.money ? `R$ ${r.target.toLocaleString('pt-BR')}` : r.target}
-                {pct !== null ? ` · ${pct}%` : ''}
-              </span>
-            </div>
-            <div style={{ height: '6px', borderRadius: '3px', background: 'var(--adm-bg-input)', overflow: 'hidden' }}>
-              <div style={{ width: `${Math.min(100, pct ?? 0)}%`, height: '100%', background: st.color, transition: 'width 0.3s ease' }} />
-            </div>
-          </div>
-        );
-      })}
-
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-        {role === 'closer' ? field('Meta de faturamento (R$)', 'revenue') : field('Meta de agendamentos', 'appointments')}
-        {field('Meta de fechamentos', 'closings')}
-        {field('1ª resposta máx. (min)', 'response')}
-      </div>
-
-      <button
-        type="button"
-        onClick={handleSave}
-        disabled={saving}
-        className="adm-btn-primary"
-        style={{ alignSelf: 'flex-end', padding: '8px 18px', borderRadius: '10px', fontSize: '0.78rem', fontWeight: 800, opacity: saving ? 0.7 : 1 }}
-      >
-        {saving ? 'Salvando...' : 'Salvar meta'}
-      </button>
-    </div>
-  );
-};
+type Tab = 'unidade' | 'equipe' | 'historico';
+const TABS: { id: Tab; label: string; Icon: typeof Target }[] = [
+  { id: 'unidade', label: 'Unidade', Icon: Target },
+  { id: 'equipe', label: 'Equipe', Icon: Users },
+  { id: 'historico', label: 'Histórico', Icon: History },
+];
 
 export const AdminVenueGoalsView: React.FC = () => {
-  const { venues, activeVenueId, leads, updateVenue, currentUser, collaborators } = useAdminState();
-  const [collabForGoals, setCollabForGoals] = useState<Collaborator | null>(null);
+  const { venues, activeVenueId, leads, clients, funnels, collaborators, currentUser } = useAdminState();
   const masterId = currentUser?.masterId || currentUser?.id || '';
+  const canEdit = currentUser?.role === 'master' || currentUser?.role === 'admin' || (currentUser as any)?.role === 'manager';
+  const actor = useMemo(() => ({ id: currentUser?.id, name: currentUser?.name }), [currentUser]);
 
-  const isAllVenues = !activeVenueId || activeVenueId === 'all' || activeVenueId === 'multi';
+  const [venueId, setVenueId] = useState<string>(() => (activeVenueId && venues.some(v => v.id === activeVenueId) ? activeVenueId : venues.length > 1 ? 'all' : venues[0]?.id || ''));
+  const scopeAll = venueId === 'all';
+  const [tab, setTab] = useState<Tab>('unidade');
+  const [available, setAvailable] = useState<boolean | null>(null);
+  const [periods, setPeriods] = useState<GoalPeriod[]>([]);
+  const [goals, setGoals] = useState<CollaboratorGoal[]>([]);
+  const [results, setResults] = useState<GoalResult[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedPeriodId, setSelectedPeriodId] = useState<string | null>(null);
+  const [wizard, setWizard] = useState<{ open: boolean; editing?: GoalPeriod }>({ open: false });
+  const [goalsModal, setGoalsModal] = useState<{ open: boolean; collaboratorId?: string }>({ open: false });
+  const [roleFilter, setRoleFilter] = useState<'all' | 'sdr' | 'closer'>('all');
+  const [histCollab, setHistCollab] = useState<string>('all');
+  const [legacyCount, setLegacyCount] = useState(0);
+  const [legacyDismissed, setLegacyDismissed] = useState(false);
+  const [response, setResponse] = useState<{ total: ResponseWindowStats; byResponder: Map<string, ResponderStats> } | null>(null);
 
-  const selectedVenue = useMemo(() => {
-    return venues.find(v => v.id === activeVenueId) || venues[0] || null;
-  }, [venues, activeVenueId]);
-
-  const nowRef = new Date();
-  const goalYear = nowRef.getFullYear();
-  const goalMonth = nowRef.getMonth() + 1;
-
-  // Metas reais do banco (venue_goals do mês) e metas de equipe
-  const [dbVenueGoal, setDbVenueGoal] = useState<VenueGoals | null>(null);
-  const [teamGoals, setTeamGoals] = useState<TeamGoals[]>([]);
-  const [allVenueGoals, setAllVenueGoals] = useState<VenueGoalRecord[]>([]);
-  const [isSaving, setIsSaving] = useState(false);
-
-  const loadGoals = useCallback(async () => {
-    if (!masterId || !selectedVenue) return;
-    const [venueRows, teamRows] = await Promise.all([
-      goalsService.listVenueGoals(masterId, { year: goalYear, month: goalMonth }),
-      goalsService.listTeamGoals(masterId, { venueId: selectedVenue.id, year: goalYear, month: goalMonth }),
-    ]);
-    setAllVenueGoals(venueRows.filter(r => r.period === 'monthly'));
-    setDbVenueGoal(venueRows.find(r => r.venueId === selectedVenue.id && r.period === 'monthly') || null);
-    setTeamGoals(teamRows);
-  }, [masterId, selectedVenue, goalYear, goalMonth]);
+  useEffect(() => { if (!venueId && venues[0]) setVenueId(venues[0].id); }, [venues, venueId]);
 
   useEffect(() => {
-    setDbVenueGoal(null);
-    setTeamGoals([]);
-    loadGoals();
-  }, [loadGoals]);
+    let cancelled = false;
+    goalPlanService.isAvailable().then(ok => { if (!cancelled) setAvailable(ok); });
+    return () => { cancelled = true; };
+  }, []);
 
-  // Modal State for Adding/Editing a Goal
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [modalGoalType, setModalGoalType] = useState<GoalType>('sales');
-  const [modalTargetValue, setModalTargetValue] = useState<number>(15);
-  const [modalDeadlineDate, setModalDeadlineDate] = useState<string>(() => {
-    const endOfMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0);
-    return endOfMonth.toISOString().split('T')[0];
-  });
+  const load = useCallback(async () => {
+    if (!masterId || !venueId) return;
+    const ps = await goalPlanService.listPeriods(masterId, scopeAll ? {} : { venueId });
+    setPeriods(ps);
+    const open = ps.filter(p => p.status !== 'closed').map(p => p.id);
+    setGoals(scopeAll ? [] : await goalPlanService.listCollaboratorGoals(masterId, { venueId, periodIds: open }));
+    setResults(await goalPlanService.listResults(masterId, scopeAll ? {} : { venueId }));
+    setLoading(false);
+  }, [masterId, venueId, scopeAll]);
 
-  // Current Goals Config for the venue
-  // A meta e sempre por unidade; na visao geral ("todas") vale a SOMA das metas das unidades.
-  const endOfMonthISO = new Date(goalYear, goalMonth, 0).toISOString().split('T')[0];
-  const goals: VenueGoals = useMemo(() => {
-    const zero: VenueGoals = {
-      revenueTarget: 0, salesTarget: 0, leadsTarget: 0, appointmentsTarget: 0,
-      responseTimeTargetMinutes: 0, period: 'monthly', deadlineDate: endOfMonthISO,
-    };
-    if (isAllVenues) {
-      const sum = goalsService.sumNetworkGoals(allVenueGoals, venues.map(v => v.id));
-      return sum ? { ...zero, ...sum, period: 'monthly', deadlineDate: endOfMonthISO } : zero;
-    }
-    if (dbVenueGoal) return { ...zero, ...dbVenueGoal };
-    if (selectedVenue?.goals) return { ...zero, ...selectedVenue.goals };
-    return zero;
-  }, [isAllVenues, allVenueGoals, venues, selectedVenue, dbVenueGoal, endOfMonthISO]);
+  useEffect(() => { setLoading(true); setSelectedPeriodId(null); void load(); }, [load]);
+  useGoalRollover(() => { void load(); });
 
-  // Scoped metrics
-  const inCurrentMonth = useCallback((iso?: string) => {
-    if (!iso) return false;
-    const d = new Date(iso);
-    return !Number.isNaN(d.getTime()) && d.getFullYear() === goalYear && d.getMonth() + 1 === goalMonth;
-  }, [goalYear, goalMonth]);
-
-  const scopedLeads = useMemo(() => {
-    if (isAllVenues) return leads;
-    return leads.filter(l => l.venueId === selectedVenue?.id);
-  }, [leads, isAllVenues, selectedVenue]);
-
-  // Apenas o mês corrente: a meta é mensal
-  const monthLeads = useMemo(() => scopedLeads.filter(l => inCurrentMonth(l.createdAt)), [scopedLeads, inCurrentMonth]);
-
-  const soldLeads = useMemo(() => {
-    return scopedLeads.filter(l => l.stage === 'contract_signed' && inCurrentMonth(l.contractDate || l.createdAt));
-  }, [scopedLeads, inCurrentMonth]);
-
-  const totalRevenue = useMemo(() => {
-    return soldLeads.reduce((acc, curr) => acc + (curr.dealValue || 0), 0);
-  }, [soldLeads]);
-
-  const totalSalesCount = soldLeads.length;
-  const totalLeadsCount = monthLeads.length;
-  const meetingLeadsCount = scopedLeads.filter(l => l.stage === 'meeting_scheduled').length;
-
-  // Metas por equipe: realizado por papel no mês
-  const teamProgress = useMemo(() => {
-    const closerLeads = soldLeads.filter(l => l.closerId);
-    return {
-      closer: {
-        revenue: closerLeads.reduce((s, l) => s + (l.dealValue || 0), 0),
-        closings: closerLeads.length,
-        appointments: 0,
-      },
-      sdr: {
-        revenue: 0,
-        closings: soldLeads.filter(l => l.sdrId).length,
-        appointments: scopedLeads.filter(l => l.sdrId && l.stage === 'meeting_scheduled').length,
-      },
-    };
-  }, [soldLeads, scopedLeads]);
-
-  // Build Stacked Goal Cards
-  const goalCards: GoalCardConfig[] = useMemo(() => {
-    return [
-      {
-        id: 'goal_sales',
-        type: 'sales',
-        title: 'Meta de Contratos Fechados',
-        subtitle: 'Número de celebrações e contratos fechados pela equipe',
-        icon: <Award size={22} />,
-        iconColor: '#10B981',
-        iconBg: 'rgba(16, 185, 129, 0.15)',
-        currentValue: totalSalesCount,
-        targetValue: goals.salesTarget || 0,
-        unit: 'contratos',
-        deadline: goals.deadlineDate,
-      },
-      {
-        id: 'goal_revenue',
-        type: 'revenue',
-        title: 'Meta de Faturamento Bruto',
-        subtitle: 'Volume total de faturamento gerado em contratos fechados',
-        icon: <DollarSign size={22} />,
-        iconColor: '#D4AF37',
-        iconBg: 'rgba(212, 175, 55, 0.15)',
-        currentValue: totalRevenue,
-        targetValue: goals.revenueTarget || 0,
-        unit: '',
-        prefix: 'R$ ',
-        deadline: goals.deadlineDate,
-      },
-      {
-        id: 'goal_leads',
-        type: 'leads',
-        title: 'Meta de Captação de Leads',
-        subtitle: 'Novos contatos e oportunidades comerciais captadas no período',
-        icon: <Users size={22} />,
-        iconColor: '#3B82F6',
-        iconBg: 'rgba(59, 130, 246, 0.15)',
-        currentValue: totalLeadsCount,
-        targetValue: goals.leadsTarget || 0,
-        unit: 'leads',
-        deadline: goals.deadlineDate,
-      },
-      {
-        id: 'goal_visits',
-        type: 'visits',
-        title: 'Meta de Visitas & Degustações',
-        subtitle: 'Reuniões presenciais e visitas ao espaço agendadas',
-        icon: <Calendar size={22} />,
-        iconColor: '#8B5CF6',
-        iconBg: 'rgba(139, 92, 246, 0.15)',
-        currentValue: meetingLeadsCount,
-        targetValue: goals.appointmentsTarget || 0,
-        unit: 'agendamentos',
-        deadline: goals.deadlineDate,
-      },
-    ];
-  }, [totalSalesCount, totalRevenue, totalLeadsCount, meetingLeadsCount, goals]);
-
-  // Calculate Days Remaining
-  const getDaysRemaining = (deadline?: string) => {
-    if (!deadline) return null;
-    const target = new Date(deadline);
+  // Metas antigas (venue_goals) ainda nao importadas
+  useEffect(() => {
+    let cancelled = false;
+    if (!masterId || !venueId) return;
     const now = new Date();
-    const diffTime = target.getTime() - now.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    if (diffDays < 0) return 'Prazo encerrado';
-    if (diffDays === 0) return 'Termina hoje';
-    return `${diffDays} dias restantes`;
-  };
+    goalsService.listVenueGoals(masterId, { year: now.getFullYear(), month: now.getMonth() + 1 })
+      .then(rows => { if (!cancelled) setLegacyCount(rows.filter(r => r.venueId === venueId && r.period === 'monthly' && (r.revenueTarget || r.salesTarget || r.appointmentsTarget)).length); })
+      .catch(() => { if (!cancelled) setLegacyCount(0); });
+    return () => { cancelled = true; };
+  }, [masterId, venueId]);
 
-  const handleOpenAddModal = (type?: GoalType) => {
-    if (isAllVenues) {
-      toast.info('Selecione uma unidade para definir a meta. A meta geral é a soma das metas das unidades.');
-      return;
+  const venue = venues.find(v => v.id === venueId);
+  const openPeriods = useMemo(() => periods.filter(p => p.status !== 'closed').sort((a, b) => a.startsOn.localeCompare(b.startsOn)), [periods]);
+  const today = todayISO();
+  const defaultPeriod = openPeriods.find(p => p.status === 'active' && p.startsOn <= today && p.endsOn >= today) || openPeriods.find(p => p.status === 'active') || openPeriods[0];
+  const period = scopeAll ? undefined : openPeriods.find(p => p.id === selectedPeriodId) || defaultPeriod;
+
+  // Quem pode ter meta: colaborador ativo da unidade que e SDR e/ou Closer nos funis comerciais dela
+  const rolesById = useMemo(() => {
+    const map: Record<string, FunnelMemberRoles> = {};
+    collaborators.forEach(c => { map[c.id] = getCommercialRolesInVenue(funnels, venueId, c); });
+    return map;
+  }, [collaborators, funnels, venueId]);
+  const eligible = useMemo<Collaborator[]>(() => collaborators.filter(c =>
+    c.active && (rolesById[c.id]?.sdr || rolesById[c.id]?.closer) &&
+    (c.venueId === venueId || c.venueId === 'all' || (c.venueIds || []).includes(venueId) || (!c.venueId && !(c.venueIds || []).length)),
+  ), [collaborators, venueId, rolesById]);
+
+  // Atalho da tela Colaboradores
+  useEffect(() => {
+    if (!venues.length || !collaborators.length) return;
+    let id: string | null = null;
+    try { id = sessionStorage.getItem(GOALS_COLLAB_KEY); } catch { /* sem sessionStorage */ }
+    if (!id) return;
+    try { sessionStorage.removeItem(GOALS_COLLAB_KEY); } catch { /* ignora */ }
+    const c = collaborators.find(x => x.id === id);
+    if (!c) return;
+    const target = venues.find(v => v.id === c.venueId) || venues.find(v => (c.venueIds || []).includes(v.id)) || venues[0];
+    if (target) setVenueId(target.id);
+    setTab('equipe');
+    setGoalsModal({ open: true, collaboratorId: c.id });
+  }, [venues, collaborators]);
+
+  // Atalho aberto sem periodo de meta na unidade: avisa em vez de abrir um modal vazio
+  useEffect(() => {
+    if (goalsModal.open && !loading && !period) {
+      toast.info('Defina primeiro as metas da unidade; depois distribua para o colaborador.');
+      setGoalsModal({ open: false });
     }
-    const t = type || modalGoalType;
-    setModalGoalType(t);
-    if (t === 'sales') setModalTargetValue(goals.salesTarget || 0);
-    if (t === 'revenue') setModalTargetValue(goals.revenueTarget || 0);
-    if (t === 'leads') setModalTargetValue(goals.leadsTarget || 0);
-    if (t === 'visits') setModalTargetValue(goals.appointmentsTarget || 0);
-    setIsModalOpen(true);
-  };
+  }, [goalsModal.open, loading, period]);
 
-  const handleSaveGoal = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedVenue || !masterId) return;
-    if (!Number.isFinite(modalTargetValue) || modalTargetValue <= 0) {
-      toast.warning('Informe um valor alvo maior que zero.');
-      return;
-    }
+  const periodGoals = useMemo(() => (period ? goals.filter(g => g.periodId === period.id) : []), [goals, period]);
+  const distributed = useMemo(() => {
+    const out: Partial<Record<GoalMetricKey, number>> = {};
+    periodGoals.forEach(g => { if (ADDITIVE_METRICS.includes(g.metric) && g.status !== 'closed') out[g.metric] = (out[g.metric] || 0) + g.targetValue; });
+    return out;
+  }, [periodGoals]);
 
-    const updatedGoals: VenueGoals = {
-      ...goals,
-      deadlineDate: modalDeadlineDate,
-      period: 'monthly',
-    };
-    if (modalGoalType === 'sales') updatedGoals.salesTarget = Number(modalTargetValue);
-    if (modalGoalType === 'revenue') updatedGoals.revenueTarget = Number(modalTargetValue);
-    if (modalGoalType === 'leads') updatedGoals.leadsTarget = Number(modalTargetValue);
-    if (modalGoalType === 'visits') updatedGoals.appointmentsTarget = Number(modalTargetValue);
+  // Tempo de resposta (so comercial) do periodo ativo exibido
+  useEffect(() => {
+    let cancelled = false;
+    setResponse(null);
+    if (!period || period.status !== 'active') return;
+    summarizeVenueResponseWindow({
+      leads, funnels, collaboratorIds: new Set(collaborators.map(c => c.id)), venueId, startsOn: period.startsOn, endsOn: period.endsOn,
+    }).then(r => { if (!cancelled) setResponse(r); }).catch(() => { if (!cancelled) setResponse(null); });
+    return () => { cancelled = true; };
+    // leads muda toda hora; recalcula so ao trocar de periodo/unidade
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [period?.id, period?.status, venueId]);
 
-    setIsSaving(true);
-    const ok = await metricsService.upsertVenueGoal({
-      masterId,
-      venueId: selectedVenue.id,
-      revenueTarget: updatedGoals.revenueTarget,
-      salesTarget: updatedGoals.salesTarget,
-      leadsTarget: updatedGoals.leadsTarget,
-      appointmentsTarget: updatedGoals.appointmentsTarget || 0,
-      responseTimeTargetMinutes: updatedGoals.responseTimeTargetMinutes,
-      period: 'monthly',
-      month: goalMonth,
-      year: goalYear,
+  const actuals = useMemo(
+    () => (period && period.status === 'active'
+      ? computeGoalActuals({ leads, clients, funnels, collaborators }, venueId, period.startsOn, period.endsOn, response || undefined)
+      : null),
+    [period, leads, clients, funnels, collaborators, venueId, response],
+  );
+
+  // "Todas as unidades": periodo ativo de cada unidade e o realizado dele
+  const venueSnaps = useMemo(() => {
+    if (!scopeAll) return [];
+    const nowISO = todayISO();
+    return venues.map(v => {
+      const ps = periods.filter(p => p.venueId === v.id && p.status === 'active');
+      const p = ps.find(x => x.startsOn <= nowISO && x.endsOn >= nowISO) || ps[0] || null;
+      return {
+        venue: v,
+        period: p,
+        actuals: p ? computeGoalActuals({ leads, clients, funnels, collaborators }, v.id, p.startsOn, p.endsOn) : null,
+      };
     });
-    setIsSaving(false);
+  }, [scopeAll, venues, periods, leads, clients, funnels, collaborators]);
 
-    if (!ok) {
-      toast.error('Erro ao salvar a meta da unidade.');
+  const goalsByCollab = useMemo(() => {
+    const map = new Map<string, CollaboratorGoal[]>();
+    periodGoals.forEach(g => map.set(g.collaboratorId, [...(map.get(g.collaboratorId) || []), g]));
+    return map;
+  }, [periodGoals]);
+
+  const pendingCount = useMemo(() => openPeriods.filter(p => p.status === 'pending').length + goals.filter(g => g.status === 'pending').length, [openPeriods, goals]);
+
+  /* ───── Acoes ───── */
+
+  const submitWizard = async (r: WizardResult) => {
+    const editing = wizard.editing;
+    const existing = editing || periods.find(p => p.venueId === r.venueId && p.startsOn === r.startsOn && p.endsOn === r.endsOn);
+    const base = {
+      id: existing?.id, venueId: r.venueId, kind: r.kind, startsOn: r.startsOn, endsOn: r.endsOn,
+      status: (existing ? existing.status : r.activateNow ? 'active' : 'pending') as GoalStatus,
+      isRecurring: r.isRecurring,
+      revenueTarget: 0, closingsTarget: 0, appointmentsTarget: 0, schedulingRateTarget: 0, attendanceRateTarget: 0,
+      closingRateTarget: 0, responseTimeTargetMinutes: 0, avgResponseTargetMinutes: 0,
+    };
+    const input: typeof base = { ...base };
+    GOAL_METRICS.forEach(m => {
+      const field = PERIOD_FIELD[m.key] as keyof typeof base;
+      // Edicao: o que foi desmarcado vira 0. Periodo ja existente (criacao): mantem o que nao foi escolhido.
+      const keep = !editing && existing ? periodTarget(existing, m.key) : 0;
+      (input[field] as number) = r.targets[m.key] ?? keep;
+    });
+    const res = await goalPlanService.savePeriod(masterId, input, actor, existing);
+    if (!res.ok) {
+      toast.error(
+        res.reason === 'missing_table' ? 'As tabelas de metas ainda não existem no banco. Aplique as migrations e tente de novo.'
+          : res.reason === 'exists' ? 'Já existe uma meta para esse período nesta unidade.'
+            : res.reason === 'forbidden' ? 'O banco recusou a gravação (sessão expirada ou sem permissão). Saia do sistema, entre de novo e tente outra vez.'
+              : 'Não foi possível salvar as metas. Tente novamente.',
+      );
       return;
     }
-    updateVenue(selectedVenue.id, { goals: updatedGoals });
-    setDbVenueGoal(updatedGoals);
-    toast.success('Meta da unidade salva.');
-    setIsModalOpen(false);
+    toast.success(existing ? 'Metas da unidade atualizadas.' : 'Metas da unidade criadas.');
+    setWizard({ open: false });
+    if (r.venueId !== venueId) setVenueId(r.venueId);
+    setSelectedPeriodId(res.data.id);
+    await load();
   };
 
-  const emptyTeamGoal = (role: 'sdr' | 'closer'): TeamGoals => ({
-    masterId,
-    venueId: selectedVenue?.id || '',
-    role,
-    period: 'monthly',
-    month: goalMonth,
-    year: goalYear,
-    revenueTarget: 0,
-    appointmentsTarget: 0,
-    closingsTarget: 0,
-    responseTimeTargetMinutes: 15,
-  });
+  const saveCollaboratorGoals = async (collaboratorId: string, rows: { metric: GoalMetricKey; value: number }[], isRecurring: boolean, activateNow: boolean) => {
+    if (!period) return;
+    const existing = goals.filter(g => g.periodId === period.id && g.collaboratorId === collaboratorId);
+    for (const g of existing) {
+      if (!rows.some(r => r.metric === g.metric)) await goalPlanService.deleteCollaboratorGoal(masterId, g.id);
+    }
+    for (const r of rows) {
+      const prev = existing.find(g => g.metric === r.metric);
+      const res = await goalPlanService.saveCollaboratorGoal(masterId, {
+        venueId, periodId: period.id, collaboratorId, metric: r.metric, targetValue: r.value,
+        status: prev && prev.status !== 'pending' ? prev.status : activateNow && period.status === 'active' ? 'active' : 'pending',
+        isRecurring,
+      }, actor, prev);
+      if (!res.ok) {
+        toast.error(res.reason === 'cap_exceeded' ? `${GOAL_METRIC_LABEL[r.metric]}: passou do que resta da meta da unidade.` : `Não foi possível salvar ${GOAL_METRIC_LABEL[r.metric]}.`);
+        await load();
+        return;
+      }
+    }
+    toast.success('Metas do colaborador salvas.');
+    setGoalsModal({ open: false });
+    await load();
+  };
 
-  const handleSaveTeamGoal = async (goal: TeamGoals) => {
-    const ok = await goalsService.upsertTeamGoal(goal);
-    if (!ok) {
-      toast.error('Erro ao salvar a meta da equipe.');
+  const removeGoal = async (g: CollaboratorGoal) => {
+    if (!window.confirm(`Remover a meta de ${GOAL_METRIC_LABEL[g.metric]} deste colaborador? Resultados de períodos já encerrados não são afetados.`)) return;
+    if (await goalPlanService.deleteCollaboratorGoal(masterId, g.id)) { toast.success('Meta removida.'); await load(); }
+    else toast.error('Não foi possível remover.');
+  };
+
+  const activateOne = async (g: CollaboratorGoal) => {
+    if (period && period.status !== 'active') { toast.warning('Ative primeiro a meta da unidade deste período.'); return; }
+    if (await goalPlanService.setGoalStatus(masterId, g.id, 'active')) await load();
+  };
+
+  const activateAll = async () => {
+    if (!window.confirm(`Ativar tudo que está pendente nesta unidade (${pendingCount} ${pendingCount === 1 ? 'item' : 'itens'})?`)) return;
+    if (await goalPlanService.activateAll(masterId, venueId, openPeriods.map(p => p.id))) { toast.success('Metas ativadas.'); await load(); }
+    else toast.error('Não foi possível ativar tudo.');
+  };
+
+  const importLegacy = async () => {
+    const now = new Date();
+    const rows = await goalsService.listVenueGoals(masterId, { year: now.getFullYear(), month: now.getMonth() + 1 });
+    const legacy = rows.find(r => r.venueId === venueId && r.period === 'monthly');
+    if (!legacy) { toast.info('Nenhuma meta antiga encontrada para este mês.'); return; }
+    const startsOn = firstOfMonth();
+    const created = await goalPlanService.savePeriod(masterId, {
+      venueId, kind: 'monthly', startsOn, endsOn: endForKind(startsOn, 'monthly'), status: 'active', isRecurring: true,
+      revenueTarget: legacy.revenueTarget, closingsTarget: legacy.salesTarget,
+      appointmentsTarget: legacy.appointmentsTarget || 0, schedulingRateTarget: 0, attendanceRateTarget: 0, closingRateTarget: 0,
+      responseTimeTargetMinutes: legacy.responseTimeTargetMinutes, avgResponseTargetMinutes: 0,
+    }, actor);
+    if (!created.ok) {
+      toast.error(
+        created.reason === 'missing_table' ? 'As tabelas de metas ainda não existem no banco. Aplique as migrations e tente de novo.'
+          : created.reason === 'exists' ? 'Este mês já tem metas nesta unidade. Edite as metas existentes.'
+            : created.reason === 'forbidden' ? 'O banco recusou a gravação (sessão expirada ou sem permissão). Saia do sistema, entre de novo e tente outra vez.'
+              : 'Não foi possível importar as metas antigas.',
+      );
       return;
     }
-    toast.success(`Meta de ${goal.role === 'sdr' ? 'SDRs' : 'Closers'} salva.`);
-    loadGoals();
+    let skipped = 0;
+    for (const c of eligible) {
+      const g = c.goals;
+      if (!g) continue;
+      const all: { metric: GoalMetricKey; value: number }[] = [
+        { metric: 'revenue', value: g.revenueTarget || 0 }, { metric: 'closings', value: g.closingsTarget || 0 },
+        { metric: 'appointments', value: g.leadsTarget || 0 }, { metric: 'response_time', value: g.responseTimeTargetMinutes || 0 },
+      ];
+      for (const i of all.filter(x => x.value > 0)) {
+        const res = await goalPlanService.saveCollaboratorGoal(masterId, {
+          venueId, periodId: created.data.id, collaboratorId: c.id, metric: i.metric, targetValue: i.value, status: 'active', isRecurring: true,
+        }, actor);
+        if (!res.ok) skipped += 1;
+      }
+    }
+    toast.success(skipped > 0 ? `Metas importadas. ${skipped} meta(s) individuais ficaram de fora por passarem do teto da unidade.` : 'Metas importadas.');
+    setLegacyCount(0);
+    await load();
   };
 
-  return (
-    <div style={{
-      display: 'flex',
-      flexDirection: 'column',
-      gap: '24px',
-      padding: '28px 32px 60px',
-      width: '100%',
-      boxSizing: 'border-box',
-      animation: 'fadeIn 0.2s ease-out',
-    }}>
-      
-      {/* Título no breadcrumb; ações no menu superior */}
-      <HeaderActions>
+  /* ───── Historico ───── */
 
-        {/* Action Button: Adicionar / Editar Meta */}
-        <button
-          type="button"
-          onClick={() => handleOpenAddModal()}
-          className="adm-btn-primary"
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            padding: '10px 20px',
-            borderRadius: '12px',
-            fontSize: '0.84rem',
-            fontWeight: 800,
-            boxShadow: '0 4px 16px rgba(212, 175, 55, 0.25)',
-          }}
-        >
-          <Plus size={16} />
-          <span>Configurar Metas</span>
-        </button>
-      </HeaderActions>
+  const closedResultsByPeriod = useMemo(() => {
+    const filtered = results.filter(r => histCollab === 'all' || r.collaboratorId === histCollab || (histCollab === 'venue' && r.scope === 'venue'));
+    const map = new Map<string, GoalResult[]>();
+    filtered.forEach(r => { const key = `${r.startsOn}|${r.endsOn}`; map.set(key, [...(map.get(key) || []), r]); });
+    return [...map.entries()].sort((a, b) => b[0].localeCompare(a[0]));
+  }, [results, histCollab]);
+  const histCollabOptions = useMemo(() => {
+    const m = new Map<string, string>();
+    results.forEach(r => { if (r.collaboratorId) m.set(r.collaboratorId, r.collaboratorName || 'Colaborador'); });
+    return [...m.entries()];
+  }, [results]);
 
-      {isAllVenues && (
-        <div style={{
-          fontSize: '0.78rem', color: 'var(--adm-text-muted)', padding: '10px 14px', borderRadius: '10px',
-          background: 'var(--adm-bg-input)', border: '1px solid var(--adm-border)',
-        }}>
-          Visão geral: os cartões abaixo mostram a soma das metas de {venues.length} {venues.length === 1 ? 'unidade' : 'unidades'}.
-          Para alterar, edite a meta da unidade na tabela ou selecione a unidade.
+  if (venues.length === 0) {
+    return <div style={{ padding: '40px', color: 'var(--adm-text-muted)' }}>Cadastre uma casa de festas para definir metas.</div>;
+  }
+
+  const emptyBox = (icon: React.ReactNode, title: string, text: string, action?: React.ReactNode) => (
+    <div style={{ ...card, textAlign: 'center', padding: '44px 24px' }}>
+      <div style={{ width: '56px', height: '56px', margin: '0 auto 12px', borderRadius: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--adm-accent-bg)', color: 'var(--adm-accent)' }}>{icon}</div>
+      <h3 style={{ margin: '0 0 4px', fontSize: '1.05rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>{title}</h3>
+      <p style={{ margin: '0 auto 16px', maxWidth: '480px', fontSize: '0.8rem', color: 'var(--adm-text-muted)', lineHeight: 1.5 }}>{text}</p>
+      {action}
+    </div>
+  );
+
+  const newGoalButton = canEdit && (
+    <button type="button" className="adm-btn-primary" onClick={() => setWizard({ open: true })} style={{ padding: '10px 22px', borderRadius: '10px', fontWeight: 800 }}>
+      Criar metas
+    </button>
+  );
+
+  /** Botao do topo "Meta de colaborador": precisa de uma unidade escolhida e de metas da unidade no periodo. */
+  function openCollaboratorGoals() {
+    if (scopeAll) { toast.info('Escolha uma unidade no seletor para definir metas de colaboradores.'); return; }
+    setTab('equipe');
+    if (!period) { toast.info('Defina primeiro as metas da unidade; depois distribua para o colaborador.'); return; }
+    setGoalsModal({ open: true });
+  }
+
+  /** Equipe/Historico em "Todas as unidades": pede para escolher a unidade (cartoes com logo). */
+  function renderPickVenue() {
+    return (
+      <div style={{ ...card }}>
+        <div style={{ fontSize: '0.95rem', fontWeight: 800, color: 'var(--adm-text-title)', marginBottom: '4px' }}>Escolha uma unidade</div>
+        <div style={{ fontSize: '0.78rem', color: 'var(--adm-text-muted)', marginBottom: '14px' }}>As metas de colaboradores são definidas dentro de cada unidade.</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: '10px' }}>
+          {venues.map(v => (
+            <button key={v.id} type="button" onClick={() => setVenueId(v.id)} style={{
+              display: 'flex', alignItems: 'center', padding: '12px 14px', borderRadius: '12px', cursor: 'pointer', textAlign: 'left',
+              border: '1px solid var(--adm-border)', background: 'var(--adm-bg-input)',
+            }}><UnitBadge venue={v} /></button>
+          ))}
         </div>
-      )}
-
-      {/* ── METAS POR UNIDADE + META TOTAL DA REDE ── */}
-      <AdminGoalsNetworkPanel onSaved={loadGoals} />
-
-      {/* ── STACKED GOALS CARDS (Cards Empilhados um acima do outro) ── */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-        {goalCards.map((g) => {
-          const rawPct = goalPercent(g.currentValue, g.targetValue);
-          const pct = Math.min(100, rawPct ?? 0);
-          const status = getGoalStatus(rawPct);
-          const isCompleted = pct >= 100;
-          const daysInfo = getDaysRemaining(g.deadline);
-
-          return (
-            <div
-              key={g.id}
-              style={{
-                background: 'var(--adm-bg-card)',
-                border: isCompleted ? '1.5px solid rgba(16, 185, 129, 0.4)' : '1px solid var(--adm-border)',
-                borderRadius: '18px',
-                padding: '22px 24px',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '16px',
-                boxShadow: isCompleted ? '0 8px 24px rgba(16, 185, 129, 0.08)' : '0 4px 14px rgba(0,0,0,0.1)',
-                transition: 'all 0.2s ease',
-              }}
-            >
-              {/* Card Top Row: Icon, Title & Actions */}
-              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '16px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                  <div style={{
-                    width: '46px',
-                    height: '46px',
-                    borderRadius: '12px',
-                    background: g.iconBg,
-                    color: g.iconColor,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexShrink: 0,
-                  }}>
-                    {g.icon}
-                  </div>
-                  <div>
-                    <h3 style={{ fontSize: '1.02rem', fontWeight: 900, color: 'var(--adm-text-title)', margin: 0 }}>
-                      {g.title}
-                    </h3>
-                    <p style={{ fontSize: '0.78rem', color: 'var(--adm-text-muted)', margin: 0, marginTop: '2px' }}>
-                      {g.subtitle}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Status & Edit Button */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  {g.deadline && (
-                    <span style={{
-                      fontSize: '0.72rem',
-                      fontWeight: 800,
-                      padding: '4px 10px',
-                      borderRadius: '8px',
-                      background: 'var(--adm-bg-input)',
-                      color: 'var(--adm-text-muted)',
-                      border: '1px solid var(--adm-border)',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '5px',
-                    }}>
-                      <Clock size={12} />
-                      <span>{daysInfo}</span>
-                    </span>
-                  )}
-
-                  <button
-                    type="button"
-                    onClick={() => handleOpenAddModal(g.type as any)}
-                    className="adm-btn-secondary"
-                    style={{
-                      padding: '6px 12px',
-                      borderRadius: '8px',
-                      fontSize: '0.74rem',
-                      fontWeight: 700,
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '5px',
-                    }}
-                  >
-                    <Edit3 size={13} />
-                    <span>Ajustar</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Progress & Values Row */}
-              <div style={{
-                display: 'flex',
-                alignItems: 'flex-end',
-                justifyContent: 'space-between',
-                gap: '16px',
-                flexWrap: 'wrap',
-              }}>
-                {/* Current vs Target Value */}
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
-                  <span style={{ fontSize: '1.8rem', fontWeight: 900, color: 'var(--adm-text-title)', fontFamily: "'Poppins', sans-serif" }}>
-                    {g.prefix ? `${g.prefix}${g.currentValue.toLocaleString('pt-BR')}` : g.currentValue.toLocaleString('pt-BR')}
-                  </span>
-                  <span style={{ fontSize: '0.92rem', color: 'var(--adm-text-muted)', fontWeight: 700 }}>
-                    / {g.prefix ? `${g.prefix}${g.targetValue.toLocaleString('pt-BR')}` : `${g.targetValue.toLocaleString('pt-BR')} ${g.unit}`}
-                  </span>
-                </div>
-
-                {/* Percentage Achieved Badge */}
-                <div style={{
-                  fontSize: '0.86rem',
-                  fontWeight: 900,
-                  padding: '4px 12px',
-                  borderRadius: '8px',
-                  background: status.bg,
-                  color: status.color,
-                  border: `1px solid ${status.color}`,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                }}>
-                  <TrendingUp size={15} />
-                  <span>{rawPct === null ? 'Sem meta definida' : `${rawPct}% · ${status.label}`}</span>
-                </div>
-              </div>
-
-              {/* Visual Progress Bar */}
-              <div style={{
-                width: '100%',
-                height: '8px',
-                borderRadius: '4px',
-                background: 'rgba(255, 255, 255, 0.06)',
-                overflow: 'hidden',
-              }}>
-                <div style={{
-                  width: `${pct}%`,
-                  height: '100%',
-                  background: status.color,
-                  borderRadius: '4px',
-                  transition: 'width 0.4s ease',
-                }} />
-              </div>
-            </div>
-          );
-        })}
       </div>
+    );
+  }
 
-      {/* ── METAS POR EQUIPE (SDRs vs Closers) ── */}
-      {!isAllVenues && selectedVenue && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-          <h3 style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--adm-text-title)', margin: 0 }}>
-            Metas por equipe — {selectedVenue.name}
-          </h3>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '16px' }}>
-            {(['sdr', 'closer'] as const).map(role => (
-              <TeamGoalCard
-                key={`${selectedVenue.id}-${role}-${teamGoals.find(t => t.role === role)?.id || 'new'}`}
-                role={role}
-                goal={teamGoals.find(t => t.role === role && t.period === 'monthly') || emptyTeamGoal(role)}
-                progress={teamProgress[role]}
-                onSave={handleSaveTeamGoal}
-              />
-            ))}
+  /** "Todas as unidades": metas e realizado somados e a divisao entre as unidades. */
+  function renderConsolidated() {
+    const withPeriod = venueSnaps.filter(v => v.period);
+    if (withPeriod.length === 0) {
+      return emptyBox(<Target size={26} />, 'Nenhuma meta ativa nas unidades',
+        'Escolha uma unidade no seletor e crie as metas dela. Aqui você verá os totais da rede e a divisão por unidade.', newGoalButton);
+    }
+    const totals = (['revenue', 'closings', 'appointments'] as GoalMetricKey[]).map(key => {
+      const target = withPeriod.reduce((sum, v) => sum + periodTarget(v.period as GoalPeriod, key), 0);
+      const actual = withPeriod.reduce((sum, v) => sum + (v.actuals ? (venueActual(v.actuals, key) ?? 0) : 0), 0);
+      return { key, target, actual };
+    }).filter(t => t.target > 0);
+    const revenueActualTotal = withPeriod.reduce((sum, v) => sum + (v.actuals?.venue.revenue ?? 0), 0);
+    return (
+      <>
+        <div style={card}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px', flexWrap: 'wrap', marginBottom: '14px' }}>
+            <span style={{ ...eyebrow, fontSize: '0.72rem' }}>Rede · todas as unidades</span>
+            <span style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)' }}>Soma das metas ativas hoje em {withPeriod.length} {withPeriod.length === 1 ? 'unidade' : 'unidades'}</span>
           </div>
-        </div>
-      )}
-
-      {/* ── METAS INDIVIDUAIS (SDRs e Closers) ── */}
-      {(() => {
-        const people = collaborators.filter(c => c.active && (c.role === 'sdr' || c.role === 'closer')
-          && (isAllVenues || !selectedVenue || !c.venueId || c.venueId === 'all' || c.venueId === selectedVenue.id
-            || (c.venueIds || []).includes(selectedVenue.id)));
-        return (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
-              <h3 style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--adm-text-title)', margin: 0 }}>
-                Metas individuais{selectedVenue && !isAllVenues ? ` — ${selectedVenue.name}` : ''}
-              </h3>
-              {people.length > 0 && (
-                <select
-                  value="" aria-label="Nova meta individual"
-                  onChange={e => { const c = people.find(p => p.id === e.target.value); if (c) setCollabForGoals(c); }}
-                  style={{
-                    padding: '7px 10px', borderRadius: '10px', border: '1px solid var(--adm-border)',
-                    background: 'var(--adm-bg-input)', color: 'var(--adm-text-title)', fontSize: '0.78rem', fontWeight: 700,
-                  }}
-                >
-                  <option value="">+ Nova meta individual...</option>
-                  {people.map(c => <option key={c.id} value={c.id}>{c.name} ({c.role === 'closer' ? 'Closer' : 'SDR'})</option>)}
-                </select>
-              )}
-            </div>
-            {(() => {
-              const individualRevenue = people.reduce((sum, c) => sum + (c.goals?.cycle === 'weekly' ? 0 : c.goals?.revenueTarget || 0), 0);
-              if (individualRevenue <= 0) return null;
-              const unitRevenue = !isAllVenues && selectedVenue ? goals.revenueTarget || 0 : 0;
-              const cover = unitRevenue > 0 ? Math.round((individualRevenue / unitRevenue) * 100) : null;
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: '12px' }}>
+            {totals.map(t => {
+              const pct = goalPct(t.key, t.target, t.actual);
               return (
-                <div style={{ fontSize: '0.76rem', color: 'var(--adm-text-muted)', fontVariantNumeric: 'tabular-nums' }}>
-                  Soma das metas individuais de faturamento (ciclo mensal):{' '}
-                  <strong style={{ color: 'var(--adm-text-title)' }}>
-                    {individualRevenue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })}
-                  </strong>
-                  {cover !== null && <> · {cover}% da meta de faturamento da unidade</>}
+                <div key={t.key} style={{ border: '1px solid var(--adm-border)', borderRadius: '14px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '8px', background: 'var(--adm-bg-input)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <MetricChip metric={t.key} size={30} />
+                    <span style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--adm-text-muted)' }}>{goalMetricDef(t.key).label}</span>
+                  </div>
+                  <span style={{ fontSize: '1.45rem', fontWeight: 800, color: 'var(--adm-text-title)', fontVariantNumeric: 'tabular-nums' }}>{formatMetricValue(t.key, t.actual)}</span>
+                  <ProgressBar pct={pct} />
+                  <span style={{ fontSize: '0.7rem', color: 'var(--adm-text-muted)' }}>Meta {formatMetricValue(t.key, t.target)}{pct !== null ? ` · ${pct}%` : ''}</span>
                 </div>
               );
-            })()}
-            {people.length === 0 ? (
-              <div style={{ fontSize: '0.8rem', color: 'var(--adm-text-muted)' }}>Nenhum SDR ou Closer ativo no escopo.</div>
-            ) : (
-              <div style={{ background: 'var(--adm-bg-card)', border: '1px solid var(--adm-border)', borderRadius: '14px', padding: '4px 16px' }}>
-                {people.map(c => {
-                  const g = c.goals;
-                  const parts: string[] = [];
-                  if (g?.revenueTarget) parts.push(`${g.revenueTarget.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })} faturamento`);
-                  if (g?.closingsTarget) parts.push(`${g.closingsTarget} contratos`);
-                  if (g?.leadsTarget) parts.push(`${g.leadsTarget} leads/agendamentos`);
-                  if (g?.responseTimeTargetMinutes) parts.push(`resposta em ${g.responseTimeTargetMinutes} min`);
-                  return (
-                    <div key={c.id} style={{
-                      display: 'flex', alignItems: 'center', gap: '12px', padding: '11px 0',
-                      borderBottom: '1px solid var(--adm-border)', flexWrap: 'wrap',
-                    }}>
-                      <div style={{ flex: '1 1 200px', minWidth: 0 }}>
-                        <div style={{ fontSize: '0.84rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>{c.name}</div>
-                        <div style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)' }}>{c.role === 'closer' ? 'Closer' : 'SDR'}</div>
-                      </div>
-                      <div style={{ flex: '2 1 240px', fontSize: '0.76rem', color: parts.length ? 'var(--adm-text-title)' : 'var(--adm-text-muted)' }}>
-                        {parts.length ? `${g?.cycle === 'weekly' ? 'Semanal' : 'Mensal'}: ${parts.join(' · ')}` : 'Sem meta definida'}
-                      </div>
-                      <button
-                        type="button" onClick={() => setCollabForGoals(c)}
-                        style={{
-                          padding: '6px 12px', borderRadius: '8px', background: 'transparent', cursor: 'pointer',
-                          border: '1px solid var(--adm-border)', color: 'var(--adm-text-title)', fontSize: '0.74rem', fontWeight: 700,
-                          display: 'inline-flex', alignItems: 'center', gap: '5px',
-                        }}
-                      >
-                        <Edit3 size={12} /> {parts.length ? 'Editar meta' : 'Definir meta'}
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        );
-      })()}
-
-      {collabForGoals && (
-        <AdminCollaboratorGoalsModal collaborator={collabForGoals} onClose={() => setCollabForGoals(null)} />
-      )}
-
-      {/* ── MODAL: CONFIGURAR META ── */}
-      {isModalOpen && (
-        <div style={{
-          position: 'fixed',
-          inset: 0,
-          background: 'rgba(0, 0, 0, 0.85)',
-          backdropFilter: 'blur(8px)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 99999,
-          padding: '20px',
-        }}>
-          <div style={{
-            background: '#141118',
-            border: '1.5px solid rgba(212, 175, 55, 0.4)',
-            borderRadius: '20px',
-            maxWidth: '520px',
-            width: '100%',
-            padding: '24px',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '18px',
-            boxShadow: '0 24px 64px rgba(0,0,0,0.9)',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Target size={20} color="var(--adm-accent)" />
-                <h3 style={{ fontSize: '1.1rem', fontWeight: 900, color: '#FFFFFF', margin: 0 }}>
-                  Definir Meta da Casa
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsModalOpen(false)}
-                style={{ background: 'transparent', border: 'none', color: '#9E988D', cursor: 'pointer' }}
-              >
-                <X size={20} />
-              </button>
-            </div>
-
-            <form onSubmit={handleSaveGoal} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              {/* Goal Type */}
-              <div>
-                <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 800, color: '#FFFFFF', marginBottom: '6px' }}>
-                  Tipo de Meta
-                </label>
-                <select
-                  value={modalGoalType}
-                  onChange={(e) => handleOpenAddModal(e.target.value as GoalType)}
-                  className="adm-input"
-                  style={{ width: '100%', height: '42px', borderRadius: '10px', fontSize: '0.82rem' }}
-                >
-                  <option value="sales">Meta de Contratos Fechados</option>
-                  <option value="revenue">Meta de Faturamento (R$)</option>
-                  <option value="leads">Meta de Captação de Leads</option>
-                  <option value="visits">Meta de Agendamentos (Visitas & Degustações)</option>
-                </select>
-              </div>
-
-              {/* Target Value */}
-              <div>
-                <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 800, color: '#FFFFFF', marginBottom: '6px' }}>
-                  Valor Alvo {modalGoalType === 'revenue' ? '(em R$)' : '(Quantidade)'} *
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  value={modalTargetValue}
-                  onChange={(e) => setModalTargetValue(Number(e.target.value))}
-                  className="adm-input"
-                  style={{ width: '100%', height: '42px', borderRadius: '10px', fontSize: '0.86rem', fontWeight: 800 }}
-                  required
-                />
-              </div>
-
-              {/* Deadline Date */}
-              <div>
-                <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 800, color: '#FFFFFF', marginBottom: '6px' }}>
-                  Data Limite / Fim do Período *
-                </label>
-                <input
-                  type="date"
-                  value={modalDeadlineDate}
-                  onChange={(e) => setModalDeadlineDate(e.target.value)}
-                  className="adm-input"
-                  style={{ width: '100%', height: '42px', borderRadius: '10px', fontSize: '0.82rem' }}
-                  required
-                />
-              </div>
-
-              {/* Form Buttons */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
-                <button
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="adm-btn-secondary"
-                  style={{ padding: '10px 18px', borderRadius: '10px', fontSize: '0.82rem', fontWeight: 700 }}
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSaving}
-                  className="adm-btn-primary"
-                  style={{ padding: '10px 22px', borderRadius: '10px', fontSize: '0.82rem', fontWeight: 900, opacity: isSaving ? 0.7 : 1 }}
-                >
-                  {isSaving ? 'Salvando...' : 'Salvar Meta'}
-                </button>
-              </div>
-            </form>
+            })}
           </div>
         </div>
+
+        <div style={card}>
+          <div style={{ ...eyebrow, fontSize: '0.72rem', marginBottom: '12px' }}>Divisão por unidade</div>
+          {revenueActualTotal > 0 && (
+            <div style={{ display: 'flex', height: '10px', borderRadius: '999px', overflow: 'hidden', marginBottom: '14px', background: 'var(--adm-bg-input)' }}>
+              {withPeriod.map((v, i) => {
+                const share = ((v.actuals?.venue.revenue ?? 0) / revenueActualTotal) * 100;
+                return share > 0 ? <div key={v.venue.id} title={`${v.venue.name}: ${Math.round(share)}%`} style={{ width: `${share}%`, background: UNIT_COLORS[i % UNIT_COLORS.length] }} /> : null;
+              })}
+            </div>
+          )}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            {venueSnaps.map((v, i) => {
+              const revenue = v.actuals?.venue.revenue ?? 0;
+              const target = v.period ? v.period.revenueTarget : 0;
+              const pct = target > 0 ? goalPct('revenue', target, revenue) : null;
+              const share = revenueActualTotal > 0 ? Math.round((revenue / revenueActualTotal) * 100) : 0;
+              return (
+                <button key={v.venue.id} type="button" onClick={() => setVenueId(v.venue.id)} title="Abrir a unidade" style={{
+                  display: 'grid', gridTemplateColumns: 'minmax(180px, 1.1fr) 2fr auto', gap: '14px', alignItems: 'center', textAlign: 'left', cursor: 'pointer',
+                  padding: '8px 10px', borderRadius: '12px', border: '1px solid transparent', background: 'transparent',
+                }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+                    <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: UNIT_COLORS[i % UNIT_COLORS.length], flexShrink: 0 }} />
+                    <UnitBadge venue={v.venue} subtitle={v.period ? `${fmtDate(v.period.startsOn)} a ${fmtDate(v.period.endsOn)}` : 'Sem meta ativa'} />
+                  </span>
+                  <span>
+                    <ProgressBar pct={pct} />
+                    <span style={{ display: 'block', fontSize: '0.68rem', color: 'var(--adm-text-muted)', marginTop: '3px', fontVariantNumeric: 'tabular-nums' }}>
+                      {formatMetricValue('revenue', revenue)}{target > 0 ? ` de ${formatMetricValue('revenue', target)}${pct !== null ? ` · ${pct}%` : ''}` : ''}
+                    </span>
+                  </span>
+                  <span style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--adm-text-title)', textAlign: 'right', minWidth: '70px' }}>{share}% da rede</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  const visibleCollabs = eligible.filter(c => roleFilter === 'all' || rolesById[c.id]?.[roleFilter]);
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '18px', padding: '16px 28px 60px', width: '100%', boxSizing: 'border-box' }}>
+      {canEdit && available !== false && (
+        <HeaderActions>
+          <button type="button" className="adm-btn-secondary" onClick={openCollaboratorGoals}
+            style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '9px 16px', borderRadius: '12px', fontSize: '0.8rem', fontWeight: 800 }}>
+            <Users size={15} /> <span>Meta de colaborador</span>
+          </button>
+          <button type="button" className="adm-btn-primary" onClick={() => setWizard({ open: true })}
+            style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '9px 18px', borderRadius: '12px', fontSize: '0.8rem', fontWeight: 800 }}>
+            <Plus size={15} /> <span>Meta da unidade</span>
+          </button>
+        </HeaderActions>
       )}
 
+      {available === false ? (
+        emptyBox(<AlertTriangle size={26} />, 'Metas indisponíveis neste banco',
+          'As tabelas de metas ainda não foram criadas. Aplique as migrations do projeto (supabase migration up) e recarregue a página.')
+      ) : (
+        <>
+          {/* Unidade e abas */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '14px', flexWrap: 'wrap' }}>
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: '10px' }}>
+              <span style={{
+                width: '38px', height: '38px', borderRadius: '10px', overflow: 'hidden', display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                background: 'var(--adm-accent-bg)', color: 'var(--adm-accent)', border: '1px solid var(--adm-border)',
+              }}>
+                {venue?.logoUrl ? <img src={venue.logoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <Building2 size={18} />}
+              </span>
+              <Select className="adm-input" value={venueId} onChange={e => { setVenueId(e.target.value); if (e.target.value === 'all' && tab === 'equipe') setTab('unidade'); }} aria-label="Unidade"
+                style={{ height: '38px', borderRadius: '10px', fontSize: '0.82rem', fontWeight: 800, padding: '0 12px', minWidth: '220px' }}>
+                {venues.length > 1 && <option value="all">Todas as unidades</option>}
+                {venues.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
+              </Select>
+            </label>
+            <div role="tablist" style={{ display: 'inline-flex', padding: '3px', borderRadius: '12px', background: 'var(--adm-bg-input)', border: '1px solid var(--adm-border)' }}>
+              {TABS.map(({ id, label, Icon }) => (
+                <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)} style={{
+                  display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '7px 16px', borderRadius: '9px', border: 'none', cursor: 'pointer',
+                  fontSize: '0.78rem', fontWeight: 800, background: tab === id ? 'var(--adm-bg-card)' : 'transparent', color: tab === id ? 'var(--adm-text-title)' : 'var(--adm-text-muted)',
+                  boxShadow: tab === id ? '0 1px 4px rgba(0,0,0,0.12)' : 'none',
+                }}><Icon size={14} /> {label}{id === 'equipe' && pendingCount > 0 ? <span style={{ background: '#F59E0B', color: '#0B111A', borderRadius: '999px', fontSize: '0.6rem', padding: '1px 6px' }}>{pendingCount}</span> : null}</button>
+              ))}
+            </div>
+          </div>
+
+          {loading ? (
+            <div style={{ ...card, color: 'var(--adm-text-muted)' }}>Carregando metas...</div>
+          ) : tab === 'unidade' && scopeAll ? (
+            renderConsolidated()
+          ) : tab === 'unidade' ? (
+            <>
+              {canEdit && legacyCount > 0 && openPeriods.length === 0 && !legacyDismissed && (
+                <div style={{ ...card, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '14px', flexWrap: 'wrap', borderStyle: 'dashed', padding: '12px 16px' }}>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--adm-text-title)' }}>
+                    <strong>Metas antigas encontradas em {venue?.name}.</strong>{' '}
+                    <span style={{ color: 'var(--adm-text-muted)' }}>Importe para o novo modelo, com histórico e recorrência.</span>
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button type="button" className="adm-btn-primary" onClick={importLegacy} style={{ padding: '7px 16px', borderRadius: '10px', fontWeight: 800, fontSize: '0.76rem' }}>Importar</button>
+                    <button type="button" aria-label="Dispensar" onClick={() => setLegacyDismissed(true)} style={{ background: 'transparent', border: 'none', color: 'var(--adm-text-muted)', cursor: 'pointer', display: 'inline-flex' }}><X size={16} /></button>
+                  </div>
+                </div>
+              )}
+
+              {openPeriods.length === 0 ? emptyBox(<Target size={26} />, `Nenhuma meta definida para ${venue?.name || 'a unidade'}`,
+                'Escolha o período e as metas que fazem sentido (por exemplo, só o faturamento). Depois distribua entre os colaboradores.', newGoalButton) : (
+                <>
+                  {openPeriods.length > 1 && (
+                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                      {openPeriods.map(p => (
+                        <button key={p.id} type="button" onClick={() => setSelectedPeriodId(p.id)} aria-pressed={p.id === period?.id} style={{
+                          display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '6px 12px', borderRadius: '10px', fontSize: '0.74rem', fontWeight: 700, cursor: 'pointer',
+                          border: `1px solid ${p.id === period?.id ? 'var(--adm-accent)' : 'var(--adm-border)'}`, background: 'var(--adm-bg-card)', color: 'var(--adm-text-title)',
+                        }}><CalendarRange size={13} /> {fmtDate(p.startsOn)} a {fmtDate(p.endsOn)} <StatusChip status={p.status} /></button>
+                      ))}
+                    </div>
+                  )}
+
+                  {period && (
+                    <div style={card}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', marginBottom: '16px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                          <span style={{ ...eyebrow, fontSize: '0.72rem' }}>Metas da unidade</span>
+                          <span style={{ fontSize: '0.78rem', color: 'var(--adm-text-muted)' }}>{GOAL_KIND_LABEL[period.kind]} · {fmtDate(period.startsOn)} a {fmtDate(period.endsOn)}</span>
+                          <StatusChip status={period.status} />
+                          {period.isRecurring && <span title="Repete automaticamente" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '0.66rem', fontWeight: 800, color: 'var(--adm-text-muted)' }}><Repeat size={12} /> Recorrente</span>}
+                        </div>
+                        {canEdit && (
+                          <button type="button" onClick={() => setWizard({ open: true, editing: period })} className="adm-btn-secondary"
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '7px 14px', borderRadius: '10px', fontSize: '0.76rem', fontWeight: 700 }}>
+                            <Pencil size={13} /> Editar metas
+                          </button>
+                        )}
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: '12px' }}>
+                        {GOAL_METRICS.filter(m => periodTarget(period, m.key) > 0).map(m => {
+                          const target = periodTarget(period, m.key);
+                          const actual = actuals ? venueActual(actuals, m.key) : null;
+                          const pct = actuals ? goalPct(m.key, target, actual) : null;
+                          const dist = distributed[m.key] || 0;
+                          return (
+                            <div key={m.key} style={{ border: '1px solid var(--adm-border)', borderRadius: '14px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '8px', background: 'var(--adm-bg-input)' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <MetricChip metric={m.key} size={30} />
+                                <span style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--adm-text-muted)' }}>{m.label}</span>
+                              </div>
+                              <span style={{ fontSize: '1.45rem', fontWeight: 800, color: 'var(--adm-text-title)', fontVariantNumeric: 'tabular-nums' }}>{formatMetricValue(m.key, target)}</span>
+                              {actuals && (
+                                <>
+                                  <ProgressBar pct={pct} />
+                                  <span style={{ fontSize: '0.7rem', color: 'var(--adm-text-muted)' }}>Realizado {formatMetricValue(m.key, actual)}{pct !== null ? ` · ${pct}%` : ''}</span>
+                                </>
+                              )}
+                              {m.additive && (
+                                <span style={{ fontSize: '0.66rem', color: dist >= target ? '#10B981' : 'var(--adm-text-muted)' }}>
+                                  Distribuído {formatMetricValue(m.key, dist)} · disponível {formatMetricValue(m.key, Math.max(0, target - dist))}
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </>
+          ) : tab === 'equipe' && scopeAll ? (
+            renderPickVenue()
+          ) : tab === 'equipe' ? (
+            !period ? emptyBox(<Users size={26} />, 'Defina primeiro as metas da unidade',
+              'As metas dos colaboradores saem da meta da unidade no período: crie as metas da unidade e depois distribua entre a equipe.', newGoalButton) : (
+              <>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', gap: '6px' }}>
+                    {([['all', 'Todos'], ['sdr', 'SDR'], ['closer', 'Closer']] as const).map(([id, label]) => (
+                      <button key={id} type="button" onClick={() => setRoleFilter(id)} aria-pressed={roleFilter === id} style={{
+                        padding: '6px 14px', borderRadius: '999px', fontSize: '0.74rem', fontWeight: 700, cursor: 'pointer',
+                        border: `1px solid ${roleFilter === id ? 'var(--adm-accent)' : 'var(--adm-border)'}`,
+                        background: roleFilter === id ? 'var(--adm-accent)' : 'var(--adm-bg-card)', color: roleFilter === id ? '#0B111A' : 'var(--adm-text-title)',
+                      }}>{label}</button>
+                    ))}
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)' }}>{period.status === 'active' ? 'Período ativo' : 'Período pendente'}: {fmtDate(period.startsOn)} a {fmtDate(period.endsOn)}</span>
+                    {canEdit && pendingCount > 0 && (
+                      <button type="button" onClick={activateAll} style={{
+                        display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 14px', borderRadius: '10px', fontSize: '0.76rem', fontWeight: 800, cursor: 'pointer',
+                        border: '1px solid #10B981', background: 'rgba(16,185,129,0.12)', color: '#10B981',
+                      }}><Zap size={14} /> Ativar tudo ({pendingCount})</button>
+                    )}
+                  </div>
+                </div>
+
+                {visibleCollabs.length === 0 ? (
+                  <div style={{ ...card, color: 'var(--adm-text-muted)', fontSize: '0.82rem' }}>Nenhum colaborador com esse papel nesta unidade.</div>
+                ) : (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '14px' }}>
+                    {visibleCollabs.map(c => {
+                      const list = goalsByCollab.get(c.id) || [];
+                      return (
+                        <div key={c.id} style={{ ...card, padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+                              <span style={{ width: '38px', height: '38px', borderRadius: '50%', background: 'var(--adm-accent-bg)', color: 'var(--adm-accent)', fontWeight: 800, fontSize: '0.74rem', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
+                                {c.avatarUrl ? <img src={c.avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : c.name.slice(0, 2).toUpperCase()}
+                              </span>
+                              <div style={{ minWidth: 0 }}>
+                                <div style={{ fontSize: '0.88rem', fontWeight: 800, color: 'var(--adm-text-title)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.name}</div>
+                                <span style={{ fontSize: '0.6rem', fontWeight: 800, textTransform: 'uppercase', padding: '1px 6px', borderRadius: '4px', color: 'var(--adm-text-muted)', background: 'var(--adm-bg-input)', border: '1px solid var(--adm-border)' }}>{roleText(rolesById[c.id])}</span>
+                              </div>
+                            </div>
+                            {canEdit && (
+                              <button type="button" onClick={() => setGoalsModal({ open: true, collaboratorId: c.id })} className={list.length ? 'adm-btn-secondary' : 'adm-btn-primary'}
+                                style={{ padding: '6px 12px', borderRadius: '9px', fontSize: '0.72rem', fontWeight: 800, whiteSpace: 'nowrap' }}>
+                                {list.length ? 'Editar metas' : 'Definir metas'}
+                              </button>
+                            )}
+                          </div>
+
+                          {list.length === 0 ? (
+                            <div style={{ fontSize: '0.76rem', color: 'var(--adm-text-muted)' }}>Sem metas neste período.</div>
+                          ) : list.map(g => {
+                            const def = goalMetricDef(g.metric);
+                            const actual = actuals ? collaboratorActual(actuals, c.id, g.metric) : null;
+                            const pct = actuals && g.status === 'active' ? goalPct(g.metric, g.targetValue, actual) : null;
+                            return (
+                              <div key={g.id} style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', fontSize: '0.74rem', fontWeight: 700, color: 'var(--adm-text-muted)' }}>
+                                    <MetricChip metric={g.metric} size={22} /> {def.label}
+                                  </span>
+                                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                                    {g.isRecurring && <span title="Recorrente" style={{ display: 'inline-flex' }}><Repeat size={11} color="var(--adm-text-muted)" /></span>}
+                                    <StatusChip status={g.status} />
+                                  </span>
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', fontVariantNumeric: 'tabular-nums' }}>
+                                  <span style={{ fontWeight: 800, color: 'var(--adm-text-title)' }}>
+                                    {g.status === 'active' ? formatMetricValue(g.metric, actual) : '—'} <span style={{ color: 'var(--adm-text-muted)', fontWeight: 600 }}>de {formatMetricValue(g.metric, g.targetValue)}</span>
+                                  </span>
+                                  <span style={{ fontWeight: 800, color: barColor(pct) }}>{pct !== null ? `${pct}%` : ''}</span>
+                                </div>
+                                <ProgressBar pct={pct} />
+                                {canEdit && (
+                                  <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+                                    {g.status === 'pending' && <button type="button" onClick={() => activateOne(g)} style={{ background: 'transparent', border: 'none', color: '#10B981', fontSize: '0.68rem', fontWeight: 800, cursor: 'pointer' }}>Ativar</button>}
+                                    <button type="button" onClick={() => removeGoal(g)} aria-label="Remover meta" style={{ background: 'transparent', border: 'none', color: '#EF4444', cursor: 'pointer', display: 'inline-flex' }}><Trash2 size={12} /></button>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
+            )
+          ) : (
+            /* ───── Historico ───── */
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                <span style={eyebrow}>Filtrar</span>
+                <Select className="adm-input" value={histCollab} onChange={e => setHistCollab(e.target.value)} style={{ height: '36px', borderRadius: '10px', fontSize: '0.78rem', minWidth: '210px' }}>
+                  <option value="all">Unidade e colaboradores</option>
+                  <option value="venue">Somente a unidade</option>
+                  {histCollabOptions.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+                </Select>
+              </div>
+              {closedResultsByPeriod.length === 0 ? emptyBox(<History size={26} />, 'Nenhum período encerrado ainda',
+                'Quando um período vence, o resultado de cada meta fica guardado aqui e não muda mais.') : closedResultsByPeriod.map(([key, rows]) => {
+                const [s, e] = key.split('|');
+                const met = rows.filter(r => r.outcome === 'met').length;
+                return (
+                  <div key={key} style={card}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap', marginBottom: '12px' }}>
+                      <span style={{ fontSize: '0.95rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>{fmtDate(s)} a {fmtDate(e)}</span>
+                      <span style={{ fontSize: '0.74rem', fontWeight: 800, color: met === rows.length ? '#10B981' : 'var(--adm-text-muted)' }}>{met} de {rows.length} metas batidas</span>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      {rows.map(r => {
+                        const over = r.pct !== null ? r.pct - 100 : null;
+                        return (
+                          <div key={r.id} style={{ display: 'grid', gridTemplateColumns: 'minmax(170px, 1.2fr) 2fr auto', gap: '12px', alignItems: 'center' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                              <MetricChip metric={r.metric} size={28} />
+                              <div>
+                                <div style={{ fontSize: '0.8rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>{r.scope === 'venue' ? 'Unidade' : r.collaboratorName || 'Colaborador'}</div>
+                                <div style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)' }}>{GOAL_METRIC_LABEL[r.metric]}</div>
+                              </div>
+                            </div>
+                            <div>
+                              <ProgressBar pct={r.pct} color={r.outcome === 'met' ? '#10B981' : barColor(r.pct)} />
+                              <div style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)', marginTop: '3px', fontVariantNumeric: 'tabular-nums' }}>
+                                {formatMetricValue(r.metric, r.actualValue)} de {formatMetricValue(r.metric, r.targetValue)}{r.pct !== null ? ` · ${r.pct}%` : ''}
+                              </div>
+                            </div>
+                            <span style={{ fontSize: '0.68rem', fontWeight: 800, textAlign: 'right', color: r.outcome === 'met' ? '#10B981' : '#EF4444' }}>
+                              {r.outcome === 'met' ? 'Bateu' : 'Não bateu'}{over !== null && !goalMetricDef(r.metric).lowerIsBetter ? ` (${over >= 0 ? '+' : ''}${over}%)` : ''}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {!canEdit && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.74rem', color: 'var(--adm-text-muted)' }}>
+              <Lock size={13} /> Somente master, administradores e gerentes editam metas.
+            </div>
+          )}
+        </>
+      )}
+
+      {wizard.open && (
+        <GoalWizard
+          venues={venues} lockedVenueId={scopeAll ? undefined : venueId} editing={wizard.editing} distributed={wizard.editing ? distributed : {}}
+          onClose={() => setWizard({ open: false })} onSubmit={submitWizard}
+        />
+      )}
+      {goalsModal.open && period && (
+        <CollaboratorGoalsModal
+          venue={venue} collaborators={eligible} rolesById={rolesById} period={period} goals={goals} initialCollaboratorId={goalsModal.collaboratorId}
+          onClose={() => setGoalsModal({ open: false })} onSave={saveCollaboratorGoals}
+        />
+      )}
     </div>
   );
 };

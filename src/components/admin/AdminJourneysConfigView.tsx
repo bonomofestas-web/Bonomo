@@ -1,3 +1,4 @@
+import { Select } from '../ui';
 import React, { useState } from 'react';
 import { 
   Plus, Gift, Crown, 
@@ -364,7 +365,7 @@ export const AdminJourneysConfigView: React.FC<AdminJourneysConfigViewProps> = (
               <label style={{ display: 'block', fontSize: '0.72rem', color: 'var(--adm-text-title)', fontWeight: 700, textTransform: 'uppercase', marginBottom: '6px' }}>
                 Selecione a Debutante:
               </label>
-              <select
+              <Select
                 value={selectedDebutanteId}
                 onChange={(e) => setSelectedDebutanteId(e.target.value)}
                 style={{
@@ -383,7 +384,7 @@ export const AdminJourneysConfigView: React.FC<AdminJourneysConfigViewProps> = (
                     {d.name} ({d.partyDate.split('-').reverse().join('/')})
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
 
             <div style={{ display: 'flex', gap: '10px' }}>
@@ -463,7 +464,7 @@ export const AdminJourneysConfigView: React.FC<AdminJourneysConfigViewProps> = (
               <label style={{ display: 'block', fontSize: '0.72rem', color: 'var(--adm-text-title)', fontWeight: 700, textTransform: 'uppercase', marginBottom: '6px' }}>
                 Casa de Festa de Destino:
               </label>
-              <select
+              <Select
                 value={targetVenueId}
                 onChange={(e) => setTargetVenueId(e.target.value)}
                 style={{
@@ -482,7 +483,7 @@ export const AdminJourneysConfigView: React.FC<AdminJourneysConfigViewProps> = (
                     {v.name}
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
 
             <div style={{ display: 'flex', gap: '10px' }}>

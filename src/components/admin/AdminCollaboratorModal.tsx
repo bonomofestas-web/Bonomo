@@ -1,3 +1,4 @@
+import { Select } from '../ui';
 import React, { useState, useEffect } from 'react';
 import { X, User, Mail, Phone, Building2 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
@@ -25,8 +26,8 @@ export const AdminCollaboratorModal: React.FC<AdminCollaboratorModalProps> = ({
   const [phone, setPhone] = useState('');
   const [role, setRole] = useState<AdminRole>('comercial');
   const [customJobTitle, setCustomJobTitle] = useState('');
-  const [department, setDepartment] = useState<'diretoria' | 'gerencia' | 'comercial' | 'pos_venda' | 'financeiro' | ''>('');
-  const [primarySector, setPrimarySector] = useState<'comercial' | 'pos_venda' | 'gerencia' | 'financeiro' | ''>('');
+  const [department, setDepartment] = useState<'diretoria' | 'gerencia' | 'comercial' | 'pos_venda' | 'financeiro' | 'marketing' | ''>('');
+  const [primarySector, setPrimarySector] = useState<'comercial' | 'pos_venda' | 'gerencia' | 'financeiro' | 'marketing' | ''>('');
   const [selectedVenueIds, setSelectedVenueIds] = useState<string[]>([]);
   const [avatarUrl, setAvatarUrl] = useState('');
   const [active, setActive] = useState(true);
@@ -74,7 +75,7 @@ export const AdminCollaboratorModal: React.FC<AdminCollaboratorModalProps> = ({
 
     const finalDepartment = department ? department : undefined;
 
-    const calculatedSectors: ('gerencia' | 'comercial' | 'pos_venda' | 'financeiro')[] = 
+    const calculatedSectors: ('gerencia' | 'comercial' | 'pos_venda' | 'financeiro' | 'marketing')[] = 
       role === 'master' || role === 'admin' 
         ? ['gerencia', 'comercial', 'pos_venda']
         : role === 'pos_venda'
@@ -312,7 +313,7 @@ export const AdminCollaboratorModal: React.FC<AdminCollaboratorModalProps> = ({
               <label style={labelStyle}>
                 Setor / Departamento (Opcional)
               </label>
-              <select
+              <Select
                 value={department}
                 onChange={(e) => setDepartment(e.target.value as any)}
                 style={{
@@ -326,7 +327,7 @@ export const AdminCollaboratorModal: React.FC<AdminCollaboratorModalProps> = ({
                 <option value="comercial">Comercial & Vendas</option>
                 <option value="pos_venda">Pós-Venda & Sucesso</option>
                 <option value="financeiro">Financeiro & Contratos</option>
-              </select>
+              </Select>
             </div>
           </div>
 
@@ -335,7 +336,7 @@ export const AdminCollaboratorModal: React.FC<AdminCollaboratorModalProps> = ({
             <label style={labelStyle}>
               Setor Prioritário (Abertura Padrão no WhatsApp)
             </label>
-            <select
+            <Select
               value={primarySector}
               onChange={(e) => setPrimarySector(e.target.value as any)}
               style={{
@@ -348,7 +349,7 @@ export const AdminCollaboratorModal: React.FC<AdminCollaboratorModalProps> = ({
               <option value="pos_venda">Pós-Venda (Sucesso do Cliente)</option>
               <option value="gerencia">Gestão / Gerência</option>
               <option value="financeiro">Financeiro</option>
-            </select>
+            </Select>
             <div style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)', marginTop: '4px' }}>
               Determina se o colaborador acessa prioritariamente o Comercial ou Sucesso do Cliente (Pós-Venda) no WhatsApp.
             </div>

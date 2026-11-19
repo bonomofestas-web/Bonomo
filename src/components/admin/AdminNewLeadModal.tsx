@@ -1,3 +1,4 @@
+import { Select } from '../ui';
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   X, UserPlus, Phone, User, DollarSign, Building2,
@@ -505,7 +506,7 @@ export const AdminNewLeadModal: React.FC<AdminNewLeadModalProps> = ({
               <div style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--adm-text-muted, #64748B)' }}>
                 <Building2 size={14} />
               </div>
-              <select
+              <Select
                 value={venueId}
                 disabled={isVenueFixedByFunnel}
                 onChange={(e) => setVenueId(e.target.value)}
@@ -528,7 +529,7 @@ export const AdminNewLeadModal: React.FC<AdminNewLeadModalProps> = ({
                 {allowedVenuesForFunnel.map(v => (
                   <option key={v.id} value={v.id}>{v.name}</option>
                 ))}
-              </select>
+              </Select>
             </div>
             {isVenueFixedByFunnel ? (
               <span style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted, #64748B)', marginTop: '4px', display: 'block' }}>
@@ -665,7 +666,7 @@ export const AdminNewLeadModal: React.FC<AdminNewLeadModalProps> = ({
                   <div style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--adm-text-muted, #64748B)' }}>
                     <MessageSquare size={14} />
                   </div>
-                  <select
+                  <Select
                     value={sourceId ? `custom_${sourceId}` : source}
                     onChange={(e) => {
                       const val = e.target.value;
@@ -702,7 +703,7 @@ export const AdminNewLeadModal: React.FC<AdminNewLeadModalProps> = ({
                     {availableSources.map(s => (
                       <option key={s.id} value={`custom_${s.id}`}>{s.name}</option>
                     ))}
-                  </select>
+                  </Select>
                 </div>
               </div>
 

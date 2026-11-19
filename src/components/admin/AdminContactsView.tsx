@@ -1,3 +1,4 @@
+import { DateField, Select } from '../ui';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Users, User, Plus, Phone, Mail, Briefcase,
@@ -1757,7 +1758,7 @@ export const AdminContactsView: React.FC<AdminContactsViewProps> = ({
                 <label style={{ display: 'block', fontSize: '0.78rem', color: isLight ? '#475569' : '#94A3B8', marginBottom: '4px' }}>
                   Unidade Principal (opcional)
                 </label>
-                <select
+                <Select
                   value={quickForm.venueId}
                   onChange={e => setQuickForm({ ...quickForm, venueId: e.target.value })}
                   style={{
@@ -1775,7 +1776,7 @@ export const AdminContactsView: React.FC<AdminContactsViewProps> = ({
                   {venues.map(v => (
                     <option key={v.id} value={v.id}>{v.name}</option>
                   ))}
-                </select>
+                </Select>
               </div>
 
               <div style={{
@@ -2030,8 +2031,7 @@ export const AdminContactsView: React.FC<AdminContactsViewProps> = ({
                     <label style={{ display: 'block', fontSize: '0.76rem', color: isLight ? '#475569' : '#94A3B8', marginBottom: '3px' }}>
                       Data de Nascimento
                     </label>
-                    <input
-                      type="date"
+                    <DateField
                       value={formData.birthDate}
                       onChange={e => setFormData({ ...formData, birthDate: e.target.value })}
                       style={{
@@ -2239,7 +2239,7 @@ export const AdminContactsView: React.FC<AdminContactsViewProps> = ({
                     <label style={{ display: 'block', fontSize: '0.76rem', color: isLight ? '#475569' : '#94A3B8', marginBottom: '3px' }}>
                       Papel / Grau
                     </label>
-                    <select
+                    <Select
                       value={dependentForm.relationship}
                       onChange={e => setDependentForm({ ...dependentForm, relationship: e.target.value })}
                       style={{
@@ -2259,15 +2259,14 @@ export const AdminContactsView: React.FC<AdminContactsViewProps> = ({
                       <option value="Pai/Mãe">Pai/Mãe</option>
                       <option value="Irmão(ã)">Irmão(ã)</option>
                       <option value="Outro">Outro</option>
-                    </select>
+                    </Select>
                   </div>
 
                   <div>
                     <label style={{ display: 'block', fontSize: '0.76rem', color: isLight ? '#475569' : '#94A3B8', marginBottom: '3px' }}>
                       Data de Nascimento
                     </label>
-                    <input
-                      type="date"
+                    <DateField
                       value={dependentForm.birthDate}
                       onChange={e => setDependentForm({ ...dependentForm, birthDate: e.target.value })}
                       style={{

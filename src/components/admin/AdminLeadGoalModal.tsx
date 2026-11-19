@@ -1,3 +1,4 @@
+import { DateField } from '../ui';
 import React, { useState } from 'react';
 import { X, Target, Check } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
@@ -158,8 +159,7 @@ export const AdminLeadGoalModal: React.FC<AdminLeadGoalModalProps> = ({ isOpen, 
                 Prazo / Data Limite
               </label>
               <div style={{ position: 'relative' }}>
-                <input
-                  type="date"
+                <DateField
                   value={deadline}
                   onChange={(e) => setDeadline(e.target.value)}
                   className="adm-input"

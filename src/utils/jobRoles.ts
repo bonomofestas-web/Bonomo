@@ -1,0 +1,92 @@
+import type { Collaborator } from '../types/admin';
+
+/**
+ * Acesso x cargo.
+ * - ACESSO = setores (`sectors`): o que o colaborador enxerga no sistema.
+ * - CARGO = `jobRoles`: o que ele e dentro do setor; serve de filtro (quem e SDR, Closer, gestor de trafego...).
+ * Guardado na coluna `permissions` como `jobrole:<id>` (ver collaboratorService).
+ *
+ * Id de cargo:
+ *  - fixo (vem do codigo):        `<setor>:<cargo>`        ex.: comercial:sdr, marketing:gestor
+ *  - personalizado ("Outro"):     `<setor>:x:<slug>`       ex.: marketing:x:gestor-de-trafego
+ * Os personalizados ficam no catalogo `job_roles` (jobRoleService) e podem ser excluidos.
+ */
+export type JobSector = 'comercial' | 'pos_venda' | 'gerencia' | 'financeiro' | 'marketing';
+
+export const JOB_SECTORS: { id: JobSector; label: string; color: string }[] = [
+  { id: 'comercial', label: 'Comercial', color: '#10B981' },
+  { id: 'pos_venda', label: 'Pós-Venda', color: '#06B6D4' },
+  { id: 'gerencia', label: 'Gerência', color: '#3B82F6' },
+  { id: 'marketing', label: 'Marketing', color: '#EC4899' },
+  { id: 'financeiro', label: 'Financeiro', color: '#F59E0B' },
+];
+
+export interface JobRoleOption { id: string; label: string; description: string }
+
+/** Cargos fixos de cada setor. Os demais sao digitados em "+ Outro" (catalogo por setor). */
+export const JOB_ROLE_OPTIONS: Record<JobSector, JobRoleOption[]> = {
+  comercial: [
+    { id: 'comercial:sdr', label: 'SDR', description: 'Qualifica e agenda' },
+    { id: 'comercial:closer', label: 'Closer', description: 'Conduz a visita e fecha o contrato' },
+    { id: 'comercial:gerente', label: 'Gerente comercial', description: 'Gestão do setor comercial' },
+  ],
+  gerencia: [
+    { id: 'gerencia:gerente_geral', label: 'Gerente geral', description: 'Responsável pela unidade inteira' },
+  ],
+  marketing: [
+    { id: 'marketing:gestor', label: 'Gestor', description: 'Gestão do marketing (ex.: tráfego pago)' },
+  ],
+  pos_venda: [
+    { id: 'pos_venda:gerente', label: 'Gerente de pós-venda', description: 'Gestão do setor de pós-venda' },
+    { id: 'pos_venda:cs', label: 'Customer Success', description: 'Acompanha a jornada do cliente até a festa e o valor entregue' },
+    { id: 'pos_venda:sac', label: 'SAC', description: 'Atendimento receptivo: dúvidas, reclamações e problemas' },
+    { id: 'pos_venda:suporte', label: 'Suporte / Implantação', description: 'Onboarding, configuração inicial e orientação ao cliente' },
+    { id: 'pos_venda:retencao', label: 'Retenção e fidelização', description: 'Benefícios, pesquisas de satisfação (NPS) e manutenção do cliente' },
+    { id: 'pos_venda:upsell', label: 'Expansão / Upsell', description: 'Vendas adicionais e complementares para clientes da base' },
+  ],
+  // Provisório: o módulo financeiro ainda não existe
+  financeiro: [
+    { id: 'financeiro:gerente', label: 'Gerente financeiro', description: 'Gestão do setor financeiro' },
+    { id: 'financeiro:analista', label: 'Analista financeiro', description: 'Rotinas financeiras' },
+  ],
+};
+
+export interface CustomJobRole { id: string; sector: JobSector; name: string; slug: string }
+
+export const slugifyRole = (name: string): string =>
+  name.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 50);
+
+/** Id do cargo personalizado de um setor. */
+export const customRoleId = (sector: JobSector, slug: string): string => `${sector}:x:${slug}`;
+
+export const isCustomRoleId = (id: string): boolean => id.split(':')[1] === 'x';
+export const sectorOfRole = (id: string): JobSector => id.split(':')[0] as JobSector;
+
+/** Cargos antigos que deixaram de ser fixos mantem o rotulo. */
+const LEGACY_LABELS: Record<string, string> = { 'gerencia:outro': 'Outro' };
+
+/** Rotulo do cargo. Personalizado: nome do catalogo; se o item foi excluido, deriva do slug. */
+export type JobRoleAliases = Record<string, string>;
+
+/** Nome de exibicao: o apelido definido pelo Master (ex.: SDR -> "Especialista") vence o nome padrao. */
+export const jobRoleLabel = (id: string, custom: CustomJobRole[] = [], aliases: JobRoleAliases = {}): string => {
+  const alias = aliases[id]?.trim();
+  if (alias) return alias;
+  const fixed = Object.values(JOB_ROLE_OPTIONS).flat().find(o => o.id === id);
+  if (fixed) return fixed.label;
+  const c = custom.find(x => x.id === id);
+  if (c) return c.name;
+  if (LEGACY_LABELS[id]) return LEGACY_LABELS[id];
+  const slug = id.split(':')[2] || id;
+  return slug.replace(/-/g, ' ').replace(/^./, ch => ch.toUpperCase());
+};
+
+export const hasJobRole = (c: Pick<Collaborator, 'jobRoles'> | undefined | null, id: string): boolean => !!c?.jobRoles?.includes(id);
+
+/** Cargos comerciais definidos para o colaborador (`defined` = o cadastro tem pelo menos um cargo comercial). */
+export const commercialJobRoles = (c: Pick<Collaborator, 'jobRoles'> | undefined | null) => {
+  const sdr = hasJobRole(c, 'comercial:sdr');
+  const closer = hasJobRole(c, 'comercial:closer');
+  const manager = hasJobRole(c, 'comercial:gerente');
+  return { sdr, closer, manager, defined: sdr || closer || manager };
+};

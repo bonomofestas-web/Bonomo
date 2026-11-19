@@ -1,3 +1,4 @@
+import { Select } from '../ui';
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { 
   Plus, Search, Filter, List, Calendar as CalendarIcon, Utensils,
@@ -900,7 +901,7 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
                 <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--adm-text-muted, #64748B)', display: 'block', marginBottom: '4px' }}>
                   Usuário Responsável
                 </label>
-                <select
+                <Select
                   value={assigneeFilter}
                   onChange={(e) => setAssigneeFilter(e.target.value)}
                   style={{
@@ -918,7 +919,7 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
                   {collaborators.map(c => (
                     <option key={c.id} value={c.id}>{c.name}</option>
                   ))}
-                </select>
+                </Select>
               </div>
 
               {/* 2. Tipo (Adaptado para Agendamentos vs Geral) */}
@@ -926,7 +927,7 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
                 <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--adm-text-muted, #64748B)', display: 'block', marginBottom: '4px' }}>
                   {workspaceContext === 'visits_tastings' ? 'Tipo de Agendamento' : 'Tipo de Tarefa'}
                 </label>
-                <select
+                <Select
                   value={typeFilter}
                   onChange={(e) => setTypeFilter(e.target.value)}
                   style={{
@@ -958,7 +959,7 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
                       <option value="Contrato">Contrato</option>
                     </>
                   )}
-                </select>
+                </Select>
               </div>
 
               {/* 3. Unidade (Exibido para Agendamentos ou Geral) */}
@@ -966,7 +967,7 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
                 <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--adm-text-muted, #64748B)', display: 'block', marginBottom: '4px' }}>
                   Unidade
                 </label>
-                <select
+                <Select
                   value={venueFilter}
                   onChange={(e) => setVenueFilter(e.target.value)}
                   style={{
@@ -984,7 +985,7 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
                   {venues.map(v => (
                     <option key={v.id} value={v.id}>{v.name}</option>
                   ))}
-                </select>
+                </Select>
               </div>
 
               {/* Banco / Unidade e Setor (Ocultos em Visitas & Degustações conforme Audio 4) */}
@@ -994,7 +995,7 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
                     <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--adm-text-muted, #64748B)', display: 'block', marginBottom: '4px' }}>
                       Banco de Tarefas
                     </label>
-                    <select
+                    <Select
                       value={selectedDatabaseId}
                       onChange={(e) => setSelectedDatabaseId(e.target.value)}
                       style={{
@@ -1012,14 +1013,14 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
                       {databases.map(db => (
                         <option key={db.id} value={db.id}>{db.name}</option>
                       ))}
-                    </select>
+                    </Select>
                   </div>
 
                   <div>
                     <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--adm-text-muted, #64748B)', display: 'block', marginBottom: '4px' }}>
                       Setor da Empresa
                     </label>
-                    <select
+                    <Select
                       value={sectorFilter}
                       onChange={(e) => setSectorFilter(e.target.value as any)}
                       style={{
@@ -1038,7 +1039,7 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
                       <option value="pos_venda">Pós-Venda (Sucesso do Cliente)</option>
                       <option value="gerencia">Gerência / Gestão</option>
                       <option value="financeiro">Financeiro</option>
-                    </select>
+                    </Select>
                   </div>
                 </>
               )}
@@ -1048,7 +1049,7 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
                 <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--adm-text-muted, #64748B)', display: 'block', marginBottom: '4px' }}>
                   {workspaceContext === 'visits_tastings' ? 'Status do Agendamento' : 'Status'}
                 </label>
-                <select
+                <Select
                   value={statusFilter}
                   onChange={(e) => setStatusFilter(e.target.value)}
                   style={{
@@ -1068,7 +1069,7 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
                   <option value="overdue">Atrasados</option>
                   <option value="cancelled">Cancelados</option>
                   <option value="rescheduled">Remarcados</option>
-                </select>
+                </Select>
               </div>
 
               {/* Botão Usar Filtro */}

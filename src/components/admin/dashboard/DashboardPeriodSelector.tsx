@@ -1,3 +1,4 @@
+import { DateRangeField } from '../../ui';
 import React from 'react';
 import { CalendarRange, GitCompareArrows } from 'lucide-react';
 import {
@@ -11,9 +12,7 @@ interface Props {
   onChange: (next: PeriodSelection) => void;
 }
 
-const dateInput: React.CSSProperties = {
-  height: '32px', borderRadius: '8px', fontSize: '0.76rem', padding: '0 8px', width: '132px',
-};
+const rangeInput: React.CSSProperties = { height: '32px', borderRadius: '8px', fontSize: '0.76rem', padding: '0 10px', width: '236px' };
 
 export const DashboardPeriodSelector: React.FC<Props> = ({ value, resolved, onChange }) => {
   const set = (patch: Partial<PeriodSelection>) => onChange({ ...value, ...patch });
@@ -30,7 +29,7 @@ export const DashboardPeriodSelector: React.FC<Props> = ({ value, resolved, onCh
     set({ preset });
   };
 
-  const handleCompareMode = (compareMode: 'auto' | 'custom') => {
+  const handleCompareMode = (compareMode: 'auto' | 'custom' | 'baseline') => {
     if (compareMode === 'custom') {
       set({
         compareMode,
@@ -66,20 +65,15 @@ export const DashboardPeriodSelector: React.FC<Props> = ({ value, resolved, onCh
           );
         })}
         {value.preset === 'custom' && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <input type="date" className="adm-input" style={dateInput} value={value.customStart || ''}
-              onChange={e => set({ customStart: e.target.value })} aria-label="Data inicial" />
-            <span style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)' }}>até</span>
-            <input type="date" className="adm-input" style={dateInput} value={value.customEnd || ''}
-              onChange={e => set({ customEnd: e.target.value })} aria-label="Data final" />
-          </div>
+          <DateRangeField className="adm-input" style={rangeInput} start={value.customStart || ''} end={value.customEnd || ''}
+            onChange={(a, b) => set({ customStart: a, customEnd: b })} aria-label="Período" />
         )}
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
         <GitCompareArrows size={15} color="var(--adm-text-muted)" />
         <span style={{ fontSize: '0.74rem', fontWeight: 700, color: 'var(--adm-text-muted)' }}>Comparar com</span>
-        {(['auto', 'custom'] as const).map(mode => {
+        {(['auto', 'custom', 'baseline'] as const).map(mode => {
           const active = value.compareMode === mode;
           return (
             <button
@@ -94,21 +88,17 @@ export const DashboardPeriodSelector: React.FC<Props> = ({ value, resolved, onCh
                 color: 'var(--adm-text-title)',
               }}
             >
-              {mode === 'auto' ? 'Período anterior' : 'Personalizado'}
+              {mode === 'auto' ? 'Período anterior' : mode === 'custom' ? 'Personalizado' : 'Base da unidade'}
             </button>
           );
         })}
         {value.compareMode === 'custom' && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <input type="date" className="adm-input" style={dateInput} value={value.compareStart || ''}
-              onChange={e => set({ compareStart: e.target.value })} aria-label="Início da comparação" />
-            <span style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)' }}>até</span>
-            <input type="date" className="adm-input" style={dateInput} value={value.compareEnd || ''}
-              onChange={e => set({ compareEnd: e.target.value })} aria-label="Fim da comparação" />
-          </div>
+          <DateRangeField className="adm-input" style={rangeInput} start={value.compareStart || ''} end={value.compareEnd || ''}
+            onChange={(a, b) => set({ compareStart: a, compareEnd: b })} aria-label="Período de comparação" />
         )}
         <span style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)', fontVariantNumeric: 'tabular-nums' }}>
           {resolved.currentLabel} vs {resolved.comparedLabel}
+          {value.compareMode === 'baseline' && ' (valores mensais proporcionais ao período)'}
         </span>
       </div>
     </div>

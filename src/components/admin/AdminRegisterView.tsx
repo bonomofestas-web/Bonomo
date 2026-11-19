@@ -1,3 +1,4 @@
+import { Select } from '../ui';
 import React, { useState } from 'react';
 import { Crown, Lock, Mail, User, Phone, ShieldCheck, ArrowRight, CheckCircle2, AlertCircle, ArrowLeft } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
@@ -329,7 +330,7 @@ export const AdminRegisterView: React.FC<AdminRegisterViewProps> = ({
               <label style={{ display: 'block', fontSize: '0.72rem', color: '#D4AF37', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '5px', fontFamily: "'Cinzel', serif" }}>
                 Função / Cargo *
               </label>
-              <select
+              <Select
                 value={role}
                 onChange={(e) => setRole(e.target.value as AdminRole)}
                 style={{
@@ -349,14 +350,14 @@ export const AdminRegisterView: React.FC<AdminRegisterViewProps> = ({
                 <option value="crm">Gestor de CRM</option>
                 <option value="admin">Gerente de Unidade</option>
                 <option value="master">Master / Administrador</option>
-              </select>
+              </Select>
             </div>
 
             <div>
               <label style={{ display: 'block', fontSize: '0.72rem', color: '#D4AF37', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '5px', fontFamily: "'Cinzel', serif" }}>
                 Unidade Principal *
               </label>
-              <select
+              <Select
                 value={venueId}
                 onChange={(e) => setVenueId(e.target.value)}
                 style={{
@@ -375,7 +376,7 @@ export const AdminRegisterView: React.FC<AdminRegisterViewProps> = ({
                 {venues.map(v => (
                   <option key={v.id} value={v.id}>{v.name}</option>
                 ))}
-              </select>
+              </Select>
             </div>
           </div>
 

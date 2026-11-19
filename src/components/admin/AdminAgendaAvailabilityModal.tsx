@@ -1,3 +1,4 @@
+import { DateField, Select } from '../ui';
 import { toast } from 'sonner';
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
@@ -2296,7 +2297,7 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
                             Duração
                           </label>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                            <select
+                            <Select
                               disabled={!isEditingRecurring}
                               value={[30, 45, 60, 90, 120].includes(dayDuration) ? dayDuration : 'custom'}
                               onChange={e => {
@@ -2322,7 +2323,7 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
                               <option value={90}>1h 30m</option>
                               <option value={120}>2h</option>
                               <option value="custom">Outro</option>
-                            </select>
+                            </Select>
 
                             <input
                               type="number"
@@ -2706,8 +2707,7 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
                         <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: '#64748B', marginBottom: '4px' }}>
                           DATA DE INÍCIO *
                         </label>
-                        <input
-                          type="date"
+                        <DateField
                           value={newBlockStart}
                           onChange={e => setNewBlockStart(e.target.value)}
                           style={{
@@ -2728,8 +2728,7 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
                         <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: '#64748B', marginBottom: '4px' }}>
                           DATA DE TÉRMINO *
                         </label>
-                        <input
-                          type="date"
+                        <DateField
                           value={newBlockEnd}
                           onChange={e => setNewBlockEnd(e.target.value)}
                           style={{
@@ -3255,7 +3254,7 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
                                             DURAÇÃO DO HORÁRIO (MINUTOS)
                                           </label>
                                           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                                            <select
+                                            <Select
                                               value={selectedCfg.durationMinutes}
                                               onChange={e => handleUpdateSelectedBlockDay({ durationMinutes: Number(e.target.value) })}
                                               style={{
@@ -3275,7 +3274,7 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
                                               {!DURATION_OPTIONS.some(opt => opt.value === selectedCfg.durationMinutes) && (
                                                 <option value={selectedCfg.durationMinutes}>{selectedCfg.durationMinutes} minutos (Personalizado)</option>
                                               )}
-                                            </select>
+                                            </Select>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                                               <input
                                                 type="number"
@@ -3840,7 +3839,7 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
                         Duração de Cada Horário
                       </label>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <select
+                        <Select
                           value={[30, 45, 60, 90, 120].includes(overrideDuration) ? overrideDuration : 'custom'}
                           onChange={e => {
                             const val = e.target.value;
@@ -3863,7 +3862,7 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
                           <option value={90}>1 hora e meia (90 min)</option>
                           <option value={120}>2 horas (120 min)</option>
                           <option value="custom">Outro (Digitar)</option>
-                        </select>
+                        </Select>
 
                         <input
                           type="number"

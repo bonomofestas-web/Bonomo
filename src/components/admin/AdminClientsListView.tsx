@@ -1,3 +1,4 @@
+import { Select } from '../ui';
 import React, { useState, useMemo } from 'react';
 import { 
   Users, 
@@ -506,7 +507,7 @@ export const AdminClientsListView: React.FC<AdminClientsListViewProps> = ({
         </div>
 
         {/* Seletor de Casa / Unidade */}
-        <select
+        <Select
           value={selectedVenueFilter}
           onChange={(e) => {
             setSelectedVenueFilter(e.target.value);
@@ -527,11 +528,11 @@ export const AdminClientsListView: React.FC<AdminClientsListViewProps> = ({
           {venues.map(v => (
             <option key={v.id} value={v.id}>{v.name}</option>
           ))}
-        </select>
+        </Select>
 
         {/* Seletor de Funil de Pós-Venda */}
         {postSaleFunnels.length > 0 && (
-          <select
+          <Select
             value={selectedFunnelFilter}
             onChange={(e) => {
               setSelectedFunnelFilter(e.target.value);
@@ -552,11 +553,11 @@ export const AdminClientsListView: React.FC<AdminClientsListViewProps> = ({
             {postSaleFunnels.map(f => (
               <option key={f.id} value={f.id}>{f.name}</option>
             ))}
-          </select>
+          </Select>
         )}
 
         {/* Seletor de Responsável */}
-        <select
+        <Select
           value={selectedCollabFilter}
           onChange={(e) => {
             setSelectedCollabFilter(e.target.value);
@@ -577,7 +578,7 @@ export const AdminClientsListView: React.FC<AdminClientsListViewProps> = ({
           {collaborators.map(c => (
             <option key={c.id} value={c.id}>{c.name}</option>
           ))}
-        </select>
+        </Select>
       </div>
 
       {/* ── Table Container ── */}
@@ -1093,7 +1094,7 @@ export const AdminClientsListView: React.FC<AdminClientsListViewProps> = ({
                 <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--adm-text-muted)', marginBottom: '5px' }}>
                   Funil Comercial de Destino
                 </label>
-                <select
+                <Select
                   value={targetCommercialFunnelId}
                   onChange={(e) => {
                     const fId = e.target.value;
@@ -1107,14 +1108,14 @@ export const AdminClientsListView: React.FC<AdminClientsListViewProps> = ({
                   {funnels.filter(f => !f.isPostSale && f.category !== 'Pós-Venda').map(f => (
                     <option key={f.id} value={f.id}>{f.name}</option>
                   ))}
-                </select>
+                </Select>
               </div>
 
               <div>
                 <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--adm-text-muted)', marginBottom: '5px' }}>
                   Etapa Inicial no Comercial
                 </label>
-                <select
+                <Select
                   value={targetCommercialStageId}
                   onChange={(e) => setTargetCommercialStageId(e.target.value)}
                   className="adm-input"
@@ -1123,7 +1124,7 @@ export const AdminClientsListView: React.FC<AdminClientsListViewProps> = ({
                   {(funnels.find(f => f.id === targetCommercialFunnelId)?.stages || []).map(st => (
                     <option key={st.id} value={st.id}>{st.name}</option>
                   ))}
-                </select>
+                </Select>
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '6px' }}>

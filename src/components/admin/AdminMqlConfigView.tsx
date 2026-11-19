@@ -1,6 +1,6 @@
 import { toast } from 'sonner';
 import { HeaderActions } from './HeaderActions';
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { 
   Plus, Trash2, Edit2, X, ArrowRight, ArrowLeft,
   Share2, Layers, Sparkles,
@@ -9,7 +9,7 @@ import {
 import { IcpTargetUserIcon } from './IcpTargetUserIcon';
 import { useAdminState } from '../../context/AdminStateContext';
 import { ICP_SITUATION_CONFIG } from '../../types/admin';
-import type { MqlQuestion, MqlOption, MqlOptionSituation, Venue, CommercialFunnel } from '../../types/admin';
+import type { MqlQuestion, MqlOption, MqlOptionSituation, MqlProfile, Venue, CommercialFunnel } from '../../types/admin';
 import { mqlService } from '../../services/mqlService';
 
 interface FixedOptionFormState {
@@ -26,6 +26,10 @@ const DEFAULT_FIXED_OPTIONS: FixedOptionFormState[] = [
 
 export interface IcpProfileGroup {
   id: string;
+  /** Presente quando o formato ja esta cadastrado em mql_profiles (autor, data e vinculo de funis no banco). */
+  profileId?: string;
+  createdAt?: string;
+  createdByName?: string;
   name: string;
   funnelIds: string[];
   funnels: CommercialFunnel[];
@@ -35,14 +39,24 @@ export interface IcpProfileGroup {
 }
 
 export const AdminMqlConfigView: React.FC = () => {
-  const { 
-    venues, 
+  const {
+    venues,
     funnels,
-    mqlQuestions, 
-    addMqlQuestion, 
-    updateMqlQuestion, 
-    deleteMqlQuestion
+    mqlQuestions,
+    addMqlQuestion,
+    updateMqlQuestion,
+    deleteMqlQuestion,
+    currentUser,
   } = useAdminState();
+  const masterId = currentUser?.masterId || currentUser?.id || '';
+
+  // Perfis cadastrados (autor, data e funis vinculados; "1 funil = 1 MQL" garantido pelo banco)
+  const [profiles, setProfiles] = useState<MqlProfile[]>([]);
+  const reloadProfiles = useCallback(async () => {
+    if (!masterId) return;
+    setProfiles(await mqlService.listProfiles(masterId));
+  }, [masterId]);
+  useEffect(() => { void reloadProfiles(); }, [reloadProfiles]);
 
   // Navigation & Grouping State
   const [selectedProfileId, setSelectedProfileId] = useState<string | null>(null);
@@ -73,6 +87,7 @@ export const AdminMqlConfigView: React.FC = () => {
   // ── 2. HUB: Agrupamento de perfis ICP por Funis Comerciais & Nome ──
   const icpProfiles = useMemo<IcpProfileGroup[]>(() => {
     const groupsMap = new Map<string, {
+      profileId?: string;
       name: string;
       funnelIds: Set<string>;
       venueIds: Set<string>;
@@ -89,8 +104,10 @@ export const AdminMqlConfigView: React.FC = () => {
         ? q.venueIds 
         : (q.venueId && q.venueId !== 'all' ? [q.venueId] : []);
 
-      const key = q.profileName 
-        ? `name_${q.profileName}` 
+      const key = q.profileId
+        ? `p_${q.profileId}`
+        : q.profileName
+        ? `name_${q.profileName}`
         : (qFunnelIds.length > 0 
             ? `f_${qFunnelIds.slice().sort().join('_')}` 
             : (qVenueIds.length > 0 ? `v_${qVenueIds.slice().sort().join('_')}` : `q_${q.id}`));
@@ -106,7 +123,8 @@ export const AdminMqlConfigView: React.FC = () => {
         }
 
         groupsMap.set(key, {
-          name: defaultName,
+          profileId: q.profileId,
+          name: profiles.find(p => p.id === q.profileId)?.name || defaultName,
           funnelIds: new Set(qFunnelIds),
           venueIds: new Set(qVenueIds),
           questions: [],
@@ -124,6 +142,9 @@ export const AdminMqlConfigView: React.FC = () => {
 
     const result: IcpProfileGroup[] = [];
     groupsMap.forEach((grp, key) => {
+      const meta = grp.profileId ? profiles.find(p => p.id === grp.profileId) : undefined;
+      // Com perfil cadastrado, os funis do banco (UNIQUE por funil) sao a fonte de verdade
+      if (meta) meta.funnelIds.forEach(id => grp.funnelIds.add(id));
       const matchedFunnelIds = Array.from(grp.funnelIds).filter(id => commercialFunnels.some(f => f.id === id));
       const matchedFunnels = commercialFunnels.filter(f => matchedFunnelIds.includes(f.id));
 
@@ -136,6 +157,9 @@ export const AdminMqlConfigView: React.FC = () => {
 
       result.push({
         id: key,
+        profileId: grp.profileId,
+        createdAt: meta?.createdAt,
+        createdByName: meta?.createdByName,
         name: finalName,
         funnelIds: matchedFunnelIds,
         funnels: matchedFunnels,
@@ -146,7 +170,7 @@ export const AdminMqlConfigView: React.FC = () => {
     });
 
     return result;
-  }, [commercialFunnels, venues, mqlQuestions]);
+  }, [commercialFunnels, venues, mqlQuestions, profiles]);
 
   // Unlinked Funnels (Funnels that have NO qualification format assigned)
   const unlinkedFunnels = useMemo(() => {
@@ -215,6 +239,32 @@ export const AdminMqlConfigView: React.FC = () => {
       return;
     }
 
+    // Perfil cadastrado: o banco garante "1 funil = 1 MQL" (UNIQUE) e registra autor e data.
+    let persistedProfileId = editingProfile?.profileId;
+    if (editingProfile?.profileId) {
+      const res = await mqlService.updateProfile(masterId, editingProfile.profileId, { name: cleanName, funnelIds: selectedFunnelIdsInput });
+      if (!res.ok) {
+        toast.error(res.reason === 'funnel_taken'
+          ? 'Um dos funis já pertence a outro formato de qualificação. Cada funil só pode ter 1 MQL.'
+          : 'Não foi possível salvar o formato.');
+        return;
+      }
+    } else if (!editingProfile) {
+      const res = await mqlService.createProfile(masterId, {
+        name: cleanName,
+        funnelIds: selectedFunnelIdsInput,
+        createdById: currentUser?.id,
+        createdByName: currentUser?.name,
+      });
+      if (res.ok) {
+        persistedProfileId = res.profile.id;
+      } else if (res.reason === 'funnel_taken') {
+        toast.error('Um dos funis já pertence a outro formato de qualificação. Cada funil só pode ter 1 MQL.');
+        return;
+      }
+      // reason 'error' (ex.: migration de perfis ainda nao aplicada): segue pelo fluxo legado, sem perfil no banco
+    }
+
     // Execute save:
     if (editingProfile) {
       // Update all questions belonging to this profile
@@ -239,6 +289,8 @@ export const AdminMqlConfigView: React.FC = () => {
     } else {
       // Create new profile with a default starter question
       const newQuestion: Omit<MqlQuestion, 'id'> = {
+        profileId: persistedProfileId,
+        masterId: persistedProfileId ? masterId : undefined,
         funnelId: selectedFunnelIdsInput[0] || undefined,
         funnelIds: selectedFunnelIdsInput,
         venueId: selectedVenueIdsInput[0] || 'all',
@@ -258,11 +310,21 @@ export const AdminMqlConfigView: React.FC = () => {
     }
 
     setIsProfileModalOpen(false);
+    void reloadProfiles();
   };
 
   // ── Handler de Exclusão de Formato de Qualificação ──
   const handleDeleteProfile = async () => {
     if (!profileToDelete) return;
+
+    // Exclusao logica do perfil (libera os funis); leads ja respondidos mantem o snapshot do MQL
+    if (profileToDelete.profileId) {
+      const ok = await mqlService.deactivateProfile(masterId, profileToDelete.profileId);
+      if (!ok) {
+        toast.error('Não foi possível excluir o formato.');
+        return;
+      }
+    }
 
     // Delete all questions in this profile
     for (const q of profileToDelete.questions) {
@@ -275,6 +337,7 @@ export const AdminMqlConfigView: React.FC = () => {
     }
 
     setProfileToDelete(null);
+    void reloadProfiles();
   };
 
   // ── Handlers Inline (Edição Rápida e Reordenação Direta) ──
@@ -399,6 +462,8 @@ export const AdminMqlConfigView: React.FC = () => {
       });
     } else {
       addMqlQuestion({
+        profileId: currentProfile?.profileId,
+        masterId: currentProfile?.profileId ? masterId : undefined,
         funnelId: targetFunnelIds[0] || undefined,
         funnelIds: targetFunnelIds,
         venueId: targetVenueIds[0] || 'all',
@@ -641,6 +706,11 @@ export const AdminMqlConfigView: React.FC = () => {
                             {isMultiFunnel ? <Share2 size={10} /> : <GitBranch size={10} />}
                             {profile.funnels.length} {profile.funnels.length === 1 ? 'funil vinculado' : 'funis vinculados'}
                           </span>
+                          {profile.createdAt && (
+                            <div style={{ fontSize: '0.64rem', color: 'var(--adm-text-muted)', marginTop: '3px' }}>
+                              Criado{profile.createdByName ? ` por ${profile.createdByName}` : ''} em {new Date(profile.createdAt).toLocaleDateString('pt-BR')}
+                            </div>
+                          )}
                         </div>
                       </div>
 
@@ -977,7 +1047,7 @@ export const AdminMqlConfigView: React.FC = () => {
               </div>
 
               <p style={{ fontSize: '0.78rem', color: '#D3E0EA', margin: 0, lineHeight: 1.45 }}>
-                Esta ação apagará as <strong>{profileToDelete.questions.length} perguntas</strong> deste formato. Os funis vinculados ficarão sem critérios de qualificação configurados.
+                Esta ação remove as <strong>{profileToDelete.questions.length} perguntas</strong> deste formato. Os funis vinculados ficarão sem critérios de qualificação configurados. Leads já respondidos mantêm o MQL e a nota da época.
               </p>
 
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '10px', marginTop: '6px' }}>
@@ -1095,6 +1165,12 @@ export const AdminMqlConfigView: React.FC = () => {
                 <Edit2 size={11} />
                 <span>Editar Funis ({currentProfile.funnels.length})</span>
               </button>
+            </div>
+            <div style={{ fontSize: '0.7rem', color: 'var(--adm-text-muted)', marginTop: '4px' }}>
+              {currentProfile.createdAt && (
+                <>Criado{currentProfile.createdByName ? ` por ${currentProfile.createdByName}` : ''} em {new Date(currentProfile.createdAt).toLocaleDateString('pt-BR')}. </>
+              )}
+              Alterações valem só para novos leads: quem já respondeu mantém o MQL da época.
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px', flexWrap: 'wrap' }}>
               {currentProfile.funnels.map(f => (

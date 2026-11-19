@@ -1,3 +1,4 @@
+import { Select } from '../ui';
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Search, X, Users, Briefcase, FileText,
@@ -568,7 +569,7 @@ export const AdminGlobalSearch: React.FC<AdminGlobalSearchProps> = ({
                 {venues.length > 1 && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                     <Building2 size={13} color={isLight ? '#64748B' : '#94A3B8'} />
-                    <select
+                    <Select
                       value={selectedVenueFilter}
                       onChange={e => setSelectedVenueFilter(e.target.value)}
                       style={{
@@ -586,7 +587,7 @@ export const AdminGlobalSearch: React.FC<AdminGlobalSearchProps> = ({
                       {venues.map(v => (
                         <option key={v.id} value={v.id}>{v.name}</option>
                       ))}
-                    </select>
+                    </Select>
                   </div>
                 )}
 
@@ -594,7 +595,7 @@ export const AdminGlobalSearch: React.FC<AdminGlobalSearchProps> = ({
                 {collaborators && collaborators.length > 0 && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                     <UserCheck size={13} color={isLight ? '#64748B' : '#94A3B8'} />
-                    <select
+                    <Select
                       value={selectedCollaboratorFilter}
                       onChange={e => setSelectedCollaboratorFilter(e.target.value)}
                       style={{
@@ -612,7 +613,7 @@ export const AdminGlobalSearch: React.FC<AdminGlobalSearchProps> = ({
                       {collaborators.map(c => (
                         <option key={c.id} value={c.id}>{c.name}</option>
                       ))}
-                    </select>
+                    </Select>
                   </div>
                 )}
 
@@ -620,7 +621,7 @@ export const AdminGlobalSearch: React.FC<AdminGlobalSearchProps> = ({
                 {availableTags.length > 0 && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                     <Tag size={13} color={isLight ? '#64748B' : '#94A3B8'} />
-                    <select
+                    <Select
                       value={selectedTagFilter}
                       onChange={e => setSelectedTagFilter(e.target.value)}
                       style={{
@@ -638,7 +639,7 @@ export const AdminGlobalSearch: React.FC<AdminGlobalSearchProps> = ({
                       {availableTags.map(t => (
                         <option key={t} value={t}>{t}</option>
                       ))}
-                    </select>
+                    </Select>
                   </div>
                 )}
 

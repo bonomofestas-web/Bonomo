@@ -1,3 +1,5 @@
+import { DateField, Select } from '../ui';
+import { usePresenceContext } from '../../hooks/usePresence';
 import { animateList } from '../../utils/animateList';
 import { HeaderActions } from './HeaderActions';
 import { toast } from 'sonner';
@@ -14,6 +16,7 @@ import {
   Reply, ArrowRightLeft
 } from 'lucide-react';
 import { IcpTargetUserIcon } from './IcpTargetUserIcon';
+import { mqlBadge } from '../../utils/mqlScore';
 import { WhatsAppBrandIcon } from './WhatsAppBrandIcon';
 import { SafeAvatar } from './SafeAvatar';
 import { WhatsAppAudioMessage } from './WhatsAppAudioMessage';
@@ -893,13 +896,10 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   } = useAdminState();
 
   const hasIcpConfigured = (targetLead: Lead) => {
-    if (!mqlQuestions || mqlQuestions.length === 0) return false;
-    return mqlQuestions.some(q =>
-      (targetLead.funnelId && ((q.funnelIds && q.funnelIds.includes(targetLead.funnelId)) || q.funnelId === targetLead.funnelId)) ||
-      (q.venueIds && q.venueIds.length > 0 && q.venueIds.includes(targetLead.venueId)) ||
-      q.venueId === targetLead.venueId ||
-      q.venueId === 'all'
-    );
+    // Lead ja respondido mantem o MQL da epoca; funil sem MQL vinculado = sem MQL
+    if (targetLead.mqlSnapshot?.questions?.length) return true;
+    if (!mqlQuestions || mqlQuestions.length === 0 || !targetLead.funnelId) return false;
+    return mqlQuestions.some(q => q.funnelId === targetLead.funnelId || !!q.funnelIds?.includes(targetLead.funnelId as string));
   };
 
   const commercialFunnels = useMemo(() => {
@@ -2170,6 +2170,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   const selectedLead = useMemo(() => {
     return sourceLeads.find(l => l.id === selectedLeadId) || null;
   }, [sourceLeads, selectedLeadId]);
+  usePresenceContext(selectedLead ? { type: (selectedLead as any).isClient ? 'client' : 'lead', id: selectedLead.id, label: selectedLead.debutanteName } : null);
 
   useEffect(() => {
     // Modo foco (lista recolhida) so quando embutido no Kanban; no menu Mensagens a lista fica sempre aberta
@@ -4672,28 +4673,19 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
 
   const icpRating = useMemo(() => {
     if (!selectedLead || !hasIcpConfigured(selectedLead)) return null;
-    const hasAnswers = Boolean(
-      selectedLead.mqlAnswers &&
-      Object.keys(selectedLead.mqlAnswers).some(k => Boolean(selectedLead.mqlAnswers![k]))
-    );
-    if (!hasAnswers && (selectedLead.mqlScore === undefined || selectedLead.mqlScore === 0)) {
+    // Sem resposta = Indefinido (nunca zero). Notas: Ruim, Bom, Muito bom, Incrivel.
+    const badge = mqlBadge(selectedLead.mqlScore, selectedLead.mqlAnswers);
+    if (badge.isUndefined) {
       return {
         score: undefined,
-        label: 'Indefinido',
+        label: badge.label,
         color: 'var(--adm-text-muted)',
         bg: 'var(--adm-bg-card)',
         border: 'var(--adm-border)',
         isUndefined: true,
       };
     }
-    const score = selectedLead.mqlScore ?? 0;
-    const isTop = score >= 80 || selectedLead.mqlLevel === 'top';
-    const isQualified = (score >= 50 && score < 80) || selectedLead.mqlLevel === 'qualified';
-    const label = isTop ? 'ICP A' : isQualified ? 'ICP B' : 'ICP C';
-    const color = isTop ? '#10B981' : isQualified ? '#F59E0B' : '#EF4444';
-    const bg = isTop ? 'rgba(16, 185, 129, 0.15)' : isQualified ? 'rgba(245, 158, 11, 0.15)' : 'rgba(239, 68, 68, 0.15)';
-    const border = isTop ? 'rgba(16, 185, 129, 0.35)' : isQualified ? 'rgba(245, 158, 11, 0.35)' : 'rgba(239, 68, 68, 0.35)';
-    return { score, label, color, bg, border, isUndefined: false };
+    return { score: selectedLead.mqlScore ?? 0, label: badge.label, color: badge.color, bg: badge.bg, border: badge.border, isUndefined: false };
   }, [selectedLead, mqlQuestions]);
 
   return (
@@ -5387,7 +5379,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                           <ArrowUpDown size={12} />
                           <span>Ordenar Conversas</span>
                         </label>
-                        <select
+                        <Select
                           value={localSortBy}
                           onChange={(e) => handleUpdateSortBy(e.target.value)}
                           style={{
@@ -5408,7 +5400,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                           <option value="oldest">Mensagens Mais Antigas</option>
                           <option value="name_asc">Nome do Lead (A - Z)</option>
                           <option value="temperature">Temperatura do Lead</option>
-                        </select>
+                        </Select>
                       </div>
 
                       {/* Filter: Venue */}
@@ -5417,7 +5409,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                           <Building2 size={12} />
                           <span>Casa de Festa</span>
                         </label>
-                        <select
+                        <Select
                           value={filterVenueId}
                           onChange={(e) => setFilterVenueId(e.target.value)}
                           style={{
@@ -5437,7 +5429,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                           {venues.map(v => (
                             <option key={v.id} value={v.id}>{v.name}</option>
                           ))}
-                        </select>
+                        </Select>
                       </div>
 
                       {/* Filter: Collaborator */}
@@ -5446,7 +5438,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                           <UserCheck size={12} />
                           <span>Atendente / Responsável</span>
                         </label>
-                        <select
+                        <Select
                           value={filterCollaboratorId}
                           onChange={(e) => setFilterCollaboratorId(e.target.value)}
                           style={{
@@ -5466,7 +5458,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                           {collaborators.map(c => (
                             <option key={c.id} value={c.id}>{c.name}</option>
                           ))}
-                        </select>
+                        </Select>
                       </div>
 
                       {/* Filter: Temperature */}
@@ -5475,7 +5467,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                           <Flame size={12} />
                           <span>Temperatura do Lead</span>
                         </label>
-                        <select
+                        <Select
                           value={filterTemperature}
                           onChange={(e) => setFilterTemperature(e.target.value)}
                           style={{
@@ -5495,7 +5487,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                           <option value="hot">Quente (Alta Probabilidade)</option>
                           <option value="warm">Morno (Em Negociação)</option>
                           <option value="cold">Frio (Inicial)</option>
-                        </select>
+                        </Select>
                       </div>
                     </div>
                   )}
@@ -6304,9 +6296,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
 
                                 {/* ICP Badge (se configurado) */}
                                 {hasIcpConfigured(lead) && (() => {
-                                  const hasAns = Boolean(lead.mqlAnswers && Object.keys(lead.mqlAnswers).some(k => Boolean(lead.mqlAnswers![k])));
-                                  const isUndef = !hasAns && (lead.mqlScore === undefined || lead.mqlScore === 0);
-                                  if (isUndef) {
+                                  const listBadge = mqlBadge(lead.mqlScore, lead.mqlAnswers);
+                                  if (listBadge.isUndefined) {
                                     return (
                                       <span style={{
                                         fontSize: '0.58rem',
@@ -6326,11 +6317,9 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                       </span>
                                     );
                                   }
-                                  const isTop = (lead.mqlScore ?? 0) >= 80 || lead.mqlLevel === 'top';
-                                  const isQual = ((lead.mqlScore ?? 0) >= 50 && (lead.mqlScore ?? 0) < 80) || lead.mqlLevel === 'qualified';
-                                  const lbl = isTop ? 'ICP A' : isQual ? 'ICP B' : 'ICP C';
-                                  const col = isTop ? '#10B981' : isQual ? '#F59E0B' : '#EF4444';
-                                  const bgCol = isTop ? 'rgba(16,185,129,0.12)' : isQual ? 'rgba(245,158,11,0.12)' : 'rgba(239,68,68,0.12)';
+                                  const lbl = listBadge.label;
+                                  const col = listBadge.color;
+                                  const bgCol = listBadge.bg;
                                   return (
                                     <span style={{
                                       fontSize: '0.58rem',
@@ -14077,7 +14066,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                   <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 700, color: 'var(--adm-text-title)', marginBottom: '5px' }}>
                     Categoria:
                   </label>
-                  <select
+                  <Select
                     value={upsellCategory}
                     onChange={(e) => setUpsellCategory(e.target.value)}
                     className="adm-input"
@@ -14088,7 +14077,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                         {cat.label}
                       </option>
                     ))}
-                  </select>
+                  </Select>
                 </div>
 
                 <div>
@@ -14114,7 +14103,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                   <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 700, color: 'var(--adm-text-title)', marginBottom: '5px' }}>
                     Status do Pagamento:
                   </label>
-                  <select
+                  <Select
                     value={upsellPaymentStatus}
                     onChange={(e) => setUpsellPaymentStatus(e.target.value as any)}
                     className="adm-input"
@@ -14123,14 +14112,14 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                     <option value="pago">Pago à Vista (Liquidado)</option>
                     <option value="pendente">Pendente / A Receber</option>
                     <option value="parcelado">Parcelado (Nas Mensalidades)</option>
-                  </select>
+                  </Select>
                 </div>
 
                 <div>
                   <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 700, color: 'var(--adm-text-title)', marginBottom: '5px' }}>
                     Forma de Pagamento:
                   </label>
-                  <select
+                  <Select
                     value={upsellPaymentMethod}
                     onChange={(e) => setUpsellPaymentMethod(e.target.value)}
                     className="adm-input"
@@ -14141,7 +14130,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                     <option value="Boleto Bancário">Boleto Bancário</option>
                     <option value="Transferência">Transferência Bancária</option>
                     <option value="Dinheiro">Dinheiro</option>
-                  </select>
+                  </Select>
                 </div>
               </div>
 
@@ -14150,8 +14139,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                   <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 700, color: 'var(--adm-text-title)', marginBottom: '5px' }}>
                     Data do Fechamento / Venda:
                   </label>
-                  <input
-                    type="date"
+                  <DateField
                     required
                     value={upsellDate}
                     onChange={(e) => setUpsellDate(e.target.value)}
@@ -14178,7 +14166,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                 <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 700, color: 'var(--adm-text-title)', marginBottom: '5px' }}>
                   Vendido por (Colaborador) *:
                 </label>
-                <select
+                <Select
                   value={upsellResponsibleId}
                   onChange={(e) => setUpsellResponsibleId(e.target.value)}
                   className="adm-input"
@@ -14187,7 +14175,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                   {collaborators.filter(c => c.active !== false).map(c => (
                     <option key={c.id} value={c.id}>{c.name} ({c.role})</option>
                   ))}
-                </select>
+                </Select>
               </div>
 
               <div>
@@ -14336,7 +14324,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                 <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 700, color: 'var(--adm-text-title)', marginBottom: '5px' }}>
                   Tipo de Documento:
                 </label>
-                <select
+                <Select
                   value={docType}
                   onChange={(e) => setDocType(e.target.value as any)}
                   className="adm-input"
@@ -14347,7 +14335,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                   <option value="receipt">Comprovante de Pagamento / Recibo</option>
                   <option value="id_document">Documento Pessoal / RG / CPF</option>
                   <option value="other">Outro Anexo / Foto</option>
-                </select>
+                </Select>
               </div>
 
               <div>

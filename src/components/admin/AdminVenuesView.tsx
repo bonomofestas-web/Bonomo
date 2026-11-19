@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { AdminVenueModal } from './AdminVenueModal';
+import { AdminVenueBaselineCard } from './AdminVenueBaselineCard';
 import { AdminAgendaAvailabilityModal } from './AdminAgendaAvailabilityModal';
 import { AdminDeleteVenueModal } from './AdminDeleteVenueModal';
 import { resolveMediaUrl } from '../../utils/mediaStorage';
@@ -1421,6 +1422,14 @@ export const AdminVenuesView: React.FC<AdminVenuesViewProps> = ({ onNavigateToFu
               )}
             </div>
           </div>
+
+          {/* ── Métricas base da casa (referência para o dashboard) ────────── */}
+          <AdminVenueBaselineCard
+            masterId={currentUser?.masterId || currentUser?.id || ''}
+            venueId={selectedVenue.id}
+            userId={currentUser?.id}
+            canEdit={currentUser?.role === 'master' || currentUser?.role === 'admin' || (currentUser as any)?.role === 'manager'}
+          />
 
           {/* ── 5. SEÇÃO DE EQUIPE VINCULADA À CASA (SEM SOMBRAS CORTADAS) ────────── */}
           <div style={{

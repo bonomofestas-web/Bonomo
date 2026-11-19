@@ -1,3 +1,4 @@
+import { Select } from '../ui';
 import React, { useState, useEffect } from 'react';
 import { X, Gift, Save, Eye } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
@@ -220,7 +221,7 @@ export const AdminBenefitModal: React.FC<AdminBenefitModalProps> = ({
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
               <div>
                 <label style={labelStyle}>Categoria *</label>
-                <select
+                <Select
                   value={category}
                   onChange={(e) => setCategory(e.target.value as any)}
                   style={{ ...inputStyle, cursor: 'pointer' }}
@@ -230,7 +231,7 @@ export const AdminBenefitModal: React.FC<AdminBenefitModalProps> = ({
                   <option value="entretenimento">Entretenimento & Atrações</option>
                   <option value="gastronomia">Gastronomia & Open Bar</option>
                   <option value="vip">Experiência VIP</option>
-                </select>
+                </Select>
               </div>
 
               <div>

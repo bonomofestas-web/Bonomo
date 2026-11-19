@@ -81,6 +81,9 @@ export const CollaboratorRadar: React.FC<{ rows: CollaboratorRow[]; loadingPrese
                     {r.responseTarget ? (
                       <div style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)' }}>meta {formatMinutes(r.responseTarget)}</div>
                     ) : null}
+                    <div title="Média de qualquer mensagem respondida (só comercial)" style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)' }}>
+                      média geral {formatMinutes(r.avgReplyMinutes)}
+                    </div>
                     {r.avgResponseMinutes !== null && r.avgResponsePrev !== null && (
                       <DeltaBadge pct={pctDelta(r.avgResponseMinutes, r.avgResponsePrev)} lowerIsBetter />
                     )}
