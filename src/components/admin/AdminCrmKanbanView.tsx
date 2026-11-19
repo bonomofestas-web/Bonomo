@@ -315,7 +315,6 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
     viewingAsCollaborator,
     validateLead,
     systemSlaConfig,
-    prefetchLeadConversations,
   } = useAdminState();
 
   const [unavailableModal, setUnavailableModal] = useState<{
@@ -1330,23 +1329,6 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
   // Cards visiveis por etapa (20 de inicio; +20 ao rolar). O total da coluna continua sendo o de TODOS os leads da etapa.
   const [colVisible, setColVisible] = useState<Record<string, number>>({});
   const showMoreInColumn = (colId: string) => setColVisible(prev => ({ ...prev, [colId]: (prev[colId] ?? KANBAN_COLUMN_INITIAL) + KANBAN_COLUMN_STEP }));
-  // Pre-carga das ultimas 20 mensagens dos cards visiveis (e dos proximos 20 de cada etapa) para a caixa de entrada do funil abrir pronta
-  useEffect(() => {
-    if (isPostSaleView || columns.length === 0) return;
-    const ids: string[] = [];
-    const byCol = new Map<string, Lead[]>();
-    filteredLeads.forEach(l => {
-      const cid = getLeadMatchedColumnId(l, columns);
-      const arr = byCol.get(cid) || [];
-      arr.push(l);
-      byCol.set(cid, arr);
-    });
-    byCol.forEach((arr, cid) => {
-      const n = (colVisible[cid] ?? KANBAN_COLUMN_INITIAL) + KANBAN_COLUMN_STEP;
-      arr.slice(0, n).forEach(l => ids.push(l.id));
-    });
-    if (ids.length > 0) void prefetchLeadConversations(ids, 20);
-  }, [filteredLeads, columns, colVisible, isPostSaleView, prefetchLeadConversations]);
 
   const removedLeadsCount = useMemo(() => {
     return leads.filter(l => {
