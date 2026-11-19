@@ -193,30 +193,6 @@ export const TeamDirectory: React.FC<Props> = ({ collaborators, data, actions, p
         {summary.online !== null && tile('Online agora', summary.online, 'Atualiza a cada ~30 s', summary.online > 0 ? '#10B981' : undefined)}
       </div>
 
-      {/* Agora: quem esta online e no que esta trabalhando (so aparece com presenca ligada e alguem online) */}
-      {presence && summary.online ? (
-        <div style={{ ...card, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          <div style={eyebrow}>Agora</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '10px' }}>
-            {collaborators.filter(c => presence.get(c.id)?.online).map(c => {
-              const live = presence.get(c.id);
-              return (
-                <div key={c.id} onClick={() => actions.onOpen(c)} style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', minWidth: 0 }}>
-                  <span style={{ position: 'relative', flexShrink: 0 }}>
-                    <SafeAvatar src={c.avatarUrl} name={c.name} size={34} />
-                    <span style={{ position: 'absolute', right: -1, bottom: -1, width: '10px', height: '10px', borderRadius: '50%', background: '#10B981', border: '2px solid var(--adm-bg-card)' }} />
-                  </span>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: '0.8rem', fontWeight: 800, color: 'var(--adm-text-title)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.name}</div>
-                    <div style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{live?.activity || 'Online'}</div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      ) : null}
-
       {/* Setores (filtro rapido) */}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
         <button type="button" onClick={() => setSector('all')} aria-pressed={sector === 'all'} style={{

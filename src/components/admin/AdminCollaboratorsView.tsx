@@ -24,7 +24,7 @@ import { useJobRoleCatalog } from '../../hooks/useJobRoleCatalog';
 import { AdminJobRolesModal } from './AdminJobRolesModal';
 import { toast } from 'sonner';
 import { TeamDirectory } from './team/TeamDirectory';
-import { useTeamPresence } from '../../hooks/usePresence';
+import { useCollaboratorPresence } from '../../hooks/usePresence';
 import { presenceService, type PresenceRow } from '../../services/presenceService';
 import type { PresenceView } from './team/teamShared';
 import { CollaboratorProfile } from './team/CollaboratorProfile';
@@ -595,12 +595,9 @@ export const AdminCollaboratorsView: React.FC<AdminCollaboratorsViewProps> = ({ 
   // Presenca ao vivo: so Master/Gerencia veem, so com a chave ligada, e so enquanto esta tela esta aberta
   const canSeePresence = (currentUser?.role === 'master' || currentUser?.role === 'admin' || currentUser?.role === 'gerencia')
     && featureFlags.team_presence !== 'disabled' && featureFlags.team_presence !== 'coming_soon';
-  const presenceRows = useTeamPresence({ enabled: canSeePresence, masterId: masterId || undefined });
-  const presenceMap = useMemo(() => {
-    const m = new Map<string, PresenceView>();
-    presenceRows.forEach((r, id) => m.set(id, describePresence(r)));
-    return m;
-  }, [presenceRows]);
+  // So le a presenca quando o perfil de alguem esta aberto, e so mostra se a pessoa estiver online
+  const presenceRow = useCollaboratorPresence({ enabled: canSeePresence && Boolean(profileCollabId), masterId: masterId || undefined, collaboratorId: profileCollabId });
+  const profilePresence: PresenceView | undefined = presenceRow ? describePresence(presenceRow) : undefined;
 
   // Editor: alteracoes nao salvas e validacao inline
   const [editorBaseline, setEditorBaseline] = useState('');
@@ -1312,7 +1309,7 @@ export const AdminCollaboratorsView: React.FC<AdminCollaboratorsViewProps> = ({ 
           appointments={appointments}
           funnels={funnels}
           assets={assetMap}
-          presence={presenceMap.get(profileCollab.id)}
+          presence={profilePresence}
           kindOf={teamData.kindOf}
           actions={teamActions}
           sendingInviteEmail={sendingInviteEmail === profileCollab.email}
@@ -1323,7 +1320,6 @@ export const AdminCollaboratorsView: React.FC<AdminCollaboratorsViewProps> = ({ 
           collaborators={collaborators}
           data={teamData}
           actions={teamActions}
-          presence={canSeePresence ? presenceMap : undefined}
           sendingInviteEmail={sendingInviteEmail}
           inviteSentEmail={inviteSentEmail}
         />

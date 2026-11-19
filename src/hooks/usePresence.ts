@@ -81,26 +81,44 @@ export const usePresencePublisher = (opts: {
   useEffect(() => { if (enabled) sendThrottled(); }, [view, enabled, sendThrottled]);
 };
 
-const POLL_MS = 30_000;
+const POLL_ONLINE_MS = 30_000;
+const POLL_OFFLINE_MS = 60_000;
 
-export const useTeamPresence = (opts: { enabled: boolean; masterId?: string }): Map<string, PresenceRow> => {
-  const { enabled, masterId } = opts;
-  const [rows, setRows] = useState<Map<string, PresenceRow>>(new Map());
+/**
+ * Presenca ao vivo de UMA pessoa, so enquanto o perfil dela esta aberto (e a aba visivel).
+ * Online: atualiza a cada 30 s. Offline: so confere a cada 60 s se ela voltou (sem carregar atividade).
+ * Fora do perfil nao ha leitura nenhuma.
+ */
+export const useCollaboratorPresence = (opts: { enabled: boolean; masterId?: string; collaboratorId?: string | null }): PresenceRow | null => {
+  const { enabled, masterId, collaboratorId } = opts;
+  const [row, setRow] = useState<PresenceRow | null>(null);
 
   useEffect(() => {
-    if (!enabled || !masterId) { setRows(new Map()); return; }
+    setRow(null);
+    if (!enabled || !masterId || !collaboratorId) return;
     let cancelled = false;
-    const load = async () => {
-      if (document.visibilityState !== 'visible') return;
-      const list = await presenceService.listOnline(masterId);
-      if (!cancelled) setRows(new Map(list.map(r => [r.collaboratorId, r])));
-    };
-    void load();
-    const timer = setInterval(load, POLL_MS);
-    const onVisible = () => { if (document.visibilityState === 'visible') void load(); };
-    document.addEventListener('visibilitychange', onVisible);
-    return () => { cancelled = true; clearInterval(timer); document.removeEventListener('visibilitychange', onVisible); };
-  }, [enabled, masterId]);
+    let timer: ReturnType<typeof setTimeout> | null = null;
 
-  return rows;
+    const schedule = (online: boolean) => {
+      if (cancelled) return;
+      timer = setTimeout(load, online ? POLL_ONLINE_MS : POLL_OFFLINE_MS);
+    };
+    async function load() {
+      if (cancelled) return;
+      if (document.visibilityState !== 'visible') { schedule(false); return; }
+      const r = await presenceService.getOne(masterId as string, collaboratorId as string);
+      if (cancelled) return;
+      const online = Boolean(r && Date.now() - r.lastSeenAt < presenceService.ONLINE_WINDOW_MS);
+      setRow(online ? r : null);
+      schedule(online);
+    }
+    void load();
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') { if (timer) clearTimeout(timer); void load(); }
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => { cancelled = true; if (timer) clearTimeout(timer); document.removeEventListener('visibilitychange', onVisible); };
+  }, [enabled, masterId, collaboratorId]);
+
+  return row;
 };

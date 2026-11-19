@@ -68,6 +68,27 @@ export const presenceService = {
     if (error) handleError(error as any);
   },
 
+  /** Le a presenca de UMA pessoa (resposta minima, ~250 bytes). Usada so no perfil aberto. */
+  async getOne(masterId: string, collaboratorId: string): Promise<PresenceRow | null> {
+    if (!isSupabaseConfigured || disabledForSession || Date.now() < blockedUntil || !UUID_RE.test(masterId) || !UUID_RE.test(collaboratorId)) return null;
+    const { data, error } = await supabase
+      .from('collaborator_presence')
+      .select('collaborator_id, view, entity_type, entity_id, entity_label, last_seen_at')
+      .eq('master_id', masterId)
+      .eq('collaborator_id', collaboratorId)
+      .maybeSingle();
+    if (error) { handleError(error as any); return null; }
+    if (!data) return null;
+    return {
+      collaboratorId: data.collaborator_id as string,
+      view: (data.view as string) || null,
+      entityType: (data.entity_type as PresenceEntityType) || 'none',
+      entityId: (data.entity_id as string) || null,
+      entityLabel: (data.entity_label as string) || null,
+      lastSeenAt: new Date(data.last_seen_at as string).getTime(),
+    };
+  },
+
   /** Le quem esta online (ultimos 3 min) do Master. Colunas minimas. */
   async listOnline(masterId: string): Promise<PresenceRow[]> {
     if (!isSupabaseConfigured || disabledForSession || Date.now() < blockedUntil || !UUID_RE.test(masterId)) return [];

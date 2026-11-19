@@ -103,7 +103,7 @@ export const VenueLogos: React.FC<{ venues: Venue[]; max?: number; size?: number
     {venues.slice(0, max).map((v, i) => (
       <span key={v.id} title={v.name} style={{
         width: size, height: size, borderRadius: '50%', overflow: 'hidden', marginLeft: i === 0 ? 0 : -6, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-        background: 'var(--adm-accent-bg)', border: '1.5px solid var(--adm-bg-card)', color: 'var(--adm-accent)',
+        background: '#0B0B10', border: '1.5px solid var(--adm-bg-card)', color: '#D4AF37',
       }}>
         {v.logoUrl ? <img src={v.logoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <Building2 size={size * 0.55} />}
       </span>
