@@ -194,20 +194,23 @@ async function main() {
   ].join('\n');
 
   const canonicalContactPhones = contacts.map(c => c.primary_phone).filter(Boolean);
+  const canonicalContactKeys = Array.from(new Set(contacts.map(c => c.primary_phone_key).filter(Boolean)));
   const canonicalContactIds = contacts.map(c => c.id).filter(Boolean);
 
   const contactDeduplicationBlock = [
-    `-- 1. RESOLUÇÃO DE CONFLITOS EM idx_contacts_master_primary_phone (DEDUPLICAÇÃO DE PRODUÇÃO)`,
-    `-- Remove quaisquer contatos antigos em produção que possuam telefones em comum com a base canônica mas com IDs divergentes`,
+    `-- 1. RESOLUÇÃO DE CONFLITOS EM uq_contacts_master_phone_key E idx_contacts_master_primary_phone (DEDUPLICAÇÃO DE PRODUÇÃO)`,
+    `-- Remove os contatos antigos em produção que possuam chaves de telefone em comum com a base canônica mas com IDs legados divergentes`,
     `DELETE FROM public.contact_dependents `,
     `WHERE parent_contact_id IN (`,
     `  SELECT id FROM public.contacts `,
-    `  WHERE primary_phone IN (${canonicalContactPhones.map(p => `'${p}'`).join(', ')})`,
+    `  WHERE (primary_phone_key IN (${canonicalContactKeys.map(k => `'${k}'`).join(', ')})`,
+    `     OR primary_phone IN (${canonicalContactPhones.map(p => `'${p}'`).join(', ')}))`,
     `    AND id NOT IN (${canonicalContactIds.map(id => `'${id}'::uuid`).join(', ')})`,
     `);`,
     ``,
     `DELETE FROM public.contacts `,
-    `WHERE primary_phone IN (${canonicalContactPhones.map(p => `'${p}'`).join(', ')})`,
+    `WHERE (primary_phone_key IN (${canonicalContactKeys.map(k => `'${k}'`).join(', ')})`,
+    `   OR primary_phone IN (${canonicalContactPhones.map(p => `'${p}'`).join(', ')}))`,
     `  AND id NOT IN (${canonicalContactIds.map(id => `'${id}'::uuid`).join(', ')});`,
     ``
   ].join('\n');
