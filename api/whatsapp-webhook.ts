@@ -805,8 +805,43 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           }
         }
 
-        // 2b. Busca por telefone real se ainda não encontrou o lead (Busca em TODO o sistema/tenant, não isola a um único funil!)
-        const targetSearchPhone = resolvedPhone || (!isLid ? cleanPhone : '');
+        // 2b. Busca primeiro na tabela 'clients' (Pós-Venda) se o telefone pertencer a um cliente
+        if (!existingLead && targetSearchPhone && targetSearchPhone.length >= 8) {
+          const digitsOnly = targetSearchPhone.replace(/\D/g, '');
+          const last8 = digitsOnly.slice(-8);
+          const part1 = last8.slice(0, 4);
+          const part2 = last8.slice(4);
+
+          let clientQuery = supabase
+            .from('clients')
+            .select('id, name, payer_name, payer_phone, stage, venue_id, funnel_id, master_id')
+            .or(`payer_phone.ilike.%${last8}%,payer_phone.ilike.%${part1}%${part2}%`);
+
+          if (tenantMasterId) {
+            clientQuery = clientQuery.or(`master_id.eq.${tenantMasterId},venue_id.in.(${tenantVenueIds.join(',')})`);
+          } else if (targetVenueId) {
+            clientQuery = clientQuery.eq('venue_id', targetVenueId);
+          }
+
+          const { data: clientRows } = await clientQuery;
+          if (clientRows && clientRows.length > 0) {
+            // Prioriza estritamente o cliente cujo funil casa com o da origem!
+            const matchedClientRow = (matchedSource?.funnel_id ? clientRows.find((c: any) => c.funnel_id === matchedSource.funnel_id) : null) || clientRows[0];
+            if (matchedClientRow && (matchedSource?.funnel_id === matchedClientRow.funnel_id || !matchedSource?.funnel_id)) {
+              existingLead = {
+                id: matchedClientRow.id,
+                name: matchedClientRow.payer_name || matchedClientRow.name || 'Cliente',
+                phone: matchedClientRow.payer_phone,
+                venue_id: matchedClientRow.venue_id,
+                funnel_id: matchedClientRow.funnel_id,
+                master_id: matchedClientRow.master_id,
+                is_client: true,
+              };
+            }
+          }
+        }
+
+        // 2c. Busca por telefone real na tabela 'leads' se ainda não encontrou cliente
         if (!existingLead && targetSearchPhone && targetSearchPhone.length >= 8) {
           const digitsOnly = targetSearchPhone.replace(/\D/g, '');
           const last8 = digitsOnly.slice(-8);
@@ -1012,10 +1047,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             updatePayload.source_name = matchedSource.name || 'WhatsApp Oficial';
           }
 
-          await supabase
-            .from('leads')
-            .update(updatePayload)
-            .eq('id', existingLead.id);
+          if (existingLead.is_client) {
+            await supabase
+              .from('clients')
+              .update({
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id', existingLead.id);
+          } else {
+            await supabase
+              .from('leads')
+              .update(updatePayload)
+              .eq('id', existingLead.id);
+          }
         } else {
           // Histórico de conversas desconhecidas só cria lead quando a origem está em modo migração (configuration.historyImport);
           // caso contrário um pareamento criaria leads de todo o passado sem o usuário revisar.

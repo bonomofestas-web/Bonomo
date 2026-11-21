@@ -42,6 +42,13 @@ Grande reestruturação de governança, experiência do usuário, banco de dados
 
 ### Recursos e Melhorias em Staging
 
+- **Eliminação do Erro 428C9 na Migração de Contatos (Colunas Geradas):**
+  * O gerador `scripts/generate_prod_sync_all.mjs` agora filtra automaticamente colunas do tipo `GENERATED ALWAYS AS (...) STORED` (`primary_phone_digits`, `secondary_phone_digits`, `cpf_digits`, `primary_phone_key`). O PostgreSQL de produção calcula esses valores nativamente no INSERT sem conflito de permissão.
+
+- **Persistência e Isolamento Total de Mensagens do Pós-Venda (Permanência após F5):**
+  * **Persistência Real no Supabase:** As mensagens recebidas via SSE para clientes do pós-venda em `AdminStateContext` agora chamam `leadService.addActivity(matchedClient.id, clientAct)` e `clientService.upsert(...)`. Ao recarregar ou dar F5, o histórico completo do cliente permanece íntegro.
+  * **Alinhamento do Webhook com Pós-Venda:** O webhook de back-end (`api/whatsapp-webhook.ts`) agora consulta a tabela `clients` e associa as mensagens de pós-venda ao `client.id` do funil da respectiva instância, eliminando o vazamento de conversas para leads comerciais soltos.
+
 - **Isolamento de Origem Multi-Funil para o Mesmo WhatsApp e Eliminação de Cards Gêmeos:**
   * **Respeito Estrito à Origem do Funil:** Implementado o isolamento total de atividades entre esteiras (`effectiveLeadActivities`). Clientes com o mesmo número de WhatsApp em funis distintos (ex: `CLI-ACJF7Y` no funil `RLZ ADM` e `CLI-JRBZ2S` no funil `RLZ POS`) mantêm conversas 100% isoladas à respectiva esteira/instância, sem mesclar nem centralizar históricos.
   * **Desduplicação de Cards na Inbox:** Criada chave única de conversa por esteira e telefone (`funnelId|phoneLast8`). Elimina duplicações de cards na lista de mensagens (`Frr Roni` e `Financeiro Realizar`), preservando o card oficial do cliente e descartando leads soltos idênticos.

@@ -7418,15 +7418,27 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         });
 
         // Conversa de CONTRATO (pos-venda): origem de pos-venda casa primeiro com o cliente pelo telefone
-        // (contratante ou pessoas vinculadas) e grava a mensagem em clients.activities.
+        // (contratante ou pessoas vinculadas) e grava a mensagem em clients.activities e no Supabase.
         if (isSourcePostSale) {
-          const matchedClient = clientsRef.current.find(c => {
+          const candidateClients = clientsRef.current.filter(c => {
             if ((c as any).isRemovedFromFunnel || c.stage === 'archived') return false;
             if (sourceMasterId && c.masterId && c.masterId !== sourceMasterId) return false;
             if (tenantVenueIds.size > 0 && c.venueId && !tenantVenueIds.has(c.venueId)) return false;
             if (c.payerPhone && isPhoneMatch(c.payerPhone, cleanPhone)) return true;
             return Boolean((c.contacts || []).some((ct: any) => ct?.phone && isPhoneMatch(ct.phone, cleanPhone)));
           });
+
+          // REGRA DE OURO: Casa estritamente com o cliente do funil da origem/instância!
+          let matchedClient = targetSourceFunnelId
+            ? candidateClients.find(c => c.funnelId === targetSourceFunnelId)
+            : null;
+          if (!matchedClient && matchedSource?.id) {
+            matchedClient = candidateClients.find(c => (c as any).sourceId === matchedSource.id);
+          }
+          if (!matchedClient && candidateClients.length > 0) {
+            matchedClient = candidateClients[0];
+          }
+
           if (matchedClient) {
             const isAudioMsg = incoming.mediaType === 'audio' || incoming.text?.includes('🎵') || incoming.text?.toLowerCase().includes('voz');
             const clientAct: LeadActivity = {
@@ -7455,17 +7467,31 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
               },
             } as LeadActivity;
             const existingActs = ((matchedClient as any).activities || []) as LeadActivity[];
-            // Deduplica por messageId (mensagem enviada por nos ja foi registrada localmente)
-            const alreadyThere = incoming.messageId && existingActs.some(a => a.messageId === incoming.messageId);
+            // Deduplica por messageId normalizado (mensagem enviada por nos ja foi registrada localmente)
+            const incMsgId = normalizeMessageId(incoming.messageId);
+            const alreadyThere = incMsgId && existingActs.some(a => normalizeMessageId(a.messageId) === incMsgId);
             if (!alreadyThere) {
-              updateLeadData(matchedClient.id, {
-                activities: mergeAndSortActivities(existingActs, [clientAct], matchedClient.id),
+              const updatedActivities = mergeAndSortActivities(existingActs, [clientAct], matchedClient.id);
+              const clientUpdates = {
+                activities: updatedActivities,
                 lastInteractionAt: clientAct.timestamp,
                 lastMessageDirection: isFromMe ? 'outgoing' : 'incoming',
                 lastMessageText: (clientAct.text || '').replace(/^\[media:[^\]]*\]\s*/i, '').trim().slice(0, 200),
                 lastMessageAt: clientAct.timestamp,
                 ...(!isFromMe ? { unreadCount: ((matchedClient as any).unreadCount || 0) + 1 } : {}),
-              } as Partial<Lead>);
+              };
+
+              updateLeadData(matchedClient.id, clientUpdates as Partial<Lead>);
+
+              // PERSISTÊNCIA OFICIAL NO SUPABASE (para manter o histórico intacto após F5!)
+              if (isSupabaseConfigured) {
+                leadService.addActivity(matchedClient.id, clientAct)
+                  .catch(err => console.error('Erro ao salvar mensagem de pós-venda no Supabase:', err));
+                clientService.upsert({
+                  id: matchedClient.id,
+                  updatedAt: new Date().toISOString(),
+                } as any).catch(() => {});
+              }
             }
             return;
           }

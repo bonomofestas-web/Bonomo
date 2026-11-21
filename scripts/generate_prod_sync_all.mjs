@@ -56,9 +56,16 @@ function sqlValue(col, v) {
   return `'${String(v).replace(/'/g, "''")}'`;
 }
 
+const GENERATED_COLUMNS = new Set([
+  'primary_phone_digits',
+  'secondary_phone_digits',
+  'cpf_digits',
+  'primary_phone_key'
+]);
+
 function buildBatchUpsert(table, rows, batchSize = 50) {
   if (!rows || rows.length === 0) return `-- (Nenhum registro para ${table})`;
-  const cols = Object.keys(rows[0]);
+  const cols = Object.keys(rows[0]).filter(c => !GENERATED_COLUMNS.has(c));
   const updateCols = cols.filter(c => c !== 'id' && c !== 'created_at');
   const updateClauses = updateCols.map(c => `"${c}" = EXCLUDED."${c}"`).join(', ');
 
