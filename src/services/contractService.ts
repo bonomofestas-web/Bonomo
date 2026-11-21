@@ -1152,6 +1152,7 @@ export const contractService = {
         // Atualiza o lead solto para apontar para o contato titular, virar is_client e ter o papel de parentesco
         // PRESERVANDO RIGOROSAMENTE A MESMA ETAPA E O MESMO FUNIL DO CARD
         await supabase.from('leads').update({
+          contract_id: c.id,
           contact_id: c.contact_id,
           is_client: true,
           primary_contact_role: params.kinship,
@@ -1159,6 +1160,22 @@ export const contractService = {
           funnel_id: preservedFunnelId || undefined,
           updated_at: new Date().toISOString()
         }).eq('id', params.looseLead.id).eq('master_id', params.masterId);
+
+        // Propagação Multi-Funil Instantânea:
+        // Se este mesmo contato já interage em outros funis do Master, vincula o contrato a todos eles!
+        const leadDigits = (params.looseLead.phone || '').replace(/\D/g, '');
+        if (leadDigits.length >= 8) {
+          const last8 = leadDigits.slice(-8);
+          await supabase.from('leads').update({
+            contract_id: c.id,
+            is_client: true,
+            primary_contact_role: params.kinship,
+            updated_at: new Date().toISOString()
+          })
+          .eq('master_id', params.masterId)
+          .ilike('phone', `%${last8}%`)
+          .is('contract_id', null);
+        }
 
         // Garante a colocação no funil em contract_funnel_placements sem alterar a etapa
         if (preservedFunnelId && isUuid(preservedFunnelId)) {
@@ -1288,6 +1305,79 @@ export const contractService = {
     }
 
     return null;
+  },
+
+  /**
+   * Localiza automaticamente se um telefone ou contactId pertence a um contrato existente
+   * (seja como titular, contratante ou membro familiar/contato vinculado).
+   * Utilizado para herança automática de contrato na chegada de novas mensagens em qualquer funil.
+   */
+  async findContractByPhoneOrContact(params: {
+    phone?: string;
+    contactId?: string;
+    masterId?: string;
+  }): Promise<{ contract: Contract | null; kinship?: string; clientId?: string }> {
+    if (!isSupabaseConfigured) return { contract: null };
+    const masterId = params.masterId;
+    const phoneDigits = String(params.phone || '').replace(/\D/g, '');
+    const last8 = phoneDigits.length >= 8 ? phoneDigits.slice(-8) : '';
+
+    if (!last8 && !params.contactId) return { contract: null };
+
+    try {
+      // 1. Procura na tabela clients se este telefone consta como titular ou contato familiar
+      let clientQuery = supabase.from('clients').select('id, contract_id, payer_phone, contacts, name, payer_relationship');
+      if (masterId) clientQuery = clientQuery.eq('master_id', masterId);
+
+      const { data: clientsList } = await clientQuery;
+      if (clientsList && clientsList.length > 0) {
+        for (const cl of clientsList) {
+          if (!cl.contract_id) continue;
+
+          // Verifica se é o titular
+          const pDigits = (cl.payer_phone || '').replace(/\D/g, '').slice(-8);
+          if (last8 && pDigits === last8) {
+            const ct = await this.getContractById(cl.contract_id, masterId || '');
+            if (ct) return { contract: ct, kinship: 'titular', clientId: cl.id };
+          }
+
+          // Verifica se está nos contatos familiares
+          if (Array.isArray(cl.contacts)) {
+            const matchCt = cl.contacts.find((c: any) => {
+              const cp = (c?.phone || '').replace(/\D/g, '').slice(-8);
+              return last8 && cp === last8;
+            });
+            if (matchCt) {
+              const ct = await this.getContractById(cl.contract_id, masterId || '');
+              if (ct) return { contract: ct, kinship: matchCt.role || 'familiar', clientId: cl.id };
+            }
+          }
+        }
+      }
+
+      // 2. Procura diretamente na tabela contracts pelo titular ou snapshot
+      let contractQuery = supabase.from('contracts')
+        .select('*, contact:contacts(*), venue:venues(id, name)')
+        .order('event_date', { ascending: false, nullsFirst: false })
+        .order('created_at', { ascending: false });
+
+      if (masterId) contractQuery = contractQuery.eq('master_id', masterId);
+
+      if (last8) {
+        contractQuery = contractQuery.ilike('client_snapshot->>phone', `%${last8}%`);
+      } else if (params.contactId) {
+        contractQuery = contractQuery.eq('contact_id', params.contactId);
+      }
+
+      const { data: directContract } = await contractQuery.limit(1).maybeSingle();
+      if (directContract) {
+        return { contract: mapRowToContract(directContract), kinship: 'titular', clientId: directContract.client_id };
+      }
+    } catch (err) {
+      console.warn('[findContractByPhoneOrContact] Erro ao buscar contrato:', err);
+    }
+
+    return { contract: null };
   },
 
   /**

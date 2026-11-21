@@ -887,15 +887,41 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
     let list = allClients.filter(client => {
       if ((client as any).isRemovedFromFunnel || client.stage === 'archived') return false;
 
-      // Se for um card solto sem contrato (avulso):
-      // Se este contato já foi vinculado a um contrato oficial (como titular ou membro/contato da família),
-      // ele NÃO deve aparecer como um card solto no Kanban, pois já está representado dentro do card do contrato!
-      const isCardLoose = !baseClientsList.some(c => c.id === client.id);
-      if (isCardLoose) {
+      // Se for um card que NÃO é o card oficial do contrato (ex: familiar, mãe, ou lead avulso):
+      // Se este contato já estiver vinculado a um contrato oficial na esteira (por ID de contrato ou por telefone
+      // na lista de familiares/contatos do contrato), ele NÃO deve aparecer como um card avulso separado no Kanban,
+      // pois o contrato oficial do evento já é o card representativo no Kanban!
+      const isOfficialContractCard = contractClientIds
+        ? contractClientIds.has(client.id)
+        : (client.code?.startsWith('CTR-') || Boolean(client.contractTitle && !client.payerRelationship));
+
+      if (!isOfficialContractCard) {
+        // 1. Checagem direta por ID de contrato vinculado
+        const assocContractId = (client as any).contractId || (client as any).contract_id || (client as any).associated_contract_id || (client as any).migrated_to_contract_id;
+        if (assocContractId) {
+          const contractCardAlreadyOnBoard = baseClientsList.some(c =>
+            c.id !== client.id && (
+              c.id === assocContractId ||
+              (c as any).contractId === assocContractId ||
+              (c as any).contract_id === assocContractId ||
+              (c as any).migrated_to_contract_id === assocContractId ||
+              (contractClientIds && contractClientIds.has(c.id))
+            )
+          );
+          if (contractCardAlreadyOnBoard) return false;
+        }
+
+        // 2. Checagem por telefone vinculado na família do contrato
         const rawPhone = client.payerPhone || (client as any).phone || (client as any).payer_phone || '';
         const cPhoneDigits = rawPhone.replace(/\D/g, '').slice(-8);
         if (cPhoneDigits.length >= 8) {
           const isPartOfContract = baseClientsList.some(c => {
+            if (c.id === client.id) return false;
+            const isTargetOfficial = contractClientIds
+              ? contractClientIds.has(c.id)
+              : (c.code?.startsWith('CTR-') || Boolean(c.contractTitle && !c.payerRelationship));
+            if (!isTargetOfficial) return false;
+
             const pDigits = (c.payerPhone || (c as any).payer_phone || (c as any).phone || '').replace(/\D/g, '').slice(-8);
             if (pDigits === cPhoneDigits) return true;
             const contactsList = c.contacts || (c as any).contacts;

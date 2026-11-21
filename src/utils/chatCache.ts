@@ -12,7 +12,7 @@
  */
 import type { LeadActivity } from '../types/admin';
 
-const DB_PREFIX = 'f5-chat-cache-v3-';
+const DB_PREFIX = 'f5-chat-cache-v4-';
 const STORE = 'conversations';
 const MAX_LEADS = 60;
 const MAX_PER_LEAD = 120;

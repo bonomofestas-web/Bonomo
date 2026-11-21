@@ -562,6 +562,8 @@ export interface Lead {
   code?: string;         // Código Único do Lead no formato LEAD-XXXXXX
   commercialCode?: string; // Código alfanumérico Base36 exclusivo (LEAD-XXXXXXXX)
   contactId?: string;    // ID do Contato Central vinculado (tabela contacts)
+  contractId?: string;   // ID do Contrato Oficial vinculado (tabela contracts)
+  associated_contract_id?: string; // ID legado/compatibilidade do Contrato vinculado
   customFieldsData?: Record<string, any>; // Campos comerciais dinâmicos herdados do funil
   debutanteId: string;
   debutanteName: string;

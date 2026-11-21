@@ -102,10 +102,10 @@ const STORAGE_KEY_USER = 'bonomo_admin_user_v7';
 const STORAGE_KEY_COLLABORATORS = 'bonomo_admin_collaborators_v7';
 const STORAGE_KEY_VENUES = 'bonomo_admin_venues_v7';
 const STORAGE_KEY_DEBUTANTES = 'bonomo_admin_debutantes_v7';
-const STORAGE_KEY_CLIENTS = 'bonomo_admin_clients_v7';
+const STORAGE_KEY_CLIENTS = 'bonomo_admin_clients_v8';
 const STORAGE_KEY_AGENDA_CONFIGS = 'bonomo_admin_agenda_configs_v1';
 const STORAGE_KEY_APPOINTMENTS = 'bonomo_admin_appointments_v1';
-const STORAGE_KEY_LEADS = 'f5_admin_leads_v9';
+const STORAGE_KEY_LEADS = 'f5_admin_leads_v10';
 
 /**
  * Recargas "leves" de leads trazem só as últimas ~5 atividades por lead. Para não apagar o
@@ -7187,15 +7187,41 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       resolvedStageId = isTargetPostSale ? 'onboarding' : (isEntryActive ? 'new_lead' : 'in_negotiation');
     }
 
+    // Herança e Auto-Vínculo de Contrato via Contato / Telefone
+    let inheritedContractId: string | undefined = undefined;
+    let inheritedContactId: string | undefined = undefined;
+    let inheritedRole: any = isTargetPostSale ? 'cliente' : undefined;
+    let inheritedIsClient = isTargetPostSale;
+
+    if (cleanPhoneDigits && cleanPhoneDigits.length >= 8) {
+      try {
+        const found = await contractService.findContractByPhoneOrContact({
+          phone: cleanPhoneDigits,
+          masterId: resolvedMasterId
+        });
+        if (found?.contract) {
+          inheritedContractId = found.contract.id;
+          inheritedContactId = found.contract.contactId;
+          inheritedRole = found.kinship || (isTargetPostSale ? 'cliente' : undefined);
+          inheritedIsClient = true;
+        }
+      } catch (err) {
+        console.warn('[createLeadFromWhatsApp] Falha ao verificar contrato por telefone:', err);
+      }
+    }
+
     const newLead: Lead = {
       id: newLeadId,
       masterId: resolvedMasterId,
-      code: isTargetPostSale ? `CLI-${leadCode.replace('LEAD-', '')}` : leadCode,
+      code: (isTargetPostSale || inheritedIsClient) ? `CLI-${leadCode.replace('LEAD-', '')}` : leadCode,
       debutanteId: '',
       debutanteName: '',
       debutanteSlug: '',
       venueId: targetVenueId,
       funnelId: validFunnelId,
+      contractId: inheritedContractId,
+      associated_contract_id: inheritedContractId,
+      contactId: inheritedContactId,
       sourceId: waSource?.id,
       source: 'whatsapp',
       sourceName: waSource?.name || 'WhatsApp API',
@@ -7204,14 +7230,14 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       phone: data.phone,
       avatarUrl: data.avatarUrl,
       age: 15,
-      group: isTargetPostSale ? 'Pós-Venda' : 'WhatsApp',
-      tags: isTargetPostSale ? ['Cliente'] : [],
+      group: (isTargetPostSale || inheritedIsClient) ? 'Pós-Venda' : 'WhatsApp',
+      tags: (isTargetPostSale || inheritedIsClient) ? ['Cliente'] : [],
       notes: effectiveMsgText ? (data.fromMe ? `Conversa iniciada via WhatsApp: "${effectiveMsgText}"` : `Primeira mensagem via WhatsApp: "${effectiveMsgText}"`) : undefined,
       sdrId: autoSdr ? autoSdr.id : undefined,
       sdrName: autoSdr ? autoSdr.name : undefined,
       assignedTo: autoSdr ? autoSdr.name : undefined,
       stage: (data.initialStage || resolvedStageId) as CrmStage,
-      isClient: isTargetPostSale ? true : undefined,
+      isClient: inheritedIsClient ? true : undefined,
       isValidated: false,
       pointsGranted: 0,
       participants: initialParticipants,
@@ -7219,7 +7245,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       activities,
       temperature: undefined,
       eventType: undefined,
-      primaryContactRole: 'cliente' as any,
+      primaryContactRole: inheritedRole || ('cliente' as any),
       contacts: [],
       unreadCount: data.fromMe ? 0 : 1,
       lastInteractionAt: msgIso,

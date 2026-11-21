@@ -62,6 +62,10 @@ function mapLeadToDatabase(lead: Partial<Lead>): Record<string, any> {
   if (lead.masterId !== undefined) payload.master_id = isUuid(lead.masterId) ? lead.masterId : null;
   if (lead.contactId !== undefined) payload.contact_id = (lead.contactId && isUuid(lead.contactId)) ? lead.contactId : null;
   if ((lead as any).contact_id !== undefined) payload.contact_id = ((lead as any).contact_id && isUuid((lead as any).contact_id)) ? (lead as any).contact_id : null;
+  if ((lead as any).contractId !== undefined) payload.contract_id = ((lead as any).contractId && isUuid((lead as any).contractId)) ? (lead as any).contractId : null;
+  if ((lead as any).contract_id !== undefined) payload.contract_id = ((lead as any).contract_id && isUuid((lead as any).contract_id)) ? (lead as any).contract_id : payload.contract_id;
+  if ((lead as any).associated_contract_id !== undefined) payload.contract_id = ((lead as any).associated_contract_id && isUuid((lead as any).associated_contract_id)) ? (lead as any).associated_contract_id : payload.contract_id;
+  if (lead.isClient !== undefined) payload.is_client = Boolean(lead.isClient);
   if (lead.commercialCode !== undefined) payload.commercial_code = lead.commercialCode;
   if (lead.customFieldsData !== undefined) payload.custom_fields_data = lead.customFieldsData;
 
@@ -326,6 +330,9 @@ export function formatLeadFromDb(row: any, leadActivities: LeadActivity[] = [], 
     code: row.code,
     commercialCode: row.commercial_code || undefined,
     contactId: row.contact_id || undefined,
+    contractId: row.contract_id || undefined,
+    associated_contract_id: row.contract_id || undefined,
+    isClient: Boolean(row.is_client),
     customFieldsData: row.custom_fields_data || {},
     funnelId: row.funnel_id,
     venueId: row.venue_id,

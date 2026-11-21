@@ -42,6 +42,12 @@ Grande reestruturação de governança, experiência do usuário, banco de dados
 
 ### Recursos e Melhorias em Staging
 
+- **Saneamento de Acentos (Encoding UTF-8) e Herança Automática de Contratos via Central de Contatos:**
+  * **Saneamento Global de Acentos (218 Contratos, 218 Clientes, 237 Contatos):** Cruzamento e restauração com base no arquivo mestre original UTF-8 (`import_set.json`), corrigindo caracteres corrompidos (`??`, `Ã³`, `Ã§`) em títulos de eventos, nomes de debutantes, contratantes, observações e papéis familiares tanto no banco de Produção (Nuvem) quanto Local (Docker).
+  * **Ocultação de Cards Redundantes de Familiares no Kanban de Pós-Venda:** Cards de contatos e familiares (com código de cliente `CLI-` ou lead) que já fazem parte de um contrato oficial presente no Kanban são automaticamente consolidados no card oficial do evento (`AdminContractKanbanCard`), eliminando a exibição duplicada com badge `SEM CONTRATO` na esteira.
+  * **Herança Automática Multi-Funil via Contatos (`contacts`):** Quando qualquer familiar ou contratante previamente cadastrado envia mensagem por qualquer canal ou funil, o sistema identifica automaticamente o contrato vinculado através da Central de Contatos e aplica a herança imediata (`contract_id`, `is_client: true` e parentesco), sem necessidade de re-vinculações manuais repetidas.
+  * **Invalidação e Atualização de Caches (IndexedDB v4 e LocalStorage v10/v8):** Bumps em `f5-chat-cache-v4-`, `f5_admin_leads_v10` e `f5_admin_clients_v8`, garantindo que os navegadores recebam imediatamente os dados normalizados do Supabase.
+
 - **Auditoria de Instâncias WhatsApp, Roteamento Estrito e Purga de Cache Local:**
   * **Isolamento de Conversas por Instância:** Removidos fallbacks indevidos que associavam mensagens de WhatsApp ao primeiro lead/cliente encontrado caso a instância não batesse perfeitamente. Mensagens agora só são associadas ao lead/cliente que pertença rigorosamente à instância (`source_id`) que recebeu o evento.
   * **Saneamento no Banco de Produção:** Mensagens históricas desalinhadas foram purgadas e redirecionadas para os leads correspondentes com metadados completos de instância (`sourceId`, `senderSourceId`, `senderSourceName`, `senderPhone`).
