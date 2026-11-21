@@ -4,6 +4,30 @@
 -- ==============================================================================
 SET session_replication_role = 'replica';
 
+-- GARANTE COLUNAS NECESSÁRIAS NAS TABELAS DE EVENTOS E TAREFAS
+ALTER TABLE public.venue_events ADD COLUMN IF NOT EXISTS master_id UUID;
+ALTER TABLE public.venue_events ADD COLUMN IF NOT EXISTS client_id UUID;
+ALTER TABLE public.venue_events ADD COLUMN IF NOT EXISTS client_name TEXT;
+ALTER TABLE public.venue_events ADD COLUMN IF NOT EXISTS blocks_venue_day BOOLEAN DEFAULT TRUE;
+ALTER TABLE public.venue_events ADD COLUMN IF NOT EXISTS created_by_id UUID;
+ALTER TABLE public.venue_events ADD COLUMN IF NOT EXISTS created_by_name TEXT;
+
+ALTER TABLE public.admin_tasks ADD COLUMN IF NOT EXISTS master_id UUID;
+ALTER TABLE public.admin_tasks ADD COLUMN IF NOT EXISTS database_id TEXT;
+ALTER TABLE public.admin_tasks ADD COLUMN IF NOT EXISTS content TEXT;
+ALTER TABLE public.admin_tasks ADD COLUMN IF NOT EXISTS custom_properties JSONB DEFAULT '{}'::jsonb;
+ALTER TABLE public.admin_tasks ADD COLUMN IF NOT EXISTS custom_status_id TEXT;
+ALTER TABLE public.admin_tasks ADD COLUMN IF NOT EXISTS custom_type TEXT;
+ALTER TABLE public.admin_tasks ADD COLUMN IF NOT EXISTS mandatory_feedback BOOLEAN DEFAULT FALSE;
+ALTER TABLE public.admin_tasks ADD COLUMN IF NOT EXISTS assigned_to_ids UUID[] DEFAULT '{}'::uuid[];
+ALTER TABLE public.admin_tasks ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ;
+ALTER TABLE public.admin_tasks ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "admin_tasks_full_access" ON public.admin_tasks;
+CREATE POLICY "admin_tasks_full_access" ON public.admin_tasks FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+ALTER TABLE public.venue_goals ADD COLUMN IF NOT EXISTS master_id UUID;
+ALTER TABLE public.venue_goals ADD COLUMN IF NOT EXISTS appointments_target INT;
+
 -- 1. UPSERT DOS 217 EVENTOS NA AGENDA DE EVENTOS
 INSERT INTO public."venue_events" ("id", "master_id", "venue_id", "client_id", "client_name", "title", "event_type", "event_date", "start_time", "end_time", "guest_count", "status", "blocks_venue_day", "notes", "created_by_id", "created_by_name", "created_at", "updated_at") VALUES
   ('025b3bc9-0629-480c-8d44-c2457e1c6202', 'a0000000-0000-0000-0000-000000000001', 'b2222222-2222-2222-2222-222222222222', '5fc7a3a9-22ab-47df-83c1-be4a252b5aed', NULL, 'Caroline e Rafael - Casamento', 'casamento', '2027-10-09', NULL, NULL, 180, 'confirmed', TRUE, '', NULL, 'Contrato Homologado', '2026-11-19T16:14:48.324333+00:00', '2026-11-19T16:56:35.85+00:00'),

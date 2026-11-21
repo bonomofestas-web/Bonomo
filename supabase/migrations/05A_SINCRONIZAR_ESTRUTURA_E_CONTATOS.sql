@@ -45,7 +45,7 @@ ALTER TABLE public.admin_tasks ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "admin_tasks_full_access" ON public.admin_tasks;
 CREATE POLICY "admin_tasks_full_access" ON public.admin_tasks FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
 
--- GARANTE COLUNAS NECESSÁRIAS NAS TABELAS DE CLIENTES, CONTRATOS E CONTATOS
+-- GARANTE COLUNAS NECESSÁRIAS NAS TABELAS DE CLIENTES, CONTRATOS, CONTATOS, EVENTOS E TAREFAS
 ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS contract_id UUID;
 ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS contract_title TEXT;
 ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS avatar_url TEXT;
@@ -57,6 +57,26 @@ ALTER TABLE public.contracts ADD COLUMN IF NOT EXISTS venue_id UUID;
 ALTER TABLE public.contracts ADD COLUMN IF NOT EXISTS client_id UUID;
 ALTER TABLE public.contacts ADD COLUMN IF NOT EXISTS is_supplier BOOLEAN DEFAULT FALSE;
 ALTER TABLE public.contacts ADD COLUMN IF NOT EXISTS supplier_profile JSONB DEFAULT '{}'::jsonb;
+ALTER TABLE public.venue_events ADD COLUMN IF NOT EXISTS master_id UUID;
+ALTER TABLE public.venue_events ADD COLUMN IF NOT EXISTS client_id UUID;
+ALTER TABLE public.venue_events ADD COLUMN IF NOT EXISTS client_name TEXT;
+ALTER TABLE public.venue_events ADD COLUMN IF NOT EXISTS blocks_venue_day BOOLEAN DEFAULT TRUE;
+ALTER TABLE public.venue_events ADD COLUMN IF NOT EXISTS created_by_id UUID;
+ALTER TABLE public.venue_events ADD COLUMN IF NOT EXISTS created_by_name TEXT;
+ALTER TABLE public.admin_tasks ADD COLUMN IF NOT EXISTS master_id UUID;
+ALTER TABLE public.admin_tasks ADD COLUMN IF NOT EXISTS database_id TEXT;
+ALTER TABLE public.admin_tasks ADD COLUMN IF NOT EXISTS content TEXT;
+ALTER TABLE public.admin_tasks ADD COLUMN IF NOT EXISTS custom_properties JSONB DEFAULT '{}'::jsonb;
+ALTER TABLE public.admin_tasks ADD COLUMN IF NOT EXISTS custom_status_id TEXT;
+ALTER TABLE public.admin_tasks ADD COLUMN IF NOT EXISTS custom_type TEXT;
+ALTER TABLE public.admin_tasks ADD COLUMN IF NOT EXISTS mandatory_feedback BOOLEAN DEFAULT FALSE;
+ALTER TABLE public.admin_tasks ADD COLUMN IF NOT EXISTS assigned_to_ids UUID[] DEFAULT '{}'::uuid[];
+ALTER TABLE public.admin_tasks ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ;
+ALTER TABLE public.admin_tasks ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "admin_tasks_full_access" ON public.admin_tasks;
+CREATE POLICY "admin_tasks_full_access" ON public.admin_tasks FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+ALTER TABLE public.venue_goals ADD COLUMN IF NOT EXISTS master_id UUID;
+ALTER TABLE public.venue_goals ADD COLUMN IF NOT EXISTS appointments_target INT;
 
 -- 1. RESOLUÇÃO DE CONFLITOS EM idx_contacts_master_primary_phone (DEDUPLICAÇÃO DE PRODUÇÃO)
 -- Remove quaisquer contatos antigos em produção que possuam telefones em comum com a base canônica mas com IDs divergentes
