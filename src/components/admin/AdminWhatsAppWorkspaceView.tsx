@@ -2295,9 +2295,9 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   }, [selectedLeadId, filteredLeads]); // eslint-disable-line react-hooks/exhaustive-deps
   const visibleLeads = useMemo(() => filteredLeads.slice(0, visibleCount), [filteredLeads, visibleCount]);
   useEffect(() => {
-    if (isPostSaleFunnel) return; // clientes de pos-venda nao sao leads do banco
     void prefetchLeadConversations(filteredLeads.slice(0, visibleCount + INBOX_STEP).map(l => l.id), 20);
-  }, [filteredLeads, visibleCount, isPostSaleFunnel, prefetchLeadConversations]);
+  }, [filteredLeads, visibleCount, prefetchLeadConversations]);
+
   useEffect(() => {
     const el = inboxSentinelRef.current;
     if (!el || typeof IntersectionObserver === 'undefined') return;
@@ -2362,6 +2362,16 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   const selectedLead = useMemo(() => {
     return sourceLeads.find(l => l.id === selectedLeadId) || null;
   }, [sourceLeads, selectedLeadId]);
+
+  // Carrega imediatamente as atividades do lead/cliente selecionado quando aberto
+  useEffect(() => {
+    if (!selectedLeadId) return;
+    const currentActs = selectedLead?.activities || [];
+    const hasChat = currentActs.some(a => a.type === 'contact' || (a as any).type === 'whatsapp');
+    if (!hasChat) {
+      void prefetchLeadConversations([selectedLeadId], 40);
+    }
+  }, [selectedLeadId, selectedLead?.activities, prefetchLeadConversations]);
 
   // Contrato Mestre de Pós-Venda associado ao lead selecionado (ex: Carla Nogueira vinculada ao contrato do Antônio / Vitória)
   const targetContractClient = useMemo(() => {
@@ -4839,9 +4849,26 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     }
 
     const all = Array.from(actMap.values());
+
+    // Se o lead possui uma última mensagem gravada mas nenhuma atividade de chat foi carregada ainda,
+    // projeta a mensagem na linha do tempo para a caixa de diálogo não ficar em branco enquanto busca do banco
+    if (selectedLead && selectedLead.lastMessageText && !all.some(a => a.type === 'contact' || (a as any).type === 'whatsapp')) {
+      all.push({
+        id: `preview_act_${selectedLead.id}`,
+        leadId: selectedLead.id,
+        type: 'contact',
+        title: selectedLead.lastMessageDirection === 'outgoing' ? 'Mensagem enviada' : 'Mensagem recebida',
+        text: selectedLead.lastMessageText,
+        authorName: selectedLead.lastMessageDirection === 'outgoing' ? 'Equipe' : (selectedLead.name || 'Cliente'),
+        authorAvatarUrl: selectedLead.lastMessageDirection === 'outgoing' ? 'whatsapp_brand' : '',
+        timestamp: selectedLead.lastMessageAt || selectedLead.updatedAt || new Date().toISOString(),
+        status: selectedLead.lastMessageDirection === 'outgoing' ? 'sent' : 'delivered',
+      } as LeadActivity);
+    }
+
     all.sort((a, b) => new Date(a.timestamp || 0).getTime() - new Date(b.timestamp || 0).getTime());
     return all;
-  }, [selectedLead?.activities, selectedLeadId, targetContractClient, availableRecipients, sourceLeads, leads]);
+  }, [selectedLead?.activities, selectedLead?.lastMessageText, selectedLead?.lastMessageAt, selectedLead?.lastMessageDirection, selectedLeadId, targetContractClient, availableRecipients, sourceLeads, leads]);
 
   /**
    * Identifica se a conversa ativa (específica do destinatário em aberto) já está com atendimento encerrado
@@ -6207,25 +6234,12 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
               );
               let rawMessageText = persistedPreviewIsNewer ? (lead.lastMessageText || '') : (lastMessageActivity?.text || '');
 
-              // Fallback 1: Se não houver mensagem em activities, recuperar do lead.notes (onde webhooks de WhatsApp gravam a mensagem inicial)
+              // Fallback 1: Se não houver mensagem em activities, recuperar do lead.notes apenas se for mensagem real capturada pelo webhook
               if (!rawMessageText && lead.notes && typeof lead.notes === 'string') {
                 const trimmedNotes = lead.notes.trim();
                 const webhookMatch = trimmedNotes.match(/(?:Conversa iniciada via WhatsApp|Primeira mensagem via WhatsApp|Mensagem recebida via WhatsApp):\s*["“]?([\s\S]*?)["”]?(\n|$)/i);
                 if (webhookMatch && webhookMatch[1]) {
                   rawMessageText = webhookMatch[1].trim();
-                } else if (!trimmedNotes.includes('{') && !trimmedNotes.includes('}') && trimmedNotes.length > 0) {
-                  rawMessageText = trimmedNotes.split('\n')[0].trim();
-                }
-              }
-
-              // Fallback 2: Se ainda não tiver texto, recuperar qualquer anotação/atividade recente com texto (exceto auditoria de status)
-              if (!rawMessageText && lead.activities && lead.activities.length > 0) {
-                const fallbackAct = lead.activities
-                  .slice()
-                  .reverse()
-                  .find(a => a.text && a.type !== 'status_change' && a.type !== 'assignment');
-                if (fallbackAct?.text) {
-                  rawMessageText = fallbackAct.text;
                 }
               }
 

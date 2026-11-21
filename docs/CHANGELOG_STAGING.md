@@ -50,6 +50,13 @@ Grande reestruturação de governança, experiência do usuário, banco de dados
 - **Auto-Cura e Blindagem de Integridade na Vinculação de Contratos (Erro 23503 eliminado):**
   * Auto-cura no `contractService.linkLooseLeadToContract` e `contactService.linkFamilyMember`, garantindo que o `parent_contact_id` existe na tabela `contacts` antes de criar o vínculo na tabela `contact_dependents`.
   * Inclusão dos 257 contatos locais e dependentes no gerador de migração `scripts/generate_prod_sync_all.mjs`, blindando o ambiente de produção contra erros de chave estrangeira.
+  * Inclusão de garantias DDL (`ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS contract_id UUID`, `contract_title`, `avatar_url`, etc.) na Seção 0 da migração [05_SINCRONIZAR_PRODUCAO_218_CONTRATOS_CLIENTES_AGENDA.sql](file:///c:/Users/--/OneDrive/Documents/Codex%20Projetos/Bonomo%20Festas%202/supabase/migrations/05_SINCRONIZAR_PRODUCAO_218_CONTRATOS_CLIENTES_AGENDA.sql), eliminando o erro de coluna inexistente `42703` em produção.
+
+- **Sincronização Fidedigna da Caixa de Entrada e Diálogo do WhatsApp:**
+  * Eliminado o fallback incorreto que exibia observações e anotações internas do CRM gravadas em `lead.notes` como se fossem mensagens recebidas no card da lista de conversas.
+  * Habilitada a pré-carga e sincronização de mensagens para clientes do pós-venda (`prefetchLeadConversations` com atualização em `setClients`), acabando com a restrição que impedia pós-venda de buscar atividades no banco.
+  * Criado gatilho sob demanda ao selecionar qualquer conversa sem mensagens em cache, buscando imediatamente os registros do Supabase.
+  * Projeção defensiva da última mensagem registrada (`lastMessageText`) na linha do tempo enquanto o histórico completo é recuperado em segundo plano, garantindo que o que aparece na lista sempre esteja presente no diálogo.
 
 - **Menu de Ações Rápidas (3 Pontinhos) & Conversão em Fornecedor:**
   * Implementado menu de 3 pontinhos (`MoreVertical`) no topo da ficha do lead (`AdminLeadInspector`) e da gaveta do cliente de pós-venda (`AdminClientDrawerInspector`).

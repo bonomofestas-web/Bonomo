@@ -5009,6 +5009,17 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         if (!fetched.some(a => !existingIds.has(a.id))) return lead;
         return { ...lead, activities: merged };
       }));
+
+      setClients(prev => prev.map(client => {
+        const fetched = resolved.get(client.id);
+        if (!fetched) return client;
+        const current = (client.activities || []) as unknown as LeadActivity[];
+        const merged = mergeAndSortActivities(current, fetched, client.id);
+        chatCache.save(client.id, merged, startedAt);
+        const existingIds = new Set(current.map(a => a.id));
+        if (!fetched.some(a => !existingIds.has(a.id))) return client;
+        return { ...client, activities: merged as unknown as ClientActivity[] };
+      }));
     }
   }, []);
 

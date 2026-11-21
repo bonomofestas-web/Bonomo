@@ -41,6 +41,19 @@ ALTER TABLE public.admin_tasks ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "admin_tasks_full_access" ON public.admin_tasks;
 CREATE POLICY "admin_tasks_full_access" ON public.admin_tasks FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
 
+-- GARANTE COLUNAS NECESSÁRIAS NAS TABELAS DE CLIENTES, CONTRATOS E CONTATOS
+ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS contract_id UUID;
+ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS contract_title TEXT;
+ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS avatar_url TEXT;
+ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS migrated_to_contract_id UUID;
+ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS migrated_to_contact_id UUID;
+ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS migrated_at TIMESTAMPTZ;
+ALTER TABLE public.contracts ADD COLUMN IF NOT EXISTS contact_id UUID;
+ALTER TABLE public.contracts ADD COLUMN IF NOT EXISTS venue_id UUID;
+ALTER TABLE public.contracts ADD COLUMN IF NOT EXISTS client_id UUID;
+ALTER TABLE public.contacts ADD COLUMN IF NOT EXISTS is_supplier BOOLEAN DEFAULT FALSE;
+ALTER TABLE public.contacts ADD COLUMN IF NOT EXISTS supplier_profile JSONB DEFAULT '{}'::jsonb;
+
 -- 1. UPSERT DOS CONTATOS E DEPENDENTES
 INSERT INTO public."contacts" ("id", "master_id", "code", "name", "nickname", "primary_phone", "secondary_phone", "email", "cpf", "rg", "birth_date", "profile_picture_url", "postal_code", "street", "number", "complement", "neighborhood", "city", "state", "family_group_id", "relationship_role", "notes", "custom_fields", "created_by", "updated_by", "created_at", "updated_at", "deleted_at", "avatar_refreshed_at", "primary_phone_digits", "secondary_phone_digits", "cpf_digits", "primary_phone_key", "is_supplier", "supplier_profile", "is_collaborator", "collaborator_id") VALUES
   ('048ec1e6-fea7-4a51-bd41-adb3286bbabb', 'a0000000-0000-0000-0000-000000000001', 'CONT-RUR4SN2D', 'Andressa Cristina Barretto da Costa', NULL, '(21) 98862-6886', NULL, 'andressa_barretto@hotmail.com', '057972127-22', NULL, NULL, NULL, '98862-688', 'Avenida Marechal Rondon, 1263 casa 21A ??? Rio de Janeiro - RJ', NULL, NULL, NULL, 'Rio de Janeiro', 'RJ', NULL, 'Titular', NULL, '{}'::jsonb, NULL, NULL, '2026-11-19T16:14:49.893499+00:00', '2026-11-19T16:14:49.893499+00:00', NULL, NULL, '21988626886', '', '05797212722', '2188626886', FALSE, '{}'::jsonb, FALSE, NULL),
