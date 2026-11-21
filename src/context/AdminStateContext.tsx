@@ -105,7 +105,7 @@ const STORAGE_KEY_DEBUTANTES = 'bonomo_admin_debutantes_v7';
 const STORAGE_KEY_CLIENTS = 'bonomo_admin_clients_v7';
 const STORAGE_KEY_AGENDA_CONFIGS = 'bonomo_admin_agenda_configs_v1';
 const STORAGE_KEY_APPOINTMENTS = 'bonomo_admin_appointments_v1';
-const STORAGE_KEY_LEADS = 'bonomo_admin_leads_v7';
+const STORAGE_KEY_LEADS = 'f5_admin_leads_v8';
 
 /**
  * Recargas "leves" de leads trazem só as últimas ~5 atividades por lead. Para não apagar o
@@ -161,6 +161,7 @@ export const purgeAllTenantStorage = () => {
     localStorage.removeItem(STORAGE_KEY_AGENDA_CONFIGS);
     localStorage.removeItem(STORAGE_KEY_APPOINTMENTS);
     localStorage.removeItem(STORAGE_KEY_LEADS);
+    localStorage.removeItem('bonomo_admin_leads_v7');
     localStorage.removeItem(STORAGE_KEY_SOURCES);
     localStorage.removeItem(STORAGE_KEY_TEMPLATES);
     localStorage.removeItem(STORAGE_KEY_ACTIVE_VENUE);
@@ -849,6 +850,9 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   };
 
   const [leads, setLeads] = useState<Lead[]>(() => {
+    try {
+      localStorage.removeItem('bonomo_admin_leads_v7');
+    } catch {}
     const saved = localStorage.getItem(STORAGE_KEY_LEADS);
     const parsed: Lead[] = saved ? JSON.parse(saved) : DEFAULT_LEADS;
     const mapped = parsed.map(lead => {

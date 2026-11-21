@@ -12,7 +12,7 @@
  */
 import type { LeadActivity } from '../types/admin';
 
-const DB_PREFIX = 'f5-chat-cache-v1-';
+const DB_PREFIX = 'f5-chat-cache-v2-';
 const STORE = 'conversations';
 const MAX_LEADS = 60;
 const MAX_PER_LEAD = 120;
@@ -153,6 +153,16 @@ export const chatCache = {
     dbName = DB_PREFIX + scope.replace(/[^A-Za-z0-9_-]/g, '_');
     const work = (async () => {
       removeLegacyLocalStorage();
+      try {
+        if (typeof indexedDB !== 'undefined' && (indexedDB as any).databases) {
+          const dbs = await (indexedDB as any).databases();
+          (dbs || []).forEach((d: any) => {
+            if (d?.name && String(d.name).startsWith('f5-chat-cache-v1-')) {
+              try { indexedDB.deleteDatabase(d.name); } catch {}
+            }
+          });
+        }
+      } catch {}
       db = await openDb(dbName);
       if (!db) return;
       const rows = await readAll(db);
