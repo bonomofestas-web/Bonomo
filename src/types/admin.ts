@@ -11,6 +11,8 @@ import type {
 export type AdminRole =
   | 'dev'
   | 'master'
+  | 'diretor'
+  | 'diretoria'
   | 'admin'
   | 'gerencia'
   | 'comercial'
@@ -82,8 +84,8 @@ export interface AdminUser {
   activatedAt?: string;
   lastLoginAt?: string;
   masterId?: string; // ID da conta Master proprietária (caso subordinado)
-  sectors?: ('comercial' | 'pos_venda' | 'gerencia' | 'financeiro' | 'marketing')[];
-  primarySector?: 'comercial' | 'pos_venda' | 'gerencia' | 'financeiro' | 'marketing';
+  sectors?: ('diretoria' | 'comercial' | 'pos_venda' | 'gerencia' | 'financeiro' | 'marketing' | 'marketing_tecnologia' | string)[];
+  primarySector?: 'diretoria' | 'comercial' | 'pos_venda' | 'gerencia' | 'financeiro' | 'marketing' | 'marketing_tecnologia' | string;
   permissions?: string[];
   pinnedFunnelIds?: string[];
   customJobTitle?: string; // Título / Cargo executivo personalizado
@@ -106,9 +108,9 @@ export interface Collaborator {
   password?: string;
   customJobTitle?: string; // Cargo/Título executivo customizado (ex: 'Coordenador Geral', 'Líder Comercial')
   jobRoles?: string[]; // Cargos por setor ('comercial:sdr', 'comercial:closer', 'comercial:gerente', 'gerencia:gerente_geral'...). Acesso = sectors; cargo = jobRoles
-  department?: 'diretoria' | 'gerencia' | 'comercial' | 'pos_venda' | 'financeiro' | 'marketing';
-  sectors?: ('comercial' | 'pos_venda' | 'gerencia' | 'financeiro' | 'marketing')[]; // Setores que o colaborador participa
-  primarySector?: 'comercial' | 'pos_venda' | 'gerencia' | 'financeiro' | 'marketing'; // Setor prioritário de abertura
+  department?: 'diretoria' | 'gerencia' | 'comercial' | 'pos_venda' | 'financeiro' | 'marketing' | 'marketing_tecnologia' | string;
+  sectors?: ('diretoria' | 'comercial' | 'pos_venda' | 'gerencia' | 'financeiro' | 'marketing' | 'marketing_tecnologia' | string)[]; // Setores que o colaborador participa
+  primarySector?: 'diretoria' | 'comercial' | 'pos_venda' | 'gerencia' | 'financeiro' | 'marketing' | 'marketing_tecnologia' | string; // Setor prioritário de abertura
   permissions?: string[]; // Permissões e metadados persistidos no Supabase
   pinnedFunnelIds?: string[]; // IDs dos funis fixados no menu lateral pelo usuário
   theme?: ThemeMode;

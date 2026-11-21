@@ -1,5 +1,13 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import { customRoleId, slugifyRole, type CustomJobRole, type JobSector } from '../utils/jobRoles';
+import { customRoleId, slugifyRole, DEFAULT_JOB_SECTORS, type CustomJobRole, type JobSector } from '../utils/jobRoles';
+
+export interface JobSectorItem {
+  id: string;
+  sector_id: string;
+  name: string;
+  color: string;
+  position: number;
+}
 
 export type JobRoleResult = { ok: true; role: CustomJobRole } | { ok: false; reason: 'invalid' | 'exists' | 'forbidden' | 'missing_table' | 'error' };
 
@@ -102,6 +110,111 @@ export const jobRoleService = {
     if (!isSupabaseConfigured || !masterId) return false;
     const { error } = await supabase.from('job_roles').delete().eq('master_id', masterId).eq('sector', sector).eq('slug', slug);
     if (error) console.error('[jobRoleService.remove]', error.message);
+    return !error;
+  },
+
+  /** Lista os setores ordenados da conta Master. */
+  async listSectors(masterId: string): Promise<JobSectorItem[]> {
+    if (!isSupabaseConfigured || !masterId) {
+      return DEFAULT_JOB_SECTORS.map((s, idx) => ({ id: s.id, sector_id: s.id, name: s.label, color: s.color, position: idx }));
+    }
+    const { data, error } = await supabase
+      .from('job_sectors')
+      .select('id, sector_id, name, color, position')
+      .eq('master_id', masterId)
+      .order('position', { ascending: true });
+
+    if (error || !data || data.length === 0) {
+      if (error) console.warn('[jobRoleService.listSectors]', error.message);
+      return DEFAULT_JOB_SECTORS.map((s, idx) => ({ id: s.id, sector_id: s.id, name: s.label, color: s.color, position: idx }));
+    }
+    return data.map(r => ({
+      id: r.id || r.sector_id,
+      sector_id: r.sector_id,
+      name: r.name,
+      color: r.color || '#14A9D7',
+      position: Number(r.position ?? 0),
+    }));
+  },
+
+  /** Grava a nova ordem de setores (menor position aparece primeiro). */
+  async saveSectorOrder(masterId: string, orderedSectorIds: string[]): Promise<boolean> {
+    if (!isSupabaseConfigured || !masterId || orderedSectorIds.length === 0) return false;
+    const now = new Date().toISOString();
+
+    for (let pos = 0; pos < orderedSectorIds.length; pos++) {
+      const sector_id = orderedSectorIds[pos];
+      const { error } = await supabase
+        .from('job_sectors')
+        .update({ position: pos, updated_at: now })
+        .eq('master_id', masterId)
+        .eq('sector_id', sector_id);
+      if (error) {
+        console.error('[jobRoleService.saveSectorOrder]', error.message);
+      }
+    }
+    return true;
+  },
+
+  /** Cria um novo setor dinâmico. */
+  async createSector(masterId: string, rawName: string, color?: string): Promise<{ ok: true; sector: JobSectorItem } | { ok: false; reason: string }> {
+    const name = rawName.trim().replace(/\s+/g, ' ');
+    const slug = slugifyRole(name);
+    if (!isSupabaseConfigured || !masterId) return { ok: false, reason: 'error' };
+    if (name.length < 2 || name.length > 50 || !slug) return { ok: false, reason: 'invalid' };
+
+    const { data: existing } = await supabase
+      .from('job_sectors')
+      .select('position')
+      .eq('master_id', masterId)
+      .order('position', { ascending: false })
+      .limit(1);
+
+    const nextPos = existing && existing.length > 0 ? (Number(existing[0].position || 0) + 1) : 10;
+    const chosenColor = color || '#14A9D7';
+
+    const { data, error } = await supabase
+      .from('job_sectors')
+      .insert({
+        master_id: masterId,
+        sector_id: slug,
+        name,
+        color: chosenColor,
+        position: nextPos,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('[jobRoleService.createSector]', error.message);
+      return { ok: false, reason: error.code === '23505' ? 'exists' : 'error' };
+    }
+
+    return {
+      ok: true,
+      sector: {
+        id: data.id,
+        sector_id: data.sector_id,
+        name: data.name,
+        color: data.color,
+        position: data.position,
+      },
+    };
+  },
+
+  /** Exclui um setor personalizado (não permite excluir os padrões fixos). */
+  async deleteSector(masterId: string, sectorId: string): Promise<boolean> {
+    if (!isSupabaseConfigured || !masterId) return false;
+    const protectedSectors = ['diretoria', 'comercial', 'pos_venda', 'financeiro', 'marketing_tecnologia'];
+    if (protectedSectors.includes(sectorId)) return false;
+
+    const { error } = await supabase
+      .from('job_sectors')
+      .delete()
+      .eq('master_id', masterId)
+      .eq('sector_id', sectorId);
+
+    if (error) console.error('[jobRoleService.deleteSector]', error.message);
     return !error;
   },
 };

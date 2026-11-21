@@ -176,9 +176,10 @@ const StoriesVenueVideoModal: React.FC<{
 
 interface AdminVenuesViewProps {
   onNavigateToFunnel?: (funnelId: string) => void;
+  headerSwitcher?: React.ReactNode;
 }
 
-export const AdminVenuesView: React.FC<AdminVenuesViewProps> = ({ onNavigateToFunnel }) => {
+export const AdminVenuesView: React.FC<AdminVenuesViewProps> = ({ onNavigateToFunnel, headerSwitcher }) => {
   const { 
     venues, 
     collaborators, 
@@ -2270,26 +2271,31 @@ export const AdminVenuesView: React.FC<AdminVenuesViewProps> = ({ onNavigateToFu
     }}>
       {/* Título no breadcrumb; ação primária no menu superior */}
       <HeaderActions>
-
-        {currentUser?.role === 'master' && (
-          <button
-            type="button"
-            onClick={handleOpenCreate}
-            className="adm-btn-primary"
-            style={{
-              padding: '10px 20px',
-              borderRadius: '12px',
-              fontWeight: 800,
-              fontSize: '0.84rem',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-            }}
-          >
-            <Plus size={16} />
-            <span>Cadastrar Nova Casa</span>
-          </button>
-        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {(currentUser?.role === 'master' || currentUser?.role === 'dev' || Boolean(currentUser?.isDev)) && (
+              <button
+                type="button"
+                onClick={handleOpenCreate}
+                className="adm-btn-primary"
+                style={{
+                  height: '36px',
+                  padding: '0 18px',
+                  borderRadius: '10px',
+                  fontWeight: 800,
+                  fontSize: '0.82rem',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                }}
+              >
+                <Plus size={16} />
+                <span>Cadastrar Nova Casa</span>
+              </button>
+            )}
+          </div>
+          {headerSwitcher}
+        </div>
       </HeaderActions>
 
       {/* Grid of Venues or Empty State */}

@@ -11,30 +11,43 @@ import type { Collaborator } from '../types/admin';
  *  - personalizado ("Outro"):     `<setor>:x:<slug>`       ex.: marketing:x:gestor-de-trafego
  * Os personalizados ficam no catalogo `job_roles` (jobRoleService) e podem ser excluidos.
  */
-export type JobSector = 'comercial' | 'pos_venda' | 'gerencia' | 'financeiro' | 'marketing';
+export type JobSector = 'diretoria' | 'comercial' | 'pos_venda' | 'financeiro' | 'marketing_tecnologia' | 'marketing' | 'gerencia' | string;
 
-export const JOB_SECTORS: { id: JobSector; label: string; color: string }[] = [
-  { id: 'comercial', label: 'Comercial', color: '#10B981' },
-  { id: 'pos_venda', label: 'Pós-Venda', color: '#06B6D4' },
-  { id: 'gerencia', label: 'Gerência', color: '#3B82F6' },
-  { id: 'marketing', label: 'Marketing', color: '#EC4899' },
-  { id: 'financeiro', label: 'Financeiro', color: '#F59E0B' },
+export interface JobSectorConfig {
+  id: string;
+  label: string;
+  color: string;
+  position?: number;
+}
+
+export const DEFAULT_JOB_SECTORS: JobSectorConfig[] = [
+  { id: 'diretoria', label: 'Diretoria', color: '#D4AF37', position: 0 },
+  { id: 'comercial', label: 'Comercial', color: '#10B981', position: 1 },
+  { id: 'pos_venda', label: 'Pós-Venda', color: '#06B6D4', position: 2 },
+  { id: 'financeiro', label: 'Financeiro', color: '#F59E0B', position: 3 },
+  { id: 'marketing_tecnologia', label: 'Marketing e Tecnologia', color: '#EC4899', position: 4 },
 ];
+
+export const JOB_SECTORS: JobSectorConfig[] = DEFAULT_JOB_SECTORS;
 
 export interface JobRoleOption { id: string; label: string; description: string }
 
 /** Cargos fixos de cada setor. Os demais sao digitados em "+ Outro" (catalogo por setor). */
-export const JOB_ROLE_OPTIONS: Record<JobSector, JobRoleOption[]> = {
+export const JOB_ROLE_OPTIONS: Record<string, JobRoleOption[]> = {
+  diretoria: [
+    { id: 'diretoria:master', label: 'Diretor Master', description: 'Diretor geral com acesso a toda a rede' },
+    { id: 'diretoria:diretor', label: 'Diretor', description: 'Mesmos poderes de um master nas unidades liberadas' },
+  ],
   comercial: [
     { id: 'comercial:gerente', label: 'Gerente comercial', description: 'Gestão do setor comercial' },
     { id: 'comercial:closer', label: 'Especialista', description: 'Conduz a visita e fecha o contrato' },
     { id: 'comercial:sdr', label: 'SDR', description: 'Qualifica e agenda' },
   ],
-  gerencia: [
-    { id: 'gerencia:gerente_geral', label: 'Gerente geral', description: 'Responsável pela unidade inteira' },
+  marketing_tecnologia: [
+    { id: 'marketing_tecnologia:gestor', label: 'Gestor', description: 'Gestão de marketing e tecnologia (ex.: tráfego pago)' },
   ],
   marketing: [
-    { id: 'marketing:gestor', label: 'Gestor', description: 'Gestão do marketing (ex.: tráfego pago)' },
+    { id: 'marketing_tecnologia:gestor', label: 'Gestor', description: 'Gestão de marketing e tecnologia (ex.: tráfego pago)' },
   ],
   pos_venda: [
     { id: 'pos_venda:gerente', label: 'Gerente de pós-venda', description: 'Gestão do setor de pós-venda' },
@@ -44,7 +57,6 @@ export const JOB_ROLE_OPTIONS: Record<JobSector, JobRoleOption[]> = {
     { id: 'pos_venda:retencao', label: 'Retenção e fidelização', description: 'Benefícios, pesquisas de satisfação (NPS) e manutenção do cliente' },
     { id: 'pos_venda:upsell', label: 'Expansão / Upsell', description: 'Vendas adicionais e complementares para clientes da base' },
   ],
-  // Provisório: o módulo financeiro ainda não existe
   financeiro: [
     { id: 'financeiro:gerente', label: 'Gerente financeiro', description: 'Gestão do setor financeiro' },
     { id: 'financeiro:analista', label: 'Analista financeiro', description: 'Rotinas financeiras' },

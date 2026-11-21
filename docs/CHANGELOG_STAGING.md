@@ -42,6 +42,24 @@ Grande reestruturação de governança, experiência do usuário, banco de dados
 
 ### Recursos e Melhorias em Staging
 
+- **Correção Definitiva do Calendário Financeiro & Blindagem de Permissões de Diretoria:**
+  * **Resolução da Tela em Branco no Calendário:** Eliminado o retorno condicional `null` nas rotas do financeiro em `AdminPortal.tsx`.
+  * **Permissões Plenas para Diretoria:** `isUserDirector` integrado a todas as checagens críticas de sistema (`canAccessFinance`, `canChangeEventType`, `canChangeLeadVenue`, `canViewContractDocument`, etc.), garantindo acesso executivo imediato.
+  * **Escopo Estrito de Unidades para Diretores:** `Diretor Master` tem visão total da rede; `Diretor` possui todas as ferramentas do Master porém estritamente escopado às suas unidades autorizadas (`currentUser.venueIds`).
+
+- **Central de Unidades e Colaboradores & Gestão Dinâmica de Cargos:**
+  * **Header Superior Unificado:** Ações movidas para o topo preto da barra de navegação (`adm-header-actions`) com botões uniformes (`height: 36px`, `borderRadius: 10px`) à esquerda e o seletor `[Unidades] [Colaboradores]` à direita, eliminando barras duplicadas e liberando 100% da área de trabalho.
+  * **Reordenação Dinâmica de Setores em Banco:** Setores agora salvos na tabela `job_sectors` com setas verticais para ordenação imediata e persistência por Master.
+  * **Criação de Novos Setores Dinâmicos:** Botão `+ Novo Setor` com nome livre e seletor de paleta de cores.
+  * **Setor de Diretoria:** Cadastrado com cargos padrão `Diretor Master` (`diretoria:master`) e `Diretor` (`diretoria:diretor`).
+  * **Limpeza e Ajuste de Setores:** Removido o setor estático de Gerência da listagem de cargos e atualizado Marketing para "Marketing e Tecnologia" (`marketing_tecnologia`).
+
+- **Refino Visual dos Cards Comerciais e Pós-Venda:**
+  * **Cards Mais Gordinhos e Acolhedores:** Ajuste de padding (`12px 14px`), border-radius (`12px`), avatares (`30px`) e botões de ação estruturados no Kanban Comercial.
+  * **Truncamento Inteligente de Nomes Longos:** Exibição dos dois primeiros nomes no card (mantendo o nome completo acessível ao passar o mouse e na gaveta do lead).
+  * **Notificação de Mensagens do WhatsApp no Pós-Venda:** Badge de mensagens não lidas nos cards de contratos vinculados e clientes sem contrato, permitindo abrir a conversa instantaneamente.
+  * **Correção de Escopo de Clientes nos Funis de Pós-Venda:** Correção do agrupamento que agora utiliza a carteira global da conta master, exibindo o volume real de contratos e clientes mesmo quando a casa ativa for diferente.
+
 - **Refatoração da Ficha de Pós-Venda e Visualização Cirúrgica de Contatos** (`pos-venda` / `client-drawer` / `whatsapp`):
   * **Seletor de Unidades e Experiência de Navegação (`AdminSidebar`):**
     - Ícone de engrenagem integrado diretamente no card do seletor de unidades (substituindo o antigo `ChevronDown`), com transição de cor cinza para azul `#14A9D7` no hover, permitindo acesso imediato à Central de Unidades e Colaboradores com um clique.

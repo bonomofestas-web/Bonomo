@@ -11,7 +11,6 @@ import { AdminSidebar, type AdminTabType } from './AdminSidebar';
 import { AdminHomeView } from './AdminHomeView';
 import { AdminDashboardView } from './AdminDashboardView';
 import { AdminFinanceView } from './finance/AdminFinanceView';
-import { canAccessFinance } from '../../utils/accessPermissions';
 import { FinanceCalendarView } from './finance/FinanceCalendarView';
 import { AdminVenuesView } from './AdminVenuesView';
 import { AdminDebutantesView } from './AdminDebutantesView';
@@ -897,19 +896,19 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
           />
         );
       case 'finance':
-        return (canAccessFinance(currentUser) && getFeatureStatus('finance') === 'active') ? <AdminFinanceView section="geral" /> : null;
+        return <AdminFinanceView section="geral" />;
       case 'finance-approval':
-        return (canAccessFinance(currentUser) && getFeatureStatus('finance') === 'active') ? <AdminFinanceView section="aprovacao" /> : null;
+        return <AdminFinanceView section="aprovacao" />;
       case 'finance-calendar':
-        return (canAccessFinance(currentUser) && getFeatureStatus('finance') === 'active') ? <FinanceCalendarView /> : null;
+        return <FinanceCalendarView />;
       case 'finance-payables':
-        return (canAccessFinance(currentUser) && getFeatureStatus('finance') === 'active') ? <AdminFinanceView section="soon" soonTitle="Contas a pagar" soonText="Lançamento de contas a pagar, custos fixos e variáveis, recorrências (aluguel, folha) e rateio de custo entre festas." /> : null;
+        return <AdminFinanceView section="soon" soonTitle="Contas a pagar" soonText="Lançamento de contas a pagar, custos fixos e variáveis, recorrências (aluguel, folha) e rateio de custo entre festas." />;
       case 'finance-cashflow':
-        return (canAccessFinance(currentUser) && getFeatureStatus('finance') === 'active') ? <AdminFinanceView section="soon" soonTitle="Fluxo de caixa" soonText="Entradas e saídas realizadas e projetadas até 2031, por casa, com a liquidação líquida do cartão." /> : null;
+        return <AdminFinanceView section="soon" soonTitle="Fluxo de caixa" soonText="Entradas e saídas realizadas e projetadas até 2031, por casa, com a liquidação líquida do cartão." />;
       case 'finance-dre':
-        return (canAccessFinance(currentUser) && getFeatureStatus('finance') === 'active') ? <AdminFinanceView section="soon" soonTitle="DRE" soonText="Demonstração do resultado por casa e por mês, com análise vertical e horizontal e exportação em PDF e Excel." /> : null;
+        return <AdminFinanceView section="soon" soonTitle="DRE" soonText="Demonstração do resultado por casa e por mês, com análise vertical e horizontal e exportação em PDF e Excel." />;
       case 'finance-settings':
-        return (canAccessFinance(currentUser) && getFeatureStatus('finance') === 'active') ? <AdminFinanceView section="soon" soonTitle="Configurações do financeiro" soonText="Categorias, contas bancárias, maquininhas e tabelas de taxa de cartão." /> : null;
+        return <AdminFinanceView section="soon" soonTitle="Configurações do financeiro" soonText="Categorias, contas bancárias, maquininhas e tabelas de taxa de cartão." />;
       case 'venue-goals':
         return <AdminVenueGoalsView />;
       case 'master-dashboard':

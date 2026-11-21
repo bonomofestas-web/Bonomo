@@ -18,7 +18,8 @@ import { AdminCollabInviteModal } from './AdminCollabInviteModal';
 import type { Collaborator, AdminRole, LeadActivity, Lead } from '../../types/admin';
 import type { AdminTabType } from './AdminSidebar';
 import { GOALS_COLLAB_KEY } from './AdminVenueGoalsView';
-import { JOB_ROLE_OPTIONS, JOB_SECTORS, jobRoleLabel, orderedSectorRoleIds, slugifyRole, type CustomJobRole, type JobSector } from '../../utils/jobRoles';
+import { JOB_ROLE_OPTIONS, DEFAULT_JOB_SECTORS, jobRoleLabel, orderedSectorRoleIds, slugifyRole, type CustomJobRole, type JobSector, type JobSectorConfig } from '../../utils/jobRoles';
+import { isUserDirector, isUserMaster, isUserManager } from '../../utils/accessPermissions';
 import { jobRoleService } from '../../services/jobRoleService';
 import { collaboratorHistoryService, type CollaboratorHistoryAction } from '../../services/collaboratorHistoryService';
 import { useJobRoleCatalog } from '../../hooks/useJobRoleCatalog';
@@ -53,9 +54,10 @@ const describePresence = (r: PresenceRow): PresenceView => {
 
 interface AdminCollaboratorsViewProps {
   onNavigateTab?: (tab: AdminTabType) => void;
+  headerSwitcher?: React.ReactNode;
 }
 
-export const AdminCollaboratorsView: React.FC<AdminCollaboratorsViewProps> = ({ onNavigateTab }) => {
+export const AdminCollaboratorsView: React.FC<AdminCollaboratorsViewProps> = ({ onNavigateTab, headerSwitcher }) => {
   const { 
     collaborators, 
     venues, 
@@ -96,14 +98,30 @@ export const AdminCollaboratorsView: React.FC<AdminCollaboratorsViewProps> = ({ 
 
   // Catalogo de cargos personalizados ("Outro"), por setor e por Master
   const masterId = currentUser?.masterId || currentUser?.id || '';
-  const canManageRoles = currentUser?.role === 'master' || currentUser?.role === 'admin' || currentUser?.role === 'gerencia';
+  const canManageRoles = isUserMaster(currentUser) || isUserDirector(currentUser) || isUserManager(currentUser);
   const [customRoles, setCustomRoles] = useState<CustomJobRole[]>([]);
+  const [sectors, setSectors] = useState<JobSectorConfig[]>(DEFAULT_JOB_SECTORS);
   const [isRolesModalOpen, setIsRolesModalOpen] = useState(false);
   const [profileCollabId, setProfileCollabId] = useState<string | null>(null);
   const [addingRoleSector, setAddingRoleSector] = useState<JobSector | null>(null);
   const [addingRoleName, setAddingRoleName] = useState('');
-  const reloadRoles = useCallback(async () => { if (masterId) setCustomRoles(await jobRoleService.list(masterId)); }, [masterId]);
-  useEffect(() => { void reloadRoles(); }, [reloadRoles]);
+
+  const reloadRoles = useCallback(async () => {
+    if (masterId) setCustomRoles(await jobRoleService.list(masterId));
+  }, [masterId]);
+
+  const reloadSectors = useCallback(async () => {
+    if (masterId) {
+      const list = await jobRoleService.listSectors(masterId);
+      setSectors(list.map(s => ({ id: s.sector_id, label: s.name, color: s.color, position: s.position })));
+    }
+  }, [masterId]);
+
+  useEffect(() => {
+    void reloadRoles();
+    void reloadSectors();
+  }, [reloadRoles, reloadSectors]);
+
   const { aliases: roleAliases, order: roleOrder, titleOf: roleTitleOf, reload: reloadRoleCatalog } = useJobRoleCatalog(masterId || undefined);
   const logHistory = (collaboratorId: string, action: CollaboratorHistoryAction, details: string) => {
     void collaboratorHistoryService.add({ masterId, collaboratorId, action, details, actorId: currentUser?.id, actorName: currentUser?.name });
@@ -112,6 +130,35 @@ export const AdminCollaboratorsView: React.FC<AdminCollaboratorsViewProps> = ({ 
     const ok = await jobRoleService.saveOrder(masterId, sector, orderedIds);
     if (ok) await reloadRoleCatalog();
     else toast.error('Não foi possível salvar a ordem dos cargos.');
+  };
+  const reorderSectors = async (orderedSectorIds: string[]) => {
+    const ok = await jobRoleService.saveSectorOrder(masterId, orderedSectorIds);
+    if (ok) {
+      await reloadSectors();
+      toast.success('Ordem dos setores salva com sucesso.');
+    } else {
+      toast.error('Não foi possível salvar a ordem dos setores.');
+    }
+  };
+  const createSector = async (name: string, color?: string): Promise<boolean> => {
+    const res = await jobRoleService.createSector(masterId, name, color);
+    if (res.ok) {
+      await reloadSectors();
+      toast.success(`Setor "${name}" criado com sucesso!`);
+      return true;
+    }
+    toast.error(res.reason === 'exists' ? 'Já existe um setor com este nome.' : 'Não foi possível criar o setor.');
+    return false;
+  };
+  const deleteSector = async (sectorId: string): Promise<boolean> => {
+    const ok = await jobRoleService.deleteSector(masterId, sectorId);
+    if (ok) {
+      await reloadSectors();
+      toast.success('Setor removido com sucesso.');
+      return true;
+    }
+    toast.error('Não é possível remover setores oficiais do sistema.');
+    return false;
   };
   const setRoleAlias = async (roleId: string, name: string): Promise<boolean> => {
     const r = await jobRoleService.setLabel(masterId, roleId, name);
@@ -159,13 +206,23 @@ export const AdminCollaboratorsView: React.FC<AdminCollaboratorsViewProps> = ({ 
 
   const rolesModal = isRolesModalOpen ? (
     <AdminJobRolesModal
-      customRoles={customRoles} aliases={roleAliases} order={roleOrder} onReorder={reorderRoles} onSetAlias={setRoleAlias} usage={roleUsage} canEdit={canManageRoles}
+      customRoles={customRoles}
+      aliases={roleAliases}
+      order={roleOrder}
+      onReorder={reorderRoles}
+      onSetAlias={setRoleAlias}
+      usage={roleUsage}
+      canEdit={canManageRoles}
       onCreate={async (sector, name) => Boolean(await createRole(sector, name))}
       onDelete={deleteRole}
       onClose={() => setIsRolesModalOpen(false)}
+      sectors={sectors}
+      onReorderSectors={reorderSectors}
+      onCreateSector={createSector}
+      onDeleteSector={deleteSector}
     />
   ) : null;
-  const [formSectors, setFormSectors] = useState<('comercial' | 'pos_venda' | 'gerencia' | 'financeiro' | 'marketing')[]>(['comercial']);
+  const [formSectors, setFormSectors] = useState<string[]>(['comercial']);
   const [formSelectedVenueIds, setFormSelectedVenueIds] = useState<string[]>([]);
   const [formAvatarUrl, setFormAvatarUrl] = useState('');
   const [formActive, setFormActive] = useState(true);
@@ -324,8 +381,8 @@ export const AdminCollaboratorsView: React.FC<AdminCollaboratorsViewProps> = ({ 
     setFormPhone(collab.phone ? formatPhone(collab.phone) : '');
     setFormCustomJobTitle(collab.customJobTitle || '');
     setFormJobRoles(collab.jobRoles || []);
-    const existingSectors: ('comercial' | 'pos_venda' | 'gerencia' | 'financeiro' | 'marketing')[] = collab.sectors && collab.sectors.length > 0
-      ? collab.sectors
+    const existingSectors: string[] = collab.sectors && collab.sectors.length > 0
+      ? (collab.sectors as string[])
       : collab.role === 'pos_venda' ? ['pos_venda', 'comercial']
       : collab.role === 'admin' || collab.role === 'master' || collab.role === 'gerencia' ? ['gerencia', 'comercial', 'pos_venda']
       : ['comercial'];
@@ -371,7 +428,7 @@ export const AdminCollaboratorsView: React.FC<AdminCollaboratorsViewProps> = ({ 
       phone: formPhone.trim() || undefined,
       customJobTitle: formCustomJobTitle.trim() || undefined,
       // Cargo so vale para setores marcados (acesso x cargo)
-      jobRoles: formJobRoles.filter(r => formSectors.includes(r.split(':')[0] as JobSector)),
+      jobRoles: formJobRoles.filter(r => formSectors.includes(r.split(':')[0] as any)),
       sectors: formSectors,
       role: computedRole,
       department: formSectors[0] || 'comercial',
@@ -961,7 +1018,7 @@ export const AdminCollaboratorsView: React.FC<AdminCollaboratorsViewProps> = ({ 
                     } else {
                       // Ao marcar Pós-Venda, garante que o Comercial em leitura também está disponível
                       setFormSectors(prev => {
-                        const next: ('gerencia' | 'comercial' | 'pos_venda' | 'financeiro' | 'marketing')[] = [...prev];
+                        const next: string[] = [...prev];
                         if (!next.includes('pos_venda')) next.push('pos_venda');
                         if (!next.includes('comercial')) next.push('comercial');
                         return next;
@@ -1012,7 +1069,7 @@ export const AdminCollaboratorsView: React.FC<AdminCollaboratorsViewProps> = ({ 
                     } else {
                       // Regra do F5 System: Gerência marca AUTOMATICAMENTE Pós-Venda e Comercial!
                       setFormSectors(prev => {
-                        const next: ('gerencia' | 'comercial' | 'pos_venda' | 'financeiro' | 'marketing')[] = [...prev];
+                        const next: string[] = [...prev];
                         if (!next.includes('gerencia')) next.push('gerencia');
                         if (!next.includes('comercial')) next.push('comercial');
                         if (!next.includes('pos_venda')) next.push('pos_venda');
@@ -1073,7 +1130,7 @@ export const AdminCollaboratorsView: React.FC<AdminCollaboratorsViewProps> = ({ 
                     } else {
                       // Marketing enxerga o Comercial (consulta); o modulo proprio de marketing ainda sera desenvolvido
                       setFormSectors(prev => {
-                        const next: ('gerencia' | 'comercial' | 'pos_venda' | 'financeiro' | 'marketing')[] = [...prev];
+                        const next: string[] = [...prev];
                         if (!next.includes('marketing')) next.push('marketing');
                         if (!next.includes('comercial')) next.push('comercial');
                         return next;
@@ -1151,8 +1208,8 @@ export const AdminCollaboratorsView: React.FC<AdminCollaboratorsViewProps> = ({ 
                 )}
               </div>
 
-              {JOB_SECTORS.filter(g => formSectors.includes(g.id)).map(g => {
-                const fixed = JOB_ROLE_OPTIONS[g.id];
+              {sectors.filter(g => formSectors.includes(g.id as any)).map(g => {
+                const fixed = JOB_ROLE_OPTIONS[g.id] || [];
                 const custom = customRoles.filter(r => r.sector === g.id);
                 const orderedIds = orderedSectorRoleIds(g.id, customRoles, roleOrder);
                 const moveRole = (id: string, dir: -1 | 1) => {
@@ -1383,25 +1440,47 @@ export const AdminCollaboratorsView: React.FC<AdminCollaboratorsViewProps> = ({ 
     }}>
       {/* Título no breadcrumb; ação primária no menu superior */}
       <HeaderActions>
-        {canManageRoles && (
-          <button type="button" onClick={() => setIsRolesModalOpen(true)} className="adm-btn-secondary"
-            style={{ padding: '8px 16px', borderRadius: '12px', fontWeight: 800, fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <UserCheck size={15} /> <span>Cargos</span>
-          </button>
-        )}
-        <button
-          onClick={handleOpenCreate}
-          className="adm-btn-primary"
-          style={{
-            padding: '8px 18px',
-            borderRadius: '12px',
-            fontWeight: 800,
-            fontSize: '0.82rem',
-          }}
-        >
-          <UserPlus size={16} />
-          <span>Novo Colaborador</span>
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {canManageRoles && (
+              <button
+                type="button"
+                onClick={() => setIsRolesModalOpen(true)}
+                className="adm-btn-secondary"
+                style={{
+                  height: '36px',
+                  padding: '0 16px',
+                  borderRadius: '10px',
+                  fontWeight: 800,
+                  fontSize: '0.82rem',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                }}
+              >
+                <UserCheck size={15} /> <span>Cargos</span>
+              </button>
+            )}
+            <button
+              onClick={handleOpenCreate}
+              className="adm-btn-primary"
+              style={{
+                height: '36px',
+                padding: '0 18px',
+                borderRadius: '10px',
+                fontWeight: 800,
+                fontSize: '0.82rem',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+              }}
+            >
+              <UserPlus size={16} />
+              <span>Novo Colaborador</span>
+            </button>
+          </div>
+          {headerSwitcher}
+        </div>
       </HeaderActions>
       {rolesModal}
 

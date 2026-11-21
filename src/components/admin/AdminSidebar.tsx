@@ -1,4 +1,4 @@
-import { canAccessFinance } from '../../utils/accessPermissions';
+import { canAccessFinance, isUserDirector } from '../../utils/accessPermissions';
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useJobRoleCatalog } from '../../hooks/useJobRoleCatalog';
 import { motion } from 'motion/react';
@@ -245,7 +245,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
   const userRole = effectiveUser?.role || 'master';
 
   const effectiveSectors: ('comercial' | 'pos_venda' | 'gerencia' | 'financeiro' | 'marketing')[] = useMemo(() => {
-    if (isDevUser || userRole === 'master') {
+    if (isDevUser || userRole === 'master' || userRole === 'diretor' || userRole === 'diretoria' || isUserDirector(effectiveUser)) {
       return ['comercial', 'pos_venda', 'gerencia', 'financeiro', 'marketing'];
     }
     if (effectiveUser && 'sectors' in effectiveUser && Array.isArray((effectiveUser as any).sectors) && (effectiveUser as any).sectors.length > 0) {
@@ -893,7 +893,8 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
 
     // Check Role & Sector Access for this item
     const itemRoles = (item as any).roles as string[] | undefined;
-    if (itemRoles && !isDevUser && userRole !== 'master') {
+    const isExecutiveUser = isDevUser || userRole === 'master' || userRole === 'diretor' || userRole === 'diretoria' || isUserDirector(effectiveUser);
+    if (itemRoles && !isExecutiveUser) {
       const hasRole = itemRoles.includes(userRole);
       const hasSectorMatch = (
         (effectiveSectors.includes('comercial') && (itemRoles.includes('crm') || itemRoles.includes('sdr') || itemRoles.includes('closer') || item.id === 'post-sale-visits-tastings')) ||
@@ -2274,7 +2275,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
                   textOverflow: 'ellipsis',
                 }}>
                   {roleTitleOf({ jobRoles: collaborators.find(x => x.id === currentUser.id)?.jobRoles, customJobTitle: currentUser.customJobTitle }) || (
-                    currentUser.role === 'master' ? 'Diretoria Executiva' :
+                    currentUser.role === 'master' || currentUser.role === 'diretor' || currentUser.role === 'diretoria' || isUserDirector(currentUser) ? 'Diretoria Executiva' :
                       currentUser.role === 'dev' ? 'Desenvolvedor' :
                         currentUser.role === 'admin' || currentUser.role === 'gerencia' ? 'Gerência Geral' :
                           currentUser.role === 'closer' ? 'Closer • Fechamento' :

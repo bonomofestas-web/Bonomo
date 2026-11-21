@@ -9,18 +9,25 @@ export interface AccessLevelOption {
 }
 
 /**
- * Os 4 Níveis Oficiais de Acesso do F5 System:
- * 1. Master: Diretoria Geral e donos da rede
- * 2. Gerência: Gerentes de unidade(s)
- * 3. Pós-Venda: Sucesso do Cliente e Anfitriãs
- * 4. Comercial: Atendimento, Vendas e SDR/Closer unificados
+ * Os Níveis Oficiais de Acesso do F5 System:
+ * 1. Master: Diretor Master (Diretoria Geral com acesso a toda a rede)
+ * 2. Diretor: Diretoria Executiva (acesso pleno às unidades autorizadas)
+ * 3. Gerência: Gerentes de unidade(s)
+ * 4. Pós-Venda: Sucesso do Cliente e Anfitriãs
+ * 5. Comercial: Atendimento, Vendas e SDR/Closer unificados
  */
 export const OFFICIAL_ACCESS_LEVELS: AccessLevelOption[] = [
   {
     id: 'master',
-    label: 'Master',
-    badgeLabel: 'Master',
-    description: 'Diretoria Geral • Acesso total à rede de casas',
+    label: 'Diretor Master',
+    badgeLabel: 'Diretor Master',
+    description: 'Diretoria Geral • Acesso irrestrito a toda a rede',
+  },
+  {
+    id: 'diretor',
+    label: 'Diretor',
+    badgeLabel: 'Diretor',
+    description: 'Diretoria Executiva • Poder de master nas unidades autorizadas',
   },
   {
     id: 'admin',
@@ -52,10 +59,26 @@ export const isUserMaster = (user?: Partial<Collaborator> | null): boolean => {
 };
 
 /**
+ * Retorna se o usuário é Diretor (Diretoria Executiva)
+ */
+export const isUserDirector = (user?: Partial<Collaborator> | null): boolean => {
+  if (!user) return false;
+  if (isUserMaster(user)) return true;
+  const role = (user.role || '').toLowerCase();
+  if (role === 'diretor' || role === 'diretoria') return true;
+  if (user.department === 'diretoria') return true;
+  if (user.sectors && user.sectors.includes('diretoria')) return true;
+  const title = ((user as any).roleTitle || '').toLowerCase();
+  if (title.includes('direto')) return true;
+  return hasJobRole(user as any, 'diretoria:diretor') || hasJobRole(user as any, 'diretoria:master');
+};
+
+/**
  * Retorna se o usuário possui nível de Gerência
  */
 export const isUserManager = (user?: Partial<Collaborator> | null): boolean => {
   if (!user) return false;
+  if (isUserMaster(user) || isUserDirector(user)) return true;
   const role = (user.role || '').toLowerCase();
   if (role === 'admin' || role === 'gerencia') return true;
   if (user.sectors && user.sectors.includes('gerencia')) return true;
@@ -68,23 +91,23 @@ export const isUserManager = (user?: Partial<Collaborator> | null): boolean => {
  */
 export const canChangeEventType = (user?: Partial<Collaborator> | null): boolean => {
   if (!user) return false;
-  if (isUserMaster(user) || isUserManager(user)) return true;
+  if (isUserMaster(user) || isUserDirector(user) || isUserManager(user)) return true;
   const role = (user.role || '').toLowerCase();
   if (role === 'gerente') return true;
   if (user.department === 'gerencia' || user.department === 'diretoria') return true;
-  if (user.sectors && user.sectors.includes('gerencia')) return true;
+  if (user.sectors && (user.sectors.includes('gerencia') || user.sectors.includes('diretoria'))) return true;
   const title = ((user as any).roleTitle || '').toLowerCase();
   if (title.includes('geren') || title.includes('direto')) return true;
-  return hasJobRole(user as any, 'pos_venda:gerente') || hasJobRole(user as any, 'gerencia:gerente_geral');
+  return hasJobRole(user as any, 'pos_venda:gerente') || hasJobRole(user as any, 'gerencia:gerente_geral') || hasJobRole(user as any, 'diretoria:diretor');
 };
 
 /**
- * REGRA MANDATÓRIA: Somente Gerência e Master podem mudar um lead de unidade!
+ * REGRA MANDATÓRIA: Somente Gerência, Diretor e Master podem mudar um lead de unidade!
  * Usuários de Pós-Venda e Comercial NÃO possuem essa permissão.
  */
 export const canChangeLeadVenue = (user?: Partial<Collaborator> | null): boolean => {
   if (!user) return false;
-  return isUserMaster(user) || isUserManager(user);
+  return isUserMaster(user) || isUserDirector(user) || isUserManager(user);
 };
 
 /**
@@ -95,7 +118,10 @@ export const formatAccessRoleLabel = (role?: string): string => {
   const clean = role.toLowerCase().trim();
   switch (clean) {
     case 'master':
-      return 'Master';
+      return 'Diretor Master';
+    case 'diretor':
+    case 'diretoria':
+      return 'Diretor';
     case 'dev':
       return 'Desenvolvedor';
     case 'admin':
@@ -132,21 +158,21 @@ export const canEditContractTeam = (user?: Partial<Collaborator> | null): boolea
   return canChangeEventType(user) || hasJobRole(user as any, 'comercial:gerente');
 };
 
-/** Financeiro: master, gerencia e quem atua no setor financeiro. Comercial e pos-venda nao enxergam. */
+/** Financeiro: master, diretor, gerencia e quem atua no setor financeiro. Comercial e pos-venda nao enxergam. */
 export const canAccessFinance = (user?: Partial<Collaborator> | null): boolean => {
   if (!user) return false;
-  if (isUserMaster(user) || isUserManager(user)) return true;
+  if (isUserMaster(user) || isUserDirector(user) || isUserManager(user)) return true;
   if ((user.role || '').toLowerCase() === 'financeiro') return true;
   return Boolean(user.sectors && user.sectors.includes('financeiro'));
 };
 
 /**
- * Contratos aprovados e documentos do contrato (PDF): so financeiro e pos-venda (alem de master e gerencia).
+ * Contratos aprovados e documentos do contrato (PDF): so financeiro e pos-venda (alem de master, diretor e gerencia).
  * O comercial acompanha a venda ate "Preenchido" e nao ve os aprovados nem abre o documento.
  */
 export const canViewContractDocument = (user?: Partial<Collaborator> | null): boolean => {
   if (!user) return false;
-  if (isUserMaster(user) || isUserManager(user)) return true;
+  if (isUserMaster(user) || isUserDirector(user) || isUserManager(user)) return true;
   const role = (user.role || '').toLowerCase();
   if (role === 'financeiro' || role === 'pos_venda') return true;
   const sectors = user.sectors || [];
