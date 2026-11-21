@@ -4498,7 +4498,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       whatsappMediaService.uploadOutboundMedia(file, activeSenderToken || 'default')
         .then(({ publicUrl }) => {
           if (publicUrl) {
-            updateLeadActivity(selectedLead.id, activityId, { mediaUrl: publicUrl });
+            updateLeadActivity(selectedLead.id, activityId, { mediaUrl: publicUrl, mediaType: fileCategory });
           }
         })
         .catch(err => console.warn('Erro ao salvar mídia enviada no R2:', err));
@@ -8283,12 +8283,23 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                         }
                       }
 
+                      // Auto-correção caso o mediaType tenha vindo gravado como 'audio' por fallback legado
+                      if (effectiveMediaUrl) {
+                        if (/\.(jpe?g|png|webp|gif|svg|bmp|heic)(\?.*)?$/i.test(effectiveMediaUrl)) {
+                          effectiveMediaType = 'image';
+                        } else if (/\.(mp4|mov|webm|mkv|avi)(\?.*)?$/i.test(effectiveMediaUrl)) {
+                          effectiveMediaType = 'video';
+                        } else if (/\.(pdf|docx?|xlsx?|pptx?|txt|csv|zip)(\?.*)?$/i.test(effectiveMediaUrl)) {
+                          effectiveMediaType = 'document';
+                        }
+                      }
+
                       const isSticker = effectiveMediaType === 'sticker' || effectiveText?.includes('✨ Figurinha');
                       const msgRawContent = effectiveMediaUrl || effectiveText || '';
                       const isInstagramMsg = Boolean(msgRawContent && /https?:\/\/(www\.)?instagram\.com/i.test(msgRawContent));
                       const instagramMsgUrl = msgRawContent.match(/https?:\/\/(?:www\.)?instagram\.com[^\s]*/i)?.[0] || msgRawContent;
                       const isAudioMsg = Boolean(
-                        effectiveMediaType === 'audio' ||
+                        (effectiveMediaType === 'audio' && !/\.(jpe?g|png|webp|gif|mp4|mov|pdf|docx?)(\?.*)?$/i.test(effectiveMediaUrl || '')) ||
                         (effectiveMediaUrl && (
                           effectiveMediaUrl.startsWith('data:audio') ||
                           /\.(ogg|mp3|opus|wav|m4a|aac)(\?.*)?$/i.test(effectiveMediaUrl) ||

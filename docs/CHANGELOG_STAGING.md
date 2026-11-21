@@ -47,6 +47,23 @@ Grande reestruturação de governança, experiência do usuário, banco de dados
   * **Permissões Plenas para Diretoria:** `isUserDirector` integrado a todas as checagens críticas de sistema (`canAccessFinance`, `canChangeEventType`, `canChangeLeadVenue`, `canViewContractDocument`, etc.), garantindo acesso executivo imediato.
   * **Escopo Estrito de Unidades para Diretores:** `Diretor Master` tem visão total da rede; `Diretor` possui todas as ferramentas do Master porém estritamente escopado às suas unidades autorizadas (`currentUser.venueIds`).
 
+- **Auto-Cura e Blindagem de Integridade na Vinculação de Contratos (Erro 23503 eliminado):**
+  * Auto-cura no `contractService.linkLooseLeadToContract` e `contactService.linkFamilyMember`, garantindo que o `parent_contact_id` existe na tabela `contacts` antes de criar o vínculo na tabela `contact_dependents`.
+  * Inclusão dos 257 contatos locais e dependentes no gerador de migração `scripts/generate_prod_sync_all.mjs`, blindando o ambiente de produção contra erros de chave estrangeira.
+
+- **Menu de Ações Rápidas (3 Pontinhos) & Conversão em Fornecedor:**
+  * Implementado menu de 3 pontinhos (`MoreVertical`) no topo da ficha do lead (`AdminLeadInspector`) e da gaveta do cliente de pós-venda (`AdminClientDrawerInspector`).
+  * Ação "Transformar em Fornecedor": bloqueada com aviso caso o contato possua contrato ativo vinculado; quando elegível, abre o modal `AdminConvertToSupplierModal` com seleção de categoria.
+  * Na confirmação, o contato é atualizado para `is_supplier: true` na Central de Contatos e os registros de lead e cliente nas esteiras são removidos automaticamente.
+
+- **Despoluição do Cabeçalho de Funis de Pós-Venda:**
+  * Removido o botão de criação de funil do topo da tela de pós-venda (`AdminPostSaleKanbanView`), mantendo unicamente o botão unificado `+ Criar Contrato` no menu superior da área de trabalho (`AdminPortal.tsx`).
+  * Modal de cadastro atualizado para o título executivo `Novo Contrato • Pós-Venda`.
+
+- **Correção de Mídias Enviadas no WhatsApp & Idempotência de Atividades (Erro 23505 eliminado):**
+  * Corrigida a falha onde fotos e documentos enviados pelo sistema eram convertidos em áudios: `whatsappMediaService.uploadOutboundMedia` agora preserva `mediaType: fileCategory` e os métodos `addActivity` / `updateActivity` em `leadService.ts` inferem o formato real pela extensão do arquivo em vez de adotar `'audio'` como fallback cego.
+  * Tratamento idempotente do erro Postgres `23505` (`idx_lead_activities_unique_msg_id`) em inserções concorrentes de webhook/realtime, prevenindo logs de erro indevidos.
+
 - **Central de Unidades e Colaboradores & Gestão Dinâmica de Cargos:**
   * **Tag Oficial do Master e Diretores Padronizada:** A tag do Master foi estritamente unificada em todo o sistema como **`Diretor(a) Master`** (sidebar inferior, gaveta de edição, agendamentos, equipe e perfis). Colaboradores com perfil de diretoria de unidade recebem a tag **`Diretor(a)`**.
   * **Setor de Diretoria Integrado no Editor de Colaboradores:** Substituído o antigo card estático de Gerência pelo novo **Setor de Diretoria** (`#D4AF37`), com concessão de acesso pleno à operação e seleção automática entre `Diretor(a) Master` e `Diretor(a)`.

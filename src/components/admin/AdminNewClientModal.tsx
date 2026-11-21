@@ -300,7 +300,7 @@ export const AdminNewClientModal: React.FC<AdminNewClientModalProps> = ({
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div>
               <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: 'var(--adm-text-title, #0F172A)' }}>
-                Novo Cliente • Pós-Venda
+                Novo Contrato • Pós-Venda
               </h3>
               <span style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted, #64748B)' }}>
                 {mode === 'quick' ? 'Cadastro ágil: preencha apenas os dados essenciais para iniciar o atendimento.' : 'Cadastro detalhado: especifique dados contratuais, homenageado e cronograma.'}

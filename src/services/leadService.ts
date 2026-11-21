@@ -151,6 +151,19 @@ function mapLeadToDatabase(lead: Partial<Lead>): Record<string, any> {
 }
 
 /**
+ * Infere o tipo de mídia a partir da URL, nome do arquivo ou extensão
+ */
+export function inferMediaTypeFromUrlOrName(urlOrName?: string): 'image' | 'video' | 'audio' | 'document' {
+  if (!urlOrName) return 'document';
+  const clean = urlOrName.split('?')[0].toLowerCase();
+  if (/\.(jpe?g|png|webp|gif|svg|bmp|ico|heic|heif)$/.test(clean)) return 'image';
+  if (/\.(mp4|mov|webm|mkv|avi|m4v)$/.test(clean)) return 'video';
+  if (/\.(mp3|ogg|wav|m4a|aac|opus|weba)$/.test(clean)) return 'audio';
+  if (/\.(pdf|docx?|xlsx?|pptx?|txt|csv|zip|rar)$/.test(clean)) return 'document';
+  return 'document';
+}
+
+/**
  * Converte um registro bruto de atividade do PostgreSQL / Supabase para o modelo LeadActivity
  */
 export function formatActivityFromDb(a: any): LeadActivity {
@@ -163,7 +176,14 @@ export function formatActivityFromDb(a: any): LeadActivity {
     const match = rawText.match(/^\[media:([^|\]]+)(?:\|([^\]]+))?\]\s*([\s\S]*)$/);
     if (match) {
       mediaUrl = match[1];
-      mediaType = match[2] || 'audio';
+      const parsedType = match[2];
+      // Se não especificou ou se disse audio mas a extensão é imagem/vídeo/documento, corrige pela URL
+      if (!parsedType || parsedType === 'audio') {
+        const inferred = inferMediaTypeFromUrlOrName(mediaUrl);
+        mediaType = (inferred !== 'document' || !parsedType) ? inferred : parsedType;
+      } else {
+        mediaType = parsedType;
+      }
       text = match[3] || '';
     }
   } else if (rawText.startsWith('{') && (rawText.includes('mimetype') || rawText.includes('audio') || rawText.includes('ptt') || rawText.includes('directPath') || rawText.includes('mmg.whatsapp.net'))) {
@@ -954,7 +974,12 @@ export const leadService = {
 
       let storedText = activity.text || '';
       if (activity.mediaUrl && !storedText.startsWith('[media:')) {
-        storedText = `[media:${activity.mediaUrl}|${activity.mediaType || 'audio'}] ${storedText}`.trim();
+        let storedType = activity.mediaType;
+        if (!storedType || storedType === 'audio') {
+          const inferred = inferMediaTypeFromUrlOrName(activity.mediaUrl);
+          storedType = (inferred !== 'document' || !activity.mediaType) ? inferred : activity.mediaType;
+        }
+        storedText = `[media:${activity.mediaUrl}|${storedType}] ${storedText}`.trim();
       }
       if (activity.status === 'failed' && activity.errorMessage && !storedText.startsWith('[failed:')) {
         storedText = `[failed:${activity.errorMessage}] ${storedText}`.trim();
@@ -1037,12 +1062,21 @@ export const leadService = {
 
       const { error } = await supabase.from('lead_activities').insert(insertPayload);
       if (error) {
+        // Se a atividade já foi gravada por webhook concorrente ou sincronização (idempotência por messageId)
+        if ((error as any).code === '23505' || error.message?.includes('idx_lead_activities_unique_msg_id') || error.message?.includes('duplicate key')) {
+          return true;
+        }
         // Se o erro foi por coluna não existente no banco legado, tenta sem as colunas extras
         if (error.message?.includes('status') || error.message?.includes('error_message') || error.message?.includes('metadata')) {
           delete insertPayload.status;
           delete insertPayload.error_message;
           delete insertPayload.metadata;
-          await supabase.from('lead_activities').insert(insertPayload);
+          const { error: retryError } = await supabase.from('lead_activities').insert(insertPayload);
+          if (retryError) {
+            if ((retryError as any).code === '23505' || retryError.message?.includes('duplicate key')) {
+              return true;
+            }
+          }
           return true;
         }
         console.error('❌ Erro ao adicionar atividade no Supabase:', error);
@@ -1123,7 +1157,12 @@ export const leadService = {
       if (updates.text !== undefined || updates.mediaUrl !== undefined || updates.status !== undefined || updates.errorMessage !== undefined) {
         let storedText = updates.text || '';
         if (updates.mediaUrl && !storedText.startsWith('[media:')) {
-          storedText = `[media:${updates.mediaUrl}|${updates.mediaType || 'audio'}] ${storedText}`.trim();
+          let storedType = updates.mediaType;
+          if (!storedType || storedType === 'audio') {
+            const inferred = inferMediaTypeFromUrlOrName(updates.mediaUrl);
+            storedType = (inferred !== 'document' || !updates.mediaType) ? inferred : updates.mediaType;
+          }
+          storedText = `[media:${updates.mediaUrl}|${storedType}] ${storedText}`.trim();
         }
         if (updates.status === 'failed' && updates.errorMessage && !storedText.startsWith('[failed:')) {
           storedText = `[failed:${updates.errorMessage}] ${storedText}`.trim();

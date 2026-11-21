@@ -996,8 +996,35 @@ export const contractService = {
     if (!isSupabaseConfigured || !params.masterId || !isUuid(params.contractId)) return { success: false, message: 'Parâmetros inválidos.' };
     try {
       const { data: c } = await supabase.from('contracts')
-        .select('id, contact_id, client_id, venue_id').eq('id', params.contractId).eq('master_id', params.masterId).maybeSingle();
-      if (!c || !c.contact_id) return { success: false, message: 'Contrato sem contratante cadastrado.' };
+        .select('id, contact_id, client_id, venue_id, client_name, client_phone, client_document, client_email').eq('id', params.contractId).eq('master_id', params.masterId).maybeSingle();
+      if (!c) return { success: false, message: 'Contrato não encontrado.' };
+
+      // Garante que o contato do contratante existe na tabela contacts (auto-cura de integridade referencial)
+      let parentContactId = c.contact_id;
+      let parentExists = false;
+      if (parentContactId && isUuid(parentContactId)) {
+        const { data: ctCheck } = await supabase.from('contacts').select('id').eq('id', parentContactId).maybeSingle();
+        if (ctCheck?.id) parentExists = true;
+      }
+
+      if (!parentExists) {
+        const parentName = (c as any).client_name || params.looseLead.name;
+        const parentPhone = (c as any).client_phone || params.looseLead.phone;
+        const parentRes = await contactService.findOrCreateContact({
+          masterId: params.masterId,
+          name: parentName,
+          primaryPhone: parentPhone,
+          cpf: (c as any).client_document || undefined,
+          email: (c as any).client_email || undefined,
+          venueId: c.venue_id,
+        });
+        if (parentRes.contact?.id) {
+          parentContactId = parentRes.contact.id;
+          await supabase.from('contracts').update({ contact_id: parentContactId }).eq('id', c.id);
+        } else {
+          return { success: false, message: 'Contrato sem contratante válido na Central de Contatos.' };
+        }
+      }
 
       let isSelf = false;
 
@@ -1005,7 +1032,7 @@ export const contractService = {
       if (params.disassociateFromContractor) {
         const { data: contractorContact } = await supabase.from('contacts')
           .select('id, name, notes, primary_phone')
-          .eq('id', c.contact_id)
+          .eq('id', parentContactId)
           .eq('master_id', params.masterId)
           .maybeSingle();
 
@@ -1034,11 +1061,11 @@ export const contractService = {
           venueId: c.venue_id,
         });
 
-        if (resMember.contact && resMember.contact.id !== c.contact_id) {
+        if (resMember.contact && resMember.contact.id !== parentContactId) {
           // Cria o parentesco mútuo formal na Central de Contatos
           await supabase.from('contact_dependents').upsert([
-            { master_id: params.masterId, parent_contact_id: c.contact_id, dependent_contact_id: resMember.contact.id, kinship: params.kinship.trim() },
-            { master_id: params.masterId, parent_contact_id: resMember.contact.id, dependent_contact_id: c.contact_id, kinship: reciprocalKinship(params.kinship) },
+            { master_id: params.masterId, parent_contact_id: parentContactId, dependent_contact_id: resMember.contact.id, kinship: params.kinship.trim() },
+            { master_id: params.masterId, parent_contact_id: resMember.contact.id, dependent_contact_id: parentContactId, kinship: reciprocalKinship(params.kinship) },
           ], { onConflict: 'parent_contact_id,dependent_contact_id', ignoreDuplicates: true });
         }
       } else {
@@ -1051,7 +1078,7 @@ export const contractService = {
 
         if (!isSelf && leadDigits.length >= 8) {
           const { data: parentCt } = await supabase.from('contacts').select('id, primary_phone_digits, secondary_phone_digits')
-            .eq('id', c.contact_id).maybeSingle();
+            .eq('id', parentContactId).maybeSingle();
           if (parentCt) {
             const p1 = parentCt.primary_phone_digits || '';
             const p2 = parentCt.secondary_phone_digits || '';
@@ -1066,7 +1093,7 @@ export const contractService = {
         if (!isSelf) {
           const linked = await contactService.linkFamilyMember({
             masterId: params.masterId,
-            parentContactId: c.contact_id,
+            parentContactId: parentContactId,
             name: params.looseLead.name,
             phone: params.looseLead.phone,
             kinship: params.kinship,

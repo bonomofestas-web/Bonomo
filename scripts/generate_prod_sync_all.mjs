@@ -73,6 +73,8 @@ function buildBatchUpsert(table, rows, batchSize = 50) {
 
 async function main() {
   console.log('--- Buscando dados completos das tabelas locais ---');
+  const contacts = await fetchAll('contacts', '*', 'id');
+  const contactDependents = await fetchAll('contact_dependents', '*', 'id');
   const contracts = await fetchAll('contracts');
   const clients = await fetchAll('clients');
   const events = await fetchAll('venue_events');
@@ -88,6 +90,8 @@ async function main() {
   const venueAgendaConfigs = await fetchAll('venue_agenda_configs', '*', 'id');
   const venueGoals = await fetchAll('venue_goals', '*', 'id');
 
+  console.log(`Contatos: ${contacts.length}`);
+  console.log(`Dependentes de Contatos: ${contactDependents.length}`);
   console.log(`Contratos: ${contracts.length}`);
   console.log(`Clientes Pós-Venda: ${clients.length}`);
   console.log(`Eventos da Agenda: ${events.length}`);
@@ -106,8 +110,9 @@ async function main() {
   const sql = [
     `-- ==============================================================================`,
     `-- F5 SYSTEM • SINCRONIZAÇÃO COMPLETA DE PRODUÇÃO:`,
-    `-- Contratos (218), Clientes Pós-Venda (218), Eventos da Agenda (217),`,
-    `-- Tarefas Operacionais (59), Configurações de Agenda, Metas e Setores/Cargos`,
+    `-- Contatos (${contacts.length}), Dependentes (${contactDependents.length}), Contratos (${contracts.length}),`,
+    `-- Clientes Pós-Venda (${clients.length}), Eventos da Agenda (${events.length}),`,
+    `-- Tarefas Operacionais (${adminTasks.length}), Configurações de Agenda, Metas e Setores/Cargos`,
     `-- ==============================================================================`,
     `SET session_replication_role = 'replica';`,
     ``,
@@ -146,34 +151,39 @@ async function main() {
     `DROP POLICY IF EXISTS "admin_tasks_full_access" ON public.admin_tasks;`,
     `CREATE POLICY "admin_tasks_full_access" ON public.admin_tasks FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);`,
     ``,
-    `-- 1. LIMPEZA DOS CONTRATOS LEGADOS (MANTÉM APENAS OS 218 REAIS)`,
+    `-- 1. UPSERT DOS CONTATOS E DEPENDENTES`,
+    buildBatchUpsert('contacts', contacts, 50),
+    ``,
+    buildBatchUpsert('contact_dependents', contactDependents, 50),
+    ``,
+    `-- 2. LIMPEZA DOS CONTRATOS LEGADOS (MANTÉM APENAS OS 218 REAIS)`,
     `DELETE FROM public.contracts `,
     `WHERE commercial_fields_snapshot->>'origem' IS NULL `,
     `   OR commercial_fields_snapshot->>'origem' != 'importacao_contratos';`,
     ``,
-    `-- 2. UPSERT DOS 218 CONTRATOS REAIS`,
+    `-- 3. UPSERT DOS 218 CONTRATOS REAIS`,
     buildBatchUpsert('contracts', contracts, 50),
     ``,
-    `-- 3. UPSERT DOS 218 CLIENTES NO PÓS-VENDA`,
+    `-- 4. UPSERT DOS 218 CLIENTES NO PÓS-VENDA`,
     buildBatchUpsert('clients', clients, 50),
     ``,
-    `-- 4. UPSERT DOS 217 EVENTOS NA AGENDA DE EVENTOS`,
+    `-- 5. UPSERT DOS 217 EVENTOS NA AGENDA DE EVENTOS`,
     buildBatchUpsert('venue_events', events, 50),
     ``,
-    `-- 5. UPSERT DOS REVIEWS FINANCEIROS`,
+    `-- 6. UPSERT DOS REVIEWS FINANCEIROS`,
     buildBatchUpsert('fin_contract_reviews', contractReviews, 50),
     ``,
-    `-- 6. UPSERT DO WORKSPACE DE TAREFAS (DATABASES, STATUSES, TYPES)`,
+    `-- 7. UPSERT DO WORKSPACE DE TAREFAS (DATABASES, STATUSES, TYPES)`,
     buildBatchUpsert('task_databases', taskDatabases, 50),
     ``,
     buildBatchUpsert('task_custom_statuses', taskStatuses, 50),
     ``,
     buildBatchUpsert('task_custom_types', taskTypes, 50),
     ``,
-    `-- 7. UPSERT DAS 59 TAREFAS OPERACIONAIS DOS CONTRATOS`,
+    `-- 8. UPSERT DAS 59 TAREFAS OPERACIONAIS DOS CONTRATOS`,
     buildBatchUpsert('admin_tasks', adminTasks, 50),
     ``,
-    `-- 8. UPSERT DOS SETORES E CARGOS DINÂMICOS (DIRETORIA, COMERCIAL, ETC)`,
+    `-- 9. UPSERT DOS SETORES E CARGOS DINÂMICOS (DIRETORIA, COMERCIAL, ETC)`,
     buildBatchUpsert('job_sectors', jobSectors, 50),
     ``,
     buildBatchUpsert('job_roles', jobRoles, 50),
@@ -182,7 +192,7 @@ async function main() {
     ``,
     buildBatchUpsert('job_role_order', jobRoleOrder, 50),
     ``,
-    `-- 9. UPSERT DAS CONFIGURAÇÕES DE AGENDA E METAS DAS CASAS`,
+    `-- 10. UPSERT DAS CONFIGURAÇÕES DE AGENDA E METAS DAS CASAS`,
     buildBatchUpsert('venue_agenda_configs', venueAgendaConfigs, 50),
     ``,
     buildBatchUpsert('venue_goals', venueGoals, 50),
@@ -191,6 +201,7 @@ async function main() {
     ``,
     `-- VERIFICAÇÃO FINAL:`,
     `SELECT `,
+    `  (SELECT count(*) FROM public.contacts) as total_contatos,`,
     `  (SELECT count(*) FROM public.contracts) as total_contratos_reais,`,
     `  (SELECT count(*) FROM public.clients) as total_clientes_posvenda,`,
     `  (SELECT count(*) FROM public.venue_events) as total_eventos_agenda,`,

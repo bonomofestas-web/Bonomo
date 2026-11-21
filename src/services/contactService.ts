@@ -831,6 +831,13 @@ export const contactService = {
         return { contact, created, dependent: null };
       }
 
+      // Valida se o parentContactId existe na tabela contacts para evitar violação de FK 23503
+      const { data: parentCheck } = await supabase.from('contacts').select('id').eq('id', params.parentContactId).maybeSingle();
+      if (!parentCheck) {
+        console.warn(`[contactService.linkFamilyMember] Contato pai ${params.parentContactId} não existe em contacts. Retornando contato criado sem dependente.`);
+        return { contact, created, dependent: null };
+      }
+
       const { error } = await supabase.from('contact_dependents').upsert([
         { master_id: params.masterId, parent_contact_id: params.parentContactId, dependent_contact_id: contact.id, kinship: params.kinship.trim() },
         { master_id: params.masterId, parent_contact_id: contact.id, dependent_contact_id: params.parentContactId, kinship: reciprocalKinship(params.kinship) },
@@ -871,6 +878,96 @@ export const contactService = {
     } catch (err) {
       console.error('Exceção em removeContactDependent:', err);
       return false;
+    }
+  },
+
+  /**
+   * Converte um contato (lead ou cliente sem contratos conectados) em Fornecedor.
+   * Remove automaticamente os registros de lead e cliente associados.
+   */
+  async convertToSupplier(params: {
+    contactId: string;
+    masterId: string;
+    leadId?: string;
+    clientId?: string;
+    category?: string;
+    notes?: string;
+  }): Promise<{ success: boolean; message?: string }> {
+    if (!isSupabaseConfigured || !params.masterId || !params.contactId) {
+      return { success: false, message: 'Parâmetros inválidos.' };
+    }
+
+    try {
+      // 1. Checa se o contato possui contratos conectados (requisito mandatório)
+      const { data: ctContracts } = await supabase
+        .from('contracts')
+        .select('id')
+        .eq('master_id', params.masterId)
+        .eq('contact_id', params.contactId)
+        .limit(1);
+
+      if (ctContracts && ctContracts.length > 0) {
+        return {
+          success: false,
+          message: 'Este contato possui contratos ativos vinculados e não pode ser transformado em fornecedor.',
+        };
+      }
+
+      // Se passou clientId, também verifica se o client possui contratos
+      if (params.clientId && isUuid(params.clientId)) {
+        const { data: clContracts } = await supabase
+          .from('contracts')
+          .select('id')
+          .eq('master_id', params.masterId)
+          .eq('client_id', params.clientId)
+          .limit(1);
+
+        if (clContracts && clContracts.length > 0) {
+          return {
+            success: false,
+            message: 'Este cliente possui contratos ativos vinculados e não pode ser transformado em fornecedor.',
+          };
+        }
+      }
+
+      // 2. Atualiza o contato para Fornecedor
+      const { error: ctErr } = await supabase
+        .from('contacts')
+        .update({
+          is_supplier: true,
+          supplier_profile: {
+            category: params.category || 'Geral',
+            converted_at: new Date().toISOString(),
+            notes: params.notes || 'Convertido a partir de lead/cliente sem contratos',
+          },
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', params.contactId)
+        .eq('master_id', params.masterId);
+
+      if (ctErr) {
+        console.error('Erro ao marcar contato como fornecedor:', ctErr);
+        return { success: false, message: 'Erro ao atualizar contato para fornecedor.' };
+      }
+
+      // 3. Exclui o lead correspondente (se houver)
+      if (params.leadId && isUuid(params.leadId)) {
+        await supabase.from('leads').delete().eq('id', params.leadId).eq('master_id', params.masterId);
+      } else {
+        await supabase.from('leads').delete().eq('contact_id', params.contactId).eq('master_id', params.masterId);
+      }
+
+      // 4. Exclui o cliente de pós-venda correspondente (se houver)
+      if (params.clientId && isUuid(params.clientId)) {
+        await supabase.from('clients').delete().eq('id', params.clientId).eq('master_id', params.masterId);
+      } else {
+        await supabase.from('clients').delete().eq('migrated_to_contact_id', params.contactId).eq('master_id', params.masterId);
+      }
+
+      return { success: true };
+    } catch (err: any) {
+      console.error('Exceção ao converter contato em fornecedor:', err);
+      return { success: false, message: err?.message || 'Falha ao converter em fornecedor.' };
     }
   },
 };

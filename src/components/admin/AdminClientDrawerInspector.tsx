@@ -8,8 +8,9 @@ import {
   Shield, MessageSquare, Phone,
   Gift, Award, Star,
   Compass, UserPlus, CheckCircle2, Eye, X, Building2,
-  ChevronLeft, Workflow, Archive, Link2, User
+  ChevronLeft, Workflow, Archive, Link2, User, MoreVertical, Truck
 } from 'lucide-react';
+import { AdminConvertToSupplierModal } from './AdminConvertToSupplierModal';
 import { toast } from 'sonner';
 import { SafeAvatar } from './SafeAvatar';
 import { isPhoneMatch } from '../../services/leadService';
@@ -550,7 +551,54 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
   const [isLinkContractOpen, setIsLinkContractOpen] = useState(false);
   const [isLinkContractorOpen, setIsLinkContractorOpen] = useState(false);
   const [isDeleteClientOpen, setIsDeleteClientOpen] = useState(false);
+  const [isQuickMenuOpen, setIsQuickMenuOpen] = useState(false);
+  const [isConvertToSupplierOpen, setIsConvertToSupplierOpen] = useState(false);
+  const [isConvertingSupplier, setIsConvertingSupplier] = useState(false);
   const canRemoveClient = isUserMaster(currentUser) || isUserManager(currentUser);
+
+  const handleConvertToSupplier = async (category: string) => {
+    if (!fichaMasterId) return;
+    setIsConvertingSupplier(true);
+    try {
+      let targetContactId = (client as any)?.contactId || (lead as any)?.contactId || (client as any)?.migrated_to_contact_id;
+      if (!targetContactId) {
+        const res = await contactService.findOrCreateContact({
+          masterId: fichaMasterId,
+          name: client?.name || lead.name,
+          primaryPhone: client?.payerPhone || lead.phone,
+          venueId: client?.venueId || lead.venueId,
+        });
+        targetContactId = res.contact?.id;
+      }
+
+      if (!targetContactId) {
+        toast.error('Não foi possível identificar o contato na Central de Contatos.');
+        return;
+      }
+
+      const res = await contactService.convertToSupplier({
+        contactId: targetContactId,
+        masterId: fichaMasterId,
+        clientId: client?.id,
+        leadId: lead.id,
+        category,
+      });
+
+      if (res.success) {
+        toast.success(`${client?.name || lead.name} foi transformado em Fornecedor com sucesso.`);
+        if (client?.id) deleteClient(client.id);
+        window.dispatchEvent(new CustomEvent('f5:contacts-changed'));
+        setIsConvertToSupplierOpen(false);
+        onToggleCollapse?.();
+      } else {
+        toast.error(res.message || 'Erro ao transformar em fornecedor.');
+      }
+    } catch (err: any) {
+      toast.error(err?.message || 'Falha ao transformar em fornecedor.');
+    } finally {
+      setIsConvertingSupplier(false);
+    }
+  };
 
   // Cartao de credito vem do CONTATO (acompanha a pessoa em qualquer contrato); se o contato ainda nao tem, usa o que veio do comercial
   const cardPhone = client?.payerPhone || lead.phone || '';
@@ -852,6 +900,95 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
           )}
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+            {/* Quick Actions 3-dots Menu */}
+            <div style={{ position: 'relative' }}>
+              <button
+                type="button"
+                onClick={() => setIsQuickMenuOpen(!isQuickMenuOpen)}
+                title="Ações rápidas"
+                style={{
+                  background: isQuickMenuOpen ? 'rgba(255, 255, 255, 0.16)' : 'rgba(255, 255, 255, 0.08)',
+                  border: '1px solid rgba(255, 255, 255, 0.15)',
+                  color: '#FFFFFF',
+                  borderRadius: '6px',
+                  width: '26px',
+                  height: '26px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                <MoreVertical size={14} />
+              </button>
+
+              {isQuickMenuOpen && (
+                <>
+                  <div
+                    style={{ position: 'fixed', inset: 0, zIndex: 9998 }}
+                    onClick={() => setIsQuickMenuOpen(false)}
+                  />
+                  <div
+                    style={{
+                      position: 'absolute',
+                      top: 'calc(100% + 4px)',
+                      right: 0,
+                      width: '240px',
+                      background: 'var(--adm-bg-card, #1E293B)',
+                      border: '1px solid var(--adm-border, rgba(255, 255, 255, 0.12))',
+                      borderRadius: '10px',
+                      boxShadow: '0 8px 24px rgba(0, 0, 0, 0.35)',
+                      padding: '6px',
+                      zIndex: 9999,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '2px',
+                    }}
+                  >
+                    <div style={{ padding: '6px 8px 4px', fontSize: '0.66rem', fontWeight: 800, color: 'var(--adm-text-muted, #94A3B8)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                      Ações Rápidas
+                    </div>
+                    <button
+                      type="button"
+                      disabled={Boolean(linkedContract)}
+                      onClick={() => {
+                        setIsQuickMenuOpen(false);
+                        if (!linkedContract) setIsConvertToSupplierOpen(true);
+                      }}
+                      title={linkedContract ? 'Bloqueado: este contato possui contratos vinculados' : 'Transformar em fornecedor'}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        padding: '8px 10px',
+                        borderRadius: '6px',
+                        border: 'none',
+                        background: 'transparent',
+                        color: linkedContract ? 'var(--adm-text-muted, #64748B)' : 'var(--adm-text-title, #FFFFFF)',
+                        opacity: linkedContract ? 0.5 : 1,
+                        cursor: linkedContract ? 'not-allowed' : 'pointer',
+                        textAlign: 'left',
+                        fontSize: '0.78rem',
+                        fontWeight: 600,
+                        transition: 'background 0.15s ease',
+                      }}
+                      onMouseEnter={e => { if (!linkedContract) e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)'; }}
+                      onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+                    >
+                      <Truck size={14} color={linkedContract ? 'var(--adm-text-muted)' : '#06B6D4'} />
+                      <div style={{ display: 'flex', flexDirection: 'column' }}>
+                        <span>Transformar em Fornecedor</span>
+                        <span style={{ fontSize: '0.64rem', color: 'var(--adm-text-muted, #94A3B8)', fontWeight: 400 }}>
+                          {linkedContract ? 'Possui contrato ativo vinculado' : 'Move para fornecedores e remove de clientes'}
+                        </span>
+                      </div>
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+
             {!readOnly && client && (
               <button
                 type="button"
@@ -2824,6 +2961,15 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
       {previewLeadId && commercialLead && (
         <AdminLeadReadOnlyModal lead={commercialLead} onClose={() => setPreviewLeadId(null)} />
       )}
+
+      {/* Modal de Transformação em Fornecedor */}
+      <AdminConvertToSupplierModal
+        isOpen={isConvertToSupplierOpen}
+        onClose={() => setIsConvertToSupplierOpen(false)}
+        onConfirm={handleConvertToSupplier}
+        contactName={client?.name || lead.name}
+        isLoading={isConvertingSupplier}
+      />
     </div>
   );
 };

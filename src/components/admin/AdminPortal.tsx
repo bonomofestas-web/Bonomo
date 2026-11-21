@@ -1467,7 +1467,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               );
             })()}
 
-            {/* Ação Primária do Funil de Pós-Venda: + Adicionar Cliente */}
+            {/* Ação Primária do Funil de Pós-Venda: + Criar Contrato */}
             {activeTab === 'post-sale-crm' && (() => {
               const activeFunnel = funnels.find(f => f.id === activeFunnelId);
               return (
@@ -1494,10 +1494,10 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                   }}
                   onMouseEnter={e => e.currentTarget.style.backgroundColor = '#0891B2'}
                   onMouseLeave={e => e.currentTarget.style.backgroundColor = '#06B6D4'}
-                  title={activeFunnel ? `Adicionar Cliente ao ${activeFunnel.name}` : 'Adicionar Cliente ao Pós-Venda'}
+                  title={activeFunnel ? `Criar Contrato no ${activeFunnel.name}` : 'Criar Contrato no Pós-Venda'}
                 >
                   <Plus size={15} />
-                  <span>Adicionar Cliente</span>
+                  <span>Criar Contrato</span>
                   {activeFunnel && (
                     <span style={{ fontSize: '0.70rem', opacity: 0.85, fontWeight: 600 }}>
                       • {activeFunnel.name}

@@ -1,6 +1,5 @@
 import { Select } from '../ui';
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { HeaderActions } from './HeaderActions';
 import { 
   Plus, Search, Kanban, List, LayoutGrid,
   Settings, CheckCircle2,
@@ -1179,34 +1178,6 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
         animation: 'fadeIn 0.25s ease-out',
         fontFamily: "'Plus Jakarta Sans', sans-serif"
       }}>
-        {/* Título e ação primária no menu superior */}
-        {canConfigurePostSale && (
-          <HeaderActions>
-            <button
-              type="button"
-              onClick={() => setIsCreateModalOpen(true)}
-              style={{
-                background: 'linear-gradient(135deg, #06B6D4 0%, #0891B2 100%)',
-                color: '#FFFFFF',
-                borderRadius: '10px',
-                border: 'none',
-                padding: '10px 20px',
-                fontSize: '0.85rem',
-                fontWeight: 800,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                boxShadow: 'none',
-                transition: 'all 0.18s ease',
-              }}
-            >
-              <Plus size={16} color="#FFFFFF" />
-              <span>Novo Funil Pós-Venda</span>
-            </button>
-          </HeaderActions>
-        )}
-
         {/* Overview KPIs - 5 Métricas Operacionais Clean (Sem sombras pesadas) */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
           {/* 1. Clientes Ativos */}
