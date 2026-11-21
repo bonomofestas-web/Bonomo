@@ -1432,28 +1432,29 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
       {/* Luxury Custom Venue Switcher Popover with Logos & Globo */}
       {!currentUser?.isFirstAccess && allowedVenues.length > 0 && (
         <div ref={venueDropdownRef} style={{ position: 'relative', marginBottom: '10px' }}>
-          {/* Se o colaborador possui apenas 1 casa, exibe a logo e nome da unidade com orgulho, SEM dropdown e sem seta */}
+          {/* Se o colaborador possui apenas 1 casa, exibe a logo e nome da unidade com orgulho, SEM dropdown e com engrenagem integrada */}
           {((userRole as string) !== 'master' && allowedVenues.length === 1) ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', width: '100%' }}>
-              <div
-                title={`Sua Unidade Oficial: ${allowedVenues[0].name}`}
-                style={{
-                  flex: 1,
-                  minWidth: 0,
-                  background: '#141118',
-                  border: '1px solid rgba(212, 175, 55, 0.25)',
-                  borderRadius: '10px',
-                  padding: '6px 8px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  textAlign: 'left',
-                }}
-              >
+            <div
+              title={`Sua Unidade Oficial: ${allowedVenues[0].name}`}
+              style={{
+                width: '100%',
+                background: '#141118',
+                border: '1px solid rgba(20, 169, 215, 0.35)',
+                borderRadius: '10px',
+                padding: '6px 8px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '8px',
+                textAlign: 'left',
+                boxSizing: 'border-box',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
                 {renderVenueIconBadge(allowedVenues[0], 26)}
                 {!isCollapsed && (
                   <div style={{ minWidth: 0, flex: 1 }}>
-                    <div style={{ fontSize: '0.52rem', textTransform: 'uppercase', color: '#D4AF37', fontWeight: 800, letterSpacing: '0.5px' }}>
+                    <div style={{ fontSize: '0.52rem', textTransform: 'uppercase', color: '#14A9D7', fontWeight: 800, letterSpacing: '0.5px' }}>
                       Sua Unidade
                     </div>
                     <div style={{
@@ -1469,45 +1470,37 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
                   </div>
                 )}
               </div>
-              {!isCollapsed && (userRole === 'master' || userRole === 'admin' || userRole === 'gerencia' || isDevUser) && (
-                <button
-                  type="button"
-                  onClick={() => onSelectTab('system-settings')}
+              {!isCollapsed && (
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onSelectTab('system-settings');
+                  }}
                   title="Central de Unidades e Colaboradores"
                   style={{
-                    width: '32px',
-                    height: '32px',
-                    borderRadius: '10px',
-                    background: (activeTab === 'system-settings' || activeTab === 'venues' || activeTab === 'collaborators')
-                      ? 'rgba(20, 169, 215, 0.18)'
-                      : '#141118',
-                    border: (activeTab === 'system-settings' || activeTab === 'venues' || activeTab === 'collaborators')
-                      ? '1px solid #14A9D7'
-                      : '1px solid rgba(255, 255, 255, 0.12)',
-                    color: (activeTab === 'system-settings' || activeTab === 'venues' || activeTab === 'collaborators')
-                      ? '#14A9D7'
-                      : 'var(--adm-text-muted, #94A3B8)',
+                    padding: '4px',
+                    borderRadius: '6px',
+                    color: '#94A3B8',
+                    cursor: 'pointer',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    cursor: 'pointer',
                     flexShrink: 0,
-                    transition: 'all 0.15s ease',
+                    transition: 'color 0.15s ease, background 0.15s ease',
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.color = '#FFFFFF';
-                    e.currentTarget.style.borderColor = 'rgba(20, 169, 215, 0.5)';
+                    e.currentTarget.style.color = '#14A9D7';
                     e.currentTarget.style.background = 'rgba(20, 169, 215, 0.15)';
                   }}
                   onMouseLeave={(e) => {
-                    const isActive = activeTab === 'system-settings' || activeTab === 'venues' || activeTab === 'collaborators';
-                    e.currentTarget.style.color = isActive ? '#14A9D7' : 'var(--adm-text-muted, #94A3B8)';
-                    e.currentTarget.style.borderColor = isActive ? '#14A9D7' : 'rgba(255, 255, 255, 0.12)';
-                    e.currentTarget.style.background = isActive ? 'rgba(20, 169, 215, 0.18)' : '#141118';
+                    e.currentTarget.style.color = '#94A3B8';
+                    e.currentTarget.style.background = 'transparent';
                   }}
                 >
                   <Settings size={15} />
-                </button>
+                </div>
               )}
             </div>
           ) : isCollapsed && !isMobileOverlay ? (
@@ -1523,19 +1516,19 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
                 const rect = e.currentTarget.getBoundingClientRect();
                 setVenuePopoverPos({ top: rect.top, left: rect.right + 8 });
                 setCustomTooltip(null);
-                e.currentTarget.style.borderColor = '#D4AF37';
+                e.currentTarget.style.borderColor = '#14A9D7';
                 e.currentTarget.style.transform = 'scale(1.05)';
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = isVenueDropdownOpen ? '#D4AF37' : 'rgba(20, 169, 215, 0.35)';
+                e.currentTarget.style.borderColor = isVenueDropdownOpen ? '#14A9D7' : 'rgba(20, 169, 215, 0.35)';
                 e.currentTarget.style.transform = 'scale(1)';
               }}
               style={{
                 width: '38px',
                 height: '38px',
                 margin: '0 auto',
-                background: isVenueDropdownOpen ? 'rgba(212, 175, 55, 0.16)' : '#141118',
-                border: isVenueDropdownOpen ? '1.5px solid #D4AF37' : '1px solid rgba(20, 169, 215, 0.35)',
+                background: isVenueDropdownOpen ? 'rgba(20, 169, 215, 0.16)' : '#141118',
+                border: isVenueDropdownOpen ? '1.5px solid #14A9D7' : '1px solid rgba(20, 169, 215, 0.35)',
                 borderRadius: '10px',
                 display: 'flex',
                 alignItems: 'center',
@@ -1544,103 +1537,81 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
                 transition: 'all 0.15s ease',
               }}
             >
-              {activeVenue ? renderVenueIconBadge(activeVenue, 28) : <Globe size={18} color="#D4AF37" />}
+              {activeVenue ? renderVenueIconBadge(activeVenue, 28) : <Globe size={18} color="#14A9D7" />}
             </button>
           ) : (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', width: '100%' }}>
-              <button
-                type="button"
-                onClick={() => setIsVenueDropdownOpen(v => !v)}
-                style={{
-                  flex: 1,
-                  minWidth: 0,
-                  background: isVenueDropdownOpen ? 'rgba(212, 175, 55, 0.14)' : '#141118',
-                  border: `1px solid ${isVenueDropdownOpen ? '#D4AF37' : 'rgba(212, 175, 55, 0.25)'}`,
-                  borderRadius: '10px',
-                  padding: '6px 8px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: '6px',
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                  transition: 'all 0.2s ease',
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, flex: 1 }}>
-                  {renderVenueIconBadge(activeVenue, 24)}
-                  <div style={{ minWidth: 0, flex: 1 }}>
-                    <div style={{ fontSize: '0.52rem', textTransform: 'uppercase', color: '#D4AF37', fontWeight: 800, letterSpacing: '0.5px' }}>
-                      Unidade
-                    </div>
-                    <div style={{
-                      fontSize: '0.72rem',
-                      fontWeight: 700,
-                      color: '#FFFFFF',
-                      whiteSpace: 'nowrap',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                    }}>
-                      {activeVenue?.name || (userRole === 'master' ? 'Todas' : `Todas (${allowedVenues.length})`)}
-                    </div>
+            <div
+              onClick={() => setIsVenueDropdownOpen(v => !v)}
+              style={{
+                width: '100%',
+                background: isVenueDropdownOpen ? 'rgba(20, 169, 215, 0.12)' : '#141118',
+                border: `1px solid ${isVenueDropdownOpen ? '#14A9D7' : 'rgba(20, 169, 215, 0.35)'}`,
+                borderRadius: '10px',
+                padding: '6px 8px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '6px',
+                cursor: 'pointer',
+                textAlign: 'left',
+                transition: 'all 0.2s ease',
+                boxSizing: 'border-box',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, flex: 1 }}>
+                {renderVenueIconBadge(activeVenue, 24)}
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ fontSize: '0.52rem', textTransform: 'uppercase', color: '#14A9D7', fontWeight: 800, letterSpacing: '0.5px' }}>
+                    Unidade
+                  </div>
+                  <div style={{
+                    fontSize: '0.72rem',
+                    fontWeight: 700,
+                    color: '#FFFFFF',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                  }}>
+                    {activeVenue?.name || (userRole === 'master' ? 'Todas' : `Todas (${allowedVenues.length})`)}
                   </div>
                 </div>
-                <ChevronDown
-                  size={14}
-                  style={{
-                    color: isVenueDropdownOpen ? '#D4AF37' : 'rgba(255, 255, 255, 0.45)',
-                    transform: isVenueDropdownOpen ? 'rotate(180deg)' : 'none',
-                    transition: 'transform 0.2s ease, color 0.15s ease',
-                    flexShrink: 0,
-                  }}
-                />
-              </button>
+              </div>
 
-              {/* Engrenagem simples com clique para acessar a central de unidades e colaboradores */}
-              {(userRole === 'master' || userRole === 'admin' || userRole === 'gerencia' || isDevUser) && (
-                <button
-                  type="button"
-                  onClick={() => onSelectTab('system-settings')}
-                  title="Central de Unidades e Colaboradores"
-                  style={{
-                    width: '32px',
-                    height: '32px',
-                    borderRadius: '10px',
-                    background: (activeTab === 'system-settings' || activeTab === 'venues' || activeTab === 'collaborators')
-                      ? 'rgba(20, 169, 215, 0.18)'
-                      : '#141118',
-                    border: (activeTab === 'system-settings' || activeTab === 'venues' || activeTab === 'collaborators')
-                      ? '1px solid #14A9D7'
-                      : '1px solid rgba(255, 255, 255, 0.12)',
-                    color: (activeTab === 'system-settings' || activeTab === 'venues' || activeTab === 'collaborators')
-                      ? '#14A9D7'
-                      : 'var(--adm-text-muted, #94A3B8)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    cursor: 'pointer',
-                    flexShrink: 0,
-                    transition: 'all 0.15s ease',
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.color = '#FFFFFF';
-                    e.currentTarget.style.borderColor = 'rgba(20, 169, 215, 0.5)';
-                    e.currentTarget.style.background = 'rgba(20, 169, 215, 0.15)';
-                  }}
-                  onMouseLeave={(e) => {
-                    const isActive = activeTab === 'system-settings' || activeTab === 'venues' || activeTab === 'collaborators';
-                    e.currentTarget.style.color = isActive ? '#14A9D7' : 'var(--adm-text-muted, #94A3B8)';
-                    e.currentTarget.style.borderColor = isActive ? '#14A9D7' : 'rgba(255, 255, 255, 0.12)';
-                    e.currentTarget.style.background = isActive ? 'rgba(20, 169, 215, 0.18)' : '#141118';
-                  }}
-                >
-                  <Settings size={15} />
-                </button>
-              )}
+              {/* Engrenagem simples no lugar da setinha */}
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSelectTab('system-settings');
+                }}
+                title="Central de Unidades e Colaboradores"
+                style={{
+                  padding: '4px',
+                  borderRadius: '6px',
+                  color: '#94A3B8',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                  transition: 'color 0.15s ease, background 0.15s ease',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.color = '#14A9D7';
+                  e.currentTarget.style.background = 'rgba(20, 169, 215, 0.15)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.color = '#94A3B8';
+                  e.currentTarget.style.background = 'transparent';
+                }}
+              >
+                <Settings size={15} />
+              </div>
             </div>
           )}
 
-          {/* Venue Switcher Popover Menu */}
+          {/* Venue Switcher Popover Menu (Bordas no azul do sistema) */}
           {isVenueDropdownOpen && (userRole === 'master' || allowedVenues.length > 1) && (
             <div
               data-venue-popover="true"
@@ -1652,10 +1623,10 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
                 width: isCollapsed ? '230px' : undefined,
                 marginTop: isCollapsed ? '0px' : '6px',
                 background: '#141118',
-                border: '1.5px solid rgba(212, 175, 55, 0.4)',
+                border: '1.5px solid rgba(20, 169, 215, 0.45)',
                 borderRadius: '12px',
                 padding: '6px',
-                boxShadow: '0 12px 32px rgba(0,0,0,0.85), 0 0 20px rgba(212, 175, 55, 0.2)',
+                boxShadow: '0 12px 32px rgba(0,0,0,0.85), 0 0 20px rgba(20, 169, 215, 0.18)',
                 zIndex: 999999,
                 display: 'flex',
                 flexDirection: 'column',
@@ -1673,9 +1644,9 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
                     width: '100%',
                     padding: '8px 10px',
                     borderRadius: '8px',
-                    background: activeVenueId === null ? 'rgba(212, 175, 55, 0.2)' : 'transparent',
-                    border: activeVenueId === null ? '1px solid #D4AF37' : '1px solid transparent',
-                    color: activeVenueId === null ? '#D4AF37' : '#FFFFFF',
+                    background: activeVenueId === null ? 'rgba(20, 169, 215, 0.2)' : 'transparent',
+                    border: activeVenueId === null ? '1px solid #14A9D7' : '1px solid transparent',
+                    color: activeVenueId === null ? '#14A9D7' : '#FFFFFF',
                     fontSize: '0.76rem',
                     fontWeight: activeVenueId === null ? 700 : 500,
                     textAlign: 'left',
@@ -1704,9 +1675,9 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
                       width: '100%',
                       padding: '8px 10px',
                       borderRadius: '8px',
-                      background: isSelected ? 'rgba(212, 175, 55, 0.2)' : 'transparent',
-                      border: isSelected ? '1px solid #D4AF37' : '1px solid transparent',
-                      color: isSelected ? '#D4AF37' : '#FFFFFF',
+                      background: isSelected ? 'rgba(20, 169, 215, 0.2)' : 'transparent',
+                      border: isSelected ? '1px solid #14A9D7' : '1px solid transparent',
+                      color: isSelected ? '#14A9D7' : '#FFFFFF',
                       fontSize: '0.76rem',
                       fontWeight: isSelected ? 700 : 500,
                       textAlign: 'left',
@@ -2112,52 +2083,63 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
 
           {isCollapsed && effectiveSectors.includes('pos_venda') && <div style={{ height: '1px', background: 'rgba(255, 255, 255, 0.08)', margin: '3px 4px' }} />}
 
-          {/* 4. Setor Financeiro (Em Desenvolvimento: leitura, conferência e cálculos) */}
+          {/* 4. Setor Financeiro / Finanças (Retrátil com badge DEV) */}
           {(canAccessFinance(currentUser) || userRole === 'master' || userRole === 'admin' || userRole === 'gerencia' || effectiveSectors.includes('financeiro') || isDevUser) && (
             <div>
               {!isCollapsed && (
-                <div style={{
-                  fontSize: '0.56rem',
-                  fontWeight: 800,
-                  textTransform: 'uppercase',
-                  color: '#8096A8',
-                  letterSpacing: '0.6px',
-                  padding: '4px 6px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                }}>
-                  <span>Financeiro</span>
-                  <span style={{
-                    fontSize: '0.48rem',
-                    fontWeight: 700,
-                    background: 'rgba(245, 158, 11, 0.15)',
-                    color: '#F59E0B',
-                    border: '1px solid rgba(245, 158, 11, 0.3)',
-                    padding: '1px 5px',
-                    borderRadius: '4px',
-                  }}>
-                    Em Desenvolvimento
-                  </span>
+                <div
+                  style={{
+                    fontSize: '0.56rem',
+                    fontWeight: 800,
+                    textTransform: 'uppercase',
+                    color: '#14A9D7',
+                    letterSpacing: '0.6px',
+                    padding: '4px 6px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    cursor: 'pointer',
+                  }}
+                  onClick={() => toggleSection('financeiro')}
+                >
+                  <span style={{ color: '#14A9D7' }}>Finanças</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{
+                      fontSize: '0.48rem',
+                      fontWeight: 700,
+                      background: 'rgba(20, 169, 215, 0.15)',
+                      color: '#14A9D7',
+                      border: '1px solid rgba(20, 169, 215, 0.3)',
+                      padding: '1px 5px',
+                      borderRadius: '4px',
+                    }}>
+                      DEV
+                    </span>
+                    <ChevronDown size={11} style={{ color: '#14A9D7', transform: collapsedSections['financeiro'] ? 'rotate(-90deg)' : 'none', transition: 'transform 0.15s ease' }} />
+                  </div>
                 </div>
               )}
-              {([
-                { id: 'finance-approval' as AdminTabType, label: 'Aprovação', icon: <FileCheck2 size={15} />, soon: false },
-                { id: 'finance' as AdminTabType, label: 'Visão geral', icon: <Wallet size={15} />, soon: false },
-                { id: 'finance-calendar' as AdminTabType, label: 'Calendário', icon: <CalendarDays size={15} />, soon: false },
-                { id: 'finance-payables' as AdminTabType, label: 'Contas a pagar', icon: <ArrowDownCircle size={15} />, soon: true },
-                { id: 'finance-cashflow' as AdminTabType, label: 'Fluxo de caixa', icon: <TrendingUp size={15} />, soon: true },
-                { id: 'finance-dre' as AdminTabType, label: 'DRE', icon: <BarChart3 size={15} />, soon: true },
-                { id: 'finance-settings' as AdminTabType, label: 'Configurações', icon: <SlidersHorizontal size={15} />, soon: true },
-              ]).map(it => (it.soon
-                ? (isCollapsed ? null : (
-                  <button key={it.id} type="button" onClick={() => handleTabClick(it.id, null)}
-                    style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '7px 10px', border: 'none', borderRadius: 8, cursor: 'pointer', background: activeTab === it.id ? 'rgba(20, 169, 215, 0.18)' : 'transparent', color: activeTab === it.id ? '#14A9D7' : '#8096A8', fontSize: '0.78rem', textAlign: 'left' }}>
-                    {it.icon}<span style={{ flex: 1 }}>{it.label}</span>
-                    <span style={{ fontSize: '0.48rem', background: 'rgba(148, 163, 184, 0.12)', color: 'var(--adm-text-muted)', padding: '1px 4px', borderRadius: '3px' }}>Em breve</span>
-                  </button>
-                ))
-                : renderNavButton(it)))}
+              {(!isCollapsed ? !collapsedSections['financeiro'] : true) && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                  {([
+                    { id: 'finance-approval' as AdminTabType, label: 'Aprovação', icon: <FileCheck2 size={15} />, soon: false },
+                    { id: 'finance' as AdminTabType, label: 'Visão geral', icon: <Wallet size={15} />, soon: false },
+                    { id: 'finance-calendar' as AdminTabType, label: 'Calendário', icon: <CalendarDays size={15} />, soon: false },
+                    { id: 'finance-payables' as AdminTabType, label: 'Contas a pagar', icon: <ArrowDownCircle size={15} />, soon: true },
+                    { id: 'finance-cashflow' as AdminTabType, label: 'Fluxo de caixa', icon: <TrendingUp size={15} />, soon: true },
+                    { id: 'finance-dre' as AdminTabType, label: 'DRE', icon: <BarChart3 size={15} />, soon: true },
+                    { id: 'finance-settings' as AdminTabType, label: 'Configurações', icon: <SlidersHorizontal size={15} />, soon: true },
+                  ]).map(it => (it.soon
+                    ? (isCollapsed ? null : (
+                      <button key={it.id} type="button" onClick={() => handleTabClick(it.id, null)}
+                        style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '7px 10px', border: 'none', borderRadius: 8, cursor: 'pointer', background: activeTab === it.id ? 'rgba(20, 169, 215, 0.18)' : 'transparent', color: activeTab === it.id ? '#14A9D7' : '#8096A8', fontSize: '0.78rem', textAlign: 'left' }}>
+                        {it.icon}<span style={{ flex: 1 }}>{it.label}</span>
+                        <span style={{ fontSize: '0.48rem', background: 'rgba(148, 163, 184, 0.12)', color: 'var(--adm-text-muted)', padding: '1px 4px', borderRadius: '3px' }}>Em breve</span>
+                      </button>
+                    ))
+                    : renderNavButton(it)))}
+                </div>
+              )}
             </div>
           )}
 

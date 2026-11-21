@@ -43,6 +43,19 @@ Grande reestruturação de governança, experiência do usuário, banco de dados
 ### Recursos e Melhorias em Staging
 
 - **Refatoração da Ficha de Pós-Venda e Visualização Cirúrgica de Contatos** (`pos-venda` / `client-drawer` / `whatsapp`):
+  * **Seletor de Unidades e Experiência de Navegação (`AdminSidebar`):**
+    - Ícone de engrenagem integrado diretamente no card do seletor de unidades (substituindo o antigo `ChevronDown`), com transição de cor cinza para azul `#14A9D7` no hover, permitindo acesso imediato à Central de Unidades e Colaboradores com um clique.
+    - Bordas douradas do card e do popover de seleção de casas substituídas pelo tom azul/ciano padrão do sistema (`rgba(20, 169, 215, 0.35)`).
+    - Recurso "Ver com os Olhos de" movido para os 3 pontinhos do menu de colaboradores (`TeamDirectory`, `AdminCollaboratorsView`), exibindo badge "Vendo com os olhos de [Nome]" com botão de remoção rápida (X) logo abaixo do seletor de unidades.
+  * **Módulo de Finanças em Staging Controlado (`AdminFinanceView`):**
+    - Renomeação de "Financeiro" para "Finanças" na barra lateral, com tipografia em tom `#14A9D7`, badge "DEV", e acordeon retrátil.
+    - Banner persistente de módulo em desenvolvimento com travamento de todas as mutações e aprovações (disparando aviso informativo de proteção).
+    - Reorganização de seções: Gerência e Marketing posicionados ao final como "Em Breve".
+  * **Sincronização Definitiva de Contratos e Financeiro (`ATUALIZAR_CONTRATOS_FINANCEIRO_PRODUCAO.sql`):**
+    - Diagnóstico de falha de importação em produção decorrente de `ON CONFLICT DO NOTHING` em registros pré-existentes.
+    - Geração de script SQL consolidado com `ON CONFLICT (id) DO UPDATE SET` para atualização integral dos 218 contratos (preços reais, links de PDF no Cloudflare R2, snapshots de clientes e status aprovado).
+    - Carga completa de 218 revisões em `fin_contract_reviews`, 2.841 parcelas em `fin_receivables` e 380 lançamentos em `fin_payables` para ativação da Visão Geral e Calendário de Finanças.
+  * **Regra de Vínculo Contratual (Ocultação de Card Solto no Kanban):**
   * **Regra de Vínculo Contratual (Ocultação de Card Solto no Kanban):**
     - Quando um contato/lead (ex.: mãe Carla) é vinculado a um contrato oficial existente (ex.: Antônio / Vitória 15 Anos), ele é unificado sob o card oficial do contrato.
     - No **Modo Kanban (`AdminPostSaleKanbanView`)**, contatos vinculados a contratos são ocultados como cards soltos/avulsos ("SEM CONTRATO"), eliminando poluição visual e duplicidade de cards nas colunas.
