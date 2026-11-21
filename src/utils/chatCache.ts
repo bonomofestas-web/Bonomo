@@ -12,7 +12,7 @@
  */
 import type { LeadActivity } from '../types/admin';
 
-const DB_PREFIX = 'f5-chat-cache-v2-';
+const DB_PREFIX = 'f5-chat-cache-v3-';
 const STORE = 'conversations';
 const MAX_LEADS = 60;
 const MAX_PER_LEAD = 120;
@@ -157,7 +157,7 @@ export const chatCache = {
         if (typeof indexedDB !== 'undefined' && (indexedDB as any).databases) {
           const dbs = await (indexedDB as any).databases();
           (dbs || []).forEach((d: any) => {
-            if (d?.name && String(d.name).startsWith('f5-chat-cache-v1-')) {
+            if (d?.name && (String(d.name).startsWith('f5-chat-cache-v1-') || String(d.name).startsWith('f5-chat-cache-v2-'))) {
               try { indexedDB.deleteDatabase(d.name); } catch {}
             }
           });

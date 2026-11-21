@@ -5038,16 +5038,38 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     // Chats separados por contato (um lugar so, varias conversas): cada mensagem pertence ao numero com quem foi trocada.
     // So divide quando a ficha tem 2+ numeros diferentes. Mensagem de numero desconhecido/antigo fica no chat do contato principal.
     const phoneDigits = (v: unknown) => String(v || '').replace(/\D/g, '');
+    const isInstancePhone = (p: string) => {
+      const clean = phoneDigits(p);
+      if (clean.length < 8) return false;
+      return (sources || []).some(s => {
+        const sp = phoneDigits((s.configuration as any)?.connectedPhone || (s.configuration as any)?.whatsappNumber || '');
+        return sp.length >= 8 && isPhoneMatch(sp, clean);
+      });
+    };
     const knownRecipients = (availableRecipients || []).filter(r => !r.noPhone && phoneDigits(r.phone).length >= 8);
     const distinctRecipientPhones: string[] = [];
     knownRecipients.forEach(r => { if (!distinctRecipientPhones.some(p => isPhoneMatch(p, r.phone))) distinctRecipientPhones.push(r.phone); });
     const splitByContact = distinctRecipientPhones.length > 1;
     const selectedChatPhone = activeRecipient?.phone || '';
     const primaryChatPhone = (knownRecipients.find(r => r.isMain) || knownRecipients[0])?.phone || '';
-    const activityContactPhone = (a: any): string => phoneDigits(
-      a.recipientPhone || a.metadata?.recipientPhone || a.metadata?.fromPhone || a.metadata?.remoteJid ||
-      a.metadata?.phone || a.metadata?.senderPhone || a.metadata?.to || a.metadata?.from || ''
-    );
+    const activityContactPhone = (a: any): string => {
+      const candidates = [
+        a.recipientPhone,
+        a.metadata?.recipientPhone,
+        a.metadata?.contactPhone,
+        a.metadata?.fromPhone,
+        a.metadata?.remoteJid,
+        a.metadata?.phone,
+        a.metadata?.senderPhone,
+        a.metadata?.to,
+        a.metadata?.from,
+      ];
+      for (const c of candidates) {
+        const d = phoneDigits(c);
+        if (d.length >= 8 && !isInstancePhone(d)) return d;
+      }
+      return '';
+    };
 
     // Conversa por NÚMERO (Multi-Chip / Instâncias do Funil):
     // Cada mensagem pertence estritamente à instância com a qual foi trocada.
@@ -5162,17 +5184,20 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       if (isPostSaleChat) {
         if (selectedRecipientPhone) {
           const cleanRec = selectedRecipientPhone.replace(/\D/g, '');
-          const actPhone = (
+          const rawActPhone = (
             (a as any).recipientPhone ||
             (a as any).metadata?.recipientPhone ||
+            (a as any).metadata?.contactPhone ||
             (a as any).metadata?.fromPhone ||
             (a as any).metadata?.remoteJid ||
             (a as any).metadata?.phone ||
-            (a as any).metadata?.senderPhone ||
             (a as any).metadata?.to ||
             (a as any).metadata?.from ||
             ''
           ).replace(/\D/g, '');
+
+          // Se for telefone de uma de nossas instâncias, não é o telefone de um contato divergente
+          const actPhone = isInstancePhone(rawActPhone) ? '' : rawActPhone;
 
           if (actPhone && cleanRec && actPhone.length >= 8 && cleanRec.length >= 8 && !isPhoneMatch(actPhone, cleanRec)) {
             return false;
