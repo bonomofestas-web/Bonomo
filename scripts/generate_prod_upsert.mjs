@@ -12,13 +12,6 @@ const sb = createClient(env.VITE_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false },
 });
 
-const GENERATED_COLS = new Set([
-  'primary_phone_digits',
-  'secondary_phone_digits',
-  'cpf_digits',
-  'primary_phone_key',
-]);
-
 async function fetchAll(table, select = '*', orderCol = 'id') {
   const all = [];
   const pageSize = 500;
@@ -67,8 +60,7 @@ function sqlValue(col, v) {
 
 function buildBatchUpsert(table, rows, batchSize = 50) {
   if (!rows || rows.length === 0) return '';
-  const rawCols = Object.keys(rows[0]);
-  const cols = rawCols.filter(c => !GENERATED_COLS.has(c));
+  const cols = Object.keys(rows[0]);
   const updateCols = cols.filter(c => c !== 'id' && c !== 'created_at');
   const updateClauses = updateCols.map(c => `"${c}" = EXCLUDED."${c}"`).join(', ');
 
@@ -82,32 +74,30 @@ function buildBatchUpsert(table, rows, batchSize = 50) {
 }
 
 async function main() {
-  console.log('--- Buscando dados locais ---');
-  const contacts = await fetchAll('contacts');
-  const clients = await fetchAll('clients');
+  console.log('--- Buscando dados de contratos e financeiro ---');
   const contracts = await fetchAll('contracts');
   const reviews = await fetchAll('fin_contract_reviews');
   const receivables = await fetchAll('fin_receivables');
   const payables = await fetchAll('fin_payables');
 
-  // PARTE 1: Contatos, Clientes, Contratos e Revisões
+  console.log(`Contratos: ${contracts.length}`);
+  console.log(`Revisões Financeiras: ${reviews.length}`);
+  console.log(`Recebíveis (Finanças): ${receivables.length}`);
+  console.log(`A Pagar (Finanças): ${payables.length}`);
+
+  // PARTE 1: Apenas Contratos e Revisões de Finanças (SEM TOCAR EM CONTATOS/CLIENTES)
   const part1Header = [
     `-- ==============================================================================`,
-    `-- PARTE 1: CONTRATOS, CLIENTES, CONTATOS E REVISÕES DE FINANÇAS`,
+    `-- PARTE 1: ATUALIZAÇÃO DOS 218 CONTRATOS (PREÇOS, R2, STATUS) E REVISÕES`,
+    `-- NÃO MODIFICA A TABELA DE CONTATOS (ZERO RISCO DE CONFLITO DE TELEFONE)`,
     `-- Execute esta primeira parte no SQL Editor do Supabase`,
     `-- ==============================================================================`,
     `SET session_replication_role = 'replica';`,
     ``,
-    `-- 1. UPSERT CONTATOS (${contacts.length} registros)`,
-    buildBatchUpsert('contacts', contacts, 50),
-    ``,
-    `-- 2. UPSERT CLIENTES (${clients.length} registros)`,
-    buildBatchUpsert('clients', clients, 50),
-    ``,
-    `-- 3. UPSERT CONTRATOS COM PREÇOS, LINKS R2 E STATUS (${contracts.length} registros)`,
+    `-- 1. UPSERT CONTRATOS COM PREÇOS, LINKS R2 E STATUS (${contracts.length} registros)`,
     buildBatchUpsert('contracts', contracts, 50),
     ``,
-    `-- 4. UPSERT REVISÕES FINANCEIRAS (${reviews.length} registros)`,
+    `-- 2. UPSERT REVISÕES FINANCEIRAS (${reviews.length} registros)`,
     buildBatchUpsert('fin_contract_reviews', reviews, 50),
     ``,
     `SET session_replication_role = 'origin';`,
@@ -163,7 +153,7 @@ async function main() {
   writeFileSync('supabase/migrations/02_ATUALIZAR_FINANCEIRO_RECEBIVEIS_PARTE_1.sql', part2Header, 'utf-8');
   writeFileSync('supabase/migrations/03_ATUALIZAR_FINANCEIRO_RECEBIVEIS_PARTE_2.sql', part3Header, 'utf-8');
 
-  console.log('Scripts divididos gerados com sucesso!');
+  console.log('Scripts atualizados com sucesso!');
 }
 
 main().catch(err => {
