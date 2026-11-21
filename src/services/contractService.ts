@@ -4,7 +4,7 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { isUuid, generateUuid } from '../utils/uuid';
 import { generateBase36Code, buildContactSearchFilter, contactService, reciprocalKinship } from './contactService';
 import { generateSearchTermVariants } from '../utils/searchUtils';
-import { buildContractTitle } from '../utils/contractTitle';
+import { buildContractTitle, generateContractCode } from '../utils/contractTitle';
 import { canChangeEventType } from '../utils/accessPermissions';
 import { taskService } from './taskService';
 import type { Contract, ContractApprovalStatus, ContractFunnelPlacement, Lead } from '../types/admin';
@@ -396,11 +396,12 @@ export const contractService = {
         }
       }
 
-      const year = params.eventDate
-        ? new Date(params.eventDate).getFullYear()
-        : new Date().getFullYear();
-
-      const contractCode = params.contractCode || generateBase36Code(`CTR-${year}`, 6);
+      let venueName: string | null = null;
+      if (params.venueId) {
+        const { data: v } = await supabase.from('venues').select('name').eq('id', params.venueId).maybeSingle();
+        venueName = v?.name || null;
+      }
+      const contractCode = params.contractCode || generateContractCode(venueName, params.eventDate);
       // Nome do contrato = padrao unico `Contratante • Protagonista + tipo` (nao e texto livre)
       const snap: any = params.clientSnapshot || {};
       const standardTitle = buildContractTitle({
@@ -595,11 +596,13 @@ export const contractService = {
     }
 
     try {
-      const year = params.eventData.eventDate
-        ? new Date(params.eventData.eventDate).getFullYear()
-        : new Date().getFullYear();
-      
-      const contractCode = generateBase36Code(`CTR-${year}`, 6);
+      let venueName: string | null = null;
+      const vId = params.lead.venueId || (params.lead as any).venue_id;
+      if (vId) {
+        const { data: v } = await supabase.from('venues').select('name').eq('id', vId).maybeSingle();
+        venueName = v?.name || null;
+      }
+      const contractCode = generateContractCode(venueName, params.eventData.eventDate);
 
       // 1. Snapshot Cadastral Imutável (Blindagem Unilateral)
       const clientSnapshot = {
@@ -2493,8 +2496,7 @@ export const contractService = {
             contractId = existingContract.id;
             skippedCount++;
           } else {
-            const year = client.event_date ? new Date(client.event_date).getFullYear() : new Date().getFullYear();
-            const contractCode = client.client_code || generateBase36Code(`CTR-${year}`, 6);
+            const contractCode = client.client_code || generateContractCode(null, client.event_date);
             const isCompleted = client.stage === 'completed' || client.stage === 'festa_realizada';
 
             const clientSnapshot = {
