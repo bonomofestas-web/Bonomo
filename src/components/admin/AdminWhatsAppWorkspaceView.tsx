@@ -52,7 +52,7 @@ import { useMessagingPause } from '../../hooks/useMessagingPause';
 import { MessagingPausedBanner } from './MessagingPausedBanner';
 import { uazapiSseService } from '../../services/uazapiSseService';
 import { isSupabaseConfigured } from '../../lib/supabase';
-import { leadService, mergeAndSortActivities, isPhoneMatch } from '../../services/leadService';
+import { leadService, mergeAndSortActivities, isPhoneMatch, normalizeMessageId } from '../../services/leadService';
 import { contractService } from '../../services/contractService';
 import { getContractDocuments } from '../../utils/contractDocuments';
 import { whatsappMediaService, MediaDownloadError, describeMediaFailure, resolveMediaMessageIds } from '../../services/whatsappMediaService';
@@ -1968,13 +1968,42 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
 
   const sourceLeads = useMemo(() => {
     const rawLeads = leads; // Usa estritamente leads (scopedLeads isolado por tenant)
-    if (isPostSaleFunnel) {
-      // No WhatsApp Workspace (Caixa de Entrada / Mensagens), mantém todos os contatos ativos visíveis para atendimento
-      const postSaleLeads = filterExtraPostSaleLeads(rawLeads || [], clients || [], { forKanbanOnly: false });
-      return [...clientsAsLeads, ...postSaleLeads];
+    const combined = isPostSaleFunnel
+      ? [...clientsAsLeads, ...filterExtraPostSaleLeads(rawLeads || [], clients || [], { forKanbanOnly: false })]
+      : (rawLeads || []);
+
+    // REGRA DE OURO DA INBOX:
+    // Mesmo número em funis diferentes = cards legítimos e independentes (respeitando a esteira de cada funil)!
+    // No MESMO funil com o MESMO número: NUNCA duplica card (elimina gêmeos na lista de mensagens).
+    const seenFunnelPhones = new Map<string, Lead>();
+    const deduped: Lead[] = [];
+
+    for (const lead of combined) {
+      if (!lead || !lead.id) continue;
+      const phoneDigits = (lead.phone || '').replace(/\D/g, '').slice(-8);
+      // Chave única de conversa: funil + últimos 8 dígitos do telefone (ou id se não tiver telefone)
+      const chatKey = phoneDigits.length >= 8
+        ? `${lead.funnelId || 'default'}|${phoneDigits}`
+        : `id_${lead.id}`;
+
+      const existing = seenFunnelPhones.get(chatKey);
+      if (!existing) {
+        seenFunnelPhones.set(chatKey, lead);
+        deduped.push(lead);
+      } else {
+        // Se já existe um card com a mesma chave e o atual for o cliente oficial do pós-venda (com dados de contrato), ele substitui o lead solto
+        if (lead.isClient && !existing.isClient) {
+          const idx = deduped.findIndex(l => l.id === existing.id);
+          if (idx !== -1) {
+            deduped[idx] = lead;
+          }
+          seenFunnelPhones.set(chatKey, lead);
+        }
+      }
     }
-    return rawLeads;
-  }, [isPostSaleFunnel, clientsAsLeads, leads, activeFunnel]);
+
+    return deduped;
+  }, [isPostSaleFunnel, clientsAsLeads, leads, clients, activeFunnel]);
 
   // Filtered Leads List
   const filteredLeads = useMemo(() => {
@@ -3849,7 +3878,10 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       channelId: (activePostSaleChannelId !== 'geral') ? activePostSaleChannelId : undefined,
       channelName: (activePostSaleChannel) ? activePostSaleChannel.name : undefined,
       instanceId: activeSenderSource?.id,
-      metadata: getAppSenderMetadata(),
+      metadata: {
+        ...getAppSenderMetadata(),
+        isOptimistic: true,
+      },
     } as any;
 
     const updatedActivities = mergeAndSortActivities(selectedLead.activities || [], [newActivity], selectedLead.id);
@@ -4467,6 +4499,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
           ...getAppSenderMetadata(),
           fileName: file.name,
           caption: fileCaption || undefined,
+          isOptimistic: true,
         },
       } as any;
 
@@ -4540,7 +4573,10 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       authorId: currentUser?.id,
       authorAvatarUrl: currentUser?.avatarUrl,
       status: 'sent',
-      metadata: getAppSenderMetadata(),
+      metadata: {
+        ...getAppSenderMetadata(),
+        isOptimistic: true,
+      },
     } as any;
 
     const updatedActivities = mergeAndSortActivities(selectedLead.activities || [], [newActivity], selectedLead.id);
@@ -4715,7 +4751,10 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
         authorName: currentUser?.name || author,
         authorId: currentUser?.id,
         authorAvatarUrl: currentUser?.avatarUrl,
-        metadata: getAppSenderMetadata(),
+        metadata: {
+        ...getAppSenderMetadata(),
+        isOptimistic: true,
+      },
       } as any;
 
       const updatedActivities = mergeAndSortActivities(selectedLead.activities || [], [newActivity], selectedLead.id);
@@ -4820,15 +4859,27 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     }
 
     // 4. Varre sourceLeads e leads gerais para encontrar leads individuais de familiares (ex: lead da Carla quando estamos no contrato do Antônio)
+    // REGRA SUPREMA DO F5 SYSTEM:
+    // Mesmo WhatsApp em funis diferentes NUNCA se misturam nem centralizam (origem do funil respeitada 100%).
+    // Exclui o telefone do titular para não buscar o mesmo cliente em outros funis/cards.
+    const selectedLeadPhone = (selectedLead?.phone || '').replace(/\D/g, '');
     const familyPhones = (availableRecipients || [])
       .map(r => (r.phone || '').replace(/\D/g, ''))
-      .filter(p => p.length >= 8);
+      .filter(p => p.length >= 8 && (!selectedLeadPhone || p.slice(-8) !== selectedLeadPhone.slice(-8)));
 
-    if (familyPhones.length > 0) {
+    if (familyPhones.length > 0 && targetContractClient) {
       const candidates = (sourceLeads || []).concat(leads || []);
       const scannedIds = new Set<string>();
       candidates.forEach(sl => {
         if (!sl || sl.id === selectedLead?.id || scannedIds.has(sl.id)) return;
+        // Blindagem de Funil: Se pertencer a outro funil, isolamento absoluto!
+        if (sl.funnelId && selectedLead?.funnelId && sl.funnelId !== selectedLead.funnelId) return;
+
+        // Só mescla se estiver vinculado ao mesmo contrato oficial
+        const slContractId = (sl as any).contractId || (sl as any).contract_id;
+        const targetContractId = targetContractClient.id || (targetContractClient as any).contractId;
+        if (slContractId && targetContractId && slContractId !== targetContractId) return;
+
         scannedIds.add(sl.id);
         const slP = (sl.phone || '').replace(/\D/g, '');
         if (slP && familyPhones.some(fp => fp.slice(-8) === slP.slice(-8))) {
@@ -5170,11 +5221,30 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       if (act.id) seenIds.add(act.id);
 
       // REGRA MESTRA: O messageId é o REI absoluto!
-      // Se a mensagem possui messageId, deduplica estritamente por ele (permitindo mensagens intencionais sequenciais como "oi, oi, oi")
-      const actMsgId = act.messageId || (act.metadata as any)?.messageId || (act.metadata as any)?.waId;
+      // Se a mensagem possui messageId, deduplica estritamente por ele (normalizado sem prefixo)
+      const rawMsgId = act.messageId || (act.metadata as any)?.messageId || (act.metadata as any)?.waId;
+      const actMsgId = normalizeMessageId(rawMsgId);
       if (actMsgId) {
         if (seenMsgIds.has(actMsgId)) continue;
         seenMsgIds.add(actMsgId);
+
+        // Se uma mensagem otimista anterior com o mesmo texto já estiver na timeline nos últimos 8 segundos, substitui
+        const prevOptIdx = deduped.findIndex(p => {
+          const pMsgId = normalizeMessageId(p.messageId || (p.metadata as any)?.messageId);
+          if (pMsgId) return false;
+          const pText = (p.text || p.title || '').trim().toLowerCase();
+          const cText = (act.text || act.title || '').trim().toLowerCase();
+          if (pText && pText === cText) {
+            const pTime = new Date(p.timestamp || 0).getTime();
+            const cTime = new Date(act.timestamp || 0).getTime();
+            return Math.abs(cTime - pTime) < 8000;
+          }
+          return false;
+        });
+        if (prevOptIdx !== -1) {
+          deduped[prevOptIdx] = act;
+          continue;
+        }
       } else {
         // Se a mensagem veio SEM messageId:
         // Compara com a última mensagem adicionada na timeline para evitar duplicação imediata de renderização
@@ -5186,8 +5256,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
             const prevTime = new Date(prevAct.timestamp || 0).getTime();
             const currTime = new Date(act.timestamp || 0).getTime();
             const diffSec = Math.abs(currTime - prevTime) / 1000;
-            // Se tem o mesmo texto exato e ocorreu em até 3 segundos sem messageId: é duplicata de renderização/webhook
-            if (diffSec <= 3) {
+            // Se tem o mesmo texto exato e ocorreu em até 8 segundos sem messageId: é duplicata de renderização/webhook
+            if (diffSec <= 8) {
               continue;
             }
           }
@@ -8263,16 +8333,16 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                             effectiveMediaUrl = effectiveMediaUrl || parsedUrl;
                             if (mimetype.includes('image') || effectiveText.includes('imageMessage')) {
                               effectiveMediaType = 'image';
-                              effectiveText = '📷 Foto';
+                              effectiveText = parsed.caption || parsed.text || '📷 Foto';
                             } else if (mimetype.includes('video') || effectiveText.includes('videoMessage')) {
                               effectiveMediaType = 'video';
-                              effectiveText = '🎥 Vídeo';
+                              effectiveText = parsed.caption || parsed.text || '🎥 Vídeo';
                             } else if (mimetype.includes('audio') || parsed.ptt || effectiveText.includes('ptt') || effectiveText.includes('audioMessage')) {
                               effectiveMediaType = 'audio';
                               effectiveText = '🎵 Mensagem de voz';
                             } else if (mimetype.includes('pdf') || mimetype.includes('document') || effectiveText.includes('documentMessage')) {
                               effectiveMediaType = 'document';
-                              effectiveText = '📄 Documento';
+                              effectiveText = parsed.fileName ? `📄 Documento: ${parsed.fileName}` : (parsed.caption || parsed.text || '📄 Documento');
                             }
                           }
                         } catch {
@@ -8280,15 +8350,18 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                           if (urlMatch) {
                             effectiveMediaUrl = effectiveMediaUrl || urlMatch[1] || urlMatch[0];
                             const lowerText = effectiveText.toLowerCase();
+                            const capMatch = effectiveText.match(/"caption"\s*:\s*"([^"]+)"/i);
+                            const parsedCaption = capMatch ? capMatch[1] : '';
+
                             if (lowerText.includes('image') || /\.(jpg|jpeg|png|webp|gif)/i.test(effectiveMediaUrl)) {
                               effectiveMediaType = 'image';
-                              effectiveText = '📷 Foto';
+                              effectiveText = parsedCaption || '📷 Foto';
                             } else if (lowerText.includes('video') || /\.(mp4|mov|webm)/i.test(effectiveMediaUrl)) {
                               effectiveMediaType = 'video';
-                              effectiveText = '🎥 Vídeo';
+                              effectiveText = parsedCaption || '🎥 Vídeo';
                             } else if (lowerText.includes('document') || lowerText.includes('pdf') || /\.(pdf|docx?|xlsx?)/i.test(effectiveMediaUrl)) {
                               effectiveMediaType = 'document';
-                              effectiveText = '📄 Documento';
+                              effectiveText = parsedCaption || '📄 Documento';
                             } else if (lowerText.includes('audio') || lowerText.includes('ptt') || /\.(ogg|mp3|opus|wav)/i.test(effectiveMediaUrl)) {
                               effectiveMediaType = 'audio';
                               effectiveText = '🎵 Mensagem de voz';
@@ -8312,12 +8385,19 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                       const msgRawContent = effectiveMediaUrl || effectiveText || '';
                       const isInstagramMsg = Boolean(msgRawContent && /https?:\/\/(www\.)?instagram\.com/i.test(msgRawContent));
                       const instagramMsgUrl = msgRawContent.match(/https?:\/\/(?:www\.)?instagram\.com[^\s]*/i)?.[0] || msgRawContent;
-                      const isAudioMsg = Boolean(
-                        (effectiveMediaType === 'audio' && !/\.(jpe?g|png|webp|gif|mp4|mov|pdf|docx?)(\?.*)?$/i.test(effectiveMediaUrl || '')) ||
+
+                      const hasExplicitNonAudioMedia = 
+                        effectiveMediaType === 'image' || act.mediaType === 'image' ||
+                        effectiveMediaType === 'video' || act.mediaType === 'video' ||
+                        effectiveMediaType === 'document' || act.mediaType === 'document' ||
+                        isSticker;
+
+                      const isAudioMsg = !hasExplicitNonAudioMedia && Boolean(
+                        effectiveMediaType === 'audio' ||
                         (effectiveMediaUrl && (
                           effectiveMediaUrl.startsWith('data:audio') ||
                           /\.(ogg|mp3|opus|wav|m4a|aac)(\?.*)?$/i.test(effectiveMediaUrl) ||
-                          (effectiveMediaUrl.includes('mmg.whatsapp.net') && (effectiveText.includes('🎵') || effectiveText.includes('voz')))
+                          (effectiveMediaUrl.includes('mmg.whatsapp.net') && (effectiveText.includes('🎵') || effectiveText.toLowerCase().includes('voz') || effectiveText.toLowerCase().includes('áudio')))
                         ))
                       );
 

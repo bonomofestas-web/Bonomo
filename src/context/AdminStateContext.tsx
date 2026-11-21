@@ -59,7 +59,7 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { venueService } from '../services/venueService';
 import { funnelService } from '../services/funnelService';
 import { getDefaultPostSaleFunnelId } from '../utils/funnelUtils';
-import { leadService, isPhoneMatch, mergeAndSortActivities, findMatchingLead, isGenericOrFamilyNickname, formatActivityFromDb, formatLeadFromDb } from '../services/leadService';
+import { leadService, isPhoneMatch, mergeAndSortActivities, findMatchingLead, isGenericOrFamilyNickname, formatActivityFromDb, formatLeadFromDb, normalizeMessageId } from '../services/leadService';
 import { sourceService } from '../services/sourceService';
 import { debutanteService, taskService } from '../services/debutanteService';
 import { appointmentService } from '../services/appointmentService';
@@ -2060,13 +2060,13 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                 const formatted = formatActivityFromDb(newRow);
                 const isMatchingAct = (a: LeadActivity) => {
                   if (a.id === formatted.id) return true;
-                  const aMsgId = a.messageId || (a.metadata as any)?.messageId;
-                  const fMsgId = formatted.messageId || (formatted.metadata as any)?.messageId;
+                  const aMsgId = normalizeMessageId(a.messageId || (a.metadata as any)?.messageId);
+                  const fMsgId = normalizeMessageId(formatted.messageId || (formatted.metadata as any)?.messageId);
                   if (aMsgId && fMsgId) return aMsgId === fMsgId;
                   const actBothAudio = (formatted.mediaType === 'audio' || formatted.text?.includes('🎵')) &&
                                        (a.mediaType === 'audio' || a.text?.includes('🎵'));
                   if ((a.text === formatted.text || actBothAudio) &&
-                      Math.abs(new Date(a.timestamp).getTime() - new Date(formatted.timestamp).getTime()) < 3500) {
+                      Math.abs(new Date(a.timestamp).getTime() - new Date(formatted.timestamp).getTime()) < 8000) {
                     return true;
                   }
                   return false;
@@ -2133,11 +2133,13 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                 const formatted = formatActivityFromDb(newRow);
                 const isMatchingAct = (a: LeadActivity) => {
                   if (a.id === formatted.id) return true;
-                  const aMsgId = a.messageId || (a.metadata as any)?.messageId;
-                  const fMsgId = formatted.messageId || (formatted.metadata as any)?.messageId;
+                  const aMsgId = normalizeMessageId(a.messageId || (a.metadata as any)?.messageId);
+                  const fMsgId = normalizeMessageId(formatted.messageId || (formatted.metadata as any)?.messageId);
                   if (aMsgId && fMsgId) return aMsgId === fMsgId;
-                  if (a.type === formatted.type && a.text === formatted.text &&
-                      Math.abs(new Date(a.timestamp).getTime() - new Date(formatted.timestamp).getTime()) < 3500) {
+                  const actBothAudio = (formatted.mediaType === 'audio' || formatted.text?.includes('🎵')) &&
+                                       (a.mediaType === 'audio' || a.text?.includes('🎵'));
+                  if ((a.text === formatted.text || actBothAudio) &&
+                      Math.abs(new Date(a.timestamp).getTime() - new Date(formatted.timestamp).getTime()) < 8000) {
                     return true;
                   }
                   return false;

@@ -42,6 +42,31 @@ Grande reestruturação de governança, experiência do usuário, banco de dados
 
 ### Recursos e Melhorias em Staging
 
+- **Isolamento de Origem Multi-Funil para o Mesmo WhatsApp e Eliminação de Cards Gêmeos:**
+  * **Respeito Estrito à Origem do Funil:** Implementado o isolamento total de atividades entre esteiras (`effectiveLeadActivities`). Clientes com o mesmo número de WhatsApp em funis distintos (ex: `CLI-ACJF7Y` no funil `RLZ ADM` e `CLI-JRBZ2S` no funil `RLZ POS`) mantêm conversas 100% isoladas à respectiva esteira/instância, sem mesclar nem centralizar históricos.
+  * **Desduplicação de Cards na Inbox:** Criada chave única de conversa por esteira e telefone (`funnelId|phoneLast8`). Elimina duplicações de cards na lista de mensagens (`Frr Roni` e `Financeiro Realizar`), preservando o card oficial do cliente e descartando leads soltos idênticos.
+
+- **Eliminação de Mensagens Duplicadas em Tempo Real:**
+  * **Normalização Universal de MessageId:** Criado helper `normalizeMessageId` que extrai o ID canônico da mensagem removendo prefixos de instância (`5521...:wamid` vs `wamid`), unificando reconciliações no `mergeAndSortActivities`, `AdminStateContext` (`postgres_changes`) e no `timelineActivities`.
+  * **Reconciliação Otimista Rápida:** Mensagens otimistas recém-enviadas pelo frontend são marcadas com `isOptimistic: true` e reconciliadas com tolerância de até 8s, substituindo o card provisório pelo oficial sem gerar mensagem fantasma que exigia F5.
+  * **Tratamento Idempotente de Erro 23505:** No `leadService.addActivity`, conflitos de chave única (`idx_lead_activities_unique_msg_id`) são tratados como sucesso silencioso, eliminando logs vermelhos 409 no console.
+
+- **Correção da Conversão de Imagens e Arquivos em Áudio no WhatsApp:**
+  * **Higienização de Parser e Fallback:** Em `formatActivityFromDb` e `AdminWhatsAppWorkspaceView`, sanado o fallback que forçava `mediaType = 'audio'` em URLs da Meta/UAZAPI ou em erros de JSON, inspecionando rigorosamente o `mimetype` e extensões de imagem/vídeo/documento.
+  * **Preservação de Legendas (Captions):** A legenda inserida na imagem é preservada no `text` da mensagem e nunca mais substituída pelo marcador de áudio.
+  * **Blindagem Visual dos Balões:** Condição estrita que impede mídias com `mediaType === 'image'` ou `document` de serem renderizadas como reprodutor de voz.
+
+- **Divisão das Migrations de Produção em Partes Leves (< 400 KB):**
+  * O gerador `scripts/generate_prod_sync_all.mjs` agora particiona a sincronização em 4 arquivos sequenciais perfeitamente compatíveis com o limite do SQL Editor do Supabase:
+    * `05A_SINCRONIZAR_ESTRUTURA_E_CONTATOS.sql` (158 KB): Estrutura DDL, contatos, dependentes, setores e cargos.
+    * `05B_SINCRONIZAR_218_CONTRATOS.sql` (375 KB): Limpeza de legados e upsert dos 218 contratos reais.
+    * `05C_SINCRONIZAR_218_CLIENTES_POSVENDA.sql` (334 KB): Upsert dos 218 clientes no pós-venda e reviews financeiros.
+    * `05D_SINCRONIZAR_AGENDA_METAS_TAREFAS.sql` (150 KB): 217 eventos da agenda, tarefas operacionais e metas das casas.
+  * Mantido também o arquivo unificado `05_SINCRONIZAR_PRODUCAO_218_CONTRATOS_CLIENTES_AGENDA.sql` para execução via terminal psql.
+
+- **Interface da Central de Funis de Pós-Venda:**
+  * Ajustado o menu de ações do cabeçalho em `AdminCrmKanbanView.tsx` e `AdminPortal.tsx`: no Pós-Venda, inibido o botão redundante `+ Novo Funil Pós-Venda`, mantendo exclusivamente o botão oficial de ação primária `+ Criar Contrato`.
+
 - **Correção Definitiva do Calendário Financeiro & Blindagem de Permissões de Diretoria:**
   * **Resolução da Tela em Branco no Calendário:** Eliminado o retorno condicional `null` nas rotas do financeiro em `AdminPortal.tsx`.
   * **Permissões Plenas para Diretoria:** `isUserDirector` integrado a todas as checagens críticas de sistema (`canAccessFinance`, `canChangeEventType`, `canChangeLeadVenue`, `canViewContractDocument`, etc.), garantindo acesso executivo imediato.

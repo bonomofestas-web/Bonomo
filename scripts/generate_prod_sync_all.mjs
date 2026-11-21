@@ -107,7 +107,7 @@ async function main() {
   console.log(`Venue Agenda Configs: ${venueAgendaConfigs.length}`);
   console.log(`Venue Goals: ${venueGoals.length}`);
 
-  const sql = [
+  const sqlHeader = [
     `-- ==============================================================================`,
     `-- F5 SYSTEM • SINCRONIZAÇÃO COMPLETA DE PRODUÇÃO:`,
     `-- Contatos (${contacts.length}), Dependentes (${contactDependents.length}), Contratos (${contracts.length}),`,
@@ -163,7 +163,135 @@ async function main() {
     `ALTER TABLE public.contracts ADD COLUMN IF NOT EXISTS client_id UUID;`,
     `ALTER TABLE public.contacts ADD COLUMN IF NOT EXISTS is_supplier BOOLEAN DEFAULT FALSE;`,
     `ALTER TABLE public.contacts ADD COLUMN IF NOT EXISTS supplier_profile JSONB DEFAULT '{}'::jsonb;`,
+    ``
+  ].join('\n');
+
+  // PARTE 1 (05A): ESTRUTURA, CONTATOS, DEPENDENTES E CARGOS/SETORES
+  const sqlPartA = [
+    `-- ==============================================================================`,
+    `-- F5 SYSTEM • MIGRATION 05A: ESTRUTURA, CONTATOS E CARGOS DINÂMICOS`,
+    `-- Execução 1 de 3 no SQL Editor do Supabase`,
+    `-- ==============================================================================`,
+    sqlHeader,
+    `-- 1. UPSERT DOS CONTATOS E DEPENDENTES`,
+    buildBatchUpsert('contacts', contacts, 50),
     ``,
+    buildBatchUpsert('contact_dependents', contactDependents, 50),
+    ``,
+    `-- 2. UPSERT DOS SETORES E CARGOS DINÂMICOS (DIRETORIA, COMERCIAL, ETC)`,
+    buildBatchUpsert('job_sectors', jobSectors, 50),
+    ``,
+    buildBatchUpsert('job_roles', jobRoles, 50),
+    ``,
+    buildBatchUpsert('job_role_labels', jobRoleLabels, 50),
+    ``,
+    buildBatchUpsert('job_role_order', jobRoleOrder, 50),
+    ``,
+    `SET session_replication_role = 'origin';`,
+    ``,
+    `SELECT `,
+    `  (SELECT count(*) FROM public.contacts) as total_contatos,`,
+    `  (SELECT count(*) FROM public.contact_dependents) as total_dependentes,`,
+    `  (SELECT count(*) FROM public.job_sectors) as total_setores,`,
+    `  (SELECT count(*) FROM public.job_roles) as total_cargos;`
+  ].join('\n');
+
+  // PARTE 2 (05B): LIMPEZA E UPSERT DOS 218 CONTRATOS REAIS
+  const sqlPartB = [
+    `-- ==============================================================================`,
+    `-- F5 SYSTEM • MIGRATION 05B: 218 CONTRATOS REAIS`,
+    `-- Execução 2 de 4 no SQL Editor do Supabase`,
+    `-- ==============================================================================`,
+    `SET session_replication_role = 'replica';`,
+    ``,
+    `-- GARANTE COLUNAS NECESSÁRIAS NAS TABELAS DE CONTRATOS`,
+    `ALTER TABLE public.contracts ADD COLUMN IF NOT EXISTS contact_id UUID;`,
+    `ALTER TABLE public.contracts ADD COLUMN IF NOT EXISTS venue_id UUID;`,
+    `ALTER TABLE public.contracts ADD COLUMN IF NOT EXISTS client_id UUID;`,
+    ``,
+    `-- 1. LIMPEZA DOS CONTRATOS LEGADOS (MANTÉM APENAS OS 218 REAIS)`,
+    `DELETE FROM public.contracts `,
+    `WHERE commercial_fields_snapshot->>'origem' IS NULL `,
+    `   OR commercial_fields_snapshot->>'origem' != 'importacao_contratos';`,
+    ``,
+    `-- 2. UPSERT DOS 218 CONTRATOS REAIS`,
+    buildBatchUpsert('contracts', contracts, 50),
+    ``,
+    `SET session_replication_role = 'origin';`,
+    ``,
+    `SELECT (SELECT count(*) FROM public.contracts) as total_contratos_reais;`
+  ].join('\n');
+
+  // PARTE 3 (05C): CLIENTES NO PÓS-VENDA E REVIEWS FINANCEIROS
+  const sqlPartC = [
+    `-- ==============================================================================`,
+    `-- F5 SYSTEM • MIGRATION 05C: 218 CLIENTES PÓS-VENDA E REVIEWS FINANCEIROS`,
+    `-- Execução 3 de 4 no SQL Editor do Supabase`,
+    `-- ==============================================================================`,
+    `SET session_replication_role = 'replica';`,
+    ``,
+    `-- GARANTE COLUNAS NECESSÁRIAS NA TABELA DE CLIENTES`,
+    `ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS contract_id UUID;`,
+    `ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS contract_title TEXT;`,
+    `ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS avatar_url TEXT;`,
+    `ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS migrated_to_contract_id UUID;`,
+    `ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS migrated_to_contact_id UUID;`,
+    `ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS migrated_at TIMESTAMPTZ;`,
+    ``,
+    `-- 1. UPSERT DOS 218 CLIENTES NO PÓS-VENDA`,
+    buildBatchUpsert('clients', clients, 50),
+    ``,
+    `-- 2. UPSERT DOS REVIEWS FINANCEIROS`,
+    buildBatchUpsert('fin_contract_reviews', contractReviews, 50),
+    ``,
+    `SET session_replication_role = 'origin';`,
+    ``,
+    `SELECT `,
+    `  (SELECT count(*) FROM public.clients) as total_clientes_posvenda,`,
+    `  (SELECT count(*) FROM public.fin_contract_reviews) as total_reviews_financeiros;`
+  ].join('\n');
+
+  // PARTE 4 (05D): AGENDA DE EVENTOS, TAREFAS OPERACIONAIS E METAS DAS CASAS
+  const sqlPartD = [
+    `-- ==============================================================================`,
+    `-- F5 SYSTEM • MIGRATION 05D: AGENDA DE EVENTOS, TAREFAS OPERACIONAIS E METAS`,
+    `-- Execução 4 de 4 no SQL Editor do Supabase`,
+    `-- ==============================================================================`,
+    `SET session_replication_role = 'replica';`,
+    ``,
+    `-- 1. UPSERT DOS 217 EVENTOS NA AGENDA DE EVENTOS`,
+    buildBatchUpsert('venue_events', events, 50),
+    ``,
+    `-- 2. UPSERT DO WORKSPACE DE TAREFAS (DATABASES, STATUSES, TYPES)`,
+    buildBatchUpsert('task_databases', taskDatabases, 50),
+    ``,
+    buildBatchUpsert('task_custom_statuses', taskStatuses, 50),
+    ``,
+    buildBatchUpsert('task_custom_types', taskTypes, 50),
+    ``,
+    `-- 3. UPSERT DAS 59 TAREFAS OPERACIONAIS DOS CONTRATOS`,
+    buildBatchUpsert('admin_tasks', adminTasks, 50),
+    ``,
+    `-- 4. UPSERT DAS CONFIGURAÇÕES DE AGENDA E METAS DAS CASAS`,
+    buildBatchUpsert('venue_agenda_configs', venueAgendaConfigs, 50),
+    ``,
+    buildBatchUpsert('venue_goals', venueGoals, 50),
+    ``,
+    `SET session_replication_role = 'origin';`,
+    ``,
+    `-- VERIFICAÇÃO FINAL COMPLETA:`,
+    `SELECT `,
+    `  (SELECT count(*) FROM public.contacts) as total_contatos,`,
+    `  (SELECT count(*) FROM public.contracts) as total_contratos_reais,`,
+    `  (SELECT count(*) FROM public.clients) as total_clientes_posvenda,`,
+    `  (SELECT count(*) FROM public.venue_events) as total_eventos_agenda,`,
+    `  (SELECT count(*) FROM public.admin_tasks) as total_tarefas_admin,`,
+    `  (SELECT count(*) FROM public.job_sectors) as total_setores;`
+  ].join('\n');
+
+  // ARQUIVO UNIFICADO (para quem roda via psql CLI)
+  const sqlFull = [
+    sqlHeader,
     `-- 1. UPSERT DOS CONTATOS E DEPENDENTES`,
     buildBatchUpsert('contacts', contacts, 50),
     ``,
@@ -222,9 +350,25 @@ async function main() {
     `  (SELECT count(*) FROM public.job_sectors) as total_setores;`
   ].join('\n');
 
-  const outPath = 'supabase/migrations/05_SINCRONIZAR_PRODUCAO_218_CONTRATOS_CLIENTES_AGENDA.sql';
-  writeFileSync(outPath, sql, 'utf-8');
-  console.log(`✅ Gerado com sucesso: ${outPath} (${(sql.length / 1024).toFixed(1)} KB)`);
+  const outPathA = 'supabase/migrations/05A_SINCRONIZAR_ESTRUTURA_E_CONTATOS.sql';
+  writeFileSync(outPathA, sqlPartA, 'utf-8');
+  console.log(`✅ Gerado: ${outPathA} (${(sqlPartA.length / 1024).toFixed(1)} KB)`);
+
+  const outPathB = 'supabase/migrations/05B_SINCRONIZAR_218_CONTRATOS.sql';
+  writeFileSync(outPathB, sqlPartB, 'utf-8');
+  console.log(`✅ Gerado: ${outPathB} (${(sqlPartB.length / 1024).toFixed(1)} KB)`);
+
+  const outPathC = 'supabase/migrations/05C_SINCRONIZAR_218_CLIENTES_POSVENDA.sql';
+  writeFileSync(outPathC, sqlPartC, 'utf-8');
+  console.log(`✅ Gerado: ${outPathC} (${(sqlPartC.length / 1024).toFixed(1)} KB)`);
+
+  const outPathD = 'supabase/migrations/05D_SINCRONIZAR_AGENDA_METAS_TAREFAS.sql';
+  writeFileSync(outPathD, sqlPartD, 'utf-8');
+  console.log(`✅ Gerado: ${outPathD} (${(sqlPartD.length / 1024).toFixed(1)} KB)`);
+
+  const outPathFull = 'supabase/migrations/05_SINCRONIZAR_PRODUCAO_218_CONTRATOS_CLIENTES_AGENDA.sql';
+  writeFileSync(outPathFull, sqlFull, 'utf-8');
+  console.log(`✅ Gerado unificado: ${outPathFull} (${(sqlFull.length / 1024).toFixed(1)} KB)`);
 }
 
 main().catch(err => {

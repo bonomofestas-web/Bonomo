@@ -488,22 +488,42 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         let mediaUrl = msg.fileURL || msg.mediaUrl || msg.file || payload?.fileURL || payload?.mediaUrl || undefined;
         let mediaType = 'text';
 
+        const rawMime = String(msg.mimetype || msg.mime || payload?.mimetype || payload?.mime || '').toLowerCase();
         const msgType = String(msg.messageType || msg.type || payload?.messageType || '').toLowerCase();
-        if (msgType.includes('image')) {
+        if (msgType.includes('image') || rawMime.startsWith('image/')) {
           mediaType = 'image';
           text = msg.text || msg.caption || '📷 Foto';
-        } else if (msgType.includes('video') || msgType.includes('ptv')) {
+        } else if (msgType.includes('video') || msgType.includes('ptv') || rawMime.startsWith('video/')) {
           mediaType = 'video';
           text = msg.text || msg.caption || '🎥 Vídeo';
-        } else if (msgType.includes('audio') || msgType.includes('myaudio') || msgType.includes('ptt') || msgType.includes('voice')) {
+        } else if (msgType.includes('audio') || msgType.includes('myaudio') || msgType.includes('ptt') || msgType.includes('voice') || rawMime.startsWith('audio/')) {
           mediaType = 'audio';
           text = '🎵 Mensagem de voz';
-        } else if (msgType.includes('document')) {
+        } else if (msgType.includes('document') || rawMime.startsWith('application/') || rawMime.startsWith('text/')) {
           mediaType = 'document';
           text = msg.fileName ? `📄 Documento: ${msg.fileName}` : (msg.text || '📄 Documento');
         } else if (msgType.includes('sticker')) {
           mediaType = 'image';
           text = '✨ Figurinha';
+        }
+
+        // Se o texto vier como JSON em string contendo URL/caption da UAZAPI
+        const candidateRaw = typeof msg.text === 'string' ? msg.text : typeof msg.body === 'string' ? msg.body : typeof msg.content === 'string' ? msg.content : '';
+        if (candidateRaw && candidateRaw.startsWith('{') && (candidateRaw.includes('URL') || candidateRaw.includes('mimetype') || candidateRaw.includes('caption'))) {
+          try {
+            const parsed = JSON.parse(candidateRaw);
+            const foundUrl = parsed.URL || parsed.url || parsed.fileURL || parsed.mediaUrl;
+            if (foundUrl) mediaUrl = foundUrl;
+            const parsedMime = String(parsed.mimetype || parsed.mime || '').toLowerCase();
+            if (parsedMime.includes('image') || candidateRaw.includes('imageMessage')) mediaType = 'image';
+            else if (parsedMime.includes('video') || candidateRaw.includes('videoMessage')) mediaType = 'video';
+            else if (parsedMime.includes('audio') || candidateRaw.includes('audioMessage')) mediaType = 'audio';
+            else if (parsedMime.includes('document') || candidateRaw.includes('documentMessage')) mediaType = 'document';
+            if (parsed.caption) text = parsed.caption;
+            else if (parsed.text) text = parsed.text;
+          } catch {
+            // mantém candidateRaw se não for JSON válido
+          }
         }
 
         if (typeof msg.text === 'string' && msg.text.trim()) {

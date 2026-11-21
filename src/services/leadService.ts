@@ -164,6 +164,19 @@ export function inferMediaTypeFromUrlOrName(urlOrName?: string): 'image' | 'vide
 }
 
 /**
+ * Normaliza messageId do WhatsApp removendo prefixos de instância/proprietário (ex: "5521996803826:3EB0..." -> "3EB0...")
+ */
+export function normalizeMessageId(id?: string | null): string {
+  if (!id) return '';
+  const trimmed = String(id).trim();
+  const colonIdx = trimmed.lastIndexOf(':');
+  if (colonIdx !== -1 && colonIdx < trimmed.length - 1) {
+    return trimmed.slice(colonIdx + 1);
+  }
+  return trimmed;
+}
+
+/**
  * Converte um registro bruto de atividade do PostgreSQL / Supabase para o modelo LeadActivity
  */
 export function formatActivityFromDb(a: any): LeadActivity {
@@ -191,27 +204,52 @@ export function formatActivityFromDb(a: any): LeadActivity {
       const parsed = JSON.parse(rawText);
       const foundUrl = parsed.URL || parsed.url || parsed.fileURL || parsed.mediaUrl || parsed.directPath;
       const mimetype = String(parsed.mimetype || parsed.mime || '').toLowerCase();
+      const captionText = parsed.caption || parsed.text || '';
       if (foundUrl) {
         mediaUrl = foundUrl;
-        if (mimetype.includes('image')) {
+        if (mimetype.includes('image') || rawText.includes('imageMessage')) {
           mediaType = 'image';
-          text = '📷 Foto';
-        } else if (mimetype.includes('video')) {
+          text = captionText || '📷 Foto';
+        } else if (mimetype.includes('video') || rawText.includes('videoMessage')) {
           mediaType = 'video';
-          text = '🎥 Vídeo';
+          text = captionText || '🎥 Vídeo';
         } else if (mimetype.includes('audio') || parsed.ptt || rawText.includes('ptt') || rawText.includes('audioMessage')) {
           mediaType = 'audio';
           text = '🎵 Mensagem de voz';
+        } else if (mimetype.includes('document') || mimetype.includes('pdf') || rawText.includes('documentMessage')) {
+          mediaType = 'document';
+          text = parsed.fileName ? `📄 Documento: ${parsed.fileName}` : (captionText || '📄 Documento');
         } else {
-          text = rawText;
+          const inferred = inferMediaTypeFromUrlOrName(foundUrl);
+          mediaType = inferred;
+          text = captionText || (inferred === 'image' ? '📷 Foto' : inferred === 'video' ? '🎥 Vídeo' : inferred === 'audio' ? '🎵 Mensagem de voz' : rawText);
         }
       }
     } catch {
-      const urlMatch = rawText.match(/"URL"\s*:\s*"([^"]+)"/i) || (rawText.includes('audio') ? rawText.match(/https:\/\/mmg\.whatsapp\.net[^\s"'}]+/i) : null);
+      const urlMatch = rawText.match(/"URL"\s*:\s*"([^"]+)"/i) || rawText.match(/https:\/\/mmg\.whatsapp\.net[^\s"'}]+/i);
       if (urlMatch) {
         mediaUrl = urlMatch[1] || urlMatch[0];
-        mediaType = 'audio';
-        text = '🎵 Mensagem de voz';
+        const mimeMatch = rawText.match(/"mimetype"\s*:\s*"([^"]+)"/i);
+        const mime = mimeMatch ? mimeMatch[1].toLowerCase() : '';
+        const capMatch = rawText.match(/"caption"\s*:\s*"([^"]+)"/i);
+        const caption = capMatch ? capMatch[1] : '';
+
+        if (mime.includes('image') || rawText.includes('imageMessage') || /\.(jpg|jpeg|png|webp|gif)/i.test(mediaUrl)) {
+          mediaType = 'image';
+          text = caption || '📷 Foto';
+        } else if (mime.includes('video') || rawText.includes('videoMessage') || /\.(mp4|mov|webm)/i.test(mediaUrl)) {
+          mediaType = 'video';
+          text = caption || '🎥 Vídeo';
+        } else if (mime.includes('document') || mime.includes('pdf') || rawText.includes('documentMessage') || /\.(pdf|docx?|xlsx?)/i.test(mediaUrl)) {
+          mediaType = 'document';
+          text = caption || '📄 Documento';
+        } else if (mime.includes('audio') || rawText.includes('ptt') || rawText.includes('audioMessage') || /\.(ogg|mp3|opus|wav)/i.test(mediaUrl)) {
+          mediaType = 'audio';
+          text = '🎵 Mensagem de voz';
+        } else {
+          mediaType = inferMediaTypeFromUrlOrName(mediaUrl);
+          text = caption || (mediaType === 'image' ? '📷 Foto' : mediaType === 'video' ? '🎥 Vídeo' : '🎵 Mensagem de voz');
+        }
       }
     }
   } else if (!mediaUrl && rawText.startsWith('data:audio/')) {
@@ -1063,17 +1101,21 @@ export const leadService = {
       const { error } = await supabase.from('lead_activities').insert(insertPayload);
       if (error) {
         // Se a atividade já foi gravada por webhook concorrente ou sincronização (idempotência por messageId)
-        if ((error as any).code === '23505' || error.message?.includes('idx_lead_activities_unique_msg_id') || error.message?.includes('duplicate key')) {
+        const errCode = String((error as any).code || '');
+        const errMsg = String(error.message || '');
+        if (errCode === '23505' || errMsg.includes('idx_lead_activities_unique_msg_id') || errMsg.includes('duplicate key') || errMsg.includes('violates unique constraint')) {
           return true;
         }
         // Se o erro foi por coluna não existente no banco legado, tenta sem as colunas extras
-        if (error.message?.includes('status') || error.message?.includes('error_message') || error.message?.includes('metadata')) {
+        if (errMsg.includes('status') || errMsg.includes('error_message') || errMsg.includes('metadata')) {
           delete insertPayload.status;
           delete insertPayload.error_message;
           delete insertPayload.metadata;
           const { error: retryError } = await supabase.from('lead_activities').insert(insertPayload);
           if (retryError) {
-            if ((retryError as any).code === '23505' || retryError.message?.includes('duplicate key')) {
+            const retryCode = String((retryError as any).code || '');
+            const retryMsg = String(retryError.message || '');
+            if (retryCode === '23505' || retryMsg.includes('duplicate key') || retryMsg.includes('violates unique constraint')) {
               return true;
             }
           }
@@ -1083,7 +1125,12 @@ export const leadService = {
         return false;
       }
       return true;
-    } catch (err) {
+    } catch (err: any) {
+      const errCode = String(err?.code || '');
+      const errMsg = String(err?.message || '');
+      if (errCode === '23505' || errMsg.includes('idx_lead_activities_unique_msg_id') || errMsg.includes('duplicate key')) {
+        return true;
+      }
       console.error('❌ Falha em leadService.addActivity:', err);
       return false;
     }
@@ -2002,31 +2049,40 @@ export function mergeAndSortActivities(acts1: LeadActivity[] = [], acts2: LeadAc
       if (existing.id && act.id && existing.id === act.id) return true;
 
       // Identificação por código único da mensagem no WhatsApp (wamid / messageId da API)
-      const existingMsgId = existing.messageId || (existing.metadata as any)?.messageId;
-      const actMsgId = act.messageId || (act.metadata as any)?.messageId;
+      const existingMsgId = normalizeMessageId(existing.messageId || (existing.metadata as any)?.messageId);
+      const actMsgId = normalizeMessageId(act.messageId || (act.metadata as any)?.messageId);
 
       // REGRA FUNDAMENTAL DO WHATSAPP:
       // Se ambas as mensagens possuem messageId do WhatsApp:
-      // - Se os IDs forem IGUAIS, é a exata mesma mensagem (duplicata de eco) -> descarta
+      // - Se os IDs normalizados forem IGUAIS, é a exata mesma mensagem (duplicata de eco) -> descarta
       // - Se os IDs forem DIFERENTES, são DUAS MENSAGENS DISTINTAS (ex: envio sequencial de "oi", "e", links, etc.) -> NUNCA descarta!
       if (existingMsgId && actMsgId) {
         return existingMsgId === actMsgId;
       }
 
-      // Reconciliação apenas quando uma das mensagens é local/otimista (ainda sem messageId do WhatsApp)
+      // Reconciliação quando uma das mensagens é local/otimista (ainda sem messageId do WhatsApp)
       // e a outra é o eco retornado pela API/Webhook para a mesma mensagem enviada
-      const isExistingOpt = Boolean(existing.id?.startsWith('opt_') || (existing.metadata as any)?.isOptimistic);
-      const isActOpt = Boolean(act.id?.startsWith('opt_') || (act.metadata as any)?.isOptimistic);
+      const isExistingOpt = Boolean(existing.id?.startsWith('opt_') || (existing.metadata as any)?.isOptimistic || !existingMsgId);
+      const isActOpt = Boolean(act.id?.startsWith('opt_') || (act.metadata as any)?.isOptimistic || !actMsgId);
 
-      if ((isExistingOpt || isActOpt) && existing.type === act.type && existing.text === act.text) {
-        const t1 = new Date(existing.timestamp || 0).getTime();
-        const t2 = new Date(act.timestamp || 0).getTime();
-        if (Math.abs(t1 - t2) < 4000) {
-          if (actMsgId && !existingMsgId) {
-            existing.messageId = actMsgId;
-            if (existing.metadata) (existing.metadata as any).messageId = actMsgId;
+      if ((isExistingOpt || isActOpt) && existing.type === act.type) {
+        const text1 = (existing.text || existing.title || '').trim().toLowerCase();
+        const text2 = (act.text || act.title || '').trim().toLowerCase();
+        const actBothAudio = (existing.mediaType === 'audio' || text1.includes('🎵')) &&
+                             (act.mediaType === 'audio' || text2.includes('🎵'));
+        if (text1 === text2 || actBothAudio) {
+          const t1 = new Date(existing.timestamp || 0).getTime();
+          const t2 = new Date(act.timestamp || 0).getTime();
+          if (Math.abs(t1 - t2) < 8000) {
+            if (actMsgId && !existingMsgId) {
+              existing.messageId = actMsgId;
+              if (existing.metadata) (existing.metadata as any).messageId = actMsgId;
+            }
+            if (act.id && !existing.id) {
+              existing.id = act.id;
+            }
+            return true;
           }
-          return true;
         }
       }
 

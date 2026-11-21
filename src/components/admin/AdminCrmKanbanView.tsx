@@ -1777,7 +1777,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
         fontFamily: "'Plus Jakarta Sans', sans-serif"
       }}>
         {/* Título e ação primária vivem no menu superior (breadcrumb + HeaderActions) */}
-        {canConfigureFunnels && (
+        {canConfigureFunnels && !isPostSaleView && (
           <HeaderActions>
             <button
               type="button"
@@ -1785,7 +1785,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
               style={headerPrimaryButtonStyle}
             >
               <Plus size={15} />
-              <span>{isPostSaleView ? 'Novo Funil Pós-Venda' : 'Novo Funil'}</span>
+              <span>Novo Funil</span>
             </button>
           </HeaderActions>
         )}
