@@ -1736,6 +1736,30 @@ export const contractService = {
         console.warn('[approveContract] Aviso ao enviar ao financeiro:', finErr);
       }
 
+      // Sincroniza evento na agenda de eventos da unidade se possuir data e unidade
+      if (updated.event_date && updated.venue_id) {
+        try {
+          const { venueEventService } = await import('./venueEventService');
+          await venueEventService.upsert({
+            id: updated.id,
+            masterId: updated.master_id || undefined,
+            venueId: updated.venue_id,
+            clientId: updated.client_id || null,
+            title: (updated.contract_title || updated.title || 'Evento da Unidade').replace(/\?{2,}/g, ' - ').replace(/\?/g, '').trim(),
+            eventType: updated.event_type || '15 Anos',
+            eventDate: String(updated.event_date).split('T')[0],
+            startTime: updated.event_time || '',
+            guestCount: updated.guest_count ? Number(updated.guest_count) : undefined,
+            status: 'confirmed',
+            blocksVenueDay: true,
+            notes: updated.notes || undefined,
+            createdByName: params.approverUser?.name || 'Homologação Comercial',
+          });
+        } catch (evErr) {
+          console.warn('[approveContract] Aviso ao sincronizar evento na agenda:', evErr);
+        }
+      }
+
       void setLeadClosingStatus(params.masterId, contractRow.origin_lead_id || contractRow.lead_id, 'ganho');
       return {
         success: true,

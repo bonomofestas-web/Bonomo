@@ -54,14 +54,72 @@ export const venueEventService = {
       }
 
       const { data, error } = await query;
-      if (error) {
-        console.warn('[venueEventService] Fallback para localStorage:', error.message);
-        return readLocal();
+      let mapped = (!error && data) ? data.map(formatFromDb) : [];
+
+      // Complementa com contratos homologados que possuem data de evento caso não estejam em venue_events
+      try {
+        let contractsQuery = supabase
+          .from('contracts')
+          .select('id, master_id, venue_id, client_id, contract_title, title, event_type, event_date, event_time, guest_count, notes, approval_status, created_at, updated_at')
+          .not('event_date', 'is', null);
+
+        if (masterId && isUuid(masterId)) {
+          contractsQuery = contractsQuery.or(`master_id.eq.${masterId},master_id.is.null`);
+        }
+
+        const { data: contractsData } = await contractsQuery;
+        if (contractsData && contractsData.length > 0) {
+          const existingIds = new Set(mapped.map(e => e.id));
+          const existingClientDates = new Set(
+            mapped.filter(e => e.clientId && e.eventDate).map(e => `${e.venueId}:${e.eventDate}:${e.clientId}`)
+          );
+
+          for (const c of contractsData) {
+            if (!c.event_date || !c.venue_id) continue;
+            const clientDateKey = c.client_id ? `${c.venue_id}:${String(c.event_date).split('T')[0]}:${c.client_id}` : '';
+            if (existingIds.has(c.id) || (clientDateKey && existingClientDates.has(clientDateKey))) {
+              continue;
+            }
+
+            const cleanTitle = (c.contract_title || c.title || 'Evento da Unidade')
+              .replace(/\?{2,}/g, ' - ')
+              .replace(/\?/g, '')
+              .trim();
+
+            const synthEvent: VenueEvent = {
+              id: c.id,
+              masterId: c.master_id || undefined,
+              venueId: c.venue_id,
+              clientId: c.client_id || null,
+              title: cleanTitle,
+              eventType: c.event_type || '15 Anos',
+              eventDate: String(c.event_date).split('T')[0],
+              startTime: c.event_time || '',
+              endTime: '',
+              guestCount: c.guest_count !== undefined && c.guest_count !== null ? Number(c.guest_count) : undefined,
+              status: c.approval_status === 'rejected' ? 'cancelled' : 'confirmed',
+              blocksVenueDay: true,
+              notes: c.notes || undefined,
+              createdByName: 'Contrato Homologado',
+              createdAt: c.created_at || undefined,
+              updatedAt: c.updated_at || undefined,
+            };
+
+            mapped.push(synthEvent);
+            existingIds.add(synthEvent.id);
+            if (clientDateKey) existingClientDates.add(clientDateKey);
+          }
+        }
+      } catch (errContracts) {
+        console.warn('[venueEventService] Aviso ao complementar contratos na agenda:', errContracts);
       }
 
-      const mapped = (data || []).map(formatFromDb);
+      mapped.sort((a, b) => (a.eventDate || '').localeCompare(b.eventDate || ''));
+
       if (mapped.length > 0) {
         safeLocalStorageSet(STORAGE_KEY_VENUE_EVENTS, JSON.stringify(mapped));
+      } else if (error) {
+        return readLocal();
       }
       return mapped;
     } catch (err) {

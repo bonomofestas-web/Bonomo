@@ -385,11 +385,21 @@ export const AdminVenueEventsView: React.FC = () => {
     if (!ev) return;
     setSelectedDate(ev.eventDate);
     const masterId = currentUser?.masterId || currentUser?.id || '';
-    if (ev.clientId && masterId) {
-      void contractService.getContractByClientId(ev.clientId, masterId).then(ct => {
-        if (ct) setSummary({ ev, contract: ct });
-        else if (canManageEvents) openEditModal(ev); else setDrawerOpen(true);
-      });
+    if (masterId) {
+      const fetchContract = async () => {
+        let ct = ev.clientId ? await contractService.getContractByClientId(ev.clientId, masterId) : null;
+        if (!ct && ev.id) {
+          ct = await contractService.getContractById(ev.id, masterId);
+        }
+        if (ct) {
+          setSummary({ ev, contract: ct });
+        } else if (canManageEvents) {
+          openEditModal(ev);
+        } else {
+          setDrawerOpen(true);
+        }
+      };
+      void fetchContract();
       return;
     }
     if (canManageEvents) openEditModal(ev); else setDrawerOpen(true);

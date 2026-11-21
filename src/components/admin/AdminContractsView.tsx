@@ -754,9 +754,11 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
                       </td>
 
                       <td style={{ padding: '12px 16px' }}>
-                        <strong style={{ color: colors.textTitle, display: 'block' }}>{ctr.contractTitle || ctr.title || clientName}</strong>
+                        <strong style={{ color: colors.textTitle, display: 'block' }}>
+                          {(ctr.contractTitle || ctr.title || clientName || 'Contrato').replace(/\?{2,}/g, ' - ').replace(/\?/g, '').trim()}
+                        </strong>
                         <span style={{ fontSize: '0.72rem', color: colors.textMuted }}>
-                          {(ctr.contractTitle || ctr.title) ? `${clientName} • ${venueTitle}` : venueTitle}
+                          {(ctr.contractTitle || ctr.title) ? `${(clientName || '').replace(/\?{2,}/g, ' - ').replace(/\?/g, '').trim()} • ${venueTitle}` : venueTitle}
                         </span>
                       </td>
 

@@ -175,23 +175,23 @@ export const AdminContractKanbanCard: React.FC<AdminContractKanbanCardProps> = (
       return parts.slice(0, 2).join(' ');
     };
 
-    let targetPerson = protagonista;
-    if (!targetPerson) {
-      const stored = String(client.contractTitle || '').trim();
-      if (stored.includes('•')) {
-        const parts = stored.split('•').map(p => sanitize(p));
-        if (parts.length >= 2 && parts[1]) {
-          targetPerson = parts[1];
-        }
-      }
-    }
-    if (!targetPerson) {
-      targetPerson = contratante;
-    }
+    // Se o contrato já possui o título oficial padronizado (ex: "Xavier e Paula - Casamento" ou "Camila Ferreira 15 anos"),
+    // usa-o diretamente garantindo que qualquer eventual "???" seja saneado para "-"
+    const officialContractTitle = String(client.contractTitle || '')
+      .replace(/\?{2,}/g, ' - ')
+      .replace(/\?/g, '')
+      .trim();
 
-    const shortName = getFirstTwoNames(targetPerson || 'Cliente');
-    const eventName = detectedEventType || '15 Anos';
-    const title = `${shortName} • ${eventName}`;
+    let title = officialContractTitle;
+    if (!title) {
+      let targetPerson = protagonista;
+      if (!targetPerson) {
+        targetPerson = contratante;
+      }
+      const shortName = getFirstTwoNames(targetPerson || 'Cliente');
+      const eventName = detectedEventType || '15 Anos';
+      title = `${shortName} • ${eventName}`;
+    }
 
     const decisor = `Decisor: ${contratante || 'Cliente'}${roleText ? ` (${roleText})` : ''}`;
 

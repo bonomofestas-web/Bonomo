@@ -54,6 +54,14 @@ Grande reestruturação de governança, experiência do usuário, banco de dados
   * **Setor de Diretoria:** Cadastrado com cargos padrão `Diretor Master` (`diretoria:master`) e `Diretor` (`diretoria:diretor`).
   * **Limpeza e Ajuste de Setores:** Removido o setor estático de Gerência da listagem de cargos e atualizado Marketing para "Marketing e Tecnologia" (`marketing_tecnologia`).
 
+- **Sincronização Total de Contratos, Pós-Venda e Agenda de Eventos:**
+  * **Agenda de Eventos com Carregamento Resiliente:** `venueEventService.getAll()` agora combina eventos físicos da tabela `venue_events` com uma camada de fallback que sintetiza e exibe todos os contratos homologados com data cadastrada (`event_date`), eliminando qualquer risco de tela vazia.
+  * **Abertura Imediata do Contrato na Agenda:** Clique em qualquer card de evento abre o modal de resumo oficial do contrato via `contractService.getContractById()` e `getContractByClientId()`.
+  * **Sincronização Automática na Homologação:** Ao aprovar um contrato em `contractService.approveContract`, o evento da data da festa é automaticamente gravado na tabela `venue_events`.
+  * **Pós-Venda com Todos os 218 Contratos:** `clientService.getAll()` agora sintetiza cards completos de clientes para quaisquer contratos que ainda não possuam registro isolado em `clients`, trazendo todos os valores (`dealValue`), datas e funis para o Kanban de Pós-Venda.
+  * **Padronização Oficial de Títulos e Códigos (Zero Corrupção UTF-8):** Sanitização estrita de quaisquer caracteres corrompidos (`???` e `?`), aplicando o padrão oficial `[Homenageados] [Evento]` e `CTR-[CASA][ANO][MES][DIA]`.
+  * **Migration Consolidada para Produção:** Criado o script `05_SINCRONIZAR_PRODUCAO_218_CONTRATOS_CLIENTES_AGENDA.sql` contendo o expurgo dos contratos legados duplicados, atualização dos 218 contratos oficiais, carga dos 218 clientes e 217 eventos na agenda.
+
 - **Refino Visual dos Cards Comerciais e Pós-Venda:**
   * **Cards Mais Gordinhos e Acolhedores:** Ajuste de padding (`12px 14px`), border-radius (`12px`), avatares (`30px`) e botões de ação estruturados no Kanban Comercial.
   * **Truncamento Inteligente de Nomes Longos:** Exibição dos dois primeiros nomes no card (mantendo o nome completo acessível ao passar o mouse e na gaveta do lead).

@@ -36,7 +36,7 @@ export const clientService = {
         return [];
       }
 
-      return (data || []).map(row => {
+      const clientsList: Client[] = (data || []).map((row: any): Client => {
         const commHist = row.commercial_history && typeof row.commercial_history === 'object' && !Array.isArray(row.commercial_history) ? row.commercial_history : {};
         const rawName = row.name || '';
         let parsedPayer = row.payer_name || commHist.payerName;
@@ -133,6 +133,71 @@ export const clientService = {
           updatedAt: row.updated_at ? new Date(row.updated_at).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
         };
       });
+
+      // Complementa com contratos homologados caso existam no banco sem registro correspondente em clients
+      try {
+        let contractsQuery = supabase
+          .from('contracts')
+          .select('id, master_id, venue_id, client_id, contract_code, contract_title, title, event_type, event_date, event_time, guest_count, total_amount, target_pos_sale_funnel_ids, client_snapshot, created_at, updated_at')
+          .order('created_at', { ascending: false });
+
+        if (masterId) contractsQuery = contractsQuery.eq('master_id', masterId);
+
+        const { data: contractsData } = await contractsQuery;
+        const cList: any[] = contractsData || [];
+        if (cList.length > 0) {
+          const clientIds = new Set(clientsList.map(c => c.id));
+          for (const c of cList) {
+            const effectiveId = c.client_id || c.id;
+            if (clientIds.has(effectiveId) || clientIds.has(c.id)) continue;
+
+            const snap = (c.client_snapshot && typeof c.client_snapshot === 'object') ? c.client_snapshot : {};
+            const cleanTitle = (c.contract_title || c.title || snap.name || 'Cliente')
+              .replace(/\?{2,}/g, ' - ')
+              .replace(/\?/g, '')
+              .trim();
+
+            const synthClient: Client = {
+              id: effectiveId,
+              masterId: c.master_id,
+              code: c.contract_code || `CLI-${c.id.slice(0, 5).toUpperCase()}`,
+              name: snap.name || cleanTitle,
+              payerName: snap.payerName || snap.name || cleanTitle,
+              payerPhone: snap.phone || '',
+              payerEmail: snap.email || '',
+              payerCpf: snap.cpf || '',
+              payerAddress: snap.address || '',
+              birthdayPersonName: snap.birthdayPersonName || '',
+              eventType: c.event_type || '',
+              eventDate: c.event_date ? String(c.event_date).split('T')[0] : '',
+              eventTime: c.event_time || '',
+              guestCount: c.guest_count || 0,
+              venueId: c.venue_id,
+              venueName: '',
+              packageSold: '',
+              activities: [],
+              dealValue: Number(c.total_amount || 0),
+              baseContractValue: Number(c.total_amount || 0),
+              contractDate: c.created_at ? String(c.created_at).split('T')[0] : '',
+              contractStatus: 'contrato_assinado',
+              stage: 'onboarding',
+              funnelId: (Array.isArray(c.target_pos_sale_funnel_ids) && c.target_pos_sale_funnel_ids[0]) || undefined,
+              contacts: [],
+              tags: [],
+              contractTitle: cleanTitle,
+              createdAt: c.created_at ? new Date(c.created_at).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+              updatedAt: c.updated_at ? new Date(c.updated_at).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+            };
+
+            clientsList.push(synthClient);
+            clientIds.add(effectiveId);
+          }
+        }
+      } catch (errSynth) {
+        console.warn('[clientService] Aviso ao complementar clientes a partir dos contratos:', errSynth);
+      }
+
+      return clientsList;
     } catch (err) {
       console.error('Falha inesperada ao carregar clientes do Supabase:', err);
       return [];

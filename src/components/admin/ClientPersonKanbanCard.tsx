@@ -44,7 +44,10 @@ export const ClientPersonKanbanCard: React.FC<ClientPersonKanbanCardProps> = ({
   const venueName = (venues.find(v => v.id === client.venueId)?.name || client.venueName || '').replace(/^Bonomo\s+/i, '');
   const managerId = client.assignedSuccessManagerId || (client as any).assignedToId;
   const responsible = collaborators.find(c => c.id === managerId)?.name || client.assignedSuccessManagerName || client.assignedTo || '';
-  const displayName = (client.name || client.payerName || 'Sem nome').trim();
+  const displayName = (client.name || client.payerName || 'Sem nome')
+    .replace(/\?{2,}/g, ' - ')
+    .replace(/\?/g, '')
+    .trim();
   const clientAvatar = React.useMemo(() => {
     const directAvatar = client.avatarUrl || (client as any).photoUrl || (client as any).profilePicUrl || (client as any).custom_field_values?.avatarUrl || (client as any).customFieldValues?.avatarUrl;
     if (directAvatar) return directAvatar;
