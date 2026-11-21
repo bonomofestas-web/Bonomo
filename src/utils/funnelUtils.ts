@@ -1,5 +1,4 @@
 import type { Client, CommercialFunnel, Lead } from '../types/admin';
-import { isPhoneMatch } from '../services/leadService';
 
 /**
  * Resolve de forma determinística o ID do funil principal/legado de Pós-Venda,
@@ -62,28 +61,45 @@ export function matchesFunnelStrict(
 
 /**
  * Retorna apenas leads marcados como Pós-Venda que NÃO duplicam um registro já existente em `clients`
- * (seja por ID, `commercialLeadId` ou telefone coincidente quando o lead está sem funil ou no mesmo funil).
+ * e que NÃO estejam vinculados a nenhum contrato (seja como titular, dependente ou contato da família).
  */
-export function filterExtraPostSaleLeads(leads: Lead[], clients: Client[]): Lead[] {
+export function filterExtraPostSaleLeads(leads: Lead[], clients: Client[], options?: { forKanbanOnly?: boolean }): Lead[] {
+  const forKanban = options?.forKanbanOnly !== false; // Padrão: true (modo Kanban)
   const existingClientIds = new Set<string>();
-  (clients || []).forEach(c => {
-    existingClientIds.add(c.id);
-    if (c.commercialLeadId) existingClientIds.add(c.commercialLeadId);
-  });
+  const clientFamilyPhones = new Set<string>();
+  const linkedContractIds = new Set<string>();
 
-  const getClientPhones = (c: Client): string[] => {
-    const phones: string[] = [];
-    if (c.payerPhone) phones.push(c.payerPhone);
+  (clients || []).forEach(c => {
+    if (c.id) existingClientIds.add(c.id);
+    if ((c as any).commercialLeadId) existingClientIds.add((c as any).commercialLeadId);
+    if ((c as any).contractId) linkedContractIds.add((c as any).contractId);
+    if ((c as any).contract_id) linkedContractIds.add((c as any).contract_id);
+
+    if (c.payerPhone) {
+      const d = c.payerPhone.replace(/\D/g, '');
+      if (d.length >= 8) clientFamilyPhones.add(d.slice(-8));
+    }
+    // Coleta todos os telefones de familiares e contatos vinculados aos contratos
     if (Array.isArray(c.contacts)) {
-      c.contacts.forEach(ct => {
-        if (ct?.phone) phones.push(ct.phone);
+      c.contacts.forEach((ct: any) => {
+        if (ct?.phone) {
+          const cd = ct.phone.replace(/\D/g, '');
+          if (cd.length >= 8) clientFamilyPhones.add(cd.slice(-8));
+        }
       });
     }
-    return phones;
-  };
+  });
 
   return (leads || []).filter(l => {
+    // 1. Se o lead tem exatamente o mesmo ID de um client oficial (ou commercialLeadId), já é renderizado pelo card oficial
     if (existingClientIds.has(l.id)) return false;
+
+    // 2. Se o lead possui vínculo explícito com um contrato existente
+    const assocContractId = (l as any).associated_contract_id || (l as any).associatedContractId || (l as any).custom_field_values?.associatedContractId;
+    if (assocContractId && (linkedContractIds.has(assocContractId) || existingClientIds.has(assocContractId))) {
+      return false;
+    }
+
     if ((l as any).isRemovedFromFunnel) return false;
 
     const isLeadCode = Boolean(l.code && l.code.startsWith('LEAD-'));
@@ -95,19 +111,26 @@ export function filterExtraPostSaleLeads(leads: Lead[], clients: Client[]): Lead
     );
     if (!isRealClient || isLeadCode) return false;
 
-    if (l.phone) {
-      const normalizedLeadFunnel = (l.funnelId || '').trim();
-      const duplicateByPhone = (clients || []).find(c =>
-        getClientPhones(c).some(cp => isPhoneMatch(cp, l.phone))
-      );
-      if (duplicateByPhone) {
-        const isUnlinkedOrSameFunnel =
-          !normalizedLeadFunnel ||
-          normalizedLeadFunnel === 'post_sale_default' ||
-          normalizedLeadFunnel === duplicateByPhone.funnelId;
-        if (isUnlinkedOrSameFunnel) {
+    // 3. REGRA SUPREMA DO KANBAN:
+    // Se o telefone deste lead (ou qualquer contato dele) já estiver vinculado como titular OU membro de família
+    // de um contrato oficial já presente no Kanban, este lead NÃO deve aparecer como um card solto avulso no Kanban!
+    // Ele já está representado dentro do card de contrato oficial (ex: "mãe: Carla", "debutante: Vitória", etc.).
+    // (Na Caixa de Entrada e Mensagens com forKanban = false, ele continua aparecendo normalmente para atendimento).
+    if (forKanban) {
+      if (l.phone) {
+        const lDigits = l.phone.replace(/\D/g, '').slice(-8);
+        if (lDigits.length >= 8 && clientFamilyPhones.has(lDigits)) {
           return false;
         }
+      }
+
+      if (Array.isArray(l.contacts)) {
+        const hasLinkedFamilyContact = l.contacts.some((ct: any) => {
+          if (!ct?.phone) return false;
+          const d = ct.phone.replace(/\D/g, '').slice(-8);
+          return d.length >= 8 && clientFamilyPhones.has(d);
+        });
+        if (hasLinkedFamilyContact) return false;
       }
     }
 

@@ -1,7 +1,8 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { isUuid } from '../utils/uuid';
-import type { Contact, ContactDependent, Lead, Contract } from '../types/admin';
+import type { Contact, ContactDependent, ContactListFilter, Lead, Contract, SupplierProfile } from '../types/admin';
 import { whatsappMediaService } from './whatsappMediaService';
+import { generateSearchTermVariants } from '../utils/searchUtils';
 
 // Gerador client-side Base36 de alta capacidade para códigos alfanuméricos
 export function generateBase36Code(prefix: string, length: number = 8): string {
@@ -19,6 +20,12 @@ export interface GetContactsParams {
   search?: string;
   limit?: number;
   offset?: number;
+  filter?: ContactListFilter;
+  /** Ordem da lista */
+  sort?: 'recent' | 'oldest' | 'az' | 'za';
+  /** Cadastro entre (YYYY-MM-DD) */
+  createdFrom?: string;
+  createdTo?: string;
 }
 
 /**
@@ -29,13 +36,14 @@ export interface GetContactsParams {
 export function buildContactSearchFilter(search?: string): string | undefined {
   const raw = (search || '').trim();
   if (!raw) return undefined;
-  // vírgula, parênteses e aspas quebram a sintaxe do .or(); % e _ são curingas do ilike
-  const text = raw.replace(/[,()"\\%_]/g, ' ').replace(/\s+/g, ' ').trim();
   const digits = raw.replace(/\D/g, '');
+  const variants = generateSearchTermVariants(raw);
   const parts: string[] = [];
-  if (text) {
-    parts.push(`name.ilike.%${text}%`, `email.ilike.%${text}%`, `code.ilike.%${text}%`);
+
+  for (const v of variants) {
+    parts.push(`name.ilike.%${v}%`, `email.ilike.%${v}%`, `code.ilike.%${v}%`);
   }
+
   if (digits.length >= 3) {
     parts.push(
       `primary_phone_digits.ilike.%${digits}%`,
@@ -76,17 +84,25 @@ export const contactService = {
     search,
     limit = 50,
     offset = 0,
+    filter = 'all',
+    sort = 'recent',
+    createdFrom,
+    createdTo,
   }: GetContactsParams): Promise<Contact[]> {
     if (!isSupabaseConfigured || !masterId) return [];
 
     try {
       let query = supabase
         .from('contacts')
-        .select('*')
+        .select(filter === 'active_contract' ? '*, contracts!inner(id)' : '*')
         .eq('master_id', masterId)
         .is('deleted_at', null)
-        .order('created_at', { ascending: false })
+        .order(sort === 'az' || sort === 'za' ? 'name' : 'created_at', { ascending: sort === 'az' || sort === 'oldest' })
         .range(offset, offset + limit - 1);
+      if (createdFrom) query = query.gte('created_at', `${createdFrom}T00:00:00`);
+      if (createdTo) query = query.lte('created_at', `${createdTo}T23:59:59`);
+      if (filter === 'supplier') query = query.eq('is_supplier', true);
+      if (filter === 'active_contract') query = query.in('contracts.approval_status', ['approved']);
 
       // Busca no banco (nome, e-mail, código, telefones e CPF com ou sem máscara)
       const searchFilter = buildContactSearchFilter(search);
@@ -119,6 +135,34 @@ export const contactService = {
     }
   },
 
+  /** Ids (dentre os informados) que tem contrato ativo (aprovado): vira a tag "Contrato ativo" na lista. */
+  async getActiveContractContactIds(masterId: string, contactIds: string[]): Promise<Set<string>> {
+    const out = new Set<string>();
+    if (!isSupabaseConfigured || !masterId || contactIds.length === 0) return out;
+    for (let i = 0; i < contactIds.length; i += 100) {
+      const { data } = await supabase.from('contracts').select('contact_id').eq('master_id', masterId).eq('approval_status', 'approved').in('contact_id', contactIds.slice(i, i + 100));
+      (data || []).forEach((r: any) => out.add(r.contact_id));
+    }
+    return out;
+  },
+
+  /** Marca ou desmarca o contato como fornecedor (e guarda a ficha). */
+  async setSupplier(contactId: string, masterId: string, isSupplier: boolean, profile?: SupplierProfile): Promise<boolean> {
+    if (!isSupabaseConfigured || !contactId || !masterId) return false;
+    const patch: Record<string, any> = { is_supplier: isSupplier, updated_at: new Date().toISOString() };
+    if (profile) patch.supplier_profile = profile;
+    const { error } = await supabase.from('contacts').update(patch).eq('id', contactId).eq('master_id', masterId);
+    if (error) { console.warn('[contactService.setSupplier]', error.message); return false; }
+    return true;
+  },
+
+  /** Contatos marcados como fornecedor (para a aba Fornecedores das Mensagens). */
+  async getSuppliers(masterId: string): Promise<Contact[]> {
+    if (!isSupabaseConfigured || !masterId) return [];
+    const { data } = await supabase.from('contacts').select('*').eq('master_id', masterId).eq('is_supplier', true).is('deleted_at', null).limit(1000);
+    return (data || []).map(mapRowToContact);
+  },
+
   /**
    * Total REAL de contatos no banco (mesmos filtros do getContacts, sem paginação).
    * É este número que as telas mostram — nunca o tamanho da lista carregada.
@@ -127,15 +171,22 @@ export const contactService = {
     masterId,
     venueIds,
     search,
-  }: { masterId: string; venueIds?: string[]; search?: string }): Promise<number> {
+    filter = 'all',
+    createdFrom,
+    createdTo,
+  }: { masterId: string; venueIds?: string[]; search?: string; filter?: ContactListFilter; createdFrom?: string; createdTo?: string }): Promise<number> {
     if (!isSupabaseConfigured || !masterId) return 0;
 
     try {
       let query = supabase
         .from('contacts')
-        .select('id', { count: 'exact', head: true })
+        .select(filter === 'active_contract' ? 'id, contracts!inner(id)' : 'id', { count: 'exact', head: true })
         .eq('master_id', masterId)
         .is('deleted_at', null);
+      if (createdFrom) query = query.gte('created_at', `${createdFrom}T00:00:00`);
+      if (createdTo) query = query.lte('created_at', `${createdTo}T23:59:59`);
+      if (filter === 'supplier') query = query.eq('is_supplier', true);
+      if (filter === 'active_contract') query = query.in('contracts.approval_status', ['approved']);
 
       const searchFilter = buildContactSearchFilter(search);
       if (searchFilter) query = query.or(searchFilter);
@@ -177,7 +228,7 @@ export const contactService = {
       const chunk = unique.slice(i, i + 20);
       // Últimos 4 dígitos: robusto a máscaras como "(21) 99999-9999"; o casamento exato é refeito em memória
       const orFilter = chunk
-        .flatMap(p => [`primary_phone.ilike.%${p.slice(-4)}%`, `whatsapp_phone.ilike.%${p.slice(-4)}%`])
+        .flatMap(p => [`primary_phone.ilike.%${p.slice(-4)}%`, `secondary_phone.ilike.%${p.slice(-4)}%`])
         .join(',');
       const { data, error } = await supabase
         .from('contacts')
@@ -189,7 +240,7 @@ export const contactService = {
       if (error) { console.warn('findByPhones:', error.message); continue; }
       const contacts = (data || []).map(mapRowToContact);
       for (const phone of chunk) {
-        const match = contacts.find(c => isPhoneMatch(phone, c.primaryPhone) || isPhoneMatch(phone, c.whatsappPhone));
+        const match = contacts.find(c => isPhoneMatch(phone, c.primaryPhone) || isPhoneMatch(phone, c.secondaryPhone));
         if (match) found.set(phone, match);
       }
     }
@@ -537,7 +588,9 @@ export const contactService = {
   },
 
   /**
-   * Obtém os ativos vinculados ao contato (Leads e Contratos) para visão 360 na ficha
+   * Obtém os ativos vinculados ao contato (Leads e Contratos) para visão 360 na ficha.
+   * Regra F5: Contratos onde o contato é titular OU onde é familiar/dependente (mãe, pai, debutante)
+   * aparecem como ativo oficial do contato!
    */
   async getContactAssets(
     contactId: string,
@@ -548,20 +601,50 @@ export const contactService = {
     }
 
     try {
-      const [leadsRes, contractsRes] = await Promise.all([
-        supabase
-          .from('leads')
-          .select('*')
-          .eq('contact_id', contactId)
-          .eq('master_id', masterId)
-          .order('created_at', { ascending: false }),
-        supabase
-          .from('contracts')
-          .select('*')
-          .eq('contact_id', contactId)
-          .eq('master_id', masterId)
-          .order('created_at', { ascending: false }),
-      ]);
+      // 1. Busca contatos da família (dependentes e titulares vinculados)
+      const { data: familyDeps } = await supabase
+        .from('contact_dependents')
+        .select('parent_contact_id, dependent_contact_id, kinship')
+        .eq('master_id', masterId)
+        .or(`parent_contact_id.eq.${contactId},dependent_contact_id.eq.${contactId}`);
+
+      const relatedContactIds = new Set<string>([contactId]);
+      const kinshipMap = new Map<string, string>();
+
+      (familyDeps || []).forEach(d => {
+        if (d.parent_contact_id === contactId && d.dependent_contact_id) {
+          relatedContactIds.add(d.dependent_contact_id);
+          kinshipMap.set(d.dependent_contact_id, d.kinship || 'Familiar');
+        } else if (d.dependent_contact_id === contactId && d.parent_contact_id) {
+          relatedContactIds.add(d.parent_contact_id);
+          kinshipMap.set(d.parent_contact_id, d.kinship || 'Familiar');
+        }
+      });
+
+      const allContactIds = Array.from(relatedContactIds);
+
+      // 2. Busca leads vinculados diretamente ao contato
+      const leadsRes = await supabase
+        .from('leads')
+        .select('*')
+        .eq('contact_id', contactId)
+        .eq('master_id', masterId)
+        .order('created_at', { ascending: false });
+
+      // 3. Busca contratos onde ele é titular OU familiar em contact_dependents
+      let contractsQuery = supabase
+        .from('contracts')
+        .select('*')
+        .eq('master_id', masterId)
+        .order('created_at', { ascending: false });
+
+      if (allContactIds.length > 1) {
+        contractsQuery = contractsQuery.in('contact_id', allContactIds);
+      } else {
+        contractsQuery = contractsQuery.eq('contact_id', contactId);
+      }
+
+      const { data: contractsData } = await contractsQuery;
 
       const leads: Lead[] = (leadsRes.data || []).map((r: any) => ({
         id: r.id,
@@ -591,46 +674,51 @@ export const contactService = {
         activities: [],
       }));
 
-      const contracts: Contract[] = (contractsRes.data || []).map((r: any) => ({
-        id: r.id,
-        masterId: r.master_id,
-        contractCode: r.contract_code,
-        contactId: r.contact_id,
-        originLeadId: r.origin_lead_id,
-        originFunnelId: r.origin_funnel_id,
-        venueId: r.venue_id,
-        eventType: r.event_type,
-        eventTitle: r.event_title,
-        eventDate: r.event_date,
-        eventTime: r.event_time,
-        guestCount: r.guest_count,
-        packageName: r.package_name,
-        clientSnapshot: r.client_snapshot || {},
-        commercialFieldsSnapshot: r.commercial_fields_snapshot || {},
-        totalAmount: Number(r.total_amount || 0),
-        paymentTerms: r.payment_terms,
-        sdrId: r.sdr_id,
-        sdrName: r.sdr_name || '',
-        closerId: r.closer_id,
-        closerName: r.closer_name || '',
-        approvalStatus: r.approval_status,
-        submittedBy: r.submitted_by,
-        submittedAt: r.submitted_at,
-        approvedBy: r.approved_by,
-        approvedByName: r.approved_by_name,
-        approvedByRole: r.approved_by_role,
-        approvedAt: r.approved_at,
-        rejectionReason: r.rejection_reason,
-        targetPosSaleFunnelIds: r.target_pos_sale_funnel_ids || [],
-        debutanteId: r.debutante_id,
-        debutanteSlug: r.debutante_slug,
-        handoverNotes: r.handover_notes,
-        contractFileUrl: r.contract_file_url,
-        attachments: r.attachments || [],
-        notes: r.notes,
-        createdAt: r.created_at,
-        updatedAt: r.updated_at,
-      }));
+      const contracts: Contract[] = (contractsData || []).map((r: any) => {
+        const isSelfTitular = r.contact_id === contactId;
+        const kin = !isSelfTitular ? kinshipMap.get(r.contact_id) : undefined;
+        return {
+          id: r.id,
+          masterId: r.master_id,
+          contractCode: r.contract_code,
+          contactId: r.contact_id,
+          originLeadId: r.origin_lead_id,
+          originFunnelId: r.origin_funnel_id,
+          venueId: r.venue_id,
+          eventType: r.event_type,
+          eventTitle: r.event_title,
+          contractTitle: r.contract_title || (kin ? `${r.contract_title || 'Contrato'} (${kin})` : undefined),
+          eventDate: r.event_date,
+          eventTime: r.event_time,
+          guestCount: r.guest_count,
+          packageName: r.package_name,
+          clientSnapshot: r.client_snapshot || {},
+          commercialFieldsSnapshot: r.commercial_fields_snapshot || {},
+          totalAmount: Number(r.total_amount || 0),
+          paymentTerms: r.payment_terms,
+          sdrId: r.sdr_id,
+          sdrName: r.sdr_name || '',
+          closerId: r.closer_id,
+          closerName: r.closer_name || '',
+          approvalStatus: r.approval_status,
+          submittedBy: r.submitted_by,
+          submittedAt: r.submitted_at,
+          approvedBy: r.approved_by,
+          approvedByName: r.approved_by_name,
+          approvedByRole: r.approved_by_role,
+          approvedAt: r.approved_at,
+          rejectionReason: r.rejection_reason,
+          targetPosSaleFunnelIds: r.target_pos_sale_funnel_ids || [],
+          debutanteId: r.debutante_id,
+          debutanteSlug: r.debutante_slug,
+          handoverNotes: r.handover_notes,
+          contractFileUrl: r.contract_file_url,
+          attachments: r.attachments || [],
+          notes: r.notes,
+          createdAt: r.created_at,
+          updatedAt: r.updated_at,
+        };
+      });
 
       return { leads, contracts };
     } catch (err) {
@@ -737,7 +825,11 @@ export const contactService = {
         contact = res.contact;
         created = res.created;
       }
-      if (!contact || contact.id === params.parentContactId) return null;
+      if (!contact) return null;
+      if (contact.id === params.parentContactId) {
+        // É a própria pessoa (titular/contratante): não cria vínculo de dependente consigo mesma
+        return { contact, created, dependent: null };
+      }
 
       const { error } = await supabase.from('contact_dependents').upsert([
         { master_id: params.masterId, parent_contact_id: params.parentContactId, dependent_contact_id: contact.id, kinship: params.kinship.trim() },
@@ -811,5 +903,8 @@ function mapRowToContact(row: any): Contact {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     deletedAt: row.deleted_at,
+    isSupplier: Boolean(row.is_supplier),
+    isCollaborator: Boolean(row.is_collaborator),
+    supplierProfile: row.supplier_profile || {},
   };
 }

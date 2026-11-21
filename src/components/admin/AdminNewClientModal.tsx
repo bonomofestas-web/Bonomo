@@ -1,4 +1,6 @@
 import { toast } from 'sonner';
+import { MonthYearSwitcher } from '../ui';
+import { formatMonthYear } from '../ui';
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { 
   X, Check, Building2, Calendar, User, Phone, DollarSign, Clock, 
@@ -167,7 +169,7 @@ export const AdminNewClientModal: React.FC<AdminNewClientModalProps> = ({
     }
 
     // Dias do próximo mês para fechar grid de 35 ou 42
-    const remaining = (7 - (days.length % 7)) % 7;
+    const remaining = 42 - days.length; // sempre 6 semanas
     for (let d = 1; d <= remaining; d++) {
       const m = month === 11 ? 1 : month + 2;
       const y = month === 11 ? year + 1 : year;
@@ -895,9 +897,10 @@ export const AdminNewClientModal: React.FC<AdminNewClientModalProps> = ({
                           >
                             <ChevronLeft size={16} />
                           </button>
-                          <span style={{ fontSize: '0.80rem', fontWeight: 800, color: 'var(--adm-text-title)', textTransform: 'capitalize' }}>
-                            {calendarMonth.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}
-                          </span>
+                          <MonthYearSwitcher year={calendarMonth.getFullYear()} month={calendarMonth.getMonth()}
+                            label={formatMonthYear(calendarMonth)}
+                            onChange={(y, m) => setCalendarMonth(new Date(y, m, 1))}
+                            style={{ fontSize: '0.80rem', fontWeight: 800, color: 'var(--adm-text-title)', textTransform: 'capitalize' }} />
                           <button
                             type="button"
                             onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1))}

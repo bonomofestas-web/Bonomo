@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
 interface SafeAvatarProps {
   src?: string | null;
@@ -21,39 +21,27 @@ export const SafeAvatar: React.FC<SafeAvatarProps> = ({
 }) => {
   const [hasError, setHasError] = useState(false);
 
-  // Iniciais do nome
+  // Reseta erro quando o src da imagem mudar
+  useEffect(() => {
+    setHasError(false);
+  }, [src]);
+
+  // Iniciais do nome: se tamanho <= 28px, exibe apenas a PRIMEIRA inicial
   const getInitials = (n: string) => {
     if (!n) return 'L';
     const clean = n.replace(/[^a-zA-ZÀ-ÿ\s]/g, '').trim();
-    if (!clean) return n.slice(0, 2).toUpperCase();
+    if (!clean) return (size <= 28 ? n.slice(0, 1) : n.slice(0, 2)).toUpperCase();
     const parts = clean.split(/\s+/).filter(Boolean);
+    if (size <= 28) {
+      return (parts[0]?.[0] || 'L').toUpperCase();
+    }
     if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
     return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-  };
-
-  // Cores dinâmicas harmoniosas baseadas no nome
-  const getAvatarGradient = (n: string) => {
-    let hash = 0;
-    for (let i = 0; i < n.length; i++) {
-      hash = n.charCodeAt(i) + ((hash << 5) - hash);
-    }
-    const colors = [
-      ['#3B82F6', '#1D4ED8'], // Azul
-      ['#10B981', '#047857'], // Esmeralda
-      ['#8B5CF6', '#6D28D9'], // Roxo
-      ['#F59E0B', '#B45309'], // Âmbar
-      ['#EC4899', '#BE185D'], // Rosa
-      ['#06B6D4', '#0E7490'], // Ciano
-      ['#6366F1', '#4338CA'], // Índigo
-    ];
-    const index = Math.abs(hash) % colors.length;
-    return colors[index];
   };
 
   const isInvalidUrl = !src || src.trim() === '' || hasError;
 
   if (isInvalidUrl) {
-    const [c1, c2] = getAvatarGradient(name);
     return (
       <div
         className={className}
@@ -61,19 +49,20 @@ export const SafeAvatar: React.FC<SafeAvatarProps> = ({
           width: `${size}px`,
           height: `${size}px`,
           borderRadius,
-          background: `linear-gradient(135deg, ${c1} 0%, ${c2} 100%)`,
-          color: '#FFFFFF',
-          fontWeight: 800,
-          fontSize: `${Math.max(size * 0.38, 10)}px`,
+          background: 'var(--adm-bg-input, rgba(148, 163, 184, 0.10))',
+          color: 'var(--adm-text-muted, #64748B)',
+          fontWeight: 700,
+          fontSize: `${Math.max(size * 0.36, 10)}px`,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           flexShrink: 0,
-          border,
+          border: '1.5px dashed var(--adm-border, #94A3B8)',
           userSelect: 'none',
-          boxShadow: '0 2px 6px rgba(0,0,0,0.15)',
+          letterSpacing: '0.5px',
           ...style,
         }}
+        title={`${name} (sem foto)`}
       >
         {getInitials(name)}
       </div>

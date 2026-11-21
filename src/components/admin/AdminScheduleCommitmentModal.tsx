@@ -1,4 +1,5 @@
-import { Select } from '../ui';
+import { Select , MonthYearSwitcher } from '../ui';
+import { formatMonthYear } from '../ui';
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { eventsOnDay, venueEventWarning } from '../../utils/venueEventDay';
 import { 
@@ -360,7 +361,7 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
   };
 
   const formattedMonthTitle = useMemo(() => {
-    const m = calendarMonth.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+    const m = formatMonthYear(calendarMonth);
     return m.charAt(0).toUpperCase() + m.slice(1);
   }, [calendarMonth]);
 
@@ -1220,9 +1221,8 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
                     padding: '18px',
                   }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
-                  <span style={{ fontSize: '0.90rem', fontWeight: 800, color: '#0F172A' }}>
-                    {formattedMonthTitle}
-                  </span>
+                  <MonthYearSwitcher year={calendarMonth.getFullYear()} month={calendarMonth.getMonth()} label={formattedMonthTitle}
+                    onChange={(y, m) => setCalendarMonth(new Date(y, m, 1))} style={{ fontSize: '0.90rem', fontWeight: 800, color: '#0F172A' }} />
                   <div style={{ display: 'flex', gap: '6px' }}>
                     <button type="button" onClick={handlePrevMonth} style={{ padding: '5px 9px', borderRadius: '6px', border: '1px solid #CBD5E1', background: '#FFFFFF', color: '#0F172A', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Mês anterior">
                       <ChevronLeft size={16} color="#0F172A" />
@@ -1282,6 +1282,9 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
                       </button>
                     );
                   })}
+                  {Array.from({ length: Math.max(0, 42 - monthDaysGrid.firstDayIndex - monthDaysGrid.days.length) }).map((_, i) => (
+                    <div key={`trail-${i}`} />
+                  ))}
                 </div>
 
                 {/* Slots Disponíveis */}

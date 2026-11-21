@@ -339,8 +339,16 @@ export const whatsappMediaService = {
    * - Trigger: quando o lead é aberto e avatar_refreshed_at > 7 dias ou null
    * - Se UAZAPI não retornar foto, mantém a última foto conhecida (nunca apaga)
    */
+  /**
+   * Sincroniza a foto de perfil de um contato do WhatsApp no R2 e atualiza o Supabase.
+   * - Central de Contatos como Single Source of Truth (`contacts.profile_picture_url`)
+   * - Trigger: conversas com lead/cliente (abertura de chat, envio ou recebimento de mensagem)
+   * - TTL de 7 dias: se avatar_refreshed_at < 7 dias, respeita o cache e não sobrecarrega a API
+   * - Se UAZAPI não retornar foto nova, mantém a última conhecida
+   * - Ao atualizar em contacts, propaga imediatamente para leads e clients associados
+   */
   async syncContactAvatar(
-    contact: { phone?: string | null },
+    contact: { phone?: string | null; name?: string | null },
     instanceToken: string,
     masterId: string
   ): Promise<{ updated: boolean; avatarUrl: string | null }> {
@@ -350,8 +358,8 @@ export const whatsappMediaService = {
     if (phone.length < 8) return { updated: false, avatarUrl: null };
     const tail = phone.slice(-9);
 
-    // Resolve o contato real na central (isolado por master_id)
-    const { data: row } = await supabase
+    // 1. Resolve ou garante a existência do contato na Central de Contatos (isolado por master_id)
+    let { data: row } = await supabase
       .from('contacts')
       .select('id, code, profile_picture_url, avatar_refreshed_at')
       .eq('master_id', masterId)
@@ -359,11 +367,34 @@ export const whatsappMediaService = {
       .or(`primary_phone.ilike.%${tail}%,secondary_phone.ilike.%${tail}%`)
       .limit(1)
       .maybeSingle();
+
+    if (!row?.id || !row.code) {
+      try {
+        const { contactService } = await import('./contactService');
+        const contactName = (contact.name || '').trim() || `Contato ${phone.slice(-4)}`;
+        const res = await contactService.findOrCreateContact({
+          masterId,
+          name: contactName,
+          primaryPhone: phone,
+        });
+        if (res?.contact?.id && res.contact.code) {
+          row = {
+            id: res.contact.id,
+            code: res.contact.code,
+            profile_picture_url: res.contact.profilePictureUrl || null,
+            avatar_refreshed_at: (res.contact as any).avatarRefreshedAt || null,
+          };
+        }
+      } catch (err) {
+        console.warn('[syncContactAvatar] Não foi possível criar contato:', err);
+      }
+    }
+
     if (!row?.id || !row.code) return { updated: false, avatarUrl: null };
 
     const current: string | null = row.profile_picture_url || null;
 
-    // TTL de 7 dias
+    // 2. TTL de 7 dias: se já foi verificado recentemente, não consome a API do WhatsApp
     const lastRefresh = row.avatar_refreshed_at ? new Date(row.avatar_refreshed_at).getTime() : 0;
     const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
     if (lastRefresh && Date.now() - lastRefresh < SEVEN_DAYS_MS) {
@@ -373,9 +404,10 @@ export const whatsappMediaService = {
     const touch = () =>
       supabase.from('contacts').update({ avatar_refreshed_at: new Date().toISOString() }).eq('id', row.id).eq('master_id', masterId);
 
-    // Sem foto nova (privacidade/sem foto): mantém a última e só adia a próxima tentativa
+    // 3. Busca foto atualizada na UAZAPI
     const freshUrl = await uazapiService.getProfilePicture(instanceToken, phone);
     if (!freshUrl) {
+      // Sem foto nova (privacidade/sem foto): mantém a última conhecida e renova o prazo de 7 dias
       await touch();
       return { updated: false, avatarUrl: current };
     }
@@ -388,17 +420,81 @@ export const whatsappMediaService = {
       }
       const blob = await res.blob();
 
-      // Path fixo por contato: sobrescreve a anterior (1 foto por contato)
+      // 4. Salva no Cloudflare R2 com versionamento
       const folder = IS_LOCAL_DEV ? `local_dev/avatars/${masterId}` : `avatars/${masterId}`;
       const permanentUrl = await cloudflareR2Service.uploadFile(blob, folder, undefined, `picture_${row.code}.jpg`);
-      // Cache-bust para o navegador não servir a foto antiga do mesmo path
       const versionedUrl = `${permanentUrl.split('?')[0]}?v=${Date.now()}`;
 
+      // 5. Atualiza a Central de Contatos (Single Source of Truth)
       await supabase
         .from('contacts')
         .update({ profile_picture_url: versionedUrl, avatar_refreshed_at: new Date().toISOString() })
         .eq('id', row.id)
         .eq('master_id', masterId);
+
+      // 6. PROPAGAÇÃO AUTOMÁTICA para Leads vinculados a este telefone
+      try {
+        const { data: matchedLeads } = await supabase
+          .from('leads')
+          .select('id, custom_field_values')
+          .eq('master_id', masterId)
+          .or(`phone.ilike.%${tail}%`);
+
+        if (matchedLeads && matchedLeads.length > 0) {
+          for (const ml of matchedLeads) {
+            const cfv = (ml.custom_field_values && typeof ml.custom_field_values === 'object') ? { ...ml.custom_field_values } : {};
+            cfv.avatarUrl = versionedUrl;
+            await supabase
+              .from('leads')
+              .update({ avatar_url: versionedUrl, custom_field_values: cfv })
+              .eq('id', ml.id)
+              .eq('master_id', masterId);
+          }
+        }
+      } catch (e) {
+        console.warn('[syncContactAvatar] Erro ao propagar foto para leads:', e);
+      }
+
+      // 7. PROPAGAÇÃO AUTOMÁTICA para Clients (Contratos) vinculados a este telefone
+      try {
+        // Atualiza titular se for o telefone pagante
+        await supabase
+          .from('clients')
+          .update({ avatar_url: versionedUrl })
+          .eq('master_id', masterId)
+          .or(`payer_phone.ilike.%${tail}%`);
+
+        // Atualiza contatos familiares dentro do array JSON contacts
+        const { data: matchedClients } = await supabase
+          .from('clients')
+          .select('id, contacts')
+          .eq('master_id', masterId);
+
+        if (matchedClients && matchedClients.length > 0) {
+          for (const mc of matchedClients) {
+            if (Array.isArray(mc.contacts)) {
+              let hasChange = false;
+              const updatedContacts = mc.contacts.map((c: any) => {
+                const cp = (c?.phone || '').replace(/\D/g, '');
+                if (cp && cp.slice(-8) === tail.slice(-8)) {
+                  hasChange = true;
+                  return { ...c, avatarUrl: versionedUrl, profile_picture_url: versionedUrl };
+                }
+                return c;
+              });
+              if (hasChange) {
+                await supabase
+                  .from('clients')
+                  .update({ contacts: updatedContacts })
+                  .eq('id', mc.id)
+                  .eq('master_id', masterId);
+              }
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('[syncContactAvatar] Erro ao propagar foto para clients:', e);
+      }
 
       return { updated: true, avatarUrl: versionedUrl };
     } catch {

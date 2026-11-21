@@ -1,7 +1,9 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { MonthYearSwitcher } from '../../ui';
 import type { AdminTask } from '../../../types/admin';
 import { getTaskTypeTheme, renderTaskTypeIcon } from '../../../utils/taskColors';
+import { toLocalDateStr, getTodayLocalStr } from '../../../utils/dateUtils';
 
 interface AdminCalendarDayViewProps {
   tasks: AdminTask[];
@@ -10,6 +12,10 @@ interface AdminCalendarDayViewProps {
   onOpenTask: (task: AdminTask) => void;
   onNewTaskForDate?: (dateStr: string, timeStr?: string) => void;
   onUpdateTask?: (id: string, data: Partial<AdminTask>) => void;
+  /** Janela de horas exibida (padrao 07-23). Agenda de eventos usa 0-23 (dia inteiro) */
+  startHour?: number;
+  endHour?: number;
+  getTaskAccent?: (task: AdminTask) => { color: string; label: string } | null;
 }
 
 export const AdminCalendarDayView: React.FC<AdminCalendarDayViewProps> = ({
@@ -19,13 +25,16 @@ export const AdminCalendarDayView: React.FC<AdminCalendarDayViewProps> = ({
   onOpenTask,
   onNewTaskForDate,
   onUpdateTask,
+  startHour = 7,
+  endHour = 23,
+  getTaskAccent,
 }) => {
   const dateStr = useMemo(() => {
-    return currentDate.toISOString().split('T')[0];
+    return toLocalDateStr(currentDate);
   }, [currentDate]);
 
   const todayStr = useMemo(() => {
-    return new Date().toISOString().split('T')[0];
+    return getTodayLocalStr();
   }, []);
 
   const isToday = dateStr === todayStr;
@@ -71,8 +80,8 @@ export const AdminCalendarDayView: React.FC<AdminCalendarDayViewProps> = ({
   }, [dayTasks]);
 
   // Hours: 07:00 to 23:00 (17 slots)
-  const START_HOUR = 7;
-  const END_HOUR = 23;
+  const START_HOUR = startHour;
+  const END_HOUR = endHour;
   const hours = useMemo(() => {
     const arr: number[] = [];
     for (let h = START_HOUR; h <= END_HOUR; h++) {
@@ -103,23 +112,60 @@ export const AdminCalendarDayView: React.FC<AdminCalendarDayViewProps> = ({
     return () => clearInterval(interval);
   }, []);
 
+  // Para a data so importa o INICIO; o fim serve para desenhar a duracao. Evento que termina no dia seguinte
+  // (fim <= inicio) ocupa o bloco ate o fim do dia exibido.
+  const toMins = (hhmm: string) => { const [hh, mm] = hhmm.split(':').map(Number); return hh * 60 + (mm || 0); };
+  const GRID_END_MINS = (END_HOUR + 1) * 60;
+  const getTaskSpan = (task: AdminTask) => {
+    if (!task.dueTime) return { startAbs: START_HOUR * 60, endAbs: START_HOUR * 60 + 30, crossesMidnight: false };
+    const startAbs = toMins(task.dueTime);
+    let endAbs = task.endTime ? toMins(task.endTime) : startAbs + 10;
+    let crossesMidnight = false;
+    if (task.endTime && endAbs <= startAbs) { endAbs = GRID_END_MINS; crossesMidnight = true; }
+    return { startAbs, endAbs: Math.min(endAbs, GRID_END_MINS), crossesMidnight };
+  };
   const getTaskTopAndHeight = (task: AdminTask) => {
     if (!task.dueTime) return { top: 0, height: 32 };
-    const [h, m] = task.dueTime.split(':').map(Number);
-    const startMins = Math.max(0, (h - START_HOUR) * 60 + (m || 0));
-    
-    // Default task duration is 10 minutes
-    let durationMins = 10;
-    if (task.endTime) {
-      const [endH, endM] = task.endTime.split(':').map(Number);
-      const endTotalMins = (endH - START_HOUR) * 60 + (endM || 0);
-      durationMins = Math.max(10, endTotalMins - startMins);
-    }
-    
-    const topPx = (startMins / 60) * HOUR_HEIGHT;
-    const heightPx = Math.max(34, (durationMins / 60) * HOUR_HEIGHT);
-    return { top: topPx, height: heightPx };
+    const { startAbs, endAbs } = getTaskSpan(task);
+    const startMins = Math.max(0, startAbs - START_HOUR * 60);
+    const durationMins = Math.max(10, endAbs - startAbs);
+    return { top: (startMins / 60) * HOUR_HEIGHT, height: Math.max(34, (durationMins / 60) * HOUR_HEIGHT) };
   };
+
+  // Eventos que se sobrepoem no horario ficam lado a lado (colunas), nunca um em cima do outro
+  const columnLayout = useMemo(() => {
+    const items = timedTasks.map(t => ({ id: t.id, ...getTaskSpan(t) })).sort((a, b) => a.startAbs - b.startAbs || a.endAbs - b.endAbs);
+    const layout = new Map<string, { col: number; cols: number }>();
+    let cluster: typeof items = [];
+    let clusterEnd = -1;
+    const flush = () => {
+      const colEnds: number[] = [];
+      const assigned = cluster.map(it => {
+        let c = colEnds.findIndex(end => end <= it.startAbs);
+        if (c === -1) { c = colEnds.length; colEnds.push(it.endAbs); } else colEnds[c] = it.endAbs;
+        return { id: it.id, col: c };
+      });
+      assigned.forEach(a => layout.set(a.id, { col: a.col, cols: colEnds.length }));
+      cluster = []; clusterEnd = -1;
+    };
+    for (const it of items) {
+      if (cluster.length && it.startAbs >= clusterEnd) flush();
+      cluster.push(it); clusterEnd = Math.max(clusterEnd, it.endAbs);
+    }
+    if (cluster.length) flush();
+    return layout;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [timedTasks, START_HOUR, END_HOUR]);
+
+  // Ao abrir o dia, rola ate o primeiro evento (ou 07:00 se nao houver)
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const first = timedTasks.length ? Math.min(...timedTasks.map(t => toMins(t.dueTime as string))) : Math.max(7 * 60, START_HOUR * 60);
+    el.scrollTop = Math.max(0, ((first - START_HOUR * 60) / 60) * HOUR_HEIGHT - 40);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dateStr, timedTasks.length]);
 
   // Drag & Drop Moving State
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
@@ -249,9 +295,9 @@ export const AdminCalendarDayView: React.FC<AdminCalendarDayViewProps> = ({
             <ChevronLeft size={16} />
           </button>
 
-          <span style={{ fontSize: '0.86rem', fontWeight: 800, color: 'var(--adm-text-title, #0F172A)', letterSpacing: '-0.2px' }}>
-            {formattedHeaderDate}
-          </span>
+          <MonthYearSwitcher year={currentDate.getFullYear()} month={currentDate.getMonth()} label={formattedHeaderDate}
+            onChange={(y, m) => onDateChange(new Date(y, m, Math.min(currentDate.getDate(), new Date(y, m + 1, 0).getDate())))}
+            style={{ fontSize: '0.86rem', color: 'var(--adm-text-title, #0F172A)', letterSpacing: '-0.2px' }} />
 
           <button
             type="button"
@@ -344,6 +390,7 @@ export const AdminCalendarDayView: React.FC<AdminCalendarDayViewProps> = ({
 
       {/* Timeline Scrollable Grid (07:00 to 23:00 in 30min intervals) */}
       <div 
+        ref={scrollRef}
         style={{ flex: 1, overflowY: 'auto', position: 'relative', background: 'var(--adm-bg-card, #FFFFFF)' }}
         onDragOver={(e) => {
           e.preventDefault();
@@ -436,6 +483,10 @@ export const AdminCalendarDayView: React.FC<AdminCalendarDayViewProps> = ({
             const theme = getTaskTypeTheme(task);
             const leadOrTargetName = task.leadName || task.debutanteName;
             const isBeingDragged = draggedTaskId === task.id;
+            const accent = getTaskAccent ? getTaskAccent(task) : null;
+            const lay = columnLayout.get(task.id) || { col: 0, cols: 1 };
+            const span = getTaskSpan(task);
+            const pct = 100 / lay.cols;
 
             return (
               <div
@@ -447,10 +498,11 @@ export const AdminCalendarDayView: React.FC<AdminCalendarDayViewProps> = ({
                   position: 'absolute',
                   top: `${top + 2}px`,
                   height: `${height - 4}px`,
-                  left: '80px',
-                  right: '24px',
-                  background: theme.badgeBg,
-                  border: `1.5px solid ${theme.primaryColor}`,
+                  left: `calc(80px + (100% - 104px) * ${lay.col * pct / 100})`,
+                  width: `calc((100% - 104px) * ${pct / 100} - 4px)`,
+                  background: accent ? `${accent.color}18` : theme.badgeBg,
+                  border: `1.5px solid ${accent ? accent.color : theme.primaryColor}`,
+                  borderLeft: accent ? `5px solid ${accent.color}` : undefined,
                   borderRadius: '10px',
                   padding: '6px 12px',
                   cursor: 'grab',
@@ -473,6 +525,9 @@ export const AdminCalendarDayView: React.FC<AdminCalendarDayViewProps> = ({
                   e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.06)';
                 }}
               >
+                {accent && (
+                  <div style={{ fontSize: '0.64rem', fontWeight: 800, color: accent.color, textTransform: 'uppercase', letterSpacing: '0.3px' }}>{accent.label}</div>
+                )}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
                     <span style={{ display: 'flex', flexShrink: 0 }}>{renderTaskTypeIcon(theme.category, 13, theme.primaryColor)}</span>
@@ -481,7 +536,7 @@ export const AdminCalendarDayView: React.FC<AdminCalendarDayViewProps> = ({
                     </span>
                   </div>
                   <span style={{ fontSize: '0.70rem', fontWeight: 700, color: theme.badgeText, flexShrink: 0 }}>
-                    {task.dueTime}{task.endTime ? ` - ${task.endTime}` : ''}
+                    {task.dueTime}{task.endTime ? ` - ${task.endTime}${span.crossesMidnight ? ' (dia seguinte)' : ''}` : ''}
                   </span>
                 </div>
                 {leadOrTargetName && (

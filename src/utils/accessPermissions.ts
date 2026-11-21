@@ -114,3 +114,42 @@ export const formatAccessRoleLabel = (role?: string): string => {
       return role;
   }
 };
+
+/**
+ * Quem pode abrir o contrato a partir da Agenda de Eventos: gerencia/master ou quem atua nos DOIS setores
+ * (comercial e pos-venda). Quem e so comercial ve o resumo, sem o botao.
+ */
+export const canAccessContractFromAgenda = (user?: Partial<Collaborator> | null): boolean => {
+  if (!user) return false;
+  if (canChangeEventType(user)) return true;
+  const sectors = user.sectors || [];
+  return sectors.includes('comercial') && sectors.includes('pos_venda');
+};
+
+/** Marcar/alterar SDR e Closer dos contratos: gerencia, master e gerente comercial. */
+export const canEditContractTeam = (user?: Partial<Collaborator> | null): boolean => {
+  if (!user) return false;
+  return canChangeEventType(user) || hasJobRole(user as any, 'comercial:gerente');
+};
+
+/** Financeiro: master, gerencia e quem atua no setor financeiro. Comercial e pos-venda nao enxergam. */
+export const canAccessFinance = (user?: Partial<Collaborator> | null): boolean => {
+  if (!user) return false;
+  if (isUserMaster(user) || isUserManager(user)) return true;
+  if ((user.role || '').toLowerCase() === 'financeiro') return true;
+  return Boolean(user.sectors && user.sectors.includes('financeiro'));
+};
+
+/**
+ * Contratos aprovados e documentos do contrato (PDF): so financeiro e pos-venda (alem de master e gerencia).
+ * O comercial acompanha a venda ate "Preenchido" e nao ve os aprovados nem abre o documento.
+ */
+export const canViewContractDocument = (user?: Partial<Collaborator> | null): boolean => {
+  if (!user) return false;
+  if (isUserMaster(user) || isUserManager(user)) return true;
+  const role = (user.role || '').toLowerCase();
+  if (role === 'financeiro' || role === 'pos_venda') return true;
+  const sectors = user.sectors || [];
+  return sectors.includes('financeiro') || sectors.includes('pos_venda');
+};
+export const canSeeApprovedContracts = canViewContractDocument;

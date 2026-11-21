@@ -1,12 +1,14 @@
-import { DateField, Select } from '../ui';
+import { DateField, Select , MonthYearSwitcher } from '../ui';
 import { toast } from 'sonner';
+import { formatMonthYear } from '../ui';
+import { getTodayLocalStr } from '../../utils/dateUtils';
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
   X, Calendar, Trash2, ShieldAlert, Sparkles,
   Check, Copy, ChevronLeft, ChevronRight,
   Plus, Building2, UtensilsCrossed,
   Repeat, CalendarRange, ArrowRight, ArrowLeft, ArrowUp, ArrowDown,
-  Edit3, CheckCircle2, AlertCircle, MapPin, RotateCcw,
+  Edit3, CheckCircle2, AlertCircle, RotateCcw,
   Users, UserCheck, Send, Search
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
@@ -135,18 +137,11 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
     collaborators
   } = useAdminState();
 
-  // Mini-App Etapas: 1: Selecionar Casa -> 2: Selecionar Tipo -> 3: Painel de Configurações
-  const [planningStep, setPlanningStep] = useState<1 | 2 | 3>(() => {
-    if (venueId && initialType) return 3;
-    if (venueId) return 2;
-    return 1;
-  });
-
   const [selectedVenueId, setSelectedVenueId] = useState<string>(() => {
-    return venueId || (activeVenueId !== 'all' && activeVenueId ? activeVenueId : venues[0]?.id || 'all');
+    if (venueId && venueId !== 'all') return venueId;
+    if (activeVenueId && activeVenueId !== 'all') return activeVenueId;
+    return venues[0]?.id || '';
   });
-
-  const selectedVenue = venues.find(v => v.id === selectedVenueId);
 
   const [activeType, setActiveType] = useState<CommercialCommitmentType>(() => {
     return initialType || 'visit';
@@ -224,7 +219,7 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
 
   // Estados da Configuração por Data em Split-View (100% Livre)
   const [overrideCalendarMonth, setOverrideCalendarMonth] = useState<Date>(() => new Date());
-  const [selectedOverrideDate, setSelectedOverrideDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
+  const [selectedOverrideDate, setSelectedOverrideDate] = useState<string>(() => getTodayLocalStr());
 
   // Sub-estados para Data Específica / Overrides com duração, vagas e pax por data
   const [overrideIsBlocked, setOverrideIsBlocked] = useState(true);
@@ -1028,12 +1023,7 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
       return;
     }
 
-    if (venueId && initialType) {
-      onClose();
-      return;
-    }
-
-    setPlanningStep(2);
+    onClose();
   };
 
   // Blocos filtrados para o tipo ativo
@@ -1111,7 +1101,7 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
       });
     }
 
-    const trailingBlanks = (7 - (cells.length % 7)) % 7;
+    const trailingBlanks = Math.max(0, 42 - cells.length); // sempre 6 semanas
     for (let i = 0; i < trailingBlanks; i++) {
       cells.push({
         dateStr: `blank-trail-${i}`,
@@ -1126,451 +1116,199 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
   const venueName = venues.find(v => v.id === selectedVenueId)?.name || 'Todas as Unidades';
 
   // ═════════════════════════════════════════════════════════════════════════════
-  // ETAPA 1: SELEÇÃO DA UNIDADE (CASAS DE FESTA)
-  // ═════════════════════════════════════════════════════════════════════════════
-  if (planningStep === 1) {
-    return (
-      <div style={{
-        position: 'absolute',
-        inset: 0,
-        zIndex: 60,
-        display: 'flex',
-        flexDirection: 'column',
-        background: 'var(--adm-bg-app, #F8FAFC)',
-        color: 'var(--adm-text-title, #0F172A)',
-        padding: '32px',
-        overflowY: 'auto',
-        fontFamily: "'Plus Jakarta Sans', sans-serif",
-      }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '32px' }}>
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--adm-accent)', marginBottom: '6px' }}>
-              <Calendar size={18} />
-              <span style={{ fontSize: '0.75rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                Etapa 1 de 3 • Planejamento de Calendário
-              </span>
-            </div>
-            <h1 style={{ fontSize: '1.6rem', fontWeight: 900, color: 'var(--adm-text-title)', margin: 0 }}>
-              Selecione a Casa de Festas
-            </h1>
-            <p style={{ fontSize: '0.85rem', color: 'var(--adm-text-muted)', margin: '4px 0 0 0' }}>
-              Escolha a unidade física para gerenciar e planejar as agendas de Visitas e Degustações.
-            </p>
-          </div>
-
-          <button
-            type="button"
-            onClick={onClose}
-            style={{
-              background: 'var(--adm-bg-card)',
-              border: '1px solid var(--adm-border)',
-              color: 'var(--adm-text-muted)',
-              borderRadius: '10px',
-              padding: '8px',
-              cursor: 'pointer',
-            }}
-          >
-            <X size={20} />
-          </button>
-        </div>
-
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
-          gap: '20px',
-        }}>
-          {venues.map(v => (
-            <div
-              key={v.id}
-              onClick={() => {
-                setSelectedVenueId(v.id);
-                setPlanningStep(2);
-              }}
-              style={{
-                background: 'var(--adm-bg-card)',
-                border: '1px solid var(--adm-border)',
-                borderRadius: '16px',
-                overflow: 'hidden',
-                cursor: 'pointer',
-                transition: 'all 0.2s ease',
-                boxShadow: '0 4px 14px rgba(0,0,0,0.06)',
-                display: 'flex',
-                flexDirection: 'column',
-              }}
-            >
-              <div style={{ height: '140px', background: 'var(--adm-bg-surface)', position: 'relative', overflow: 'hidden' }}>
-                {v.ballroomImageUrl || v.logoUrl ? (
-                  <img src={v.ballroomImageUrl || v.logoUrl} alt={v.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                ) : (
-                  <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--adm-text-muted)' }}>
-                    <Building2 size={40} />
-                  </div>
-                )}
-                {v.logoUrl && (
-                  <div style={{
-                    position: 'absolute',
-                    bottom: '10px',
-                    left: '14px',
-                    width: '42px',
-                    height: '42px',
-                    borderRadius: '10px',
-                    overflow: 'hidden',
-                    border: '2px solid #FFFFFF',
-                    background: '#FFFFFF',
-                    boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
-                  }}>
-                    <img src={v.logoUrl} alt={v.name} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-                  </div>
-                )}
-              </div>
-              <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
-                  {v.name}
-                </h3>
-                {v.address && (
-                  <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--adm-text-muted)' }}>
-                    {v.address}
-                  </p>
-                )}
-                <div style={{
-                  marginTop: '12px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  paddingTop: '10px',
-                  borderTop: '1px solid var(--adm-border)',
-                }}>
-                  <span style={{ fontSize: '0.72rem', color: 'var(--adm-accent)', fontWeight: 800 }}>
-                    Planejar Horários
-                  </span>
-                  <ArrowRight size={14} color="var(--adm-accent)" />
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-  // ═════════════════════════════════════════════════════════════════════════════
-  // ETAPA 2: SELEÇÃO DO TIPO DE AGENDA (VISITAS VS DEGUSTAÇÕES)
-  // ═════════════════════════════════════════════════════════════════════════════
-  if (planningStep === 2) {
-    const activeVenueObj = venues.find(v => v.id === selectedVenueId);
-    return (
-      <div style={{
-        position: 'absolute',
-        inset: 0,
-        zIndex: 60,
-        display: 'flex',
-        flexDirection: 'column',
-        background: 'var(--adm-bg-app, #F8FAFC)',
-        color: 'var(--adm-text-title, #0F172A)',
-        padding: '32px',
-        overflowY: 'auto',
-        fontFamily: "'Plus Jakarta Sans', sans-serif",
-      }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '32px' }}>
-          <div>
-            <button
-              type="button"
-              onClick={() => setPlanningStep(1)}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                background: 'transparent',
-                border: 'none',
-                color: 'var(--adm-accent)',
-                fontSize: '0.80rem',
-                fontWeight: 800,
-                cursor: 'pointer',
-                marginBottom: '12px',
-                padding: 0,
-              }}
-            >
-              <ArrowLeft size={16} />
-              Voltar às Casas
-            </button>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--adm-accent)', marginBottom: '6px' }}>
-              <span style={{ fontSize: '0.75rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                Etapa 2 de 3 • {activeVenueObj?.name || 'Casa Selecionada'}
-              </span>
-            </div>
-            <h1 style={{ fontSize: '1.6rem', fontWeight: 900, color: 'var(--adm-text-title)', margin: 0 }}>
-              Qual Agenda Você Deseja Planejar?
-            </h1>
-            <p style={{ fontSize: '0.85rem', color: 'var(--adm-text-muted)', margin: '4px 0 0 0' }}>
-              Selecione o tipo de compromisso para configurar a grade semanal, blocos e datas pontuais.
-            </p>
-          </div>
-
-          <button
-            type="button"
-            onClick={onClose}
-            style={{
-              background: 'var(--adm-bg-card)',
-              border: '1px solid var(--adm-border)',
-              color: 'var(--adm-text-muted)',
-              borderRadius: '10px',
-              padding: '8px',
-              cursor: 'pointer',
-            }}
-          >
-            <X size={20} />
-          </button>
-        </div>
-
-        {/* 2 Cards de Tipo */}
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
-          gap: '24px',
-          maxWidth: '850px',
-        }}>
-          {/* Card Visitas */}
-          <div
-            onClick={() => {
-              setActiveType('visit');
-              setPlanningStep(3);
-            }}
-            style={{
-              background: 'var(--adm-bg-card)',
-              border: '1px solid var(--adm-border)',
-              borderRadius: '18px',
-              padding: '28px',
-              cursor: 'pointer',
-              transition: 'all 0.2s ease',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '16px',
-            }}
-          >
-            <div style={{
-              width: '52px',
-              height: '52px',
-              borderRadius: '14px',
-              background: 'rgba(16,185,129,0.12)',
-              border: '1px solid rgba(16,185,129,0.3)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#10B981',
-            }}>
-              <Building2 size={26} />
-            </div>
-            <div>
-              <h3 style={{ margin: '0 0 6px 0', fontSize: '1.2rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
-                Visitas Comerciais
-              </h3>
-              <p style={{ margin: 0, fontSize: '0.84rem', color: 'var(--adm-text-muted)', lineHeight: '1.4' }}>
-                Apresentação dos salões, reuniões com noivos e debutantes, agendamento de reuniões presenciais para fechamento de contratos.
-              </p>
-            </div>
-            <div style={{ marginTop: 'auto', display: 'flex', alignItems: 'center', gap: '8px', color: '#10B981', fontWeight: 800, fontSize: '0.80rem' }}>
-              <span>Configurar Agenda de Visitas</span>
-              <ArrowRight size={14} />
-            </div>
-          </div>
-
-          {/* Card Degustação */}
-          <div
-            onClick={() => {
-              setActiveType('tasting');
-              setPlanningStep(3);
-            }}
-            style={{
-              background: 'var(--adm-bg-card)',
-              border: '1px solid var(--adm-border)',
-              borderRadius: '18px',
-              padding: '28px',
-              cursor: 'pointer',
-              transition: 'all 0.2s ease',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '16px',
-            }}
-          >
-            <div style={{
-              width: '52px',
-              height: '52px',
-              borderRadius: '14px',
-              background: 'rgba(217,119,6,0.12)',
-              border: '1px solid rgba(217,119,6,0.3)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#D97706',
-            }}>
-              <UtensilsCrossed size={26} />
-            </div>
-            <div>
-              <h3 style={{ margin: '0 0 6px 0', fontSize: '1.2rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
-                Degustação Gastronômica
-              </h3>
-              <p style={{ margin: 0, fontSize: '0.84rem', color: 'var(--adm-text-muted)', lineHeight: '1.4' }}>
-                Experiência de menu completo, prova de pratos, definição de limites rigorosos de PAX (número de pessoas) e horários de buffet.
-              </p>
-            </div>
-            <div style={{ marginTop: 'auto', display: 'flex', alignItems: 'center', gap: '8px', color: '#D97706', fontWeight: 800, fontSize: '0.80rem' }}>
-              <span>Configurar Agenda de Degustações</span>
-              <ArrowRight size={14} />
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // ═════════════════════════════════════════════════════════════════════════════
-  // ETAPA 3: PAINEL DE CONFIGURAÇÕES COM HEADER UNIVERSAL
+  // MODAL DE PLANEJAMENTO DE AGENDAMENTO (GRADE E DISPONIBILIDADE)
   // ═════════════════════════════════════════════════════════════════════════════
   return (
-    <div style={{
-      position: 'absolute',
-      inset: 0,
-      zIndex: 60,
-      display: 'flex',
-      flexDirection: 'column',
-      background: 'var(--adm-bg-card, #FFFFFF)',
-      color: 'var(--adm-text-title, #0F172A)',
-      width: '100%',
-      height: '100%',
-      overflow: 'hidden',
-      fontFamily: "'Inter', sans-serif",
-    }}>
-      {/* HEADER SUPERIOR UNIVERSAL ÚNICO */}
-      <div style={{
-        padding: '14px 24px',
-        borderBottom: '1px solid var(--adm-border, #E2E8F0)',
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 1200,
+        background: 'rgba(0, 0, 0, 0.70)',
+        backdropFilter: 'blur(4px)',
         display: 'flex',
         alignItems: 'center',
-        justifyContent: 'space-between',
-        background: 'var(--adm-bg-surface, #F8FAFC)',
-        flexShrink: 0,
-        gap: '16px',
-        flexWrap: 'wrap',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '14px', minWidth: 0 }}>
-          {/* Botão Universal Voltar */}
-          <button
-            type="button"
-            onClick={handleUniversalBack}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              background: 'var(--adm-bg-card)',
-              border: '1px solid var(--adm-border)',
-              color: 'var(--adm-text-title)',
-              borderRadius: '8px',
-              padding: '7px 12px',
-              fontSize: '0.78rem',
-              fontWeight: 700,
-              cursor: 'pointer',
-              flexShrink: 0,
-            }}
-          >
-            <ArrowLeft size={14} />
-            <span>{activeMode === 'hub' ? 'Voltar' : 'Voltar ao Menu'}</span>
-          </button>
-
-          {/* Logo da Casa com Fundo Preto de Destaque */}
-          <div style={{
-            width: '44px',
-            height: '44px',
-            borderRadius: '10px',
-            background: '#000000',
-            padding: '4px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            overflow: 'hidden',
-            flexShrink: 0,
-            border: '1px solid rgba(255, 255, 255, 0.15)',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.25)',
-          }}>
-            {selectedVenue?.logoUrl ? (
-              <img src={selectedVenue.logoUrl} alt={venueName} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-            ) : (
-              <Building2 size={22} color="#D4AF37" />
-            )}
-          </div>
-
-          <div style={{ minWidth: 0 }}>
-            <h2 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: 'var(--adm-text-title, #0F172A)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {venueName}
-            </h2>
-            {selectedVenue?.address ? (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.74rem', color: 'var(--adm-text-muted, #64748B)', marginTop: '2px' }}>
-                <MapPin size={11} color="#94A3B8" />
-                <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{selectedVenue.address}</span>
-              </div>
-            ) : (
-              <p style={{ margin: '2px 0 0', fontSize: '0.74rem', color: 'var(--adm-text-muted, #64748B)' }}>
-                Configuração de Agenda e Disponibilidade
-              </p>
-            )}
-          </div>
-        </div>
-
-        {/* Seletor Central Elegante: Visita Comercial vs Degustação Gastronômica */}
+        justifyContent: 'center',
+        padding: '20px',
+        boxSizing: 'border-box',
+      }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div
+        style={{
+          width: '100%',
+          maxWidth: '1100px',
+          height: '92vh',
+          maxHeight: '860px',
+          borderRadius: '16px',
+          background: 'var(--adm-bg-surface, #FFFFFF)',
+          border: '1px solid var(--adm-border, #E2E8F0)',
+          boxShadow: '0 25px 60px rgba(0, 0, 0, 0.40)',
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+          fontFamily: "'Inter', sans-serif",
+          boxSizing: 'border-box',
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* HEADER SUPERIOR UNIFICADO */}
         <div style={{
+          padding: '14px 22px',
+          borderBottom: '1px solid var(--adm-border, #E2E8F0)',
           display: 'flex',
           alignItems: 'center',
-          gap: '4px',
-          background: 'var(--adm-bg-input, #E2E8F0)',
-          padding: '4px',
-          borderRadius: '10px',
-          border: '1px solid var(--adm-border, #CBD5E1)',
+          justifyContent: 'space-between',
+          background: 'var(--adm-bg-surface, #F8FAFC)',
+          flexShrink: 0,
+          gap: '14px',
+          flexWrap: 'wrap',
         }}>
-          <button
-            type="button"
-            onClick={() => setActiveType('visit')}
-            style={{
-              padding: '6px 14px',
-              borderRadius: '7px',
-              border: 'none',
-              background: activeType === 'visit' ? '#10B981' : 'transparent',
-              color: activeType === 'visit' ? '#FFFFFF' : 'var(--adm-text-muted, #64748B)',
-              fontSize: '0.78rem',
-              fontWeight: 800,
-              cursor: 'pointer',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              transition: 'all 0.15s ease',
-              boxShadow: activeType === 'visit' ? '0 2px 6px rgba(16,185,129,0.3)' : 'none',
-            }}
-          >
-            <Building2 size={13} />
-            <span>Visita Comercial</span>
-          </button>
+          {/* Lado Esquerdo: Voltar (se em sub-modo) ou Ícone + Título */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
+            {activeMode !== 'hub' ? (
+              <button
+                type="button"
+                onClick={handleUniversalBack}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  background: 'var(--adm-bg-card, #FFFFFF)',
+                  border: '1px solid var(--adm-border, #CBD5E1)',
+                  color: 'var(--adm-text-title, #0F172A)',
+                  borderRadius: '8px',
+                  padding: '6px 12px',
+                  fontSize: '0.78rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  flexShrink: 0,
+                }}
+              >
+                <ArrowLeft size={14} />
+                <span>Voltar ao Menu</span>
+              </button>
+            ) : (
+              <div style={{
+                width: '36px',
+                height: '36px',
+                borderRadius: '10px',
+                background: '#141118',
+                border: '1px solid rgba(212, 175, 55, 0.3)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#D4AF37',
+                flexShrink: 0,
+              }}>
+                <CalendarRange size={18} />
+              </div>
+            )}
 
-          <button
-            type="button"
-            onClick={() => setActiveType('tasting')}
-            style={{
-              padding: '6px 14px',
-              borderRadius: '7px',
-              border: 'none',
-              background: activeType === 'tasting' ? '#D97706' : 'transparent',
-              color: activeType === 'tasting' ? '#FFFFFF' : 'var(--adm-text-muted, #64748B)',
-              fontSize: '0.78rem',
-              fontWeight: 800,
-              cursor: 'pointer',
-              display: 'inline-flex',
+            <div style={{ minWidth: 0 }}>
+              <h2 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: 'var(--adm-text-title, #0F172A)', whiteSpace: 'nowrap' }}>
+                Planejamento de Agendamento
+              </h2>
+              <p style={{ margin: '1px 0 0', fontSize: '0.72rem', color: 'var(--adm-text-muted, #64748B)' }}>
+                Grade e regras para visitas comerciais e degustações
+              </p>
+            </div>
+          </div>
+
+          {/* Centro: Seletor de Casa + Alternador Visitas/Degustações */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+            {/* Seletor de Unidade */}
+            <div style={{
+              display: 'flex',
               alignItems: 'center',
               gap: '6px',
-              transition: 'all 0.15s ease',
-              boxShadow: activeType === 'tasting' ? '0 2px 6px rgba(217,119,6,0.3)' : 'none',
-            }}
-          >
-            <UtensilsCrossed size={13} />
-            <span>Degustação Gastronômica</span>
-          </button>
-        </div>
+              background: 'var(--adm-bg-card, #FFFFFF)',
+              border: '1px solid var(--adm-border, #CBD5E1)',
+              borderRadius: '8px',
+              padding: '4px 8px',
+            }}>
+              <Building2 size={14} color="#D4AF37" />
+              <select
+                value={selectedVenueId}
+                onChange={(e) => {
+                  setSelectedVenueId(e.target.value);
+                  setActiveMode('hub');
+                }}
+                style={{
+                  border: 'none',
+                  background: 'transparent',
+                  color: 'var(--adm-text-title, #0F172A)',
+                  fontSize: '0.78rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  outline: 'none',
+                }}
+              >
+                {venues.map(v => (
+                  <option key={v.id} value={v.id}>{v.name}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Alternador Visitas / Degustações */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '3px',
+              background: 'var(--adm-bg-input, #E2E8F0)',
+              padding: '3px',
+              borderRadius: '8px',
+              border: '1px solid var(--adm-border, #CBD5E1)',
+            }}>
+              <button
+                type="button"
+                onClick={() => setActiveType('visit')}
+                style={{
+                  padding: '5px 12px',
+                  borderRadius: '6px',
+                  border: 'none',
+                  background: activeType === 'visit' ? '#10B981' : 'transparent',
+                  color: activeType === 'visit' ? '#FFFFFF' : 'var(--adm-text-muted, #64748B)',
+                  fontSize: '0.78rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  transition: 'all 0.15s ease',
+                  boxShadow: activeType === 'visit' ? '0 1px 4px rgba(16,185,129,0.3)' : 'none',
+                }}
+              >
+                <Building2 size={13} />
+                <span>Visitas</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveType('tasting')}
+                style={{
+                  padding: '5px 12px',
+                  borderRadius: '6px',
+                  border: 'none',
+                  background: activeType === 'tasting' ? '#D97706' : 'transparent',
+                  color: activeType === 'tasting' ? '#FFFFFF' : 'var(--adm-text-muted, #64748B)',
+                  fontSize: '0.78rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  transition: 'all 0.15s ease',
+                  boxShadow: activeType === 'tasting' ? '0 1px 4px rgba(217,119,6,0.3)' : 'none',
+                }}
+              >
+                <UtensilsCrossed size={13} />
+                <span>Degustações</span>
+              </button>
+            </div>
+          </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexShrink: 0 }}>
           {activeMode !== 'hub' && (
@@ -2946,9 +2684,10 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
                                   >
                                     <ChevronLeft size={16} />
                                   </button>
-                                  <span style={{ fontSize: '0.95rem', fontWeight: 800, minWidth: '160px', textAlign: 'center', textTransform: 'capitalize' }}>
-                                    {blockCalendarMonth.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}
-                                  </span>
+                                  <MonthYearSwitcher year={blockCalendarMonth.getFullYear()} month={blockCalendarMonth.getMonth()}
+                                    label={formatMonthYear(blockCalendarMonth)}
+                                    onChange={(y, m) => setBlockCalendarMonth(new Date(y, m, 1))}
+                                    style={{ fontSize: '0.95rem', fontWeight: 800, minWidth: '160px', textAlign: 'center', textTransform: 'capitalize' }} />
                                   <button
                                     type="button"
                                     onClick={() => setBlockCalendarMonth(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))}
@@ -3606,9 +3345,10 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
                     >
                       <ChevronLeft size={16} />
                     </button>
-                    <span style={{ fontSize: '0.95rem', fontWeight: 800, minWidth: '160px', textAlign: 'center', textTransform: 'capitalize', color: '#0F172A' }}>
-                      {overrideCalendarMonth.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}
-                    </span>
+                    <MonthYearSwitcher year={overrideCalendarMonth.getFullYear()} month={overrideCalendarMonth.getMonth()}
+                      label={formatMonthYear(overrideCalendarMonth)}
+                      onChange={(y, m) => setOverrideCalendarMonth(new Date(y, m, 1))}
+                      style={{ fontSize: '0.95rem', fontWeight: 800, minWidth: '160px', textAlign: 'center', textTransform: 'capitalize', color: '#0F172A' }} />
                     <button
                       type="button"
                       onClick={() => setOverrideCalendarMonth(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))}
@@ -4750,6 +4490,7 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 };

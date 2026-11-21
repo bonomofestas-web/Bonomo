@@ -1,4 +1,5 @@
-import { DateField, Select } from '../ui';
+import { DateField, Select , MonthYearSwitcher } from '../ui';
+import { formatMonthYear } from '../ui';
 import React, { useState, useMemo } from 'react';
 import { HeaderActions } from './HeaderActions';
 import { 
@@ -1125,7 +1126,9 @@ export const AdminAppointmentsView: React.FC<AdminAppointmentsViewProps> = ({ on
           {/* Navegação de Mês */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <h2 style={{ fontSize: '1.15rem', fontWeight: 900, color: 'var(--adm-text-title, #0F172A)', margin: 0 }}>
-              {currentDate.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }).toUpperCase()}
+              <MonthYearSwitcher year={currentDate.getFullYear()} month={currentDate.getMonth()}
+                label={formatMonthYear(currentDate).toUpperCase()}
+                onChange={(y, m) => setCurrentDate(new Date(y, m, 1))} style={{ fontSize: '1.15rem', fontWeight: 900 }} />
             </h2>
             <div style={{ display: 'flex', gap: '6px' }}>
               <button
@@ -1173,6 +1176,9 @@ export const AdminAppointmentsView: React.FC<AdminAppointmentsViewProps> = ({ on
               for (let i = 0; i < firstDay; i++) {
                 cells.push(<div key={`empty-${i}`} style={{ minHeight: '90px', background: 'transparent' }} />);
               }
+
+              // Sempre 6 semanas: o calendario nao muda de altura entre os meses
+              const trailing = 42 - firstDay - totalDays;
 
               for (let d = 1; d <= totalDays; d++) {
                 const dateStr = `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
@@ -1235,6 +1241,7 @@ export const AdminAppointmentsView: React.FC<AdminAppointmentsViewProps> = ({ on
                 );
               }
 
+              for (let i = 0; i < trailing; i++) cells.push(<div key={`trail-${i}`} style={{ minHeight: '90px', background: 'transparent' }} />);
               return cells;
             })()}
           </div>

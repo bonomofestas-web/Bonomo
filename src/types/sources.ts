@@ -45,6 +45,10 @@ export interface SourceConfiguration {
   // Referral specifics
   systemManaged?: boolean;
 
+  // Conexao fixa do Financeiro (uma por casa)
+  role?: 'financeiro';
+  fixed?: boolean;
+
   // Legacy Tracking Link specifics (mantido para compatibilidade histórica)
   targetPhone?: string;
   message?: string;

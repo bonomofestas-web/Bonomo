@@ -3,6 +3,7 @@ import { responseTimeService, summarizeResponsePairs, type ResponsePair } from '
 import { useAdminState } from '../context/AdminStateContext';
 import { goalsService, type VenueBaseline, type VenueGoalRecord } from '../services/goalsService';
 import { leadService } from '../services/leadService';
+import { metricsService } from '../services/metricsService';
 import { MQL_QUALIFIED_MIN } from '../utils/mqlScore';
 import { buildJourneyCohort, commitmentDone, hasMql, isDisqualified, pctOf, wasAttended, wasScheduled } from '../utils/leadJourney';
 import {
@@ -198,6 +199,8 @@ export interface CommercialDashboardData {
     revenue: Delta;
   };
   pacing: { revenue: number; target: number; expected: number; pct: number | null; expectedPct: number };
+  /** Entrada no periodo: o que entrou em caixa (entradas/sinais pagos, liquido) e o contratado dos fechamentos do periodo */
+  entry: { cash: Delta; contracted: Delta; hasCashData: boolean };
   funnel: FunnelStep[];
   evolution: EvolutionPoint[];
   sources: SourceRank[];
@@ -334,6 +337,20 @@ export const useCommercialDashboardData = (selection: PeriodSelection, venueScop
     window.addEventListener('f5:contracts-changed', onChanged);
     return () => window.removeEventListener('f5:contracts-changed', onChanged);
   }, []);
+
+  // Contratos fechados (data de fechamento) e entradas pagas: alimentam faturamento sem lead e a metrica de entrada
+  const [contractFacts, setContractFacts] = useState<Array<{ id: string; venueId: string; total: number; entry: number; closedAt: string; originLeadId: string | null }>>([]);
+  const [entryCashFacts, setEntryCashFacts] = useState<Array<{ date: string; net: number; venueId: string }>>([]);
+  const venueIdsKey = venueIds.join(',');
+  useEffect(() => {
+    let cancelled = false;
+    if (!masterId) return;
+    Promise.all([metricsService.getClosedContractFacts(masterId, venueIds), metricsService.getEntryCashFacts(masterId, venueIds)])
+      .then(([c, e]) => { if (!cancelled) { setContractFacts(c); setEntryCashFacts(e); } })
+      .catch(() => { if (!cancelled) { setContractFacts([]); setEntryCashFacts([]); } });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [masterId, venueIdsKey, realtimeTick]);
 
   useEffect(() => {
     let cancelled = false;
@@ -480,6 +497,11 @@ export const useCommercialDashboardData = (selection: PeriodSelection, venueScop
 
     const closedLeads = scopedLeads.filter(isClosed);
 
+    // Contratos que NAO vieram de um lead fechado (ex.: importados) tambem contam, pela data de fechamento
+    const closedLeadIdSet = new Set(closedLeads.map(l => l.id));
+    const extraContracts = contractFacts.filter(c => !c.originLeadId || !closedLeadIdSet.has(c.originLeadId));
+    const contractDay = (c: { closedAt: string }) => `${c.closedAt}T12:00:00`;
+
     const lossStageIds = new Set<string>();
     commercialFunnels.forEach(f => (f.stages || []).forEach(s => { if (s.isLoss) lossStageIds.add(s.id); }));
     const isLost = (l: Lead): boolean => !isClosed(l) && (lossStageIds.has(String(l.stage)) || l.stage === 'lost' || (lossStageIds.size === 0 && !!l.lossReason));
@@ -488,6 +510,7 @@ export const useCommercialDashboardData = (selection: PeriodSelection, venueScop
     const kpisFor = (range: DateRange): WindowKpis => {
       const created = scopedLeads.filter(l => inRange(l.createdAt, range));
       const closed = closedLeads.filter(l => inRange(closedDate(l), range));
+      const extraClosed = extraContracts.filter(c => inRange(contractDay(c), range));
       const cohortClosed = created.filter(isClosed).length;
       let visits = 0;
       let tastings = 0;
@@ -497,8 +520,8 @@ export const useCommercialDashboardData = (selection: PeriodSelection, venueScop
       });
       return {
         leadsCreated: created.length,
-        closings: closed.length,
-        revenue: closed.reduce((s, l) => s + valueOf(l), 0),
+        closings: closed.length + extraClosed.length,
+        revenue: closed.reduce((s, l) => s + valueOf(l), 0) + extraClosed.reduce((a, c) => a + c.total, 0),
         visits,
         tastings,
         appointments: visits + tastings,
@@ -651,6 +674,13 @@ export const useCommercialDashboardData = (selection: PeriodSelection, venueScop
       if (ci >= 0 && ci < n) { evo[ci].closings += 1; evo[ci].revenue += valueOf(l); }
       const pi = bucketIndex(d, compared, granularity);
       if (pi >= 0 && pi < n) { evo[pi].closingsPrev += 1; evo[pi].revenuePrev += valueOf(l); }
+    });
+    extraContracts.forEach(c => {
+      const d = contractDay(c);
+      const ci = bucketIndex(d, current, granularity);
+      if (ci >= 0 && ci < n) { evo[ci].closings += 1; evo[ci].revenue += c.total; }
+      const pi = bucketIndex(d, compared, granularity);
+      if (pi >= 0 && pi < n) { evo[pi].closingsPrev += 1; evo[pi].revenuePrev += c.total; }
     });
     // Nao exibe buckets futuros do periodo atual (ex.: dias que ainda nao aconteceram)
     const now = Date.now();
@@ -845,16 +875,20 @@ export const useCommercialDashboardData = (selection: PeriodSelection, venueScop
           const created = vLeads.filter(l => inRange(l.createdAt, current));
           const closedCur = vLeads.filter(l => isClosed(l) && inRange(closedDate(l), current));
           const closedPrev = vLeads.filter(l => isClosed(l) && inRange(closedDate(l), compared));
-          const revenue = closedCur.reduce((s, l) => s + valueOf(l), 0);
+          const vExtra = extraContracts.filter(c => c.venueId === id);
+          const extraCur = vExtra.filter(c => inRange(contractDay(c), current));
+          const extraPrev = vExtra.filter(c => inRange(contractDay(c), compared));
+          const revenue = closedCur.reduce((s, l) => s + valueOf(l), 0) + extraCur.reduce((a, c) => a + c.total, 0);
+          const closingsTotal = closedCur.length + extraCur.length;
           return {
             id,
             name: venues.find(v => v.id === id)?.name || 'Unidade',
             leads: created.length,
-            closings: closedCur.length,
+            closings: closingsTotal,
             revenue,
-            revenuePrev: closedPrev.reduce((s, l) => s + valueOf(l), 0),
+            revenuePrev: closedPrev.reduce((s, l) => s + valueOf(l), 0) + extraPrev.reduce((a, c) => a + c.total, 0),
             conversion: created.length > 0 ? (created.filter(isClosed).length / created.length) * 100 : 0,
-            avgTicket: closedCur.length > 0 ? revenue / closedCur.length : 0,
+            avgTicket: closingsTotal > 0 ? revenue / closingsTotal : 0,
           };
         }).sort((a, b) => b.revenue - a.revenue)
       : [];
@@ -1123,6 +1157,11 @@ export const useCommercialDashboardData = (selection: PeriodSelection, venueScop
         revenue: delta(cur.revenue, prev.revenue),
       },
       pacing,
+      entry: (() => {
+        const cashIn = (r: DateRange) => entryCashFacts.filter(t => inRange(`${t.date}T12:00:00`, r)).reduce((a, t) => a + t.net, 0);
+        const contractedIn = (r: DateRange) => contractFacts.filter(c => inRange(contractDay(c), r)).reduce((a, c) => a + c.entry, 0);
+        return { cash: delta(cashIn(current), cashIn(compared)), contracted: delta(contractedIn(current), contractedIn(compared)), hasCashData: entryCashFacts.length > 0 };
+      })(),
       funnel: funnelSteps,
       evolution: visibleEvo,
       sources,
@@ -1131,5 +1170,5 @@ export const useCommercialDashboardData = (selection: PeriodSelection, venueScop
       collaborators: collabRows,
       hasData: scopedLeads.length > 0,
     };
-  }, [resolved, leads, clients, collaborators, funnels, venueIds, venueGoals, loadingGoals, presence, presenceTruncated, loadingPresence, wantsBaseline, baselines, goalPeriods, collabGoals, responsePairs, responseInput, responseTruncated]);
+  }, [resolved, leads, clients, collaborators, funnels, venueIds, venueGoals, loadingGoals, presence, presenceTruncated, loadingPresence, wantsBaseline, baselines, goalPeriods, collabGoals, responsePairs, responseInput, responseTruncated, contractFacts, entryCashFacts]);
 };

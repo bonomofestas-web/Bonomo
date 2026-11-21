@@ -36,6 +36,7 @@ export const venueService = {
         googleMapsLink: row.google_maps_link || '',
         wazeLink: row.waze_link || '',
         defaultDressCode: row.default_dress_code || 'Esporte Fino / Gala',
+        calendarColor: row.calendar_color || undefined,
         primaryColor: row.primary_color || '#D4AF37',
         secondaryColor: row.secondary_color || '#AA7C11',
         accentColor: row.accent_color || '#F3E5AB',
@@ -87,6 +88,7 @@ export const venueService = {
         googleMapsLink: data.google_maps_link || '',
         wazeLink: data.waze_link || '',
         defaultDressCode: data.default_dress_code || 'Esporte Fino / Gala',
+        calendarColor: data.calendar_color || undefined,
         primaryColor: data.primary_color || '#D4AF37',
         secondaryColor: data.secondary_color || '#AA7C11',
         accentColor: data.accent_color || '#F3E5AB',
@@ -130,6 +132,7 @@ export const venueService = {
       if (venue.googleMapsLink !== undefined) payload.google_maps_link = venue.googleMapsLink;
       if (venue.wazeLink !== undefined) payload.waze_link = venue.wazeLink;
       if (venue.defaultDressCode !== undefined) payload.default_dress_code = venue.defaultDressCode;
+      if (venue.calendarColor !== undefined) payload.calendar_color = venue.calendarColor || null;
       if (venue.primaryColor !== undefined) payload.primary_color = venue.primaryColor;
       if (venue.secondaryColor !== undefined) payload.secondary_color = venue.secondaryColor;
       if (venue.accentColor !== undefined) payload.accent_color = venue.accentColor;

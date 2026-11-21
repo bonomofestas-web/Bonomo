@@ -4,15 +4,23 @@ import {
   Users, User, Plus, Phone, Mail, Briefcase,
   CheckCircle2, FileText, ExternalLink,
   Edit3, X, Clock, ShieldCheck, CheckSquare,
-  MessageSquare, Building2, Trash2, Search, MapPin
+  MessageSquare, Building2, Trash2, ArrowUpDown, CalendarRange, MapPin
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { contactService, ContactDuplicateError } from '../../services/contactService';
 import { formatPhone } from '../../utils/phoneFormatter';
 import { generateUuid } from '../../utils/uuid';
 import { toast } from 'sonner';
-import type { Contact, ContactDependent, Lead, Contract, AdminTabType } from '../../types/admin';
+import type { Contact, ContactDependent, ContactListFilter, Lead, Contract, AdminTabType } from '../../types/admin';
+import { supplierService } from '../../services/supplierService';
+import { VenueChip } from './contacts/VenueChip';
+import { DateRangeField } from '../ui';
+import { useScreenSearch, screenQueryTerm } from '../../utils/screenSearch';
+import { SupplierPanel } from './contacts/SupplierPanel';
+import { ConvertContactModal } from './contacts/ConvertContactModal';
+import { canAccessFinance, canViewContractDocument } from '../../utils/accessPermissions';
 import { findPhoneConflict, duplicatePhoneMessage } from '../../utils/phoneDuplicates';
+import { ContractQuickViewModal } from './ContractQuickViewModal';
 
 interface AdminContactsViewProps {
   onNavigateTab?: (tab: AdminTabType, params?: any) => void;
@@ -65,6 +73,8 @@ export const AdminContactsView: React.FC<AdminContactsViewProps> = ({
   const [isEditContactModalOpen, setIsEditContactModalOpen] = useState(false);
   const [isAddDependentModalOpen, setIsAddDependentModalOpen] = useState(false);
   const [viewingContract, setViewingContract] = useState<Contract | null>(null);
+  // Aba do detalhe: visao geral ou ficha de fornecedor
+  const [detailTab, setDetailTab] = useState<'geral' | 'fornecedor'>('geral');
 
   // Formulário Rápido de Novo Contato
   const [quickForm, setQuickForm] = useState({
@@ -105,6 +115,37 @@ export const AdminContactsView: React.FC<AdminContactsViewProps> = ({
   });
 
   const scopedMasterId = currentUser?.masterId || currentUser?.id || '00000000-0000-0000-0000-000000000001';
+  // Aprovar/reprovar orcamentos de fornecedor: financeiro, pos-venda e gerencia
+  const canDecideQuotes = canAccessFinance(currentUser) || canViewContractDocument(currentUser);
+  // Transicao de contato: fornecedor ou colaborador (sempre com aviso e confirmacao)
+  const [convertTarget, setConvertTarget] = useState<null | { contact: Contact; target: 'supplier' | 'collaborator' }>(null);
+  const toggleSupplier = async (c: Contact) => {
+    if (!c.isSupplier) { setConvertTarget({ contact: c, target: 'supplier' }); return; }
+    if (!window.confirm('Desmarcar este contato como fornecedor? A ficha e os orçamentos continuam guardados.')) return;
+    const ok = await contactService.setSupplier(c.id, scopedMasterId, false);
+    if (!ok) { toast.error('Não foi possível alterar.'); return; }
+    applyContactUpdate({ ...c, isSupplier: false });
+    setDetailTab('geral');
+    toast.success('Contato não é mais fornecedor.');
+  };
+  const applyContactUpdate = (updated: Contact) => {
+    setSelectedContact(updated);
+    setContacts(prev => prev.map(x => (x.id === updated.id ? updated : x)));
+    setSearchResults(prev => (prev ? prev.map(x => (x.id === updated.id ? updated : x)) : prev));
+  };
+  const onConverted = (c: Contact, target: 'supplier' | 'collaborator') => {
+    setConvertTarget(null);
+    window.dispatchEvent(new Event('f5:suppliers-changed'));
+    if (target === 'supplier') {
+      applyContactUpdate({ ...c, isSupplier: true });
+      setDetailTab('fornecedor');
+    } else {
+      applyContactUpdate({ ...c, isCollaborator: true });
+      // Segue para o cadastro da equipe com os dados do contato
+      try { localStorage.setItem('f5_prefill_collaborator', JSON.stringify({ name: c.name, phone: c.primaryPhone, email: c.email || '', contactId: c.id })); } catch { /* ignore */ }
+      window.dispatchEvent(new CustomEvent('admin_switch_tab', { detail: { tab: 'collaborators' } }));
+    }
+  };
 
   const CONTACTS_PAGE_SIZE = 100;
   const [hasMore, setHasMore] = useState(false);
@@ -115,7 +156,20 @@ export const AdminContactsView: React.FC<AdminContactsViewProps> = ({
   const [searchLoading, setSearchLoading] = useState(false);
   // Total REAL de contatos no banco (não o tamanho da página carregada)
   const [totalContacts, setTotalContacts] = useState(0);
-  const activeSearchTerm = localSearch.trim().length >= 2 ? localSearch.trim() : '';
+  // A busca vem da barra do topo e filtra a lista ao vivo
+  const screenSearch = useScreenSearch();
+  const activeSearchTerm = screenQueryTerm(screenSearch);
+  // Filtros da lista: Contrato ativo e Fornecedor (consulta no banco, igual a busca)
+  const [listFilter, setListFilter] = useState<ContactListFilter>('all');
+  const [venueFilter, setVenueFilter] = useState<string>('all');
+  const [sortKey, setSortKey] = useState<'recent' | 'oldest' | 'az' | 'za'>('recent');
+  const [createdRange, setCreatedRange] = useState<{ start: string; end: string }>({ start: '', end: '' });
+  const effectiveVenue = venueFilter !== 'all' ? venueFilter : screenSearch.venueId;
+  const venueIdsFilter = effectiveVenue !== 'all' ? [effectiveVenue] : undefined;
+  const serverMode = Boolean(activeSearchTerm) || listFilter !== 'all' || effectiveVenue !== 'all' || sortKey !== 'recent' || Boolean(createdRange.start);
+  const listParams = { filter: listFilter, venueIds: venueIdsFilter, sort: sortKey, createdFrom: createdRange.start || undefined, createdTo: createdRange.end || undefined };
+  const [activeContractIds, setActiveContractIds] = useState<Set<string>>(new Set());
+  const [quoteCounts, setQuoteCounts] = useState<Map<string, { total: number; pendente: number; aprovado: number }>>(new Map());
 
   const refreshTotalContacts = useCallback(async () => {
     if (!scopedMasterId) return;
@@ -127,9 +181,10 @@ export const AdminContactsView: React.FC<AdminContactsViewProps> = ({
     if (loadingMore || !scopedMasterId) return;
     setLoadingMore(true);
     try {
-      if (activeSearchTerm) {
+      if (serverMode) {
         const next = await contactService.getContacts({
           masterId: scopedMasterId,
+          ...listParams,
           search: activeSearchTerm,
           limit: CONTACTS_PAGE_SIZE,
           offset: searchResults?.length || 0,
@@ -158,13 +213,13 @@ export const AdminContactsView: React.FC<AdminContactsViewProps> = ({
 
   // Busca no servidor (cobre toda a base): primeira página + total real da busca
   useEffect(() => {
-    if (!activeSearchTerm || !scopedMasterId) { setSearchResults(null); setSearchTotal(0); setSearchLoading(false); return; }
+    if (!serverMode || !scopedMasterId) { setSearchResults(null); setSearchTotal(0); setSearchLoading(false); return; }
     let cancelled = false;
     setSearchLoading(true);
     const t = setTimeout(async () => {
       const [res, total] = await Promise.all([
-        contactService.getContacts({ masterId: scopedMasterId, search: activeSearchTerm, limit: CONTACTS_PAGE_SIZE }),
-        contactService.countContacts({ masterId: scopedMasterId, search: activeSearchTerm }),
+        contactService.getContacts({ masterId: scopedMasterId, search: activeSearchTerm, ...listParams, limit: CONTACTS_PAGE_SIZE }),
+        contactService.countContacts({ masterId: scopedMasterId, search: activeSearchTerm, filter: listFilter, venueIds: venueIdsFilter, createdFrom: listParams.createdFrom, createdTo: listParams.createdTo }),
       ]);
       if (cancelled) return;
       setSearchResults(res);
@@ -172,7 +227,18 @@ export const AdminContactsView: React.FC<AdminContactsViewProps> = ({
       setSearchLoading(false);
     }, 350);
     return () => { cancelled = true; clearTimeout(t); };
-  }, [activeSearchTerm, scopedMasterId]);
+  }, [activeSearchTerm, listFilter, effectiveVenue, sortKey, createdRange.start, createdRange.end, scopedMasterId]);
+
+  // Tags da lista (Contrato ativo / Fornecedor com orcamentos) dos contatos visiveis
+  useEffect(() => {
+    const ids = (serverMode ? (searchResults || []) : contacts).map(c => c.id);
+    if (!scopedMasterId || ids.length === 0) return;
+    let alive = true;
+    void contactService.getActiveContractContactIds(scopedMasterId, ids).then(set => { if (alive) setActiveContractIds(prev => new Set([...prev, ...set])); });
+    const supplierIds = (serverMode ? (searchResults || []) : contacts).filter(c => c.isSupplier).map(c => c.id);
+    if (supplierIds.length > 0) void supplierService.getQuoteCounts(scopedMasterId, supplierIds).then(m => { if (alive) setQuoteCounts(prev => new Map([...prev, ...m])); });
+    return () => { alive = false; };
+  }, [contacts, searchResults, serverMode, scopedMasterId]);
 
   // Carrega contatos
   const loadContacts = useCallback(async () => {
@@ -495,10 +561,15 @@ export const AdminContactsView: React.FC<AdminContactsViewProps> = ({
 
   // Lista exibida: com busca, SÓ o que o banco devolveu (nunca filtra a lista carregada na tela)
   const filteredContacts = useMemo(() => {
-    if (!activeSearchTerm) return contacts;
+    if (!serverMode) return contacts;
     return searchResults || [];
-  }, [contacts, activeSearchTerm, searchResults]);
-  const searchHasMore = Boolean(activeSearchTerm) && (searchResults?.length || 0) < searchTotal;
+  }, [contacts, serverMode, searchResults]);
+  // Filtrando: o contato aberto acompanha a lista (abre o primeiro resultado quando o atual saiu)
+  useEffect(() => {
+    if (!serverMode || !searchResults || searchResults.length === 0) return;
+    if (!selectedContact || !searchResults.some(c => c.id === selectedContact.id)) setSelectedContact(searchResults[0]);
+  }, [searchResults]); // eslint-disable-line react-hooks/exhaustive-deps
+  const searchHasMore = serverMode && (searchResults?.length || 0) < searchTotal;
 
   // Nome real da etapa do lead
   const getStageRealName = (lead: Lead) => {
@@ -525,6 +596,37 @@ export const AdminContactsView: React.FC<AdminContactsViewProps> = ({
     const leadIds = new Set(contactAssets.leads.map(l => l.id));
     return (tasks || []).filter(t => t.leadId && leadIds.has(t.leadId));
   }, [contactAssets.leads, tasks]);
+
+  // Separação estrita de Ativos: Clientes no Pós-Venda vs Leads Comerciais
+  const postSaleClients = useMemo(() => {
+    return (contactAssets.leads || []).filter(l => {
+      const funnel = funnels.find(f => f.id === l.funnelId);
+      return Boolean(
+        funnel?.isPostSale ||
+        funnel?.category === 'Pós-Venda' ||
+        funnel?.name?.toLowerCase().includes('pós-venda') ||
+        funnel?.name?.toLowerCase().includes('pos-venda') ||
+        l.isClient ||
+        l.group === 'Pós-Venda' ||
+        (Array.isArray(l.tags) && l.tags.some(t => t.toLowerCase() === 'cliente'))
+      );
+    });
+  }, [contactAssets.leads, funnels]);
+
+  const commercialLeads = useMemo(() => {
+    return (contactAssets.leads || []).filter(l => {
+      const funnel = funnels.find(f => f.id === l.funnelId);
+      return !Boolean(
+        funnel?.isPostSale ||
+        funnel?.category === 'Pós-Venda' ||
+        funnel?.name?.toLowerCase().includes('pós-venda') ||
+        funnel?.name?.toLowerCase().includes('pos-venda') ||
+        l.isClient ||
+        l.group === 'Pós-Venda' ||
+        (Array.isArray(l.tags) && l.tags.some(t => t.toLowerCase() === 'cliente'))
+      );
+    });
+  }, [contactAssets.leads, funnels]);
 
   // Idade calculada
   const calculateAge = (birthDateStr?: string) => {
@@ -591,83 +693,75 @@ export const AdminContactsView: React.FC<AdminContactsViewProps> = ({
                 backgroundColor: isLight ? '#EFF6FF' : 'rgba(59, 130, 246, 0.2)',
                 color: isLight ? '#1D4ED8' : '#60A5FA',
               }}>
-                {activeSearchTerm ? searchTotal : totalContacts}
+                {serverMode ? searchTotal : totalContacts}
               </span>
             </div>
 
-            <button
-              onClick={() => {
-                setQuickForm({
-                  name: '',
-                  phone: '',
-                  email: '',
-                  venueId: activeVenueId && activeVenueId !== 'all' ? activeVenueId : (venues[0]?.id || ''),
-                });
-                setIsNewContactModalOpen(true);
-              }}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '4px',
-                padding: '4px 8px',
-                backgroundColor: '#2563EB',
-                color: '#FFFFFF',
-                border: 'none',
-                borderRadius: '6px',
-                fontSize: '0.74rem',
-                fontWeight: 600,
-                cursor: 'pointer',
-              }}
-            >
-              <Plus size={13} />
-              Novo
-            </button>
           </div>
 
-          {/* Campo de Busca Rápida Local */}
-          <div style={{
-            padding: '8px 12px',
-            borderBottom: `1px solid ${isLight ? '#E2E8F0' : 'rgba(255, 255, 255, 0.06)'}`,
-            backgroundColor: isLight ? '#FFFFFF' : '#0E1726',
-          }}>
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '6px 10px',
-              borderRadius: '6px',
-              backgroundColor: isLight ? '#F1F5F9' : '#162238',
-              border: `1px solid ${isLight ? '#CBD5E1' : 'rgba(255, 255, 255, 0.1)'}`,
-            }}>
-              <Search size={13} color={isLight ? '#64748B' : '#94A3B8'} />
-              <input
-                type="text"
-                placeholder="Filtrar por nome, telefone, código..."
-                value={localSearch}
-                onChange={e => setLocalSearch(e.target.value)}
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  outline: 'none',
-                  fontSize: '0.78rem',
-                  color: isLight ? '#0F172A' : '#FFFFFF',
-                  width: '100%',
-                }}
-              />
-              {localSearch && (
-                <button
-                  onClick={() => setLocalSearch('')}
-                  style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: isLight ? '#94A3B8' : '#64748B' }}
-                >
-                  <X size={12} />
-                </button>
-              )}
-            </div>
-          </div>
+          {/* Filtros da lista (a busca fica so no menu de cima) */}
+          {(() => {
+            const line = isLight ? '#E2E8F0' : 'rgba(255, 255, 255, 0.10)';
+            const muted = isLight ? '#64748B' : '#94A3B8';
+            const field: React.CSSProperties = { width: '100%', height: 34, fontSize: '0.76rem', borderRadius: 9, background: isLight ? '#FFFFFF' : 'rgba(255,255,255,0.04)', border: `1px solid ${line}`, paddingLeft: 30, color: isLight ? '#0F172A' : '#FFFFFF' };
+            const withIcon = (icon: React.ReactNode, control: React.ReactNode) => (
+              <div style={{ position: 'relative', minWidth: 0 }}>
+                <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: muted, display: 'inline-flex', zIndex: 1, pointerEvents: 'none' }}>{icon}</span>
+                {control}
+              </div>
+            );
+            const hasActive = Boolean(createdRange.start) || venueFilter !== 'all' || sortKey !== 'recent' || listFilter !== 'all';
+            return (
+              <div style={{ padding: '14px', borderBottom: `1px solid ${line}`, display: 'flex', flexDirection: 'column', gap: 10, backgroundColor: isLight ? '#FFFFFF' : '#0E1726' }}>
+                {/* Segmentos */}
+                <div style={{ display: 'flex', padding: 3, gap: 2, borderRadius: 10, background: isLight ? '#F1F5F9' : 'rgba(255,255,255,0.05)' }}>
+                  {([['all', 'Todos'], ['active_contract', 'Contrato ativo'], ['supplier', 'Fornecedor']] as Array<[ContactListFilter, string]>).map(([k, label]) => (
+                    <button key={k} type="button" onClick={() => setListFilter(k)}
+                      style={{
+                        flex: 1, padding: '6px 4px', borderRadius: 8, border: 'none', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 700, whiteSpace: 'nowrap',
+                        background: listFilter === k ? (isLight ? '#FFFFFF' : '#1E3A5F') : 'transparent',
+                        boxShadow: listFilter === k && isLight ? '0 1px 3px rgba(15,23,42,0.12)' : 'none',
+                        color: listFilter === k ? '#2563EB' : muted,
+                      }}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+
+                {withIcon(<Building2 size={14} />, (
+                  <Select className="adm-input" value={venueFilter} onChange={e => setVenueFilter(e.target.value)} title="Unidade dos ativos do contato" style={field}>
+                    <option value="all">Todas as unidades</option>
+                    {venues.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
+                  </Select>
+                ))}
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  {withIcon(<ArrowUpDown size={14} />, (
+                    <Select className="adm-input" value={sortKey} onChange={e => setSortKey(e.target.value as any)} title="Ordem" style={field}>
+                      <option value="recent">Mais recentes</option>
+                      <option value="oldest">Mais antigos</option>
+                      <option value="az">Nome A–Z</option>
+                      <option value="za">Nome Z–A</option>
+                    </Select>
+                  ))}
+                  {withIcon(<CalendarRange size={14} />, (
+                    <DateRangeField className="adm-input" start={createdRange.start} end={createdRange.end} onChange={(x, y) => setCreatedRange({ start: x, end: y })} placeholder="Período" style={{ ...field, width: '100%' }} />
+                  ))}
+                </div>
+
+                {hasActive && (
+                  <button type="button" onClick={() => { setCreatedRange({ start: '', end: '' }); setVenueFilter('all'); setSortKey('recent'); setListFilter('all'); }}
+                    style={{ alignSelf: 'flex-start', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontSize: '0.72rem', fontWeight: 700, color: '#2563EB' }}>
+                    Limpar filtros
+                  </button>
+                )}
+              </div>
+            );
+          })()}
 
           {/* Lista com Rolagem */}
           <div style={{ flex: 1, overflowY: 'auto' }}>
-            {(loading && contacts.length === 0) || (activeSearchTerm && searchLoading && !searchResults) ? (
+            {(loading && contacts.length === 0) || (serverMode && searchLoading && !searchResults) ? (
               <div style={{ padding: '40px 16px', textAlign: 'center', color: isLight ? '#64748B' : '#94A3B8' }}>
                 <Clock size={20} className="animate-spin" style={{ margin: '0 auto 8px auto', display: 'block' }} />
                 <span style={{ fontSize: '0.8rem' }}>Carregando contatos...</span>
@@ -793,12 +887,27 @@ export const AdminContactsView: React.FC<AdminContactsViewProps> = ({
                         <Phone size={10} color={isLight ? '#2563EB' : '#60A5FA'} />
                         <span>{formatPhone(c.primaryPhone) || c.primaryPhone}</span>
                       </div>
+                      {(activeContractIds.has(c.id) || c.isSupplier || c.isCollaborator) && (
+                        <div style={{ display: 'flex', gap: '4px', marginTop: '4px', flexWrap: 'wrap' }}>
+                          {activeContractIds.has(c.id) && (
+                            <span style={{ fontSize: '0.62rem', fontWeight: 800, padding: '1px 7px', borderRadius: '999px', background: 'rgba(16,185,129,0.15)', color: '#059669' }}>Contrato ativo</span>
+                          )}
+                          {c.isCollaborator && (
+                            <span style={{ fontSize: '0.62rem', fontWeight: 800, padding: '1px 7px', borderRadius: '999px', background: 'rgba(139,92,246,0.16)', color: '#7C3AED' }}>Colaborador</span>
+                          )}
+                          {c.isSupplier && (
+                            <span style={{ fontSize: '0.62rem', fontWeight: 800, padding: '1px 7px', borderRadius: '999px', background: 'rgba(245,158,11,0.18)', color: '#B45309' }}>
+                              Fornecedor{quoteCounts.get(c.id)?.pendente ? ` · ${quoteCounts.get(c.id)!.pendente} orçamento(s) pendente(s)` : ''}
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 );
               })
             )}
-            {(activeSearchTerm ? searchHasMore : hasMore) && (
+            {(serverMode ? searchHasMore : hasMore) && (
               <button
                 type="button"
                 onClick={loadMoreContacts}
@@ -899,6 +1008,16 @@ export const AdminContactsView: React.FC<AdminContactsViewProps> = ({
                         </span>
                       )}
 
+                      {activeContractIds.has(selectedContact.id) && (
+                        <span style={{ fontSize: '0.7rem', fontWeight: 800, padding: '2px 8px', borderRadius: 999, background: 'rgba(16,185,129,0.15)', color: '#059669' }}>Contrato ativo</span>
+                      )}
+                      {selectedContact.isSupplier && (
+                        <span style={{ fontSize: '0.7rem', fontWeight: 800, padding: '2px 8px', borderRadius: 999, background: 'rgba(245,158,11,0.18)', color: '#B45309' }}>Fornecedor</span>
+                      )}
+                      {selectedContact.isCollaborator && (
+                        <span style={{ fontSize: '0.7rem', fontWeight: 800, padding: '2px 8px', borderRadius: 999, background: 'rgba(139,92,246,0.16)', color: '#7C3AED' }}>Colaborador</span>
+                      )}
+
                       {/* Unidades Físicas Vinculadas (Casas de Festa) */}
                       {contactVenues.map(v => (
                         <span key={v.id} style={{
@@ -950,6 +1069,31 @@ export const AdminContactsView: React.FC<AdminContactsViewProps> = ({
 
                 {/* Botões de Ação Únicos */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                  <button
+                    onClick={() => toggleSupplier(selectedContact)}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: '5px', padding: '7px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600,
+                      backgroundColor: selectedContact.isSupplier ? 'rgba(245,158,11,0.18)' : 'transparent',
+                      color: selectedContact.isSupplier ? '#B45309' : (isLight ? '#475569' : '#CBD5E1'),
+                      border: `1px solid ${selectedContact.isSupplier ? 'rgba(245,158,11,0.5)' : (isLight ? '#CBD5E1' : 'rgba(255,255,255,0.15)')}`,
+                    }}
+                    title={selectedContact.isSupplier ? 'Este contato é fornecedor. Clique para desmarcar.' : 'Marcar este contato como fornecedor'}
+                  >
+                    <Briefcase size={13} />
+                    {selectedContact.isSupplier ? 'Fornecedor' : 'Marcar como fornecedor'}
+                  </button>
+                  {!selectedContact.isCollaborator ? (
+                    <button
+                      onClick={() => setConvertTarget({ contact: selectedContact, target: 'collaborator' })}
+                      style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '7px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600, backgroundColor: 'transparent', color: isLight ? '#475569' : '#CBD5E1', border: `1px solid ${isLight ? '#CBD5E1' : 'rgba(255,255,255,0.15)'}` }}
+                      title="Transformar este contato em colaborador da equipe"
+                    >
+                      <Users size={13} />
+                      Transformar em colaborador
+                    </button>
+                  ) : (
+                    <span style={{ fontSize: '0.74rem', fontWeight: 800, padding: '6px 10px', borderRadius: 999, background: 'rgba(139,92,246,0.16)', color: '#7C3AED' }}>Colaborador</span>
+                  )}
                   {onNavigateTab && (
                     <button
                       onClick={() => onNavigateTab('whatsapp', { phone: selectedContact.primaryPhone })}
@@ -1017,6 +1161,27 @@ export const AdminContactsView: React.FC<AdminContactsViewProps> = ({
                   )}
                 </div>
               </div>
+
+              {selectedContact.isSupplier && (
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  {([['geral', 'Visão geral'], ['fornecedor', 'Fornecedor']] as const).map(([k, label]) => (
+                    <button key={k} type="button" onClick={() => setDetailTab(k)}
+                      style={{ padding: '7px 16px', borderRadius: '8px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700, border: 'none', background: detailTab === k ? 'rgba(37,99,235,0.14)' : 'transparent', color: detailTab === k ? '#2563EB' : (isLight ? '#64748B' : '#94A3B8') }}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {selectedContact.isSupplier && detailTab === 'fornecedor' ? (
+                <SupplierPanel
+                  contact={selectedContact}
+                  masterId={scopedMasterId}
+                  canDecide={canDecideQuotes}
+                  userName={currentUser?.name}
+                  onProfileSaved={profile => { setSelectedContact({ ...selectedContact, supplierProfile: profile }); setContacts(prev => prev.map(c => (c.id === selectedContact.id ? { ...c, supplierProfile: profile } : c))); }}
+                />
+              ) : (<>
 
               {/* Grid: Dados Cadastrais & Grupo Familiar */}
               <div style={{
@@ -1263,7 +1428,170 @@ export const AdminContactsView: React.FC<AdminContactsViewProps> = ({
                 </div>
               </div>
 
-              {/* SESSÃO 1: LEADS COMERCIAIS ATIVOS */}
+              {/* SESSÃO 1A: CLIENTES NO PÓS-VENDA */}
+              <div style={{
+                backgroundColor: isLight ? '#FFFFFF' : '#111C2E',
+                border: `1px solid ${isLight ? '#E2E8F0' : 'rgba(255, 255, 255, 0.08)'}`,
+                borderRadius: '8px',
+                padding: '20px',
+                boxShadow: isLight ? '0 1px 3px rgba(0,0,0,0.03)' : 'none',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
+                  <h3 style={{
+                    margin: 0,
+                    fontSize: '0.94rem',
+                    fontWeight: 700,
+                    color: isLight ? '#0F172A' : '#FFFFFF',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                  }}>
+                    <ShieldCheck size={16} color={isLight ? '#059669' : '#10B981'} />
+                    Clientes no Pós-Venda ({postSaleClients.length})
+                  </h3>
+                  <span style={{ fontSize: '0.74rem', color: isLight ? '#64748B' : '#94A3B8' }}>
+                    Clientes em esteira e atendimento de pós-venda
+                  </span>
+                </div>
+
+                {postSaleClients.length === 0 ? (
+                  <div style={{
+                    padding: '24px 16px',
+                    textAlign: 'center',
+                    color: isLight ? '#64748B' : '#94A3B8',
+                    backgroundColor: isLight ? '#F8FAFC' : 'rgba(255, 255, 255, 0.02)',
+                    borderRadius: '6px',
+                  }}>
+                    <ShieldCheck size={24} style={{ margin: '0 auto 6px auto', opacity: 0.3 }} />
+                    <p style={{ margin: 0, fontWeight: 600, fontSize: '0.82rem', color: isLight ? '#0F172A' : '#FFFFFF' }}>
+                      Nenhum cliente ativo no pós-venda
+                    </p>
+                    <p style={{ margin: '3px 0 0 0', fontSize: '0.74rem' }}>
+                      Quando este contato contrata uma festa ou é vinculado a um contrato, ele é acompanhado no pós-venda.
+                    </p>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {postSaleClients.map(lead => {
+                      const funnel = funnels.find(f => f.id === lead.funnelId);
+                      const venue = venues.find(v => v.id === lead.venueId);
+
+                      return (
+                        <div
+                          key={lead.id}
+                          style={{
+                            padding: '14px 16px',
+                            borderRadius: '8px',
+                            backgroundColor: isLight ? '#F8FAFC' : 'rgba(255, 255, 255, 0.03)',
+                            border: `1px solid ${isLight ? '#E2E8F0' : 'rgba(255, 255, 255, 0.08)'}`,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            flexWrap: 'wrap',
+                            gap: '12px',
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                            <div style={{
+                              width: '38px',
+                              height: '38px',
+                              borderRadius: '8px',
+                              backgroundColor: isLight ? '#ECFDF5' : 'rgba(16, 185, 129, 0.15)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              color: isLight ? '#059669' : '#10B981',
+                            }}>
+                              <ShieldCheck size={18} />
+                            </div>
+
+                            <div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                <strong style={{ color: isLight ? '#0F172A' : '#FFFFFF', fontSize: '0.88rem' }}>
+                                  {funnel?.name || 'Pós-Venda'}
+                                </strong>
+                                <span style={{
+                                  fontSize: '0.68rem',
+                                  fontWeight: 700,
+                                  padding: '1px 6px',
+                                  borderRadius: '4px',
+                                  backgroundColor: isLight ? '#ECFDF5' : 'rgba(16, 185, 129, 0.2)',
+                                  color: isLight ? '#047857' : '#34D399',
+                                  letterSpacing: '0.5px',
+                                }}>
+                                  CLIENTE
+                                </span>
+                                {lead.code && (
+                                  <span style={{
+                                    fontSize: '0.68rem',
+                                    fontWeight: 700,
+                                    padding: '1px 6px',
+                                    borderRadius: '4px',
+                                    backgroundColor: isLight ? '#FEF3C7' : 'rgba(212, 175, 55, 0.2)',
+                                    color: isLight ? '#B45309' : '#D4AF37',
+                                    letterSpacing: '0.5px',
+                                  }}>
+                                    {lead.code}
+                                  </span>
+                                )}
+                                <span style={{
+                                  fontSize: '0.70rem',
+                                  padding: '2px 8px',
+                                  borderRadius: '6px',
+                                  backgroundColor: isLight ? '#ECFDF5' : 'rgba(16, 185, 129, 0.2)',
+                                  color: isLight ? '#047857' : '#34D399',
+                                  fontWeight: 600,
+                                }}>
+                                  Etapa: {getStageRealName(lead)}
+                                </span>
+                              </div>
+
+                              <div style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '12px',
+                                marginTop: '4px',
+                                fontSize: '0.76rem',
+                                color: isLight ? '#64748B' : '#94A3B8',
+                                flexWrap: 'wrap',
+                              }}>
+                                <VenueChip venueId={lead.venueId} fallbackName={venue?.name} />
+                                {lead.dealValue ? <span>Valor: <strong style={{ color: '#10B981' }}>R$ {lead.dealValue.toLocaleString('pt-BR')}</strong></span> : null}
+                                {lead.partyDate && <span>Festa: <strong>{new Date(lead.partyDate + 'T12:00:00').toLocaleDateString('pt-BR')}</strong></span>}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Acesso ao Pós-Venda */}
+                          {onOpenLead && (
+                            <button
+                              onClick={() => onOpenLead(lead.id, lead.funnelId)}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '5px',
+                                padding: '7px 12px',
+                                backgroundColor: isLight ? '#ECFDF5' : 'rgba(16, 185, 129, 0.2)',
+                                color: isLight ? '#047857' : '#34D399',
+                                border: `1px solid ${isLight ? '#A7F3D0' : 'rgba(16, 185, 129, 0.35)'}`,
+                                borderRadius: '6px',
+                                fontSize: '0.78rem',
+                                fontWeight: 600,
+                                cursor: 'pointer',
+                              }}
+                            >
+                              <ExternalLink size={13} />
+                              Abrir no Pós-Venda
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* SESSÃO 1B: LEADS COMERCIAIS ATIVOS */}
               <div style={{
                 backgroundColor: isLight ? '#FFFFFF' : '#111C2E',
                 border: `1px solid ${isLight ? '#E2E8F0' : 'rgba(255, 255, 255, 0.08)'}`,
@@ -1282,14 +1610,14 @@ export const AdminContactsView: React.FC<AdminContactsViewProps> = ({
                     gap: '8px',
                   }}>
                     <Briefcase size={16} color={isLight ? '#2563EB' : '#3B82F6'} />
-                    Leads Comerciais ({contactAssets.leads.length})
+                    Leads Comerciais ({commercialLeads.length})
                   </h3>
                   <span style={{ fontSize: '0.74rem', color: isLight ? '#64748B' : '#94A3B8' }}>
-                    Oportunidades em funis de venda
+                    Oportunidades em funis comerciais de venda
                   </span>
                 </div>
 
-                {contactAssets.leads.length === 0 ? (
+                {commercialLeads.length === 0 ? (
                   <div style={{
                     padding: '24px 16px',
                     textAlign: 'center',
@@ -1302,12 +1630,12 @@ export const AdminContactsView: React.FC<AdminContactsViewProps> = ({
                       Nenhum lead comercial ativo
                     </p>
                     <p style={{ margin: '3px 0 0 0', fontSize: '0.74rem' }}>
-                      Quando este contato interage com campanhas ou WhatsApp, o card do lead é posicionado no funil.
+                      Quando este contato interage com campanhas comerciais ou WhatsApp, o card do lead é posicionado no funil.
                     </p>
                   </div>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                    {contactAssets.leads.map(lead => {
+                    {commercialLeads.map(lead => {
                       const funnel = funnels.find(f => f.id === lead.funnelId);
                       const venue = venues.find(v => v.id === lead.venueId);
 
@@ -1345,6 +1673,17 @@ export const AdminContactsView: React.FC<AdminContactsViewProps> = ({
                                 <strong style={{ color: isLight ? '#0F172A' : '#FFFFFF', fontSize: '0.88rem' }}>
                                   {funnel?.name || 'Funil Comercial'}
                                 </strong>
+                                <span style={{
+                                  fontSize: '0.68rem',
+                                  fontWeight: 700,
+                                  padding: '1px 6px',
+                                  borderRadius: '4px',
+                                  backgroundColor: isLight ? '#EFF6FF' : 'rgba(59, 130, 246, 0.2)',
+                                  color: isLight ? '#1D4ED8' : '#60A5FA',
+                                  letterSpacing: '0.5px',
+                                }}>
+                                  LEAD
+                                </span>
                                 {lead.commercialCode && (
                                   <span style={{
                                     fontSize: '0.68rem',
@@ -1379,7 +1718,7 @@ export const AdminContactsView: React.FC<AdminContactsViewProps> = ({
                                 color: isLight ? '#64748B' : '#94A3B8',
                                 flexWrap: 'wrap',
                               }}>
-                                {venue && <span>Unidade: <strong style={{ color: isLight ? '#0F172A' : '#E2E8F0' }}>{venue.name}</strong></span>}
+                                <VenueChip venueId={lead.venueId} fallbackName={venue?.name} />
                                 {lead.sdrName && <span>SDR: <strong style={{ color: isLight ? '#0F172A' : '#E2E8F0' }}>{lead.sdrName}</strong></span>}
                                 {lead.closerName && <span>Closer: <strong style={{ color: isLight ? '#0F172A' : '#E2E8F0' }}>{lead.closerName}</strong></span>}
                                 {lead.dealValue ? <span>Valor: <strong style={{ color: '#10B981' }}>R$ {lead.dealValue.toLocaleString('pt-BR')}</strong></span> : null}
@@ -1407,7 +1746,7 @@ export const AdminContactsView: React.FC<AdminContactsViewProps> = ({
                               }}
                             >
                               <ExternalLink size={13} />
-                              Abrir no CRM
+                              Abrir no CRM Comercial
                             </button>
                           )}
                         </div>
@@ -1516,7 +1855,7 @@ export const AdminContactsView: React.FC<AdminContactsViewProps> = ({
                               color: isLight ? '#64748B' : '#94A3B8',
                               flexWrap: 'wrap',
                             }}>
-                              <span>Unidade: <strong style={{ color: isLight ? '#0F172A' : '#E2E8F0' }}>{ctr.venueName}</strong></span>
+                              <VenueChip venueId={ctr.venueId} fallbackName={ctr.venueName} />
                               {ctr.eventDate && <span>Festa: <strong style={{ color: isLight ? '#0F172A' : '#E2E8F0' }}>{new Date(ctr.eventDate + 'T12:00:00').toLocaleDateString('pt-BR')}</strong></span>}
                               {(ctr.totalAmount || ctr.contractValue) ? <span>Valor: <strong style={{ color: '#10B981' }}>R$ {(ctr.totalAmount || ctr.contractValue || 0).toLocaleString('pt-BR')}</strong></span> : null}
                               {ctr.closerName && <span>Closer: <strong style={{ color: isLight ? '#0F172A' : '#E2E8F0' }}>{ctr.closerName}</strong></span>}
@@ -1613,6 +1952,7 @@ export const AdminContactsView: React.FC<AdminContactsViewProps> = ({
                           <div>
                             <strong style={{ color: isLight ? '#0F172A' : '#FFFFFF', fontSize: '0.82rem' }}>{t.title}</strong>
                             <div style={{ fontSize: '0.72rem', color: isLight ? '#64748B' : '#94A3B8', marginTop: '1px', display: 'flex', gap: '8px' }}>
+                              <VenueChip venueId={t.venueId || leads.find(l => l.id === t.leadId)?.venueId} />
                               {t.dueDate && <span>Vencimento: {t.dueDate}</span>}
                               {t.assignedToName && <span>Responsável: {t.assignedToName}</span>}
                             </div>
@@ -1634,6 +1974,7 @@ export const AdminContactsView: React.FC<AdminContactsViewProps> = ({
                   </div>
                 )}
               </div>
+              </>)}
             </div>
           ) : (
             <div style={{
@@ -2379,156 +2720,13 @@ export const AdminContactsView: React.FC<AdminContactsViewProps> = ({
         </div>
       )}
 
-      {/* Modal: Ver Detalhes do Contrato */}
-      {viewingContract && (
-        <div style={{
-          position: 'fixed',
-          inset: 0,
-          backgroundColor: 'rgba(0, 0, 0, 0.75)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 9999,
-          padding: '20px',
-          backdropFilter: 'blur(3px)',
-        }}>
-          <div style={{
-            backgroundColor: isLight ? '#FFFFFF' : '#111C2E',
-            border: `1px solid ${isLight ? '#D4AF37' : 'rgba(212, 175, 55, 0.35)'}`,
-            borderRadius: '10px',
-            width: '100%',
-            maxWidth: '680px',
-            maxHeight: '90vh',
-            display: 'flex',
-            flexDirection: 'column',
-            overflow: 'hidden',
-            boxShadow: '0 20px 40px rgba(0,0,0,0.4)',
-          }}>
-            <div style={{
-              padding: '16px 20px',
-              borderBottom: `1px solid ${isLight ? '#E2E8F0' : 'rgba(255, 255, 255, 0.08)'}`,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              backgroundColor: isLight ? '#F8FAFC' : 'rgba(255, 255, 255, 0.02)',
-            }}>
-              <div>
-                <h2 style={{
-                  margin: 0,
-                  fontSize: '1.1rem',
-                  fontWeight: 700,
-                  color: isLight ? '#0F172A' : '#FFFFFF',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                }}>
-                  Contrato {viewingContract.contractCode}
-                  <span style={{
-                    fontSize: '0.70rem',
-                    fontWeight: 600,
-                    padding: '2px 7px',
-                    borderRadius: '4px',
-                    backgroundColor: viewingContract.approvalStatus === 'approved' ? (isLight ? '#ECFDF5' : 'rgba(16, 185, 129, 0.2)') : (isLight ? '#FEF3C7' : 'rgba(245, 158, 11, 0.2)'),
-                    color: viewingContract.approvalStatus === 'approved' ? '#059669' : '#D97706',
-                  }}>
-                    {viewingContract.approvalStatus === 'approved' ? 'Aprovado & Ativo' : 'Aguardando Aprovação'}
-                  </span>
-                </h2>
-                <span style={{ fontSize: '0.74rem', color: isLight ? '#64748B' : '#94A3B8' }}>
-                  Unidade: {viewingContract.venueName} • Criado em {new Date(viewingContract.createdAt).toLocaleDateString('pt-BR')}
-                </span>
-              </div>
-              <button
-                onClick={() => setViewingContract(null)}
-                style={{ background: 'none', border: 'none', color: isLight ? '#64748B' : '#94A3B8', cursor: 'pointer' }}
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <div style={{ padding: '20px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              {/* Snapshot Cliente */}
-              <div style={{
-                backgroundColor: isLight ? '#F8FAFC' : 'rgba(255, 255, 255, 0.02)',
-                padding: '14px',
-                borderRadius: '8px',
-                border: `1px solid ${isLight ? '#E2E8F0' : 'rgba(255, 255, 255, 0.06)'}`,
-              }}>
-                <span style={{ fontSize: '0.74rem', color: '#2563EB', fontWeight: 700, textTransform: 'uppercase', display: 'block', marginBottom: '8px' }}>
-                  Titular do Contrato (Snapshot Jurídico)
-                </span>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '0.80rem' }}>
-                  <div>Nome: <strong style={{ color: isLight ? '#0F172A' : '#FFFFFF' }}>{viewingContract.clientSnapshot?.name || 'Cliente'}</strong></div>
-                  <div>Telefone: <strong style={{ color: isLight ? '#0F172A' : '#FFFFFF' }}>{formatPhone(viewingContract.clientSnapshot?.phone || '')}</strong></div>
-                  <div>CPF: <strong style={{ color: isLight ? '#0F172A' : '#FFFFFF' }}>{viewingContract.clientSnapshot?.cpf || 'Não informado'}</strong></div>
-                  <div>E-mail: <strong style={{ color: isLight ? '#0F172A' : '#FFFFFF' }}>{viewingContract.clientSnapshot?.email || 'Não informado'}</strong></div>
-                </div>
-              </div>
-
-              {/* Condições do Evento */}
-              <div style={{
-                backgroundColor: isLight ? '#F8FAFC' : 'rgba(255, 255, 255, 0.02)',
-                padding: '14px',
-                borderRadius: '8px',
-                border: `1px solid ${isLight ? '#E2E8F0' : 'rgba(255, 255, 255, 0.06)'}`,
-              }}>
-                <span style={{ fontSize: '0.74rem', color: '#10B981', fontWeight: 700, textTransform: 'uppercase', display: 'block', marginBottom: '8px' }}>
-                  Condições Comerciais e da Festa
-                </span>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '0.80rem' }}>
-                  <div>Data da Festa: <strong style={{ color: isLight ? '#0F172A' : '#FFFFFF' }}>{viewingContract.eventDate ? new Date(viewingContract.eventDate + 'T12:00:00').toLocaleDateString('pt-BR') : 'A definir'}</strong></div>
-                  <div>Valor do Contrato: <strong style={{ color: '#10B981' }}>R$ {(viewingContract.totalAmount || viewingContract.contractValue || 0).toLocaleString('pt-BR')}</strong></div>
-                  <div>Convidados: <strong style={{ color: isLight ? '#0F172A' : '#FFFFFF' }}>{viewingContract.guestCount || 'Não informado'}</strong></div>
-                  <div>Pacote: <strong style={{ color: isLight ? '#0F172A' : '#FFFFFF' }}>{viewingContract.packageName || 'Padrão'}</strong></div>
-                </div>
-              </div>
-
-              {/* Responsáveis Eternos */}
-              <div style={{
-                backgroundColor: isLight ? '#F8FAFC' : 'rgba(255, 255, 255, 0.02)',
-                padding: '14px',
-                borderRadius: '8px',
-                border: `1px solid ${isLight ? '#E2E8F0' : 'rgba(255, 255, 255, 0.06)'}`,
-              }}>
-                <span style={{ fontSize: '0.74rem', color: '#D4AF37', fontWeight: 700, textTransform: 'uppercase', display: 'block', marginBottom: '8px' }}>
-                  Responsáveis Preservados
-                </span>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '0.80rem' }}>
-                  <div>SDR: <strong style={{ color: isLight ? '#0F172A' : '#FFFFFF' }}>{viewingContract.sdrName || 'Não atribuído'}</strong></div>
-                  <div>Closer: <strong style={{ color: isLight ? '#0F172A' : '#FFFFFF' }}>{viewingContract.closerName || 'Não atribuído'}</strong></div>
-                  <div style={{ gridColumn: 'span 2' }}>
-                    Aprovador: <strong style={{ color: viewingContract.approvedByName ? '#059669' : '#D97706' }}>{viewingContract.approvedByName || 'Aguardando aprovação'}</strong>
-                    {viewingContract.approvedAt && <span style={{ color: isLight ? '#64748B' : '#94A3B8', fontSize: '0.74rem', marginLeft: '6px' }}>({new Date(viewingContract.approvedAt).toLocaleDateString('pt-BR')})</span>}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div style={{
-              padding: '14px 20px',
-              borderTop: `1px solid ${isLight ? '#E2E8F0' : 'rgba(255, 255, 255, 0.08)'}`,
-              display: 'flex',
-              justifyContent: 'flex-end',
-            }}>
-              <button
-                onClick={() => setViewingContract(null)}
-                style={{
-                  padding: '7px 16px',
-                  borderRadius: '6px',
-                  backgroundColor: '#2563EB',
-                  border: 'none',
-                  color: '#FFFFFF',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  fontSize: '0.82rem',
-                }}
-              >
-                Fechar
-              </button>
-            </div>
-          </div>
-        </div>
+      {convertTarget && (
+        <ConvertContactModal masterId={scopedMasterId} contact={convertTarget.contact} target={convertTarget.target} by={{ id: currentUser?.id, name: currentUser?.name }}
+          onClose={() => setConvertTarget(null)} onDone={t => onConverted(convertTarget.contact, t)} />
       )}
+
+      {/* Ver contrato: mesma ficha da Agenda de Eventos (sem acesso ao documento para quem nao pode) */}
+      <ContractQuickViewModal contract={viewingContract} onClose={() => setViewingContract(null)} />
     </div>
   );
 };

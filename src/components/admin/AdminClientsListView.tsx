@@ -1,5 +1,6 @@
 import { Select } from '../ui';
-import React, { useState, useMemo } from 'react';
+import { useScreenSearch } from '../../utils/screenSearch';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Users, 
   Target, 
@@ -71,6 +72,9 @@ export const AdminClientsListView: React.FC<AdminClientsListViewProps> = ({
 
   // Filtros
   const [searchTerm, setSearchTerm] = useState('');
+  // Busca da barra do topo: filtra esta lista ao vivo
+  const topSearch = useScreenSearch();
+  useEffect(() => { setSearchTerm(topSearch.query); }, [topSearch.query]);
   const [selectedVenueFilter, setSelectedVenueFilter] = useState<string>(activeVenueId || 'all');
   const [selectedFunnelFilter, setSelectedFunnelFilter] = useState<string>('all');
   const [selectedCollabFilter, setSelectedCollabFilter] = useState<string>('all');

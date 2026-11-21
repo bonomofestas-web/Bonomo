@@ -1,4 +1,5 @@
 import { Select } from '../ui';
+import { useScreenSearch } from '../../utils/screenSearch';
 import { toast } from 'sonner';
 import { HeaderActions } from './HeaderActions';
 import React, { useState, useMemo, useEffect } from 'react';
@@ -69,6 +70,9 @@ export const AdminLeadsListView: React.FC<AdminLeadsListViewProps> = ({
 
   // Filtros
   const [searchTerm, setSearchTerm] = useState('');
+  // Busca da barra do topo: filtra esta lista ao vivo
+  const topSearch = useScreenSearch();
+  useEffect(() => { setSearchTerm(topSearch.query); }, [topSearch.query]);
   const [selectedVenueFilter, setSelectedVenueFilter] = useState<string>('all');
   const [selectedFunnelFilter, setSelectedFunnelFilter] = useState<string>('all');
   const [selectedCollabFilter, setSelectedCollabFilter] = useState<string>('all');

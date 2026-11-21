@@ -1,4 +1,6 @@
-import { DateField, Select } from '../ui';
+import { DateField, Select , MonthYearSwitcher } from '../ui';
+import { formatMonthYear } from '../ui';
+import { getTodayLocalStr } from '../../utils/dateUtils';
 import React, { useState, useMemo } from 'react';
 import { 
   Calendar as CalendarIcon, Clock, Plus, 
@@ -144,7 +146,7 @@ export const AdminUnifiedCalendarView: React.FC<AdminUnifiedCalendarViewProps> =
   // Form State
   const [formTitle, setFormTitle] = useState('');
   const [formCategory, setFormCategory] = useState(config.defaultCategory);
-  const [formDate, setFormDate] = useState(new Date().toISOString().split('T')[0]);
+  const [formDate, setFormDate] = useState(getTodayLocalStr());
   const [formTime, setFormTime] = useState('14:00');
   const [formLocation, setFormLocation] = useState('');
   const [formStatus, setFormStatus] = useState<AppointmentStatus>('scheduled');
@@ -233,7 +235,7 @@ export const AdminUnifiedCalendarView: React.FC<AdminUnifiedCalendarViewProps> =
     setEditingAppointment(null);
     setFormTitle('');
     setFormCategory(config.defaultCategory);
-    setFormDate(preselectedDate || new Date().toISOString().split('T')[0]);
+    setFormDate(preselectedDate || getTodayLocalStr());
     setFormTime('14:00');
     setFormLocation(venues.find(v => v.id === formVenueId)?.name || 'Unidade Principal');
     setFormStatus('scheduled');
@@ -321,7 +323,7 @@ export const AdminUnifiedCalendarView: React.FC<AdminUnifiedCalendarViewProps> =
   const prevMonth = () => {
     setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
   };
-  const currentMonthName = currentDate.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+  const currentMonthName = formatMonthYear(currentDate);
 
   // Funções de navegação da Semana (Segunda a Domingo)
   const getMondayOfWeek = (d: Date) => {
@@ -355,7 +357,7 @@ export const AdminUnifiedCalendarView: React.FC<AdminUnifiedCalendarViewProps> =
   // 7 Dias da Semana (Segunda a Domingo)
   const weekDaysList = useMemo(() => {
     const days = [];
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = getTodayLocalStr();
 
     for (let i = 0; i < 7; i++) {
       const d = new Date(currentMonday.getTime() + i * 24 * 60 * 60 * 1000);
@@ -400,6 +402,9 @@ export const AdminUnifiedCalendarView: React.FC<AdminUnifiedCalendarViewProps> =
       const dayApts = filteredAppointments.filter(a => a.date === dateStr);
       days.push({ day, dateStr, isCurrentMonth: true, appointments: dayApts });
     }
+
+    // Sempre 6 semanas (42 celulas)
+    while (days.length < 42) days.push({ day: 0, dateStr: '', isCurrentMonth: false, appointments: [] });
 
     return days;
   }, [currentDate, filteredAppointments]);
@@ -686,9 +691,9 @@ export const AdminUnifiedCalendarView: React.FC<AdminUnifiedCalendarViewProps> =
               >
                 <ChevronLeft size={16} />
               </button>
-              <span style={{ fontSize: '1.05rem', fontWeight: 900, color: 'var(--adm-text-title)', textTransform: 'capitalize' }}>
-                {currentMonthName}
-              </span>
+              <MonthYearSwitcher year={currentDate.getFullYear()} month={currentDate.getMonth()} label={currentMonthName}
+                onChange={(y, m) => setCurrentDate(new Date(y, m, 1))}
+                style={{ fontSize: '1.05rem', fontWeight: 900, color: 'var(--adm-text-title)', textTransform: 'capitalize' }} />
               <button
                 type="button"
                 onClick={nextMonth}
@@ -749,7 +754,7 @@ export const AdminUnifiedCalendarView: React.FC<AdminUnifiedCalendarViewProps> =
             gap: '8px',
           }}>
             {calendarGrid.map((item, idx) => {
-              const isToday = item.dateStr === new Date().toISOString().split('T')[0];
+              const isToday = item.dateStr === getTodayLocalStr();
               if (!item.isCurrentMonth) {
                 return (
                   <div 
@@ -877,9 +882,10 @@ export const AdminUnifiedCalendarView: React.FC<AdminUnifiedCalendarViewProps> =
                 <ChevronLeft size={16} />
               </button>
 
-              <span style={{ fontSize: '0.96rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
-                Semana de {weekDaysList[0]?.formattedDate} a {weekDaysList[6]?.formattedDate} de {currentMonday.getFullYear()}
-              </span>
+              <MonthYearSwitcher year={currentMonday.getFullYear()} month={currentMonday.getMonth()}
+                label={`Semana de ${weekDaysList[0]?.formattedDate} a ${weekDaysList[6]?.formattedDate} de ${currentMonday.getFullYear()}`}
+                onChange={(y, m) => setCurrentDate(new Date(y, m, 1))}
+                style={{ fontSize: '0.96rem', fontWeight: 800, color: 'var(--adm-text-title)' }} />
 
               <button
                 type="button"

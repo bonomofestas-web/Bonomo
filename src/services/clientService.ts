@@ -65,6 +65,7 @@ export const clientService = {
           id: row.id,
           masterId: row.master_id,
           code: row.code,
+          avatarUrl: row.avatar_url || (row as any).photo_url || undefined,
           name: rawName,
           payerName: parsedPayer || rawName,
           payerRelationship: row.payer_relationship || (rawName && /\((mother|mae|mãe)\)/i.test(rawName) ? 'Mãe' : (rawName && /\((father|pai)\)/i.test(rawName) ? 'Pai' : undefined)),

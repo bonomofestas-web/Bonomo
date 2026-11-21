@@ -11,6 +11,7 @@ import { AdminConfirmModal } from './AdminConfirmModal';
 import { MessagingPausedBanner } from './MessagingPausedBanner';
 import type { AdminTask } from '../../types/admin';
 import type { Appointment } from '../../types';
+import { openClientFromTask } from '../../utils/taskSector';
 import { getTaskPriorityConfig, isTaskOverdue } from '../../utils/taskColors';
 
 interface AdminHomeViewProps {
@@ -84,6 +85,7 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
   const [taskToDelete, setTaskToDelete] = useState<AdminTask | null>(null);
 
   const handleTaskClick = (task: AdminTask) => {
+    if (openClientFromTask(task, clients || [])) return;
     const targetLeadId = task.leadId || task.customProperties?.leadId;
     if (targetLeadId && onOpenLead) {
       onOpenLead(targetLeadId);

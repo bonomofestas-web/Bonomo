@@ -1,3 +1,5 @@
+import { EntryCashCard } from './dashboard/EntryCashCard';
+import { ClosingPipelineCard } from './dashboard/ClosingPipelineCard';
 import { Select } from '../ui';
 import React, { useState } from 'react';
 import { Award, Building2, CalendarCheck, Clock, Percent, Timer } from 'lucide-react';
@@ -38,7 +40,7 @@ const responseColor = (current: number | null, target: number | null): string | 
 };
 
 export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({ onNavigateTab }) => {
-  const { venues } = useAdminState();
+  const { venues, currentUser } = useAdminState();
   const [period, setPeriod] = useState<PeriodSelection>(DEFAULT_PERIOD);
   const [venueScope, setVenueScope] = useState<string>('all');
   const data = useCommercialDashboardData(period, venueScope);
@@ -96,6 +98,12 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({ onNaviga
             onConfigureGoals={onNavigateTab ? () => onNavigateTab('venue-goals') : undefined}
             venueRows={data.venueRows}
           />
+
+          {/* 1b. Entrada em caixa no periodo (logo abaixo do faturamento) */}
+          <EntryCashCard revenue={data.kpis.revenue} entry={data.entry} comparedLabel={resolved.comparedLabel} />
+
+          {/* 1c. Vendido ainda em fechamento (contrato nao aprovado pelo financeiro) */}
+          <ClosingPipelineCard masterId={currentUser?.masterId || currentUser?.id || ''} venueIds={venueScope !== 'all' ? [venueScope] : venues.map(v => v.id)} />
 
           {/* 2. Alertas (so icone + texto curto) */}
           <AlertsPanel data={data} />

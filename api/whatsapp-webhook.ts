@@ -440,7 +440,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (msg.wasSentByApi === true || payload.wasSentByApi === true) continue;
 
         // Verifica se foi enviado externamente pelo celular/WhatsApp Web (fromMe: true)
-        const isFromMe = msg.fromMe === true || msg.key?.fromMe === true || payload.fromMe === true || payload.key?.fromMe === true;
+        const isFromMe = Boolean(
+          msg.fromMe === true || msg.fromMe === 'true' || msg.fromMe === 1 ||
+          msg.key?.fromMe === true || msg.key?.fromMe === 'true' || msg.key?.fromMe === 1 ||
+          payload.fromMe === true || payload.fromMe === 'true' || payload.fromMe === 1 ||
+          payload.key?.fromMe === true || payload.key?.fromMe === 'true' || payload.key?.fromMe === 1 ||
+          msg.direction === 'outgoing' || msg.direction === 'outbound' ||
+          payload.direction === 'outgoing' || payload.direction === 'outbound' ||
+          msg.sender === 'me' || msg.source === 'fromMe' ||
+          payload.event === 'message.sent' || payload.event === 'messages.sent'
+        );
+
+        // Detecta se a mensagem foi encaminhada (mensagem de terceiro repassada pelo contato)
+        const isForwarded = Boolean(
+          msg.isForwarded === true || msg.isForwarded === 'true' ||
+          msg.contextInfo?.isForwarded === true || msg.contextInfo?.isForwarded === 'true' ||
+          msg.content?.contextInfo?.isForwarded === true || msg.content?.contextInfo?.isForwarded === 'true' ||
+          msg.message?.extendedTextMessage?.contextInfo?.isForwarded === true ||
+          msg.message?.imageMessage?.contextInfo?.isForwarded === true ||
+          msg.message?.videoMessage?.contextInfo?.isForwarded === true ||
+          msg.message?.documentMessage?.contextInfo?.isForwarded === true
+        );
 
         // REGRA CRÍTICA: Ignora mensagens de grupos (@g.us), canais (@newsletter) e status broadcast
         const remoteJid = msg.key?.remoteJid || msg.remoteJid || msg.from || msg.to || msg.chat || msg.chatid || '';
@@ -922,6 +942,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               senderSourceName: matchedSource?.name,
               senderPhone: (matchedSource?.configuration as any)?.connectedPhone || (matchedSource?.configuration as any)?.whatsappNumber,
               senderAvatar: (matchedSource?.configuration as any)?.connectedAvatar || (matchedSource?.configuration as any)?.profilePicUrl,
+              ...(isForwarded ? { isForwarded: true } : {}),
               // Preserva o nome original do arquivo de documentos para renderização no frontend
               ...(mediaType === 'document' && (msg.fileName || msg.message?.documentMessage?.fileName) ? {
                 fileName: msg.fileName || msg.message?.documentMessage?.fileName,
@@ -931,7 +952,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
           const { error: actErr } = await supabase.from('lead_activities').insert([newActivityRecord]);
           if (actErr) {
-            console.error('[Webhook] Erro ao inserir lead_activity para lead existente:', actErr);
+            if (actErr.code === '23505' || actErr.message?.includes('duplicate key') || actErr.message?.includes('idx_lead_activities_unique_msg_id')) {
+              console.log('[Webhook] Mensagem já processada anteriormente (dedup atômico):', waMessageId || activityId);
+            } else {
+              console.error('[Webhook] Erro ao inserir lead_activity para lead existente:', actErr);
+            }
           } else if (hasMedia) {
             await handleWebhookMedia({
               activityId, leadId: existingLead.id, masterId: existingLead.master_id || tenantMasterId, venueId: existingLead.venue_id,
@@ -1023,6 +1048,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                     senderSourceName: matchedSource?.name,
                     senderPhone: (matchedSource?.configuration as any)?.connectedPhone || (matchedSource?.configuration as any)?.whatsappNumber,
                     senderAvatar: (matchedSource?.configuration as any)?.connectedAvatar || (matchedSource?.configuration as any)?.profilePicUrl,
+                    ...(isForwarded ? { isForwarded: true } : {}),
                     // Preserva o nome original do arquivo de documentos para renderização no frontend
                     ...(mediaType === 'document' && (msg.fileName || msg.message?.documentMessage?.fileName) ? {
                       fileName: msg.fileName || msg.message?.documentMessage?.fileName,
@@ -1030,7 +1056,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                   },
                 };
                 const { error: concActErr } = await supabase.from('lead_activities').insert([newActivityRecord]);
-                if (!concActErr && hasMedia) {
+                if (concActErr) {
+                  if (concActErr.code === '23505' || concActErr.message?.includes('duplicate key') || concActErr.message?.includes('idx_lead_activities_unique_msg_id')) {
+                    console.log('[Webhook] Mensagem concorrente já inserida (dedup atômico):', waMessageId || activityId);
+                  } else {
+                    console.error('[Webhook] Erro ao inserir lead_activity concorrente:', concActErr);
+                  }
+                } else if (hasMedia) {
                   await handleWebhookMedia({
                     activityId, leadId: matchedLead.id, masterId: matchedLead.master_id || tenantMasterId, venueId: matchedLead.venue_id,
                     sourceId: matchedSource?.id, instanceToken, baseUrl: mediaBaseUrl, messageIds: mediaMessageIds,
@@ -1051,6 +1083,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               }
             }
           }
+
+          // Numero fixo do Financeiro nunca abre oportunidade: so conversa com quem ja e cliente/lead conhecido
+          if ((matchedSource?.configuration as any)?.role === 'financeiro') continue;
 
           const leadId = crypto.randomUUID();
           const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -1172,12 +1207,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               senderSourceName: matchedSource?.name,
               senderPhone: (matchedSource?.configuration as any)?.connectedPhone || (matchedSource?.configuration as any)?.whatsappNumber,
               senderAvatar: (matchedSource?.configuration as any)?.connectedAvatar || (matchedSource?.configuration as any)?.profilePicUrl,
+              ...(isForwarded ? { isForwarded: true } : {}),
               // Preserva o nome original do arquivo de documentos para renderização no frontend
               ...(mediaType === 'document' && (msg.fileName || msg.message?.documentMessage?.fileName) ? {
                 fileName: msg.fileName || msg.message?.documentMessage?.fileName,
               } : {}),
             },
           }]);
+          if (actErr) {
+            if (actErr.code === '23505' || actErr.message?.includes('duplicate key') || actErr.message?.includes('idx_lead_activities_unique_msg_id')) {
+              console.log('[Webhook] Atividade de novo lead já inserida (dedup atômico):', waMessageId || newLeadActivityId);
+            } else {
+              console.error('[Webhook] Erro ao inserir lead_activity para novo lead:', actErr);
+            }
+          }
           if (actErr) {
             console.error('[Webhook] Erro ao inserir lead_activity para novo lead:', actErr);
           } else if (hasMedia) {

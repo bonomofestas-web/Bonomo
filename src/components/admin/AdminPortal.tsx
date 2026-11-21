@@ -10,12 +10,15 @@ import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { AdminSidebar, type AdminTabType } from './AdminSidebar';
 import { AdminHomeView } from './AdminHomeView';
 import { AdminDashboardView } from './AdminDashboardView';
+import { AdminFinanceView } from './finance/AdminFinanceView';
+import { canAccessFinance } from '../../utils/accessPermissions';
+import { FinanceCalendarView } from './finance/FinanceCalendarView';
 import { AdminVenuesView } from './AdminVenuesView';
 import { AdminDebutantesView } from './AdminDebutantesView';
 import { AdminCrmKanbanView } from './AdminCrmKanbanView';
 import { AdminAppointmentsView } from './AdminAppointmentsView';
 import { AdminVenueEventsView } from './AdminVenueEventsView';
-import { AdminCollaboratorsView } from './AdminCollaboratorsView';
+import { AdminSystemSettingsView } from './AdminSystemSettingsView';
 import { AdminJourneysConfigView } from './AdminJourneysConfigView';
 import { AdminBenefitsCatalogView } from './AdminBenefitsCatalogView';
 import { AdminLoginView } from './AdminLoginView';
@@ -31,7 +34,6 @@ import { AdminQuickMessagesView } from './AdminQuickMessagesView';
 import { AdminMqlConfigView } from './AdminMqlConfigView';
 
 import { AdminUserSettingsView } from './AdminUserSettingsView';
-import { AdminSlaSettingsView } from './AdminSlaSettingsView';
 import { AdminDevFeatureFlagsView } from './AdminDevFeatureFlagsView';
 import { AdminDevUsersManagerView } from './AdminDevUsersManagerView';
 import { AdminDevAnnouncementsView } from './AdminDevAnnouncementsView';
@@ -397,6 +399,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       'sources',
       'mql',
       'master-dashboard',
+      'system-settings',
       'collaborators',
       'venues',
     ];
@@ -435,7 +438,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       : (effectiveRole === 'admin' ? ['gerencia', 'comercial', 'pos_venda'] : effectiveRole === 'pos_venda' ? ['pos_venda'] : ['comercial']);
 
     const commercialTabs: AdminTabType[] = ['dashboard', 'whatsapp', 'crm', 'leads', 'followups'];
-    const gerenciaTabs: AdminTabType[] = ['collaborators', 'venues', 'master-dashboard', 'sources', 'mql', 'venue-goals', 'templates', 'dev-features', 'dev-users', 'dev-announcements', 'dev-support'];
+    const gerenciaTabs: AdminTabType[] = ['system-settings', 'collaborators', 'venues', 'master-dashboard', 'sources', 'mql', 'venue-goals', 'templates', 'dev-features', 'dev-users', 'dev-announcements', 'dev-support'];
     const posVendaTabs: AdminTabType[] = ['post-sale-crm', 'debutantes'];
 
     if (commercialTabs.includes(activeTab) && !effectiveSectors.includes('comercial')) {
@@ -476,6 +479,10 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
           // Redirecionamento para um funil especifico (ex.: "Funis relacionados" na ficha do cliente)
           handleSelectTab(e.detail.tab, e.detail.funnelId);
           if (e.detail.clientId) setOpenClientId(e.detail.clientId);
+        } else if (e.detail.tab === 'contracts' && e.detail.contractId) {
+          setOpenContractId(e.detail.contractId);
+          setActiveTab('contracts');
+          try { localStorage.setItem('bonomo_admin_active_tab', 'contracts'); } catch { }
         } else {
           setActiveTab(e.detail.tab);
           try { localStorage.setItem('bonomo_admin_active_tab', e.detail.tab); } catch { }
@@ -838,9 +845,33 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         return <AdminSourcesView />;
       case 'mql':
         return <AdminMqlConfigView />;
+      case 'system-settings':
+        return (
+          <AdminSystemSettingsView
+            initialSection="unidades"
+            onNavigateTab={(tab) => handleSelectTab(tab as any)}
+            onNavigateToFunnel={(funnelId: string) => {
+              setActiveFunnelId(funnelId);
+              setActiveTab('crm');
+            }}
+          />
+        );
       case 'venues':
         return (
-          <AdminVenuesView
+          <AdminSystemSettingsView
+            initialSection="unidades"
+            onNavigateTab={(tab) => handleSelectTab(tab as any)}
+            onNavigateToFunnel={(funnelId: string) => {
+              setActiveFunnelId(funnelId);
+              setActiveTab('crm');
+            }}
+          />
+        );
+      case 'collaborators':
+        return (
+          <AdminSystemSettingsView
+            initialSection="colaboradores"
+            onNavigateTab={(tab) => handleSelectTab(tab as any)}
             onNavigateToFunnel={(funnelId: string) => {
               setActiveFunnelId(funnelId);
               setActiveTab('crm');
@@ -865,16 +896,28 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
             onNavigateTab={(tab) => handleSelectTab(tab as any)}
           />
         );
+      case 'finance':
+        return (canAccessFinance(currentUser) && getFeatureStatus('finance') === 'active') ? <AdminFinanceView section="geral" /> : null;
+      case 'finance-approval':
+        return (canAccessFinance(currentUser) && getFeatureStatus('finance') === 'active') ? <AdminFinanceView section="aprovacao" /> : null;
+      case 'finance-calendar':
+        return (canAccessFinance(currentUser) && getFeatureStatus('finance') === 'active') ? <FinanceCalendarView /> : null;
+      case 'finance-payables':
+        return (canAccessFinance(currentUser) && getFeatureStatus('finance') === 'active') ? <AdminFinanceView section="soon" soonTitle="Contas a pagar" soonText="Lançamento de contas a pagar, custos fixos e variáveis, recorrências (aluguel, folha) e rateio de custo entre festas." /> : null;
+      case 'finance-cashflow':
+        return (canAccessFinance(currentUser) && getFeatureStatus('finance') === 'active') ? <AdminFinanceView section="soon" soonTitle="Fluxo de caixa" soonText="Entradas e saídas realizadas e projetadas até 2031, por casa, com a liquidação líquida do cartão." /> : null;
+      case 'finance-dre':
+        return (canAccessFinance(currentUser) && getFeatureStatus('finance') === 'active') ? <AdminFinanceView section="soon" soonTitle="DRE" soonText="Demonstração do resultado por casa e por mês, com análise vertical e horizontal e exportação em PDF e Excel." /> : null;
+      case 'finance-settings':
+        return (canAccessFinance(currentUser) && getFeatureStatus('finance') === 'active') ? <AdminFinanceView section="soon" soonTitle="Configurações do financeiro" soonText="Categorias, contas bancárias, maquininhas e tabelas de taxa de cartão." /> : null;
       case 'venue-goals':
         return <AdminVenueGoalsView />;
       case 'master-dashboard':
         return <AdminMasterDashboardView />;
       case 'sla-settings':
-        return <AdminSlaSettingsView />;
+        return <AdminVenueGoalsView initialTab="sla" />;
       case 'benefits':
         return <AdminBenefitsCatalogView onBack={() => handleSelectTab('debutantes')} />;
-      case 'collaborators':
-        return <AdminCollaboratorsView onNavigateTab={(tab) => handleSelectTab(tab)} />;
       case 'templates':
         return <AdminJourneysConfigView onBack={() => handleSelectTab('debutantes')} />;
       case 'appointments':
@@ -1075,9 +1118,17 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               else if (activeTab === 'post-sale-appointments') { category = 'Pós-Venda'; title = 'Compromissos'; }
               else if (activeTab === 'venue-events') { category = 'Pós-Venda'; title = 'Agenda de Eventos'; }
               else if (activeTab === 'master-dashboard') { category = 'Gerência'; title = 'Dashboard Gerência'; }
-              else if (activeTab === 'collaborators') { category = 'Gerência'; title = 'Colaboradores'; }
-              else if (activeTab === 'venues') { category = 'Gerência'; title = 'Casas de Festa'; }
+              else if (activeTab === 'system-settings') { category = 'Configurações'; title = 'Unidades e Colaboradores'; }
+              else if (activeTab === 'collaborators') { category = 'Configurações'; title = 'Colaboradores'; }
+              else if (activeTab === 'venues') { category = 'Configurações'; title = 'Unidades'; }
               else if (activeTab === 'venue-goals') { category = 'Gerência'; title = 'Metas'; }
+              else if (activeTab === 'finance') { category = 'Financeiro'; title = 'Visão geral'; }
+              else if (activeTab === 'finance-approval') { category = 'Financeiro'; title = 'Aprovação'; }
+              else if (activeTab === 'finance-calendar') { category = 'Financeiro'; title = 'Calendário'; }
+              else if (activeTab === 'finance-payables') { category = 'Financeiro'; title = 'Contas a pagar'; }
+              else if (activeTab === 'finance-cashflow') { category = 'Financeiro'; title = 'Fluxo de caixa'; }
+              else if (activeTab === 'finance-dre') { category = 'Financeiro'; title = 'DRE'; }
+              else if (activeTab === 'finance-settings') { category = 'Financeiro'; title = 'Configurações'; }
               else if (activeTab === 'sources') { category = 'Gerência'; title = 'Origens'; }
               else if (activeTab === 'mql') { category = 'Gerência'; title = 'Qualificação'; }
               else if (activeTab === 'benefits') { category = 'Pós-Venda'; title = 'Catálogo de Prêmios'; }

@@ -1,4 +1,5 @@
 import { DateField, Select } from '../ui';
+import { toLocalDateStr, getTodayLocalStr } from '../../utils/dateUtils';
 import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'motion/react';
@@ -21,10 +22,18 @@ import {
   List as ListIcon,
   X,
   AlertCircle,
+  Settings,
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import type { AdminTask, VenueEvent, VenueEventStatus } from '../../types/admin';
 import { AdminCalendarMonthView } from './tasks/AdminCalendarMonthView';
+import { buildVenueAccentMap } from '../../utils/venueColors';
+import { agendaAvailabilityService } from '../../services/agendaAvailabilityService';
+import { ContractQuickViewModal } from './ContractQuickViewModal';
+import { AdminAgendaAvailabilityModal } from './AdminAgendaAvailabilityModal';
+import { contractService } from '../../services/contractService';
+import { canAccessContractFromAgenda } from '../../utils/accessPermissions';
+import type { Contract } from '../../types/admin';
 import { AdminCalendarWeekView } from './tasks/AdminCalendarWeekView';
 import { AdminCalendarDayView } from './tasks/AdminCalendarDayView';
 
@@ -86,6 +95,8 @@ export const AdminVenueEventsView: React.FC = () => {
     venues: scopedVenues,
     activeVenueId,
     clients,
+    appointments,
+    venueAgendaConfigs,
     currentUser,
   } = useAdminState();
 
@@ -97,6 +108,7 @@ export const AdminVenueEventsView: React.FC = () => {
   }, [currentUser?.role, currentUser?.isDev]);
 
   const [viewMode, setViewMode] = useState<'calendar' | 'list'>('calendar');
+  const [isAvailabilityModalOpen, setIsAvailabilityModalOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [wideHeader, setWideHeader] = useState(() => window.innerWidth >= 1500);
   useEffect(() => {
@@ -135,7 +147,7 @@ export const AdminVenueEventsView: React.FC = () => {
     outline: 'none',
   };
   const currentMonth = calendarDate;
-  const [selectedDate, setSelectedDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
+  const [selectedDate, setSelectedDate] = useState<string>(() => getTodayLocalStr());
   const [venueFilter, setVenueFilter] = useState<string>(
     activeVenueId && activeVenueId !== 'all' && activeVenueId !== 'multi' ? activeVenueId : 'all'
   );
@@ -219,27 +231,167 @@ export const AdminVenueEventsView: React.FC = () => {
     return filteredEvents.filter(ev => ev.eventDate === selectedDate);
   }, [filteredEvents, selectedDate]);
 
-  const calendarTasks = useMemo<AdminTask[]>(() => filteredEvents.map(ev => ({
-    id: ev.id,
-    title: ev.title,
-    dueDate: ev.eventDate,
-    dueTime: ev.startTime,
-    endTime: ev.endTime,
-    status: ev.status === 'completed' ? 'completed' : ev.status === 'cancelled' ? 'cancelled' : 'todo',
-    priority: 'none',
-    type: 'meeting',
-    customType: ev.eventType || 'Evento',
-    createdById: ev.createdById || '',
-    createdByName: ev.createdByName || '',
-    assignedToIds: [],
-    venueId: ev.venueId,
-    createdAt: ev.createdAt || '',
-  })), [filteredEvents]);
+  // Por padrao so os eventos; degustacoes e visitas aparecem quando o usuario liga os botoes
+  const [showTastings, setShowTastings] = useState(false);
+  const [showVisits, setShowVisits] = useState(false);
+
+  const eventTasks = useMemo<AdminTask[]>(() => filteredEvents.map(ev => {
+    let st = ev.startTime || '';
+    let et = ev.endTime || '';
+    if (st && st.includes('às')) {
+      const parts = st.split('às').map(s => s.trim());
+      st = parts[0] || '';
+      if (!et) et = parts[1] || '';
+    }
+    return {
+      id: ev.id,
+      title: ev.title,
+      dueDate: ev.eventDate,
+      dueTime: st,
+      endTime: et,
+      status: ev.status === 'completed' ? 'completed' : ev.status === 'cancelled' ? 'cancelled' : 'todo',
+      priority: 'none',
+      type: 'meeting',
+      customType: ev.eventType || 'Evento',
+      createdById: ev.createdById || '',
+      createdByName: ev.createdByName || '',
+      assignedToIds: [],
+      venueId: ev.venueId,
+      createdAt: ev.createdAt || '',
+    };
+  }), [filteredEvents]);
+
+  const addMinutes = (hhmm: string, mins: number) => {
+    const [h, m] = (hhmm || '00:00').split(':').map(Number);
+    const total = Math.min(23 * 60 + 59, (h || 0) * 60 + (m || 0) + mins);
+    return String(Math.floor(total / 60)).padStart(2, '0') + ':' + String(total % 60).padStart(2, '0');
+  };
+  const isoLocal = (d: Date) => toLocalDateStr(d);
+
+  // Duracao de cada agendamento = a configurada na agenda da casa (ex.: degustacao de 1h30)
+  const configuredDuration = (venueId: string | undefined, type: 'tasting' | 'visit', date: string, time: string): number => {
+    const cfg = venueAgendaConfigs.find(c => c.venueId === venueId);
+    if (cfg && venueId) {
+      const av = agendaAvailabilityService.getAvailableSlots(date, type, venueId, appointments, cfg, venueEvents);
+      const slot = av.slots.find(sl => sl.time === time);
+      if (slot?.durationMinutes) return slot.durationMinutes;
+      if (av.slots[0]?.durationMinutes) return av.slots[0].durationMinutes;
+    }
+    return 60;
+  };
+
+  // Agendamentos (degustacao e visita) da mesma unidade, com a etiqueta do tipo e a duracao configurada
+  const appointmentTasks = useMemo<AdminTask[]>(() => {
+    if (!showTastings && !showVisits) return [];
+    return (appointments || []).flatMap((a): AdminTask[] => {
+      const cat = String(a.category || '').toLowerCase();
+      const isTasting = cat.includes('degust');
+      const isVisit = cat.includes('visit');
+      if (!((isTasting && showTastings) || (isVisit && showVisits))) return [];
+      if (['cancelled', 'canceled', 'cancelado'].includes(String(a.status || '').toLowerCase())) return [];
+      if (effectiveVenueFilter !== 'all' && a.venueId && a.venueId !== effectiveVenueFilter) return [];
+      const dur = configuredDuration(a.venueId, isTasting ? 'tasting' : 'visit', a.date, a.time);
+      const who = a.leadName || a.debutanteName || '';
+      return [{
+        id: 'appt:' + a.id,
+        title: who && !String(a.title || '').includes(who) ? a.title + ' • ' + who : (a.title || (isTasting ? 'Degustação' : 'Visita')),
+        dueDate: a.date,
+        dueTime: a.time,
+        endTime: addMinutes(a.time, dur),
+        status: 'todo',
+        priority: 'none',
+        type: 'meeting',
+        customType: isTasting ? 'Degustação' : 'Visitação',
+        createdById: '',
+        createdByName: a.responsibleName || '',
+        assignedToIds: [],
+        venueId: a.venueId,
+        createdAt: '',
+      } as AdminTask];
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appointments, showTastings, showVisits, effectiveVenueFilter, venueAgendaConfigs, venueEvents]);
+
+  // Janela em que a casa atende degustacao/visita no dia: do primeiro horario ate o ultimo + a duracao de cada um
+  const availabilityTasks = useMemo<AdminTask[]>(() => {
+    if (!showTastings && !showVisits) return [];
+    const out: AdminTask[] = [];
+    const first = new Date(calendarDate.getFullYear(), calendarDate.getMonth(), 1);
+    first.setDate(first.getDate() - 7);
+    const last = new Date(calendarDate.getFullYear(), calendarDate.getMonth() + 1, 0);
+    last.setDate(last.getDate() + 14);
+    const todayStr = isoLocal(new Date());
+    const types: Array<'tasting' | 'visit'> = [...(showTastings ? ['tasting' as const] : []), ...(showVisits ? ['visit' as const] : [])];
+    for (const v of scopedVenues) {
+      if (effectiveVenueFilter !== 'all' && v.id !== effectiveVenueFilter) continue;
+      const cfg = venueAgendaConfigs.find(c => c.venueId === v.id);
+      if (!cfg) continue;
+      for (const type of types) {
+        if (!agendaAvailabilityService.isCommitmentTypeConfigured(cfg, type)) continue;
+        for (const d = new Date(first); d <= last; d.setDate(d.getDate() + 1)) {
+          const ds = isoLocal(d);
+          if (ds < todayStr) continue;
+          const av = agendaAvailabilityService.getAvailableSlots(ds, type, v.id, appointments, cfg, venueEvents);
+          if (!av.isDayAvailable || av.slots.length === 0) continue;
+          const times = av.slots.map(sl => sl.time).sort();
+          const dur = av.slots[0].durationMinutes || 60;
+          const label = type === 'tasting' ? 'Degustação' : 'Visitação';
+          const durLabel = dur % 60 === 0 ? (dur / 60) + 'h' : Math.floor(dur / 60) + 'h' + String(dur % 60).padStart(2, '0');
+          out.push({
+            id: 'slot:' + v.id + ':' + type + ':' + ds,
+            title: label + ' disponível • ' + times.length + (times.length === 1 ? ' horário' : ' horários') + ' de ' + durLabel,
+            dueDate: ds,
+            dueTime: times[0],
+            endTime: addMinutes(times[times.length - 1], dur),
+            status: 'todo',
+            priority: 'none',
+            type: 'meeting',
+            customType: label,
+            createdById: '',
+            createdByName: '',
+            assignedToIds: [],
+            venueId: v.id,
+            createdAt: '',
+          } as AdminTask);
+        }
+      }
+    }
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showTastings, showVisits, calendarDate, scopedVenues, effectiveVenueFilter, venueAgendaConfigs, appointments, venueEvents]);
+
+  const calendarTasks = useMemo<AdminTask[]>(() => [...eventTasks, ...availabilityTasks, ...appointmentTasks], [eventTasks, availabilityTasks, appointmentTasks]);
+
+  // Cor por unidade: a escolhida na configuracao da casa; sem escolha, uma cor automatica estavel
+  const venueAccent = useMemo(() => buildVenueAccentMap(scopedVenues), [scopedVenues]);
+  // Etiqueta do tipo junto da casa: Evento, Degustação ou Visitação
+  const accentFor = (t: AdminTask) => {
+    const base = t.venueId ? venueAccent.get(t.venueId) : null;
+    if (!base) return null;
+    const tag = String(t.id).startsWith('appt:') || String(t.id).startsWith('slot:') ? (t.customType || 'Agendamento') : 'Evento';
+    return { color: base.color, label: base.label + ' · ' + tag };
+  };
+
+  // Resumo do evento (vem do contrato): abre ao clicar no evento do calendario
+  const [summary, setSummary] = useState<{ ev: VenueEvent; contract: Contract } | null>(null);
+  const canOpenContract = canAccessContractFromAgenda(currentUser);
 
   const openEventFromCalendar = (task: AdminTask) => {
+    if (String(task.id).startsWith('appt:') || String(task.id).startsWith('slot:')) {
+      window.dispatchEvent(new CustomEvent('admin_switch_tab', { detail: { tab: 'post-sale-visits-tastings' } }));
+      return;
+    }
     const ev = filteredEvents.find(e => e.id === task.id);
     if (!ev) return;
     setSelectedDate(ev.eventDate);
+    const masterId = currentUser?.masterId || currentUser?.id || '';
+    if (ev.clientId && masterId) {
+      void contractService.getContractByClientId(ev.clientId, masterId).then(ct => {
+        if (ct) setSummary({ ev, contract: ct });
+        else if (canManageEvents) openEditModal(ev); else setDrawerOpen(true);
+      });
+      return;
+    }
     if (canManageEvents) openEditModal(ev); else setDrawerOpen(true);
   };
 
@@ -266,7 +418,7 @@ export const AdminVenueEventsView: React.FC = () => {
     setFormVenueId(defaultVenue);
     setFormTitle('');
     setFormEventType(EVENT_TYPE_OPTIONS[0]);
-    setFormDate(presetDate || selectedDate || new Date().toISOString().split('T')[0]);
+    setFormDate(presetDate || selectedDate || getTodayLocalStr());
     setFormStartTime('19:00');
     setFormEndTime('01:00');
     setFormGuestCount('');
@@ -286,8 +438,8 @@ export const AdminVenueEventsView: React.FC = () => {
     setFormTitle(ev.title);
     setFormEventType(ev.eventType || EVENT_TYPE_OPTIONS[0]);
     setFormDate(ev.eventDate);
-    setFormStartTime(ev.startTime || '19:00');
-    setFormEndTime(ev.endTime || '01:00');
+    setFormStartTime(ev.startTime || '');
+    setFormEndTime(ev.endTime || '');
     setFormGuestCount(ev.guestCount !== undefined ? String(ev.guestCount) : '');
     setFormClientId(ev.clientId || '');
     setFormClientSearch('');
@@ -418,6 +570,42 @@ export const AdminVenueEventsView: React.FC = () => {
     <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', padding: '16px 20px 28px' }}>
       {headerSlot && createPortal(
         <>
+        {/* Botão de Planejamento de Agendamento e Regras de Disponibilidade */}
+        {(currentUser?.role === 'master' || currentUser?.role === 'admin' || (currentUser as any)?.role === 'manager' || canManageEvents) && (
+          <button
+            type="button"
+            title="Planejamento de Agendamento (Grade e Regras de Disponibilidade)"
+            aria-label="Planejamento de Agendamento"
+            onClick={() => setIsAvailabilityModalOpen(true)}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '6px 12px',
+              borderRadius: '8px',
+              border: '1px solid rgba(255, 255, 255, 0.12)',
+              background: 'rgba(255, 255, 255, 0.05)',
+              color: 'rgba(255, 255, 255, 0.8)',
+              fontSize: '0.78rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+              transition: 'all 0.15s ease',
+              flexShrink: 0,
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
+              e.currentTarget.style.color = '#FFFFFF';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
+              e.currentTarget.style.color = 'rgba(255, 255, 255, 0.8)';
+            }}
+          >
+            <Settings size={14} />
+            <span>Disponibilidade</span>
+          </button>
+        )}
+
         <div style={{ display: 'inline-flex', padding: '3px', borderRadius: '10px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)' }}>
           {([['month', 'Mês', CalendarIcon], ['week', 'Semana', LayoutGrid], ['day', 'Dia', Clock], ['list', 'Lista', ListIcon]] as const).map(([mode, label, Icon]) => {
             const active = mode === 'list' ? viewMode === 'list' : viewMode === 'calendar' && calendarScale === mode;
@@ -527,11 +715,46 @@ export const AdminVenueEventsView: React.FC = () => {
       </div>
 
 
+      {summary && (
+        <ContractQuickViewModal
+          contract={summary.contract}
+          eventStart={summary.ev.startTime}
+          eventEnd={summary.ev.endTime}
+          onClose={() => setSummary(null)}
+          onAccessContract={canOpenContract ? () => {
+            const id = summary.contract.id;
+            setSummary(null);
+            window.dispatchEvent(new CustomEvent('admin_switch_tab', { detail: { tab: 'contracts', contractId: id } }));
+          } : undefined}
+          onEditEvent={canManageEvents ? () => { const e = summary.ev; setSummary(null); openEditModal(e); } : undefined}
+        />
+      )}
+
       {viewMode === 'calendar' ? (
         <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)' }}>
+          {venueAccent.size > 1 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', padding: '0 0 10px' }}>
+              {Array.from(venueAccent.values()).map(a => (
+                <span key={a.label} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '3px 10px', borderRadius: '999px', border: `1px solid ${a.color}55`, background: `${a.color}14`, fontSize: '0.72rem', fontWeight: 800, color: 'var(--adm-text-title, #0F172A)' }}>
+                  <span style={{ width: 9, height: 9, borderRadius: '50%', background: a.color }} /> {a.label}
+                </span>
+              ))}
+            </div>
+          )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '0 0 10px' }}>
+            <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--adm-text-muted, #64748B)' }}>Mostrar também:</span>
+            {([['Degustações', showTastings, setShowTastings], ['Visitas', showVisits, setShowVisits]] as const).map(([label, on, set]) => (
+              <button key={label} type="button" onClick={() => set(!on)} style={{ padding: '4px 12px', borderRadius: '999px', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 800, border: on ? '1px solid #2563EB' : '1px solid var(--adm-border, #CBD5E1)', background: on ? 'rgba(37,99,235,0.12)' : 'var(--adm-bg-surface, #FFFFFF)', color: on ? '#2563EB' : 'var(--adm-text-title, #0F172A)' }}>
+                {label}
+              </button>
+            ))}
+          </div>
           <div style={{ display: 'flex', flexDirection: 'column', ...(calendarScale === 'month' ? { minHeight: 'calc(100vh - 220px)' } : { height: 'calc(100vh - 220px)', minHeight: '520px' }), margin: '-16px -24px' }}>
             {calendarScale === 'month' && (
               <AdminCalendarMonthView
+                expandCells
+                openOnItemClick
+                getTaskAccent={accentFor}
                 tasks={calendarTasks}
                 currentDate={calendarDate}
                 onDateChange={setCalendarDate}
@@ -541,6 +764,7 @@ export const AdminVenueEventsView: React.FC = () => {
             )}
             {calendarScale === 'week' && (
               <AdminCalendarWeekView
+                getTaskAccent={accentFor}
                 tasks={calendarTasks}
                 currentDate={calendarDate}
                 onDateChange={setCalendarDate}
@@ -550,6 +774,9 @@ export const AdminVenueEventsView: React.FC = () => {
             )}
             {calendarScale === 'day' && (
               <AdminCalendarDayView
+                startHour={0}
+                endHour={23}
+                getTaskAccent={accentFor}
                 tasks={calendarTasks}
                 currentDate={calendarDate}
                 onDateChange={setCalendarDate}
@@ -1102,7 +1329,7 @@ export const AdminVenueEventsView: React.FC = () => {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
               <div>
                 <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, marginBottom: '5px', color: 'var(--adm-text-muted, #475569)' }}>
-                  Início
+                  Início <span style={{ fontWeight: 500 }}>(vazio = dia inteiro)</span>
                 </label>
                 <input
                   type="time"
@@ -1357,6 +1584,13 @@ export const AdminVenueEventsView: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+      {/* Modal de Planejamento de Agendamento e Grade de Disponibilidade */}
+      {isAvailabilityModalOpen && (
+        <AdminAgendaAvailabilityModal
+          venueId={effectiveVenueFilter !== 'all' ? effectiveVenueFilter : (activeVenueId || undefined)}
+          onClose={() => setIsAvailabilityModalOpen(false)}
+        />
       )}
     </div>
   );

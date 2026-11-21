@@ -1,4 +1,6 @@
 import { toast } from 'sonner';
+import { planSignalEntry } from '../utils/paymentPlan';
+import { canSeeTask } from '../utils/taskSector';
 import { ShieldAlert } from 'lucide-react';
 import React, { createContext, useContext, useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import type { 
@@ -252,6 +254,7 @@ const DEFAULT_FEATURE_FLAGS: Record<FeatureFlagId, FeatureFlagStatus> = {
   team_presence: 'active',
   whatsapp_messaging: 'active',
   chat_local_cache: 'active',
+  finance: 'disabled',
 };
 
 const DEFAULT_ADMIN_USER: AdminUser | null = null;
@@ -302,6 +305,7 @@ const DEFAULT_DEBUTANTES: DebutanteAccount[] = [];
 
 export interface AdminContextType {
   currentUser: AdminUser | null;
+  scopedMasterId: string | null;
   collaborators: Collaborator[];
   venues: Venue[];
   debutantes: DebutanteAccount[];
@@ -512,6 +516,7 @@ export interface AdminContextType {
       paymentFileName?: string;
       downPayment?: number;
       installmentsCount?: number;
+      paymentPlan?: import('../utils/paymentPlan').PaymentPlan;
       hasCreditCard?: boolean;
       contractSignedFileUrl?: string;
       contractSignedFileName?: string;
@@ -1281,7 +1286,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const getFeatureStatus = (featureId: FeatureFlagId): FeatureFlagStatus => {
     // Usuários com isDev = true possuem acesso a todas as features
     if (currentUser?.isDev) return 'active';
-    return featureFlags[featureId] || 'active';
+    // Financeiro entra desligado: sem registro na chave, fica oculto (so dev ve)
+    return featureFlags[featureId] || (featureId === 'finance' ? 'disabled' : 'active');
   };
 
   const [activeVenueId, setActiveVenueIdState] = useState<string | null>(() => {
@@ -1470,6 +1476,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             }
             // Garante que cada casa possua origem nativa de indicação vinculada ao seu funil primário
             await sourceService.ensureDefaultReferralSources(dbVenues, syncedFunnels);
+            // Conexao fixa do WhatsApp do Financeiro (uma por casa)
+            await sourceService.ensureFinanceSources(dbVenues);
             const freshSources = await sourceService.getAll();
             if (freshSources.length > 0) {
               setSources(freshSources);
@@ -3241,6 +3249,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     if (!currentUser || !scopedMasterId) return [];
     const masterVenueIds = new Set(scopedVenues.map(v => v.id));
     return tasks.filter(t => {
+      // 0. Tarefa de outro setor nao aparece (ex.: ajuste de contrato do pos-venda nao chega ao comercial)
+      if (!canSeeTask(currentUser, t)) return false;
       // 1. Se uma casa específica estiver selecionada no filtro global
       if (activeVenueId && activeVenueId !== 'all' && activeVenueId !== 'multi') {
         if (!masterVenueIds.has(activeVenueId)) return false;
@@ -3968,6 +3978,24 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
+
+    // Conexao fixa do Financeiro desta casa (sem funil)
+    const financeSource: Source = {
+      id: generateUuid(),
+      venueId: id,
+      name: `Financeiro • ${newVenue.name}`,
+      type: 'whatsapp_api',
+      funnelId: '',
+      status: 'active',
+      configuration: { role: 'financeiro', fixed: true },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    } as Source;
+    setSources(prev => {
+      const updated = [...prev, financeSource];
+      safeLocalStorageSet(STORAGE_KEY_SOURCES, JSON.stringify(updated));
+      return updated;
+    });
 
     setSources(prev => {
       const updated = [...prev, defaultReferralSource];
@@ -5487,6 +5515,26 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   };
 
   const updateClient = (id: string, updates: Partial<Client>) => {
+    // Campos conectados ao contrato: replica nos outros cards do mesmo contrato, no contato, na agenda e no titulo
+    const linkedMaster = currentUserRef.current?.masterId || currentUserRef.current?.id || '';
+    if (linkedMaster && isUuid(id)) {
+      contractService.syncLinkedCardFields({ masterId: linkedMaster, clientId: id, updates: updates as Record<string, any> }).then(res => {
+        if (res.siblingIds.length === 0) return;
+        const sibs = new Set(res.siblingIds);
+        const patchCamel: Partial<Client> = {};
+        for (const k of ['birthdayPersonName', 'payerName', 'payerPhone', 'payerEmail', 'payerCpf', 'payerAddress', 'eventDate', 'eventTime', 'guestCount', 'eventType', 'packageSold', 'contractTitle'] as const) {
+          if ((updates as any)[k] !== undefined) (patchCamel as any)[k] = (updates as any)[k];
+        }
+        if (updates.birthdayPersonName) patchCamel.name = updates.birthdayPersonName;
+        if (res.patch.contract_title) patchCamel.contractTitle = res.patch.contract_title;
+        setClients(prev => {
+          const next = prev.map(c => (sibs.has(c.id) ? { ...c, ...patchCamel } : c));
+          safeLocalStorageSet(STORAGE_KEY_CLIENTS, JSON.stringify(next));
+          return next;
+        });
+        window.dispatchEvent(new Event('f5:contracts-changed'));
+      }).catch(() => {});
+    }
     setClients(prev => {
       const updated = prev.map(c => {
         if (c.id === id) {
@@ -6323,7 +6371,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           birthdayPersonBirthdate: (targetLead as any).debutanteBirthDate || '',
           eventType: targetLead.eventType || '',
           eventDate: pDate,
-          eventTime: (targetLead as any).eventTime || '20:00 às 02:00',
+          eventTime: (targetLead as any).eventTime || '',
           guestCount: (targetLead as any).guestCount || (targetLead as any).estimatedGuests || 150,
           venueId: targetVenueId,
           venueName: venueObj?.name || 'Bonomo Festas',
@@ -7147,16 +7195,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       activities,
       temperature: undefined,
       eventType: undefined,
-      primaryContactRole: 'indefinido' as any,
-      contacts: [
-        {
-          id: generateUuid(),
-          name: cleanName,
-          phone: data.phone,
-          role: 'indefinido' as any,
-          isPrimaryDecisionMaker: true,
-        }
-      ],
+      primaryContactRole: 'cliente' as any,
+      contacts: [],
       unreadCount: data.fromMe ? 0 : 1,
       lastInteractionAt: msgIso,
       lastMessageAt: effectiveMsgText ? msgIso : undefined,
@@ -7638,14 +7678,15 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                     leadService.update(existingLead.id, liveUpdates).catch(() => {});
                   }
                 }
-                if (details.image) {
-                  const permanentR2 = await whatsappMediaService.syncWhatsAppAvatarToR2(cleanPhone, details.image);
-                  if (permanentR2 && permanentR2 !== freshLeadState.avatarUrl) {
-                    updateLeadData(existingLead.id, { avatarUrl: permanentR2 });
-                    if (isSupabaseConfigured) {
-                      leadService.update(existingLead.id, { avatarUrl: permanentR2 }).catch(() => {});
-                    }
-                  }
+                const currentMasterId = scopedMasterId || currentUser?.masterId || currentUser?.id;
+                if (currentMasterId && incoming.instanceToken) {
+                  whatsappMediaService.syncContactAvatar({ phone: cleanPhone, name: details.name || effectiveSenderName }, incoming.instanceToken, currentMasterId)
+                    .then(res => {
+                      if (res.updated && res.avatarUrl) {
+                        updateLeadData(existingLead.id, { avatarUrl: res.avatarUrl });
+                      }
+                    })
+                    .catch(() => {});
                 }
               })
               .catch(() => {});
@@ -7701,14 +7742,15 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                     leadService.update(newId, liveUpdates).catch(() => {});
                   }
                 }
-                if (details.image) {
-                  const permanentR2 = await whatsappMediaService.syncWhatsAppAvatarToR2(cleanPhone, details.image);
-                  if (permanentR2) {
-                    updateLeadData(newId, { avatarUrl: permanentR2 });
-                    if (isSupabaseConfigured) {
-                      leadService.update(newId, { avatarUrl: permanentR2 }).catch(() => {});
-                    }
-                  }
+                const currentMasterId = scopedMasterId || currentUser?.masterId || currentUser?.id;
+                if (currentMasterId && incoming.instanceToken) {
+                  whatsappMediaService.syncContactAvatar({ phone: cleanPhone, name: details.name || effectiveSenderName }, incoming.instanceToken, currentMasterId)
+                    .then(res => {
+                      if (res.updated && res.avatarUrl) {
+                        updateLeadData(newId, { avatarUrl: res.avatarUrl });
+                      }
+                    })
+                    .catch(() => {});
                 }
               })
               .catch(() => {});
@@ -8547,7 +8589,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       birthdayPersonPhone: (lead as any).birthdayPersonPhone || '',
       eventType: lead.eventType || '',
       eventDate: lead.partyDate || lead.eventDate || '',
-      eventTime: (lead as any).eventTime || '20:00 às 02:00',
+      eventTime: (lead as any).eventTime || '',
       eventYear: lead.eventYear || (lead.partyDate ? lead.partyDate.split('-')[0] : ''),
       guestCount: (lead as any).guestCount || (lead as any).guests || 100,
       venueId: lead.venueId,
@@ -8883,6 +8925,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       paymentFileName?: string;
       downPayment?: number;
       installmentsCount?: number;
+      paymentPlan?: import('../utils/paymentPlan').PaymentPlan;
       hasCreditCard?: boolean;
       contractSignedFileUrl?: string;
       contractSignedFileName?: string;
@@ -9262,7 +9305,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             birthdayPersonPhone: birthdayPhone,
             eventType: currentLead.eventType || '',
             eventDate: pDate,
-            eventTime: (currentLead as any).eventTime || '20:00 às 02:00',
+            eventTime: (currentLead as any).eventTime || undefined,
             eventYear: eYear,
             guestCount: gCount,
             venueId: targetVenueId,
@@ -9397,14 +9440,16 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             eventTitle: finalContractTitle,
             eventType: currentLead.eventType || '15_anos',
             eventDate: currentLead.partyDate || currentLead.eventDate || cDate,
-            eventTime: (currentLead as any).eventTime || '20:00 às 02:00',
+            eventTime: (currentLead as any).eventTime || '',
+            closedAt: cDate,
             guestCount: gCount,
             packageName: packageSold,
             dealValue,
             totalAmount: dealValue,
-            entryAmount: downPay,
-            balanceAmount: installRemaining,
-            paymentTerms: agreedPaymentTerms,
+            signalAmount: planSignalEntry(extraOptions?.paymentPlan).signal,
+            entryAmount: extraOptions?.paymentPlan ? planSignalEntry(extraOptions.paymentPlan).entry : downPay,
+            balanceAmount: Math.max(0, dealValue - (extraOptions?.paymentPlan ? planSignalEntry(extraOptions.paymentPlan).signal + planSignalEntry(extraOptions.paymentPlan).entry : downPay)),
+            paymentTerms: (extraOptions?.paymentPlan && extraOptions.paymentPlan.items.length > 0 ? (extraOptions.paymentPlan as any) : agreedPaymentTerms),
             contractFileUrl: finalContractFileUrl,
             paymentFileUrl: finalPaymentFileUrl,
             attachments: contractAttachments,
@@ -11564,6 +11609,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   return (
     <AdminStateContext.Provider value={{
       currentUser,
+      scopedMasterId,
       collaborators: scopedCollaborators,
       allCollaborators: collaborators,
       venues: scopedVenues,

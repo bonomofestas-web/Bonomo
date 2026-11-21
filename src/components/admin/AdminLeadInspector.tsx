@@ -24,6 +24,8 @@ import { AdminAgendaAvailabilityModal } from './AdminAgendaAvailabilityModal';
 import { AdminAppointmentReceiptModal } from './AdminAppointmentReceiptModal';
 import type { AppointmentReceiptData } from './AdminAppointmentReceiptModal';
 import { CloseDealValueModal } from './CloseDealValueModal';
+import { ScheduleRequirementsModal } from './ScheduleRequirementsModal';
+import { getScheduleMissing, type ScheduleFieldKey } from '../../utils/scheduleRequirements';
 import { AdminLeadMissingFieldsModal } from './AdminLeadMissingFieldsModal';
 import { toast } from 'sonner';
 import { isDependentRole, linkDependentFromFicha } from '../../utils/familyLinkSync';
@@ -37,6 +39,7 @@ import { useAdminState } from '../../context/AdminStateContext';
 import { maskPhoneInput, formatPhone } from '../../utils/phoneFormatter';
 import { isPhoneMatch } from '../../services/leadService';
 import { contactService } from '../../services/contactService';
+import { whatsappMediaService } from '../../services/whatsappMediaService';
 import { getLeadPendingWaitingTime, getLeadWaitTimeSla } from '../../utils/leadSorting';
 import { ICP_SITUATION_CONFIG } from '../../types/admin';
 import { generateUuid } from '../../utils/uuid';
@@ -789,7 +792,13 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
   } | null>(null);
 
   // Manipulador prévio para requisição de agendamento/remarcação (Anti-frustração)
-  const handleRequestSchedule = useCallback((reqType: 'visit' | 'tasting') => {
+  const [scheduleGate, setScheduleGate] = useState<{ type: 'visit' | 'tasting'; missing: ScheduleFieldKey[] } | null>(null);
+  const handleRequestSchedule = useCallback((reqType: 'visit' | 'tasting', skipGate = false) => {
+    // Dados obrigatórios: sem eles não há visita nem degustação
+    if (!skipGate) {
+      const missingFields = getScheduleMissing(lead);
+      if (missingFields.length > 0) { setScheduleGate({ type: reqType, missing: missingFields }); return; }
+    }
     const availabilityCheck = agendaAvailabilityService.hasUpcomingAvailableSlots(
       leadVenueConfig,
       reqType,
@@ -808,7 +817,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
 
     // Se houver horários, abre a tela do modal normalmente
     setScheduleCommitmentType(reqType);
-  }, [leadVenueConfig, appointments, venueEvents]);
+  }, [leadVenueConfig, appointments, venueEvents, lead]);
 
   const [completingCommitmentType, setCompletingCommitmentType] = useState<CommercialCommitmentType | null>(null);
   const [completionFeedback, setCompletionFeedback] = useState<string>('');
@@ -829,6 +838,27 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
     void contactService.getHasCreditCard(creditCardMasterId, lead.phone).then(r => { if (alive && r) setContactCreditCard(r.value); });
     return () => { alive = false; };
   }, [lead.id, lead.phone, creditCardMasterId]);
+
+  // Sincronização automática de foto com a Central de Contatos (TTL de 7 dias)
+  useEffect(() => {
+    if (!lead || !sources || sources.length === 0) return;
+    const activeSrc = sources.find(s => s.status === 'active' && ((s as any).token || s.configuration?.token));
+    const token = (activeSrc as any)?.token || activeSrc?.configuration?.token;
+    const mid = (lead as any).masterId || currentUser?.masterId || currentUser?.id;
+    if (!token || !mid) return;
+
+    const phonesToCheck = new Set<string>();
+    if (lead.phone) phonesToCheck.add(lead.phone.replace(/\D/g, ''));
+    (lead.contacts || []).forEach(c => {
+      if (c?.phone) phonesToCheck.add(c.phone.replace(/\D/g, ''));
+    });
+
+    phonesToCheck.forEach(ph => {
+      if (ph.length >= 8) {
+        whatsappMediaService.syncContactAvatar({ phone: ph }, token, mid).catch(() => {});
+      }
+    });
+  }, [lead.id]);
   const effectiveCreditCard: boolean | undefined = contactCreditCard !== null ? contactCreditCard : lead.hasCreditCard;
   const [isEventTypeDropdownOpen, setIsEventTypeDropdownOpen] = useState(false);
   const [isUrgencyDropdownOpen, setIsUrgencyDropdownOpen] = useState(false);
@@ -7300,6 +7330,21 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
           lead={lead}
           initialType={scheduleCommitmentType}
           onClose={() => setScheduleCommitmentType(null)}
+        />
+      )}
+
+      {scheduleGate && (
+        <ScheduleRequirementsModal
+          lead={lead}
+          missing={scheduleGate.missing}
+          type={scheduleGate.type}
+          onClose={() => setScheduleGate(null)}
+          onSave={(patch) => {
+            updateLeadData(lead.id, patch);
+            const t = scheduleGate.type;
+            setScheduleGate(null);
+            handleRequestSchedule(t, true);
+          }}
         />
       )}
 

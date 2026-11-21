@@ -20,6 +20,8 @@ import { AdminVisitsTastingsView } from './tasks/AdminVisitsTastingsView';
 import { AdminCalendarDayView } from './tasks/AdminCalendarDayView';
 import { AdminCalendarWeekView } from './tasks/AdminCalendarWeekView';
 import { AdminCalendarMonthView } from './tasks/AdminCalendarMonthView';
+import { buildVenueAccentMap } from '../../utils/venueColors';
+import { openClientFromTask } from '../../utils/taskSector';
 import type { AdminTask, TaskDatabase, CommercialCommitmentType } from '../../types/admin';
 
 export type TaskWorkspaceContext = 'all' | 'followup' | 'visits_tastings' | 'appointments';
@@ -48,7 +50,12 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
     toggleTaskStatus,
     completeTaskWithFeedback,
     updateTask,
+    clients,
   } = useAdminState();
+
+  // Cor da casa em tudo que aparece nos calendarios (tarefa, compromisso, agendamento)
+  const venueAccent = useMemo(() => buildVenueAccentMap(venues), [venues]);
+  const taskAccent = useCallback((t: AdminTask) => (t.venueId ? venueAccent.get(t.venueId) || null : null), [venueAccent]);
 
   // Active View Mode: 'table' como padrão para Visitas & Degustações; 'kanban' para os demais
   
@@ -452,6 +459,9 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
       });
       return;
     }
+
+    // Tarefa de cliente (pos-venda): leva direto para a ficha do cliente
+    if (openClientFromTask(task, clients || [])) return;
 
     // 0. Redirecionamento Direto para o WhatsApp (apenas para outros contextos vinculados a Lead ou Cliente):
     const targetLeadId = task.leadId || task.customProperties?.leadId;
@@ -1339,6 +1349,7 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
 
         {viewMode === 'day' && (
           <AdminCalendarDayView
+            getTaskAccent={taskAccent}
             tasks={filteredTasks}
             currentDate={currentDate}
             onDateChange={setCurrentDate}
@@ -1350,6 +1361,7 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
 
         {viewMode === 'week' && (
           <AdminCalendarWeekView
+            getTaskAccent={taskAccent}
             tasks={filteredTasks}
             currentDate={currentDate}
             onDateChange={setCurrentDate}
@@ -1361,6 +1373,7 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
 
         {viewMode === 'month' && (
           <AdminCalendarMonthView
+            getTaskAccent={taskAccent}
             tasks={filteredTasks}
             currentDate={currentDate}
             onDateChange={setCurrentDate}

@@ -1,4 +1,4 @@
-import type { Lead, SystemSlaConfig } from '../types/admin';
+import type { Lead, Client, SystemSlaConfig } from '../types/admin';
 import { leadService } from '../services/leadService';
 
 /**
@@ -456,6 +456,67 @@ export function calculateTeamAverageResponseTimeMinutes(leads: Lead[], collabora
   if (allDurations.length === 0) return 0;
   const total = allDurations.reduce((a, b) => a + b, 0);
   return Math.round((total / allDurations.length) / 60000);
+}
+
+/**
+ * Retorna o timestamp da mensagem mais recente trocada com QUALQUER membro da família do contrato de Pós-Venda:
+ * Se o card possuir 3 WhatsApps (Mãe, Pai e Filha), busca as conversas de todos eles e elege a mensagem mais recente.
+ * Caso nenhum membro tenha trocado mensagem ainda, utiliza como fallback a data de entrada no funil ou criação.
+ */
+export function getClientFamilyLatestMessageTime(client: Client, leadsList: Lead[]): number {
+  let latestTime = 0;
+
+  // 1. Coleta todos os telefones de contato da família vinculados ao card
+  const phones: string[] = [];
+  if (client.payerPhone) phones.push(client.payerPhone);
+  if (Array.isArray(client.contacts)) {
+    client.contacts.forEach(c => {
+      if (c && c.phone) phones.push(c.phone);
+    });
+  }
+
+  // 2. Normaliza os 8 últimos dígitos para busca rápida
+  const digitSets = phones
+    .map(p => (p || '').replace(/\D/g, '').slice(-8))
+    .filter(d => d.length === 8);
+
+  // 3. Ids conhecidos associados ao cliente
+  const directLeadIds = new Set<string>();
+  if (client.id) directLeadIds.add(client.id);
+  if (client.commercialLeadId) directLeadIds.add(client.commercialLeadId);
+
+  // 4. Varre os leads para encontrar todos os que pertencem a esta família
+  for (const l of (leadsList || [])) {
+    let matches = false;
+    if (directLeadIds.has(l.id)) {
+      matches = true;
+    } else if ((l as any).associated_contract_id === client.id) {
+      matches = true;
+    } else if (l.phone) {
+      const lDigits = l.phone.replace(/\D/g, '').slice(-8);
+      if (lDigits.length === 8 && digitSets.includes(lDigits)) {
+        matches = true;
+      }
+    }
+
+    if (matches) {
+      const msgTime = getLeadConversationTime(l);
+      if (msgTime > latestTime) {
+        latestTime = msgTime;
+      }
+    }
+  }
+
+  // Fallback: se nenhum membro trocou mensagem ainda, usa a data de entrada no funil ou criação
+  if (latestTime === 0) {
+    const fallbackDate = client.funnelEnteredAt || client.contractDate || client.createdAt;
+    if (fallbackDate) {
+      const t = new Date(fallbackDate).getTime();
+      if (Number.isFinite(t)) latestTime = t;
+    }
+  }
+
+  return latestTime;
 }
 
 

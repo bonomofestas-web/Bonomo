@@ -3,6 +3,7 @@ import { Clock, CheckCircle2, Building, Eye } from 'lucide-react';
 import type { AdminTask, Collaborator } from '../../../types/admin';
 import { getTaskTypeTheme, renderTaskTypeIcon } from '../../../utils/taskColors';
 import { sanitizeTaskTitle } from '../../../utils/taskEmojiUtils';
+import { toLocalDateStr } from '../../../utils/dateUtils';
 
 interface AdminTasksKanbanViewProps {
   tasks: AdminTask[];
@@ -27,14 +28,14 @@ export const AdminTasksKanbanView: React.FC<AdminTasksKanbanViewProps> = ({
   const tomorrowStr = React.useMemo(() => {
     const d = new Date();
     d.setDate(d.getDate() + 1);
-    return d.toISOString().split('T')[0];
+    return toLocalDateStr(d);
   }, []);
 
   const endOfWeekStr = React.useMemo(() => {
     const d = new Date();
     const dayOfWeek = d.getDay() || 7; // 1 = Seg, 7 = Dom
     d.setDate(d.getDate() + (7 - dayOfWeek));
-    return d.toISOString().split('T')[0];
+    return toLocalDateStr(d);
   }, []);
 
   // Filter tasks into columns

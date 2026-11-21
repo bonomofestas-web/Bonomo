@@ -1,3 +1,4 @@
+import { canAccessFinance } from '../../utils/accessPermissions';
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useJobRoleCatalog } from '../../hooks/useJobRoleCatalog';
 import { motion } from 'motion/react';
@@ -8,8 +9,9 @@ import {
   ChevronDown, Globe,
   Sparkles, Radio, Compass,
   ShieldCheck, Star, X, AlertTriangle, Sliders, Headset,
-  Eye, RotateCcw, Gift, Calendar, CalendarCheck2, GripVertical, UserCheck, Clock, Zap,
-  Contact as ContactIcon, FileCheck2, LogOut, MessageSquare
+  Eye, RotateCcw, Gift, Calendar, CalendarCheck2, GripVertical, UserCheck, Zap,
+  Contact as ContactIcon, FileCheck2, LogOut, MessageSquare, Wallet, ArrowDownCircle, TrendingUp, BarChart3,
+  CalendarDays,
 } from 'lucide-react';
 import { SafeAvatar } from './SafeAvatar';
 import { NotificationBell } from './notifications/NotificationBell';
@@ -43,7 +45,15 @@ export type AdminTabType =
   | 'sla-settings'
   | 'debutantes'
   | 'venue-goals'
+  | 'finance'
+  | 'finance-approval'
+  | 'finance-payables'
+  | 'finance-cashflow'
+  | 'finance-calendar'
+  | 'finance-dre'
+  | 'finance-settings'
   | 'master-dashboard'
+  | 'system-settings'
   | 'venues'
   | 'benefits'
   | 'collaborators'
@@ -311,25 +321,21 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
     { id: 'post-sale-visits-tastings', label: 'Visitas & Degustações', icon: <Calendar size={15} />, roles: ['master', 'admin', 'crm', 'sdr', 'closer', 'pos_venda'] },
   ];
 
-  // 3. Pós-Venda: Funis de Pós-Venda, Contratos, App Aniversariantes, Compromissos, Agenda de Eventos
+  // 3. Pós-Venda: Funis de Pós-Venda, Contratos, App Aniversariantes, Agenda de Eventos
   const postSaleItems: { id: AdminTabType; label: string; icon: React.ReactNode; roles: string[] }[] = [
     { id: 'post-sale-crm', label: 'Funis de Pós-Venda', icon: <Target size={15} />, roles: ['master', 'admin', 'pos_venda'] },
     { id: 'contracts', label: 'Contratos', icon: <FileCheck2 size={15} />, roles: ['master', 'admin', 'pos_venda', 'closer', 'sdr'] },
     { id: 'debutantes', label: 'App Aniversariantes', icon: <Gift size={15} />, roles: ['master', 'admin', 'pos_venda'] },
-    { id: 'post-sale-appointments', label: 'Compromissos', icon: <CheckSquare size={15} />, roles: ['master', 'admin', 'pos_venda'] },
     { id: 'venue-events', label: 'Agenda de Eventos', icon: <CalendarCheck2 size={15} />, roles: ['master', 'admin', 'pos_venda'] },
   ];
 
-  // 4. Gerência: Central de Tarefas da Rede, Qualificação ICP, Origens, Metas, Dashboard Gerência, Tempo de Resposta, Colaboradores, Casas de Festa
+  // 4. Gerência: Central de Tarefas da Rede, Qualificação ICP, Origens, Metas, Dashboard Gerência
   const masterItems: { id: AdminTabType; label: string; icon: React.ReactNode; roles: string[]; alertBadge?: boolean }[] = [
     { id: 'tasks', label: 'Central de Tarefas', icon: <CheckSquare size={15} />, roles: ['master', 'admin'] },
     { id: 'mql', label: 'Qualificação', icon: <IcpTargetUserIcon size={15} />, roles: ['master', 'admin'] },
     { id: 'sources', label: 'Origens', icon: <Compass size={15} />, roles: ['master', 'admin'], alertBadge: hasUnconfiguredSources },
     { id: 'venue-goals', label: 'Metas', icon: <Star size={15} />, roles: ['master', 'admin'] },
     { id: 'master-dashboard', label: 'Dashboard Gerência', icon: <LayoutDashboard size={15} />, roles: ['master', 'admin'] },
-    { id: 'sla-settings', label: 'Tempo de Resposta', icon: <Clock size={15} />, roles: ['master', 'admin'] },
-    { id: 'collaborators', label: 'Colaboradores', icon: <ShieldCheck size={15} />, roles: ['master', 'admin'] },
-    { id: 'venues', label: 'Casas de Festa', icon: <Building2 size={15} />, roles: ['master', 'admin'] },
   ];
 
   const allowedVenues = useMemo(() => {
@@ -1670,16 +1676,16 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
                   }}>
-                    {activeVenue?.name || (userRole === 'master' ? 'Rede Geral' : `Visão Geral (${allowedVenues.length})`)}
+                    {activeVenue?.name || (userRole === 'master' ? 'Todas' : `Todas (${allowedVenues.length})`)}
                   </div>
                 </div>
               </div>
               <ChevronDown
-                size={12}
-                color="#D4AF37"
+                size={14}
                 style={{
-                  transform: isVenueDropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)',
-                  transition: 'transform 0.2s ease',
+                  color: isVenueDropdownOpen ? '#D4AF37' : 'rgba(255, 255, 255, 0.45)',
+                  transform: isVenueDropdownOpen ? 'rotate(180deg)' : 'none',
+                  transition: 'transform 0.2s ease, color 0.15s ease',
                   flexShrink: 0,
                 }}
               />
@@ -1732,7 +1738,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
                   }}
                 >
                   {renderVenueIconBadge(null, 24)}
-                  <span>{userRole === 'master' ? 'Todas as Unidades (Rede Geral)' : `Visão Geral (${allowedVenues.length} Unidades)`}</span>
+                  <span>{userRole === 'master' ? 'Todas as Unidades' : `Todas as Unidades (${allowedVenues.length})`}</span>
                 </button>
               )}
 
@@ -2229,25 +2235,31 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
             </div>
           )}
 
-          {/* 6. Setor Financeiro: Preparado */}
-          {!isCollapsed && (
+          {/* 6. Setor Financeiro (master, gerencia e setor financeiro) */}
+          {canAccessFinance(currentUser) && getFeatureStatus('finance') === 'active' && (
             <div>
-              <div style={{
-                fontSize: '0.56rem',
-                fontWeight: 800,
-                textTransform: 'uppercase',
-                color: '#8096A8',
-                letterSpacing: '0.6px',
-                padding: '4px 6px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-              }}>
-                <span>Financeiro</span>
-                <span style={{ fontSize: '0.48rem', background: 'rgba(148, 163, 184, 0.12)', color: 'var(--adm-text-muted)', padding: '1px 4px', borderRadius: '3px' }}>
-                  Em Breve
-                </span>
-              </div>
+              {!isCollapsed && (
+                <div style={{ fontSize: '0.56rem', fontWeight: 800, textTransform: 'uppercase', color: '#8096A8', letterSpacing: '0.6px', padding: '4px 6px' }}>
+                  Financeiro
+                </div>
+              )}
+              {([
+                { id: 'finance-approval' as AdminTabType, label: 'Aprovação', icon: <FileCheck2 size={15} />, soon: false },
+                { id: 'finance' as AdminTabType, label: 'Visão geral', icon: <Wallet size={15} />, soon: false },
+                { id: 'finance-calendar' as AdminTabType, label: 'Calendário', icon: <CalendarDays size={15} />, soon: false },
+                { id: 'finance-payables' as AdminTabType, label: 'Contas a pagar', icon: <ArrowDownCircle size={15} />, soon: true },
+                { id: 'finance-cashflow' as AdminTabType, label: 'Fluxo de caixa', icon: <TrendingUp size={15} />, soon: true },
+                { id: 'finance-dre' as AdminTabType, label: 'DRE', icon: <BarChart3 size={15} />, soon: true },
+                { id: 'finance-settings' as AdminTabType, label: 'Configurações', icon: <SlidersHorizontal size={15} />, soon: true },
+              ]).map(it => (it.soon
+                ? (isCollapsed ? null : (
+                  <button key={it.id} type="button" onClick={() => handleTabClick(it.id, null)}
+                    style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '7px 10px', border: 'none', borderRadius: 8, cursor: 'pointer', background: activeTab === it.id ? 'rgba(20, 169, 215, 0.18)' : 'transparent', color: activeTab === it.id ? '#14A9D7' : '#8096A8', fontSize: '0.78rem', textAlign: 'left' }}>
+                    {it.icon}<span style={{ flex: 1 }}>{it.label}</span>
+                    <span style={{ fontSize: '0.48rem', background: 'rgba(148, 163, 184, 0.12)', color: 'var(--adm-text-muted)', padding: '1px 4px', borderRadius: '3px' }}>Em breve</span>
+                  </button>
+                ))
+                : renderNavButton(it)))}
             </div>
           )}
 

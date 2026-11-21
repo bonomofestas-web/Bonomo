@@ -26,6 +26,63 @@ export interface GoalMetricsParams {
 
 export const metricsService = {
   /**
+   * Contratos aprovados do Master com a data de FECHAMENTO (closed_at; cai em approved_at e created_at se faltar).
+   * O dashboard comercial usa isto para contar fechamentos que nao tem lead (ex.: contratos importados).
+   */
+  async getClosedContractFacts(masterId: string, venueIds: string[]): Promise<Array<{ id: string; venueId: string; total: number; entry: number; closedAt: string; originLeadId: string | null }>> {
+    if (!isSupabaseConfigured || !masterId || venueIds.length === 0) return [];
+    const { data, error } = await supabase
+      .from('contracts')
+      .select('id, venue_id, total_amount, entry_amount, signal_amount, closed_at, approved_at, created_at, origin_lead_id, import_key:commercial_fields_snapshot->>importKey')
+      .eq('master_id', masterId)
+      .in('approval_status', ['approved', 'completed'])
+      .in('venue_id', venueIds)
+      .limit(10000);
+    if (error) { console.warn('[metricsService.getClosedContractFacts]', error.message); return []; }
+    // Contrato importado sem data de fechamento nao entra (a data de criacao e a da importacao e distorceria o mes): vira tarefa para preencher
+    return (data || []).filter((c: any) => c.closed_at || !c.import_key).map((c: any) => ({
+      id: c.id, venueId: c.venue_id, total: Number(c.total_amount || 0), entry: Number(c.entry_amount || 0) + Number(c.signal_amount || 0),
+      closedAt: String(c.closed_at || c.approved_at || c.created_at || '').slice(0, 10), originLeadId: c.origin_lead_id || null,
+    })).filter(c => c.closedAt);
+  },
+
+  /** Vendas ja contabilizadas que ainda nao foram aprovadas pelo financeiro (contratos em fechamento), por etapa. */
+  async getClosingPipeline(masterId: string, venueIds: string[]): Promise<{ count: number; total: number; signal: number; byStage: Record<string, { count: number; total: number }> }> {
+    const empty = { count: 0, total: 0, signal: 0, byStage: {} as Record<string, { count: number; total: number }> };
+    if (!isSupabaseConfigured || !masterId || venueIds.length === 0) return empty;
+    const { data, error } = await supabase
+      .from('contracts')
+      .select('total_amount, signal_amount, entry_amount, fill_stage')
+      .eq('master_id', masterId)
+      .eq('approval_status', 'pending_approval')
+      .in('venue_id', venueIds)
+      .limit(5000);
+    if (error) { console.warn('[metricsService.getClosingPipeline]', error.message); return empty; }
+    const out = { ...empty, byStage: {} as Record<string, { count: number; total: number }> };
+    for (const c of data || []) {
+      const t = Number(c.total_amount || 0);
+      out.count += 1; out.total += t; out.signal += Number(c.signal_amount || 0) + Number(c.entry_amount || 0);
+      const k = c.fill_stage || 'pendente';
+      out.byStage[k] = { count: (out.byStage[k]?.count || 0) + 1, total: (out.byStage[k]?.total || 0) + t };
+    }
+    return out;
+  },
+
+  /** Entradas e sinais efetivamente PAGOS (valor liquido em caixa), por data de pagamento. */
+  async getEntryCashFacts(masterId: string, venueIds: string[]): Promise<Array<{ date: string; net: number; venueId: string }>> {
+    if (!isSupabaseConfigured || !masterId || venueIds.length === 0) return [];
+    const { data: recs, error: rErr } = await supabase.from('fin_receivables').select('id').eq('master_id', masterId).in('kind', ['sinal', 'entrada']).limit(20000);
+    if (rErr || !recs?.length) return [];
+    const ids = recs.map((r: any) => r.id);
+    const out: Array<{ date: string; net: number; venueId: string }> = [];
+    for (let i = 0; i < ids.length; i += 200) {
+      const { data } = await supabase.from('fin_transactions').select('tx_date, net_amount, venue_id')
+        .eq('master_id', masterId).eq('direction', 'in').in('receivable_id', ids.slice(i, i + 200)).in('venue_id', venueIds);
+      (data || []).forEach((t: any) => out.push({ date: String(t.tx_date).slice(0, 10), net: Number(t.net_amount || 0), venueId: t.venue_id }));
+    }
+    return out;
+  },
+  /**
    * 1. AGREGAR FATURAMENTO REAL A PARTIR DOS CONTRATOS FECHADOS (total_amount)
    * Projeta exclusivamente colunas necessárias (Egress Shield) e filtra contratos aprovados/concluídos.
    */

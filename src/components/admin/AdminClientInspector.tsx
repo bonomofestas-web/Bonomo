@@ -22,6 +22,7 @@ import { ClientVenueEventsCard } from './ClientVenueEventsCard';
 import { isTaskOverdue } from '../../utils/taskColors';
 import type { Client, ClientStage, ClientDocument, LeadContact, AdminTask, TaskStatus, ClientUpsellSale } from '../../types/admin';
 import { toast } from 'sonner';
+import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { isMessagingPaused, MESSAGING_PAUSED_TEXT } from '../../utils/messagingPause';
 
 interface AdminClientInspectorProps {
@@ -240,6 +241,24 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
       updatedAt: l.updatedAt || new Date().toISOString(),
     } as unknown as Client;
   })();
+
+  // Dinheiro do contrato (sinal + entrada) e o que o financeiro ja recebeu: alimenta "Dinheiro em Caixa"
+  const [contractCash, setContractCash] = useState<{ signal: number; entry: number; received: number; pending: number; hasReceivables: boolean } | null>(null);
+  useEffect(() => {
+    let alive = true;
+    setContractCash(null);
+    if (!client?.id || !isSupabaseConfigured) return;
+    (async () => {
+      const { data: ct } = await supabase.from('contracts').select('id, signal_amount, entry_amount').eq('client_id', client.id).maybeSingle();
+      if (!ct || !alive) return;
+      const { data: recs } = await supabase.from('fin_receivables').select('amount, paid_amount, status').eq('contract_id', ct.id).not('status', 'in', '(cancelado,estornado)');
+      const rows = recs || [];
+      const received = rows.reduce((a: number, r: any) => a + Math.min(Number(r.paid_amount || 0), Number(r.amount || 0)), 0);
+      const pending = rows.filter((r: any) => ['pendente', 'parcial', 'renegociado'].includes(r.status)).reduce((a: number, r: any) => a + (Number(r.amount || 0) - Number(r.paid_amount || 0)), 0);
+      if (alive) setContractCash({ signal: Number(ct.signal_amount || 0), entry: Number(ct.entry_amount || 0), received, pending, hasReceivables: rows.length > 0 });
+    })();
+    return () => { alive = false; };
+  }, [client?.id]);
 
   if (!client) return null;
 
@@ -1380,9 +1399,9 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
               <div style={cardValueStyle}>
                 <input
                   type="text"
-                  value={client.eventTime || '20:00 às 02:00'}
+                  value={client.eventTime || ''}
                   onChange={(e) => updateClient(client.id, { eventTime: e.target.value })}
-                  placeholder="Ex: 20:00 às 02:00"
+                  placeholder="Vazio = dia inteiro"
                   style={seamlessInputStyle}
                   onFocus={(e) => { e.currentTarget.style.borderBottomColor = 'var(--adm-accent)'; }}
                   onBlur={(e) => { e.currentTarget.style.borderBottomColor = 'transparent'; }}
@@ -2867,10 +2886,13 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
           {/* Tab 4: Vendas & Upsell (Serviços Adicionais, Caixa vs Previsto & Rentabilidade) */}
           {activeTab === 'commercial' && (() => {
             const baseContract = client.baseContractValue !== undefined ? client.baseContractValue : (client.dealValue || 0);
-            const downPayment = client.contractDownPayment !== undefined ? client.contractDownPayment : (client.signalValue || (client.signalPaid ? baseContract * 0.3 : 0));
+            // Sinal + entrada do CONTRATO (compoem o caixa); sem contrato, vale o que a ficha do cliente guardava
+            const downPayment = contractCash && (contractCash.signal + contractCash.entry) > 0
+              ? contractCash.signal + contractCash.entry
+              : (client.contractDownPayment !== undefined ? client.contractDownPayment : (client.signalValue || (client.signalPaid ? baseContract * 0.3 : 0)));
             const installmentsRemaining = client.contractInstallmentsRemaining !== undefined ? client.contractInstallmentsRemaining : Math.max(0, baseContract - downPayment);
             const installmentsCount = client.contractInstallmentsCount || 10;
-            const signalIsPaid = Boolean(client.signalPaid);
+            const signalIsPaid = Boolean(client.signalPaid) || Boolean(contractCash && (contractCash.signal + contractCash.entry) > 0);
 
             const upsells = client.upsellSales || [];
             const totalUpsell = upsells.reduce((acc, u) => acc + (Number(u.value) || 0), 0);
@@ -2885,10 +2907,11 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
               .reduce((acc, u) => acc + (Number(u.value) || 0), 0);
 
             // Dinheiro em Caixa (Recebido: Sinal do Contrato Pago + Upsells Pagos/À Vista)
-            const dinheiroCaixa = (signalIsPaid ? downPayment : 0) + upsellAVista;
+            // Com parcelas no financeiro vale o que foi realmente recebido; sem plano ainda, sinal + entrada do contrato
+            const dinheiroCaixa = (contractCash?.hasReceivables ? contractCash.received : (signalIsPaid ? downPayment : 0)) + upsellAVista;
 
             // Dinheiro Previsto (A Receber: Restante Parcelado + Upsells Parcelados + Sinal se Pendente)
-            const dinheiroPrevisto = installmentsRemaining + upsellParcelado + (!signalIsPaid ? downPayment : 0);
+            const dinheiroPrevisto = (contractCash?.hasReceivables ? contractCash.pending : installmentsRemaining) + upsellParcelado + (!signalIsPaid ? downPayment : 0);
 
             // Rentabilidade Total
             const totalRentabilidade = baseContract + totalUpsell;
@@ -2921,7 +2944,7 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
                       {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(baseContract)}
                     </strong>
                     <div style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)', marginTop: '2px' }}>
-                      Sinal: <strong style={{ color: signalIsPaid ? '#10B981' : '#F59E0B' }}>R$ {downPayment.toLocaleString('pt-BR')}</strong> ({signalIsPaid ? 'Pago' : 'Pendente'})
+                      Sinal + entrada: <strong style={{ color: signalIsPaid ? '#10B981' : '#F59E0B' }}>R$ {downPayment.toLocaleString('pt-BR')}</strong> ({signalIsPaid ? 'Pago' : 'Pendente'})
                     </div>
                   </div>
 

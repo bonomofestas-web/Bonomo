@@ -1,3 +1,5 @@
+import { MonthYearSwitcher } from '../../ui';
+import { formatMonthYear } from '../../ui';
 import React, { useState, useMemo } from 'react';
 import { 
   CheckSquare, Square, Calendar, Clock, 
@@ -8,6 +10,7 @@ import {
 import type { AdminTask, Collaborator, Lead, Client, DebutanteAccount } from '../../../types/admin';
 import { useAdminState } from '../../../context/AdminStateContext';
 import { getTaskTypeTheme, renderTaskTypeIcon } from '../../../utils/taskColors';
+import { toLocalDateStr } from '../../../utils/dateUtils';
 import { agendaAvailabilityService } from '../../../services/agendaAvailabilityService';
 import { sanitizeTaskTitle } from '../../../utils/taskEmojiUtils';
 
@@ -79,7 +82,7 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
   const tomorrowStr = useMemo(() => {
     const d = new Date();
     d.setDate(d.getDate() + 1);
-    return d.toISOString().split('T')[0];
+    return toLocalDateStr(d);
   }, []);
 
   const isVisitsContext = workspaceContext === 'visits_tastings';
@@ -142,8 +145,8 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
     const lastFormatted = last.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' });
     const label = `Semana de ${firstFormatted} a ${lastFormatted} (Dom a Sáb)`;
 
-    const thisSundayStr = getSundayOfWeek(new Date()).toISOString().split('T')[0];
-    const currentSundayStr = currentWeekSunday.toISOString().split('T')[0];
+    const thisSundayStr = toLocalDateStr(getSundayOfWeek(new Date()));
+    const currentSundayStr = toLocalDateStr(currentWeekSunday);
     const isCurrentWeek = thisSundayStr === currentSundayStr;
 
     return { days, label, isCurrentWeek };
@@ -208,7 +211,7 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
       });
     }
 
-    const monthFormatted = firstDay.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+    const monthFormatted = formatMonthYear(firstDay);
     const label = monthFormatted.charAt(0).toUpperCase() + monthFormatted.slice(1);
 
     const now = new Date();
@@ -757,9 +760,12 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
               <Calendar size={15} style={{ color: 'var(--adm-accent)' }} />
             )}
 
-            <span style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
-              {listPeriodMode === 'week' ? weekInfo.label : monthInfo.label}
-            </span>
+            <MonthYearSwitcher
+              year={listPeriodMode === 'week' ? currentWeekSunday.getFullYear() : currentMonthDate.getFullYear()}
+              month={listPeriodMode === 'week' ? currentWeekSunday.getMonth() : currentMonthDate.getMonth()}
+              label={listPeriodMode === 'week' ? weekInfo.label : monthInfo.label}
+              onChange={(y, m) => { if (listPeriodMode === 'week') setCurrentWeekSunday(getSundayOfWeek(new Date(y, m, 1))); else setCurrentMonthDate(new Date(y, m, 1)); }}
+              style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--adm-text-title)' }} />
 
             {listPeriodMode === 'week' ? (
               weekInfo.isCurrentWeek ? (

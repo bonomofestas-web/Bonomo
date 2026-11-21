@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { VENUE_CALENDAR_PALETTE } from '../../utils/venueColors';
 import { 
   X, Building2, MapPin, Phone, 
   Camera, Award, Sparkles, Save, AlertCircle, Loader2
@@ -39,6 +40,7 @@ export const AdminVenueModal: React.FC<AdminVenueModalProps> = ({
   const [bannerImageUrl, setBannerImageUrl] = useState('');
   const [ballroomImageUrl, setBallroomImageUrl] = useState('');
   const [welcomeVideoUrl, setWelcomeVideoUrl] = useState('');
+  const [calendarColor, setCalendarColor] = useState('');
   
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -50,6 +52,7 @@ export const AdminVenueModal: React.FC<AdminVenueModalProps> = ({
 
     if (venueToEdit) {
       setName(venueToEdit.name || '');
+      setCalendarColor(venueToEdit.calendarColor || '');
       setTagline(venueToEdit.tagline || '');
       setDescription(venueToEdit.description || '');
       setAddress(venueToEdit.address || '');
@@ -68,6 +71,7 @@ export const AdminVenueModal: React.FC<AdminVenueModalProps> = ({
       setWelcomeVideoUrl(venueToEdit.welcomeVideoUrl || '');
     } else {
       setName('');
+      setCalendarColor('');
       setTagline('Onde momentos exclusivos se transformam em memórias inesquecíveis');
       setDescription('Espaço requintado e sofisticado preparado especialmente para noites inesquecíveis.');
       setAddress('Av. das Américas, 1500 - Barra da Tijuca, Rio de Janeiro - RJ');
@@ -127,6 +131,7 @@ export const AdminVenueModal: React.FC<AdminVenueModalProps> = ({
           bannerImageUrl: effectiveBanner,
           ballroomImageUrl: effectiveBallroom,
           welcomeVideoUrl: welcomeVideoUrl.trim() || undefined,
+          calendarColor: calendarColor || '',
         });
       } else {
         await addVenue({
@@ -147,6 +152,7 @@ export const AdminVenueModal: React.FC<AdminVenueModalProps> = ({
           bannerImageUrl: effectiveBanner,
           ballroomImageUrl: effectiveBallroom,
           welcomeVideoUrl: welcomeVideoUrl.trim() || undefined,
+          calendarColor: calendarColor || undefined,
           experienceText: `Mais de ${yearsInBusiness || 15} anos realizando sonhos inesquecíveis.`,
           defaultDressCode: 'Traje Passeio Completo / Gala',
           primaryColor: '#D4AF37',
@@ -317,6 +323,31 @@ export const AdminVenueModal: React.FC<AdminVenueModalProps> = ({
             <div style={sectionHeaderStyle}>
               <Sparkles size={15} />
               <span>1. Identidade & Apresentação da Casa</span>
+            </div>
+
+
+            <div style={{ marginBottom: '14px' }}>
+              <label style={labelStyle}>Cor da casa nos calendários</label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                {VENUE_CALENDAR_PALETTE.map(c => (
+                  <button
+                    key={c}
+                    type="button"
+                    title={c}
+                    onClick={() => setCalendarColor(c)}
+                    style={{ width: 26, height: 26, borderRadius: '50%', background: c, cursor: 'pointer', border: calendarColor.toLowerCase() === c.toLowerCase() ? '3px solid var(--adm-text-title, #0F172A)' : '2px solid transparent', outline: 'none' }}
+                  />
+                ))}
+                <input type="color" value={calendarColor || VENUE_CALENDAR_PALETTE[0]} onChange={e => setCalendarColor(e.target.value)} title="Outra cor" style={{ width: 30, height: 30, padding: 0, border: 'none', background: 'none', cursor: 'pointer' }} />
+                {calendarColor && (
+                  <button type="button" onClick={() => setCalendarColor('')} style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--adm-text-muted, #94a3b8)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>
+                    Usar cor automática
+                  </button>
+                )}
+              </div>
+              <p style={{ fontSize: '0.70rem', color: 'var(--adm-text-muted, #94a3b8)', margin: '6px 0 0 0' }}>
+                Todo evento, tarefa, compromisso e agendamento desta casa aparece com esta cor nos calendários.
+              </p>
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '14px', marginBottom: '14px' }}>

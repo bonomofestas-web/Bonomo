@@ -64,6 +64,13 @@ export const AdminDevFeatureFlagsView: React.FC = () => {
       category: 'Atendimento',
       status: featureFlags.chat_local_cache || 'active',
     },
+    {
+      id: 'finance',
+      name: 'Financeiro',
+      description: 'Recebíveis, planos de pagamento e funil financeiro. Desligado em produção até o login migrar para o Supabase Auth; só a conta dev enxerga.',
+      category: 'Administrativo',
+      status: featureFlags.finance || 'disabled',
+    },
   ];
 
   const handleStatusChange = (id: FeatureFlagId, status: FeatureFlagStatus, name: string) => {

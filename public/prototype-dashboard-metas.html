@@ -1,0 +1,1213 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>F5 System • Dashboard Executivo & Metas (Tremor Raw + ECharts)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      transition: background-color 0.15s ease, color 0.15s ease;
+    }
+    .font-mono {
+      font-family: 'JetBrains Mono', monospace;
+    }
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(148, 163, 184, 0.25);
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(148, 163, 184, 0.45);
+    }
+
+    /* THEME DARK (#07090E / #090814) */
+    body.theme-dark {
+      background-color: #07090E;
+      color: #F1F5F9;
+    }
+    body.theme-dark .app-header {
+      background-color: #090B12;
+      border-color: rgba(255, 255, 255, 0.08);
+    }
+    body.theme-dark .tremor-card {
+      background-color: #0D111D;
+      border-color: rgba(255, 255, 255, 0.08);
+      box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.3);
+    }
+    body.theme-dark .tremor-sub-card {
+      background-color: rgba(255, 255, 255, 0.03);
+      border-color: rgba(255, 255, 255, 0.06);
+    }
+    body.theme-dark .tremor-input {
+      background-color: rgba(255, 255, 255, 0.04);
+      border-color: rgba(255, 255, 255, 0.1);
+      color: #FFFFFF;
+    }
+
+    /* THEME LIGHT (PADRÃO PRINCIPAL - ALTO CONTRASTE TREMOR RAW) */
+    body.theme-light {
+      background-color: #F8FAFC;
+      color: #0F172A;
+    }
+    body.theme-light .app-header {
+      background-color: #FFFFFF;
+      border-color: #E2E8F0;
+    }
+    body.theme-light .tremor-card {
+      background-color: #FFFFFF;
+      border-color: #E2E8F0;
+      box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+    }
+    body.theme-light .tremor-sub-card {
+      background-color: #F8FAFC;
+      border-color: #E2E8F0;
+    }
+    body.theme-light .tremor-input {
+      background-color: #FFFFFF;
+      border-color: #CBD5E1;
+      color: #0F172A;
+    }
+    body.theme-light .text-slate-400 {
+      color: #64748B !important;
+    }
+    body.theme-light .text-slate-300 {
+      color: #475569 !important;
+    }
+    body.theme-light .text-white {
+      color: #0F172A !important;
+    }
+  </style>
+</head>
+<body class="theme-light min-h-screen flex flex-col">
+
+  <!-- Top bar do Sistema F5 -->
+  <header class="app-header h-14 border-b px-6 flex items-center justify-between sticky top-0 z-40 transition-colors">
+    <div class="flex items-center gap-4">
+      <div class="flex items-center gap-2">
+        <span class="text-[#14A9D7] font-black text-xl tracking-tight">F5</span>
+        <span class="text-xs font-bold tracking-widest uppercase text-slate-800 dark:text-slate-100">System</span>
+      </div>
+      <span class="opacity-25 text-sm">/</span>
+      <div class="flex items-center gap-2 text-xs font-medium">
+        <span class="text-slate-400">Inteligência Comercial</span>
+        <span class="opacity-25">/</span>
+        <span class="font-bold text-[#0284C7] bg-[#0284C7]/10 px-2 py-0.5 rounded border border-[#0284C7]/20">Dashboard & Metas</span>
+      </div>
+    </div>
+
+    <!-- Navegação entre Visões do Dashboard (Abas Superiores) + Protótipos + Tema -->
+    <div class="flex items-center gap-2.5">
+      <!-- Seletor de Abas de Inteligência -->
+      <div class="flex items-center bg-slate-100 dark:bg-slate-800/80 p-0.5 rounded-lg border border-slate-200 dark:border-slate-700/60 text-xs font-bold">
+        <button id="tab-btn-executivo" onclick="switchDashboardTab('executivo')" class="flex items-center gap-1.5 px-3 py-1 rounded-md transition-all shadow-xs bg-white dark:bg-slate-700 text-slate-900 dark:text-white">
+          <i data-lucide="bar-chart-3" class="w-3.5 h-3.5 text-[#0284C7]"></i>
+          <span>Metas & Funil</span>
+        </button>
+        <button id="tab-btn-heatmap" onclick="switchDashboardTab('heatmap')" class="flex items-center gap-1.5 px-3 py-1 rounded-md transition-all text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white">
+          <i data-lucide="flame" class="w-3.5 h-3.5 text-amber-500"></i>
+          <span>Heatmap WhatsApp</span>
+        </button>
+        <button id="tab-btn-sankey" onclick="switchDashboardTab('sankey')" class="flex items-center gap-1.5 px-3 py-1 rounded-md transition-all text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white">
+          <i data-lucide="git-merge" class="w-3.5 h-3.5 text-purple-500"></i>
+          <span>Sankey (Origem → Venda)</span>
+        </button>
+      </div>
+
+      <div class="h-4 w-px bg-slate-200 dark:bg-slate-700 hidden sm:block"></div>
+
+      <a href="prototype-pos-venda-contracts.html" class="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700/60 hover:border-slate-400 bg-white dark:bg-slate-800/40 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition-all shadow-2xs">
+        <i data-lucide="kanban" class="w-3.5 h-3.5 text-sky-500"></i>
+        <span>Pós-Venda</span>
+      </a>
+      <a href="prototype-visitas-planilha.html" class="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700/60 hover:border-slate-400 bg-white dark:bg-slate-800/40 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition-all shadow-2xs">
+        <i data-lucide="calendar-check-2" class="w-3.5 h-3.5 text-purple-500"></i>
+        <span>Visitas</span>
+      </a>
+
+      <!-- Seletor de Master ID Blindado -->
+      <div class="hidden lg:flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-md bg-emerald-500/10 border border-emerald-500/25 text-emerald-700 dark:text-emerald-400 font-mono font-medium">
+        <i data-lucide="shield-check" class="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400"></i>
+        <span>master_id: Bonomo Rede</span>
+      </div>
+
+      <!-- Alternador Dark/Light -->
+      <button onclick="toggleTheme()" class="p-2 rounded-lg border border-slate-300 dark:border-slate-700/60 hover:border-slate-400 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition-colors" title="Alternar Modo Claro/Escuro">
+        <i id="theme-icon" data-lucide="moon" class="w-4 h-4"></i>
+      </button>
+
+      <!-- Badge de Status do Protótipo -->
+      <div class="text-[11px] font-bold px-2 py-0.5 rounded bg-emerald-500/15 border border-emerald-500/30 text-emerald-800 dark:text-emerald-300">
+        STACK: TREMOR + ECHARTS
+      </div>
+    </div>
+  </header>
+
+  <!-- Conteúdo Principal -->
+  <main class="flex-1 max-w-[1680px] w-full mx-auto p-6 space-y-6">
+
+    <!-- Header Executivo da Página -->
+    <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-2 border-b border-slate-200 dark:border-slate-800">
+      <div>
+        <div class="flex items-center gap-2">
+          <span class="text-[11px] font-extrabold uppercase tracking-widest text-[#0284C7] bg-[#0284C7]/10 px-2 py-0.5 rounded">Stack Oficial: Tremor Raw + Apache ECharts</span>
+          <span class="text-xs text-slate-400">• Padrão Linear / Stripe SaaS</span>
+        </div>
+        <h1 class="text-2xl font-black text-slate-900 dark:text-white tracking-tight mt-1">Dashboard Executivo & Inteligência de Metas</h1>
+        <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Visão unificada de pipeline comercial, conversão em 6 etapas, comparativo SDR vs Closer e anéis de metas por unidade.</p>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <select class="tremor-input text-xs px-3 py-2 rounded-lg border outline-none font-semibold cursor-pointer">
+          <option>Todas as Unidades (Rede Bonomo)</option>
+          <option>Bonomo Festas Jardins</option>
+          <option>Bonomo Flamboyant</option>
+          <option>Mansão Almirante</option>
+          <option>Palácio do Bosque</option>
+        </select>
+
+        <select class="tremor-input text-xs px-3 py-2 rounded-lg border outline-none font-semibold cursor-pointer">
+          <option>Novembro 2026 (Mês Atual)</option>
+          <option>Outubro 2026</option>
+          <option>4º Trimestre 2026</option>
+        </select>
+
+        <button onclick="alert('Exportando Relatório Consolidado (Tremor + ECharts)...')" class="px-3.5 py-2 rounded-lg bg-[#0284C7] hover:bg-sky-600 text-white text-xs font-bold flex items-center gap-2 transition-all shadow-sm">
+          <i data-lucide="download" class="w-4 h-4"></i>
+          <span>Relatório Consolidado</span>
+        </button>
+      </div>
+    </div>
+
+
+    <!-- ========================================================================= -->
+    <!-- VISÃO 1: METAS, FUNIL E PERFORMANCE EXECUTIVA                              -->
+    <!-- ========================================================================= -->
+    <div id="section-executivo" class="space-y-6">
+
+      <!-- CARDS DE METAS DO TOPO (PADRÃO TREMOR RAW) -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <!-- Card Metas 1: Contratos Fechados -->
+        <div class="tremor-card p-5 rounded-2xl border transition-colors relative overflow-hidden">
+          <div class="flex items-center justify-between mb-3">
+            <div class="flex items-center gap-2.5">
+              <div class="w-8 h-8 rounded-lg bg-sky-100 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400 flex items-center justify-center font-black">
+                <i data-lucide="file-check-2" class="w-4 h-4"></i>
+              </div>
+              <div>
+                <span class="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Meta Mensal de Vendas</span>
+                <h3 class="text-sm font-extrabold text-slate-900 dark:text-white">Contratos Fechados (Volume & Receita)</h3>
+              </div>
+            </div>
+            <span class="text-xs font-bold font-mono px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+              80.4% Atingido
+            </span>
+          </div>
+
+          <div class="grid grid-cols-2 gap-4 py-2 border-y border-slate-100 dark:border-slate-800/80 my-2">
+            <div>
+              <div class="text-[11px] text-slate-400 font-medium">Faturamento Fechado</div>
+              <div class="text-xl font-black font-mono text-emerald-600 dark:text-emerald-400 mt-0.5">R$ 482.500</div>
+              <div class="text-[11px] text-slate-500 mt-0.5">Meta: R$ 600.000 (Faltam R$ 117.500)</div>
+            </div>
+            <div>
+              <div class="text-[11px] text-slate-400 font-medium">Contratos Assinados</div>
+              <div class="text-xl font-black font-mono text-slate-900 dark:text-white mt-0.5">11 <span class="text-xs font-normal text-slate-400">/ 14 meta</span></div>
+              <div class="text-[11px] text-slate-500 mt-0.5">Ritmo: 0.73 contratos/dia útil</div>
+            </div>
+          </div>
+
+          <!-- Tremor Progress Bar -->
+          <div class="mt-3 space-y-1.5">
+            <div class="flex justify-between text-xs font-bold">
+              <span class="text-slate-500 dark:text-slate-400">Progresso Geral</span>
+              <span class="font-mono text-[#0284C7]">80.4%</span>
+            </div>
+            <div class="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-2 overflow-hidden p-0.5 border border-slate-200 dark:border-slate-700/60">
+              <div class="bg-gradient-to-r from-sky-500 to-emerald-500 h-full rounded-full transition-all duration-500" style="width: 80.4%"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Card Metas 2: Agendamentos Únicos Realizados -->
+        <div class="tremor-card p-5 rounded-2xl border transition-colors relative overflow-hidden">
+          <div class="flex items-center justify-between mb-3">
+            <div class="flex items-center gap-2.5">
+              <div class="w-8 h-8 rounded-lg bg-purple-100 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 flex items-center justify-center font-black">
+                <i data-lucide="users" class="w-4 h-4"></i>
+              </div>
+              <div>
+                <span class="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Meta de Atendimento Presencial</span>
+                <h3 class="text-sm font-extrabold text-slate-900 dark:text-white">Agendamentos Únicos Realizados</h3>
+              </div>
+            </div>
+            <span class="text-xs font-bold font-mono px-2.5 py-1 rounded-full bg-purple-100 text-purple-800 dark:bg-purple-950/60 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+              87.2% Show Rate
+            </span>
+          </div>
+
+          <div class="grid grid-cols-2 gap-4 py-2 border-y border-slate-100 dark:border-slate-800/80 my-2">
+            <div>
+              <div class="text-[11px] text-slate-400 font-medium">Reuniões Realizadas</div>
+              <div class="text-xl font-black font-mono text-purple-600 dark:text-purple-400 mt-0.5">82 <span class="text-xs font-normal text-slate-400">leads compareceram</span></div>
+              <div class="text-[11px] text-slate-500 mt-0.5">De 94 leads únicos agendados</div>
+            </div>
+            <div>
+              <div class="text-[11px] text-slate-400 font-medium">Composição dos Agendamentos</div>
+              <div class="text-xs font-bold text-slate-800 dark:text-slate-200 mt-1 space-y-0.5">
+                <div class="flex items-center justify-between"><span class="text-sky-600 dark:text-sky-400">● 58 Visitas Comerciais</span> <span class="font-mono">61.7%</span></div>
+                <div class="flex items-center justify-between"><span class="text-amber-600 dark:text-amber-400">● 36 Degustações</span> <span class="font-mono">38.3%</span></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="mt-3 space-y-1.5">
+            <div class="flex justify-between text-xs font-bold">
+              <span class="text-slate-500 dark:text-slate-400">Taxa de Presença (Show Rate)</span>
+              <span class="font-mono text-purple-600 dark:text-purple-400">87.2%</span>
+            </div>
+            <div class="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-2 overflow-hidden p-0.5 border border-slate-200 dark:border-slate-700/60">
+              <div class="bg-gradient-to-r from-purple-500 to-indigo-500 h-full rounded-full transition-all duration-500" style="width: 87.2%"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+
+      <!-- FUNIL DE CONVERSÃO COM TÍTULOS QUEBRADOS EM 2 LINHAS (TREMOR + ECHARTS) -->
+      <div class="tremor-card p-6 rounded-2xl border transition-colors space-y-5">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-200 dark:border-slate-800">
+          <div class="flex items-center gap-3">
+            <div class="w-9 h-9 rounded-xl bg-sky-100 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400 flex items-center justify-center shrink-0">
+              <i data-lucide="filter" class="w-5 h-5"></i>
+            </div>
+            <div>
+              <h3 class="text-base font-black text-slate-900 dark:text-white tracking-tight">Funil de Conversão Comercial de Ponta a Ponta</h3>
+              <p class="text-xs text-slate-500 dark:text-slate-400">Pipeline de 6 etapas com quebra de títulos em 2 linhas e conformidade total de espaçamento.</p>
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="text-xs font-mono font-bold px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+              228 Leads Totais → 11 Vendas (4.8%)
+            </span>
+          </div>
+        </div>
+
+        <!-- TREMOR STEPPED FUNNEL BAR: 6 ETAPAS COM TÍTULO EM 2 LINHAS (ZERO OVERFLOW) -->
+        <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+          <!-- Etapa 1 -->
+          <div class="tremor-sub-card p-3.5 rounded-xl border border-sky-200 dark:border-sky-900/60 bg-sky-50/50 dark:bg-sky-950/20 flex flex-col justify-between relative overflow-hidden">
+            <div class="text-[10px] font-mono font-bold text-sky-600 dark:text-sky-400 uppercase tracking-wider">Etapa 01</div>
+            <div class="mt-1">
+              <div class="text-xs font-extrabold text-slate-900 dark:text-white leading-tight">Leads</div>
+              <div class="text-xs font-extrabold text-slate-900 dark:text-white leading-tight">Totais</div>
+            </div>
+            <div class="mt-3 flex items-baseline justify-between">
+              <span class="text-xl font-black font-mono text-sky-700 dark:text-sky-300">228</span>
+              <span class="text-[10px] font-bold text-slate-400">100%</span>
+            </div>
+            <div class="w-full bg-sky-200 dark:bg-sky-900/40 h-1.5 rounded-full mt-2 overflow-hidden">
+              <div class="bg-sky-600 h-full rounded-full" style="width: 100%"></div>
+            </div>
+          </div>
+
+          <!-- Etapa 2 -->
+          <div class="tremor-sub-card p-3.5 rounded-xl border border-blue-200 dark:border-blue-900/60 bg-blue-50/50 dark:bg-blue-950/20 flex flex-col justify-between relative overflow-hidden">
+            <div class="flex items-center justify-between">
+              <span class="text-[10px] font-mono font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider">Etapa 02</span>
+              <span class="text-[9px] font-bold px-1.5 py-0.2 rounded bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300">78.9%</span>
+            </div>
+            <div class="mt-1">
+              <div class="text-xs font-extrabold text-slate-900 dark:text-white leading-tight">Leads</div>
+              <div class="text-xs font-extrabold text-slate-900 dark:text-white leading-tight">Qualificados</div>
+            </div>
+            <div class="mt-3 flex items-baseline justify-between">
+              <span class="text-xl font-black font-mono text-blue-700 dark:text-blue-300">180</span>
+              <span class="text-[10px] font-bold text-slate-400">78.9%</span>
+            </div>
+            <div class="w-full bg-blue-200 dark:bg-blue-900/40 h-1.5 rounded-full mt-2 overflow-hidden">
+              <div class="bg-blue-600 h-full rounded-full" style="width: 78.9%"></div>
+            </div>
+          </div>
+
+          <!-- Etapa 3 -->
+          <div class="tremor-sub-card p-3.5 rounded-xl border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/50 dark:bg-indigo-950/20 flex flex-col justify-between relative overflow-hidden">
+            <div class="flex items-center justify-between">
+              <span class="text-[10px] font-mono font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">Etapa 03</span>
+              <span class="text-[9px] font-bold px-1.5 py-0.2 rounded bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300">52.2%</span>
+            </div>
+            <div class="mt-1">
+              <div class="text-xs font-extrabold text-slate-900 dark:text-white leading-tight">Agendamentos</div>
+              <div class="text-xs font-extrabold text-slate-900 dark:text-white leading-tight">Únicos</div>
+            </div>
+            <div class="mt-3 flex items-baseline justify-between">
+              <span class="text-xl font-black font-mono text-indigo-700 dark:text-indigo-300">94</span>
+              <span class="text-[10px] font-bold text-slate-400">41.2%</span>
+            </div>
+            <div class="w-full bg-indigo-200 dark:bg-indigo-900/40 h-1.5 rounded-full mt-2 overflow-hidden">
+              <div class="bg-indigo-600 h-full rounded-full" style="width: 52.2%"></div>
+            </div>
+          </div>
+
+          <!-- Etapa 4 -->
+          <div class="tremor-sub-card p-3.5 rounded-xl border border-purple-200 dark:border-purple-900/60 bg-purple-50/50 dark:bg-purple-950/20 flex flex-col justify-between relative overflow-hidden">
+            <div class="flex items-center justify-between">
+              <span class="text-[10px] font-mono font-bold text-purple-600 dark:text-purple-400 uppercase tracking-wider">Etapa 04</span>
+              <span class="text-[9px] font-bold px-1.5 py-0.2 rounded bg-purple-100 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300">87.2%</span>
+            </div>
+            <div class="mt-1">
+              <div class="text-xs font-extrabold text-slate-900 dark:text-white leading-tight">Agendamentos</div>
+              <div class="text-xs font-extrabold text-slate-900 dark:text-white leading-tight">Realizados</div>
+            </div>
+            <div class="mt-3 flex items-baseline justify-between">
+              <span class="text-xl font-black font-mono text-purple-700 dark:text-purple-300">82</span>
+              <span class="text-[10px] font-bold text-slate-400">36.0%</span>
+            </div>
+            <div class="w-full bg-purple-200 dark:bg-purple-900/40 h-1.5 rounded-full mt-2 overflow-hidden">
+              <div class="bg-purple-600 h-full rounded-full" style="width: 87.2%"></div>
+            </div>
+          </div>
+
+          <!-- Etapa 5 -->
+          <div class="tremor-sub-card p-3.5 rounded-xl border border-pink-200 dark:border-pink-900/60 bg-pink-50/50 dark:bg-pink-950/20 flex flex-col justify-between relative overflow-hidden">
+            <div class="flex items-center justify-between">
+              <span class="text-[10px] font-mono font-bold text-pink-600 dark:text-pink-400 uppercase tracking-wider">Etapa 05</span>
+              <span class="text-[9px] font-bold px-1.5 py-0.2 rounded bg-pink-100 dark:bg-pink-900/50 text-pink-700 dark:text-pink-300">46.3%</span>
+            </div>
+            <div class="mt-1">
+              <div class="text-xs font-extrabold text-slate-900 dark:text-white leading-tight">Propostas</div>
+              <div class="text-xs font-extrabold text-slate-900 dark:text-white leading-tight">Apresentadas</div>
+            </div>
+            <div class="mt-3 flex items-baseline justify-between">
+              <span class="text-xl font-black font-mono text-pink-700 dark:text-pink-300">38</span>
+              <span class="text-[10px] font-bold text-slate-400">16.7%</span>
+            </div>
+            <div class="w-full bg-pink-200 dark:bg-pink-900/40 h-1.5 rounded-full mt-2 overflow-hidden">
+              <div class="bg-pink-600 h-full rounded-full" style="width: 46.3%"></div>
+            </div>
+          </div>
+
+          <!-- Etapa 6 -->
+          <div class="tremor-sub-card p-3.5 rounded-xl border border-emerald-200 dark:border-emerald-900/60 bg-emerald-50/50 dark:bg-emerald-950/20 flex flex-col justify-between relative overflow-hidden">
+            <div class="flex items-center justify-between">
+              <span class="text-[10px] font-mono font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">Etapa 06</span>
+              <span class="text-[9px] font-bold px-1.5 py-0.2 rounded bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300">28.9%</span>
+            </div>
+            <div class="mt-1">
+              <div class="text-xs font-extrabold text-slate-900 dark:text-white leading-tight">Contratos</div>
+              <div class="text-xs font-extrabold text-slate-900 dark:text-white leading-tight">Assinados</div>
+            </div>
+            <div class="mt-3 flex items-baseline justify-between">
+              <span class="text-xl font-black font-mono text-emerald-700 dark:text-emerald-300">11</span>
+              <span class="text-[10px] font-bold text-emerald-600 dark:text-emerald-400">4.8% final</span>
+            </div>
+            <div class="w-full bg-emerald-200 dark:bg-emerald-900/40 h-1.5 rounded-full mt-2 overflow-hidden">
+              <div class="bg-emerald-600 h-full rounded-full" style="width: 100%"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- VISUALIZAÇÃO GRÁFICA DO FUNIL ECHARTS COM RÓTULOS EM 2 LINHAS INTERNAS -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 pt-2">
+          <div class="lg:col-span-2 border border-slate-200 dark:border-slate-800 rounded-xl p-4 bg-slate-50/50 dark:bg-slate-950/30">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wide">Geometria do Funil & Capacidade de Conversão</span>
+              <span class="text-[11px] text-slate-400 font-mono">ECharts Visual Engine</span>
+            </div>
+            <div id="echart-funnel" class="w-full h-72"></div>
+            
+            <!-- Nota da Regra de Cálculo de Agendamentos Únicos -->
+            <div class="mt-3 p-3 rounded-xl bg-sky-50 dark:bg-sky-950/30 border border-sky-200 dark:border-sky-800/80 flex items-start gap-2.5 text-xs">
+              <i data-lucide="info" class="w-4 h-4 text-[#0284C7] shrink-0 mt-0.5"></i>
+              <div class="text-slate-700 dark:text-slate-300 leading-relaxed">
+                <span class="font-bold text-[#0284C7]">Regra de Cálculo de Agendamentos Únicos:</span> 
+                Se um mesmo lead agendou tanto Visita Comercial quanto Degustação Gastronômica, o sistema consolida como <b>1 único lead agendado</b> no funil (evitando duplicações ou falsas perdas na métrica).
+              </div>
+            </div>
+          </div>
+
+          <!-- Painel Lateral de Eficiência entre Etapas -->
+          <div class="border border-slate-200 dark:border-slate-800 rounded-xl p-4 bg-slate-50/50 dark:bg-slate-950/30 flex flex-col justify-between space-y-3">
+            <div>
+              <div class="flex items-center gap-2 pb-2.5 border-b border-slate-200 dark:border-slate-800">
+                <i data-lucide="gauge" class="w-4 h-4 text-[#0284C7]"></i>
+                <h4 class="text-xs font-extrabold uppercase tracking-wider text-slate-800 dark:text-slate-200">Eficiência de Passagem</h4>
+              </div>
+
+              <div class="space-y-2 mt-3 text-xs">
+                <div class="p-2.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                  <div>
+                    <div class="font-bold text-slate-800 dark:text-slate-200">1. Qualificação (SDR)</div>
+                    <div class="text-[10px] text-slate-400">180 de 228 leads</div>
+                  </div>
+                  <span class="font-mono font-black text-sky-600 dark:text-sky-400 text-sm">78.9%</span>
+                </div>
+
+                <div class="p-2.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                  <div>
+                    <div class="font-bold text-slate-800 dark:text-slate-200">2. Taxa de Agendamento</div>
+                    <div class="text-[10px] text-slate-400">94 leads únicos agendados</div>
+                  </div>
+                  <span class="font-mono font-black text-blue-600 dark:text-blue-400 text-sm">52.2%</span>
+                </div>
+
+                <div class="p-2.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                  <div>
+                    <div class="font-bold text-slate-800 dark:text-slate-200">3. Show Rate (Presença)</div>
+                    <div class="text-[10px] text-slate-400">82 compareceram</div>
+                  </div>
+                  <span class="font-mono font-black text-purple-600 dark:text-purple-400 text-sm">87.2%</span>
+                </div>
+
+                <div class="p-2.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                  <div>
+                    <div class="font-bold text-slate-800 dark:text-slate-200">4. Apresentação Proposta</div>
+                    <div class="text-[10px] text-slate-400">38 propostas formais</div>
+                  </div>
+                  <span class="font-mono font-black text-pink-600 dark:text-pink-400 text-sm">46.3%</span>
+                </div>
+
+                <div class="p-2.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                  <div>
+                    <div class="font-bold text-slate-800 dark:text-slate-200">5. Conversão em Fechamento</div>
+                    <div class="text-[10px] text-slate-400">11 contratos assinados</div>
+                  </div>
+                  <span class="font-mono font-black text-emerald-600 dark:text-emerald-400 text-sm">28.9%</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="p-2.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/80 text-[11px] text-emerald-800 dark:text-emerald-300">
+              <b>Conversão Global (Ponta a Ponta):</b> 4.8% de todos os leads recebidos viraram contratos assinados.
+            </div>
+          </div>
+        </div>
+      </div>
+
+
+      <!-- SEÇÃO 2: TREMOR RAW (AREA CHART + BARRAS COMPARATIVAS SDR VS CLOSER) -->
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+        <!-- Gráfico de Área com Gradiente Suave (AreaChart) -->
+        <div class="tremor-card p-6 rounded-2xl border transition-colors lg:col-span-2 space-y-4">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-200 dark:border-slate-800">
+            <div>
+              <div class="flex items-center gap-2">
+                <i data-lucide="line-chart" class="w-4 h-4 text-[#0284C7]"></i>
+                <h3 class="text-sm font-black text-slate-900 dark:text-white">Faturamento Real vs Meta Semanal (AreaChart)</h3>
+              </div>
+              <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">AreaChart com gradiente suave Tremor Raw e projeção de fechamento.</p>
+            </div>
+
+            <!-- Legenda Tremor Minimalista -->
+            <div class="flex items-center gap-4 text-xs font-semibold">
+              <div class="flex items-center gap-1.5">
+                <span class="w-2.5 h-2.5 rounded-sm bg-[#0284C7]"></span>
+                <span class="text-slate-700 dark:text-slate-300">Faturamento Real</span>
+              </div>
+              <div class="flex items-center gap-1.5">
+                <span class="w-3 h-0.5 border-t-2 border-dashed border-rose-500"></span>
+                <span class="text-slate-700 dark:text-slate-300">Meta Semanal (R$ 150k)</span>
+              </div>
+            </div>
+          </div>
+
+          <div id="echart-area-faturamento" class="w-full h-80"></div>
+        </div>
+
+        <!-- Donut Chart com Tipografia Mono no Centro e Legenda Vertical -->
+        <div class="tremor-card p-6 rounded-2xl border transition-colors flex flex-col justify-between space-y-4">
+          <div class="pb-3 border-b border-slate-200 dark:border-slate-800">
+            <div class="flex items-center gap-2">
+              <i data-lucide="pie-chart" class="w-4 h-4 text-purple-500"></i>
+              <h3 class="text-sm font-black text-slate-900 dark:text-white">Receita por Categoria de Evento</h3>
+            </div>
+            <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Donut Chart Tremor com centro numérico e legenda vertical.</p>
+          </div>
+
+          <!-- Container do Donut Chart -->
+          <div class="relative flex items-center justify-center my-auto">
+            <div id="echart-donut-categoria" class="w-full h-64"></div>
+            
+            <div class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+              <span class="text-2xl font-black font-mono text-slate-900 dark:text-white tracking-tight">R$ 482.5k</span>
+              <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 mt-0.5">Total Mês</span>
+            </div>
+          </div>
+
+          <!-- Legenda Vertical Minimalista (Tremor Legend) -->
+          <div class="pt-3 border-t border-slate-100 dark:border-slate-800/80 space-y-2 text-xs">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <span class="w-2.5 h-2.5 rounded-full bg-pink-500"></span>
+                <span class="font-semibold text-slate-700 dark:text-slate-300">15 Anos / Debutantes</span>
+              </div>
+              <div class="font-mono font-bold text-slate-900 dark:text-white">R$ 265k <span class="text-[10px] text-slate-400 font-normal">(54.9%)</span></div>
+            </div>
+
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <span class="w-2.5 h-2.5 rounded-full bg-purple-500"></span>
+                <span class="font-semibold text-slate-700 dark:text-slate-300">Casamentos</span>
+              </div>
+              <div class="font-mono font-bold text-slate-900 dark:text-white">R$ 130k <span class="text-[10px] text-slate-400 font-normal">(26.9%)</span></div>
+            </div>
+
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <span class="w-2.5 h-2.5 rounded-full bg-sky-500"></span>
+                <span class="font-semibold text-slate-700 dark:text-slate-300">Corporativos</span>
+              </div>
+              <div class="font-mono font-bold text-slate-900 dark:text-white">R$ 53.5k <span class="text-[10px] text-slate-400 font-normal">(11.1%)</span></div>
+            </div>
+
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+                <span class="font-semibold text-slate-700 dark:text-slate-300">Festas Infantis</span>
+              </div>
+              <div class="font-mono font-bold text-slate-900 dark:text-white">R$ 34k <span class="text-[10px] text-slate-400 font-normal">(7.1%)</span></div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+
+      <!-- SEÇÃO 3: BARRAS COMPARATIVAS SDR VS CLOSER & ANÉIS DE META POR UNIDADE (TREMOR RAW) -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+        <!-- BARRAS COMPARATIVAS SDR VS CLOSER -->
+        <div class="tremor-card p-6 rounded-2xl border transition-colors space-y-4">
+          <div class="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
+            <div>
+              <div class="flex items-center gap-2">
+                <i data-lucide="split" class="w-4 h-4 text-emerald-500"></i>
+                <h3 class="text-sm font-black text-slate-900 dark:text-white">Performance Comparativa: SDRs vs Closers</h3>
+              </div>
+              <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Leads qualificados e agendados (SDR) vs Reuniões e contratos fechados (Closer).</p>
+            </div>
+            <span class="text-[10px] font-mono font-bold px-2.5 py-1 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+              Tremor BarChart
+            </span>
+          </div>
+
+          <!-- Gráfico ECharts de Barras Agrupadas no Estilo Tremor -->
+          <div id="echart-sdr-closer-bars" class="w-full h-72"></div>
+        </div>
+
+        <!-- ANÉIS DE METAS POR CASA DE FESTA COM TOOLTIPS FLUTUANTES -->
+        <div class="tremor-card p-6 rounded-2xl border transition-colors space-y-4">
+          <div class="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
+            <div>
+              <div class="flex items-center gap-2">
+                <i data-lucide="target" class="w-4 h-4 text-[#0284C7]"></i>
+                <h3 class="text-sm font-black text-slate-900 dark:text-white">Atingimento de Metas por Unidade</h3>
+              </div>
+              <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Anéis de progresso das 4 casas com receita realizada vs alvo mensal.</p>
+            </div>
+            <span class="text-[10px] font-mono font-bold px-2.5 py-1 rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
+              Rede Consolidada
+            </span>
+          </div>
+
+          <!-- Grid dos 4 Anéis de Meta -->
+          <div class="grid grid-cols-2 gap-4 pt-1">
+            
+            <!-- Unidade 1: Bonomo Jardins -->
+            <div class="p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/40 flex items-center gap-3">
+              <div class="relative w-14 h-14 shrink-0 flex items-center justify-center">
+                <svg class="w-14 h-14 -rotate-90" viewBox="0 0 36 36">
+                  <path class="text-slate-200 dark:text-slate-700" stroke-width="3.5" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"/>
+                  <path class="text-emerald-500" stroke-dasharray="92, 100" stroke-width="3.5" stroke-linecap="round" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"/>
+                </svg>
+                <span class="absolute font-mono font-black text-xs text-slate-900 dark:text-white">92%</span>
+              </div>
+              <div class="min-w-0">
+                <h4 class="text-xs font-bold text-slate-900 dark:text-white truncate">Bonomo Jardins</h4>
+                <div class="text-[11px] font-mono font-bold text-emerald-600 dark:text-emerald-400 mt-0.5">R$ 215k <span class="text-[10px] text-slate-400 font-normal">/ 230k</span></div>
+                <div class="text-[10px] text-slate-500">5 contratos fechados</div>
+              </div>
+            </div>
+
+            <!-- Unidade 2: Mansão Almirante -->
+            <div class="p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/40 flex items-center gap-3">
+              <div class="relative w-14 h-14 shrink-0 flex items-center justify-center">
+                <svg class="w-14 h-14 -rotate-90" viewBox="0 0 36 36">
+                  <path class="text-slate-200 dark:text-slate-700" stroke-width="3.5" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"/>
+                  <path class="text-sky-500" stroke-dasharray="85, 100" stroke-width="3.5" stroke-linecap="round" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"/>
+                </svg>
+                <span class="absolute font-mono font-black text-xs text-slate-900 dark:text-white">85%</span>
+              </div>
+              <div class="min-w-0">
+                <h4 class="text-xs font-bold text-slate-900 dark:text-white truncate">Mansão Almirante</h4>
+                <div class="text-[11px] font-mono font-bold text-sky-600 dark:text-sky-400 mt-0.5">R$ 178k <span class="text-[10px] text-slate-400 font-normal">/ 210k</span></div>
+                <div class="text-[10px] text-slate-500">4 contratos fechados</div>
+              </div>
+            </div>
+
+            <!-- Unidade 3: Bonomo Flamboyant -->
+            <div class="p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/40 flex items-center gap-3">
+              <div class="relative w-14 h-14 shrink-0 flex items-center justify-center">
+                <svg class="w-14 h-14 -rotate-90" viewBox="0 0 36 36">
+                  <path class="text-slate-200 dark:text-slate-700" stroke-width="3.5" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"/>
+                  <path class="text-amber-500" stroke-dasharray="78, 100" stroke-width="3.5" stroke-linecap="round" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"/>
+                </svg>
+                <span class="absolute font-mono font-black text-xs text-slate-900 dark:text-white">78%</span>
+              </div>
+              <div class="min-w-0">
+                <h4 class="text-xs font-bold text-slate-900 dark:text-white truncate">Bonomo Flamboyant</h4>
+                <div class="text-[11px] font-mono font-bold text-amber-600 dark:text-amber-400 mt-0.5">R$ 89k <span class="text-[10px] text-slate-400 font-normal">/ 115k</span></div>
+                <div class="text-[10px] text-slate-500">2 contratos fechados</div>
+              </div>
+            </div>
+
+            <!-- Unidade 4: Palácio do Bosque -->
+            <div class="p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/40 flex items-center gap-3">
+              <div class="relative w-14 h-14 shrink-0 flex items-center justify-center">
+                <svg class="w-14 h-14 -rotate-90" viewBox="0 0 36 36">
+                  <path class="text-slate-200 dark:text-slate-700" stroke-width="3.5" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"/>
+                  <path class="text-purple-500" stroke-dasharray="65, 100" stroke-width="3.5" stroke-linecap="round" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"/>
+                </svg>
+                <span class="absolute font-mono font-black text-xs text-slate-900 dark:text-white">65%</span>
+              </div>
+              <div class="min-w-0">
+                <h4 class="text-xs font-bold text-slate-900 dark:text-white truncate">Palácio do Bosque</h4>
+                <div class="text-[11px] font-mono font-bold text-purple-600 dark:text-purple-400 mt-0.5">R$ 29k <span class="text-[10px] text-slate-400 font-normal">/ 45k</span></div>
+                <div class="text-[10px] text-slate-500">Em expansão comercial</div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+
+
+    <!-- ========================================================================= -->
+    <!-- VISÃO 2: MAPA DE CALOR (HEATMAP) DE HORÁRIOS DE WHATSAPP                   -->
+    <!-- ========================================================================= -->
+    <div id="section-heatmap" class="hidden space-y-4">
+      <div class="tremor-card p-6 rounded-2xl border transition-colors space-y-4">
+        <div class="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
+          <div>
+            <div class="flex items-center gap-2">
+              <i data-lucide="flame" class="w-5 h-5 text-amber-500"></i>
+              <h3 class="text-base font-black text-slate-900 dark:text-white">Mapa de Calor (Heatmap) de Horários • WhatsApp Comercial</h3>
+            </div>
+            <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Densidade de mensagens recebidas e disparos ativos ao longo dos dias da semana e faixas horárias.</p>
+          </div>
+          <span class="text-xs font-mono font-bold px-3 py-1.5 rounded-lg bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+            Pico: Seg e Ter das 18h às 20h
+          </span>
+        </div>
+
+        <!-- Container do Heatmap ECharts -->
+        <div id="echart-heatmap-whatsapp" class="w-full h-96"></div>
+
+        <div class="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 text-xs text-slate-600 dark:text-slate-300 flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <i data-lucide="zap" class="w-4 h-4 text-amber-500"></i>
+            <span><b>Insight de Conversão:</b> Leads abordados entre 18h30 e 20h00 possuem taxa de resposta 34% superior aos demais horários comerciais.</span>
+          </div>
+          <span class="font-mono font-bold text-slate-400">Total: 4.820 msgs no mês</span>
+        </div>
+      </div>
+    </div>
+
+
+    <!-- ========================================================================= -->
+    <!-- VISÃO 3: DIAGRAMA DE SANKEY (RASTREAMENTO DE ORIGEM ATÉ FECHAMENTO)       -->
+    <!-- ========================================================================= -->
+    <div id="section-sankey" class="hidden space-y-4">
+      <div class="tremor-card p-6 rounded-2xl border transition-colors space-y-4">
+        <div class="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
+          <div>
+            <div class="flex items-center gap-2">
+              <i data-lucide="git-merge" class="w-5 h-5 text-purple-500"></i>
+              <h3 class="text-base font-black text-slate-900 dark:text-white">Diagrama de Sankey • Rastreamento de Origem até Homologação</h3>
+            </div>
+            <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Fluxo contínuo dos canais de entrada (Instagram, Meta, Indicação), atendimento por SDR, visitas e fechamento por casa.</p>
+          </div>
+          <span class="text-xs font-mono font-bold px-3 py-1.5 rounded-lg bg-purple-50 dark:bg-purple-950/40 text-purple-800 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+            Atribuição Multitoque
+          </span>
+        </div>
+
+        <!-- Container do Diagrama de Sankey ECharts -->
+        <div id="echart-sankey-pipeline" class="w-full h-[460px]"></div>
+
+        <div class="p-3.5 rounded-xl bg-purple-50/50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800/80 text-xs text-purple-900 dark:text-purple-200 flex items-center justify-between">
+          <span><b>Eficiência de Origem:</b> O canal <i>Indicação Debutantes</i> apresentou a menor taxa de abandono e o maior ticket médio (R$ 52.000).</span>
+          <span class="font-mono font-bold">11 Contratos Fechados</span>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <script>
+    let funnelChart = null;
+    let areaChart = null;
+    let donutChart = null;
+    let sdrCloserBarChart = null;
+    let heatmapChart = null;
+    let sankeyChart = null;
+
+    let currentActiveDashboardTab = 'executivo';
+
+    function initAllCharts() {
+      const isLight = document.body.classList.contains('theme-light');
+
+      // 1. FUNIL DE CONVERSÃO ECHARTS (COM RÓTULOS EM 2 LINHAS INTERNAS)
+      const funnelDom = document.getElementById('echart-funnel');
+      if (funnelDom) {
+        if (funnelChart) funnelChart.dispose();
+        funnelChart = echarts.init(funnelDom);
+        
+        funnelChart.setOption({
+          tooltip: {
+            trigger: 'item',
+            backgroundColor: isLight ? 'rgba(255, 255, 255, 0.96)' : 'rgba(15, 23, 42, 0.95)',
+            borderColor: isLight ? '#E2E8F0' : 'rgba(255, 255, 255, 0.12)',
+            borderWidth: 1,
+            padding: 10,
+            textStyle: { color: isLight ? '#0F172A' : '#F8FAFC', fontSize: 12 },
+            formatter: function(params) {
+              if (params.data.key === 'agendamentos') {
+                return '<div style="font-size:12px; font-weight:800; margin-bottom:4px; color:#0284C7;">' + params.data.line1 + ' ' + params.data.line2 + '</div>' +
+                       '<div style="font-size:13px; font-weight:900; margin-bottom:4px;">' + params.value + ' Leads Únicos (' + params.percent + '%)</div>' +
+                       '<div style="color:#0284C7; font-size:11px; font-weight:600;">● 58 Visitas Comerciais</div>' +
+                       '<div style="color:#D97706; font-size:11px; font-weight:600;">● 36 Degustações Gastronômicas</div>' +
+                       '<div style="color:#64748B; font-size:10px; margin-top:6px; border-top:1px solid #CBD5E1; padding-top:3px;">Regra: Lead com visita e degustação conta como 1 único lead.</div>';
+              }
+              if (params.data.key === 'realizados') {
+                return '<div style="font-size:12px; font-weight:800; margin-bottom:4px; color:#6366F1;">' + params.data.line1 + ' ' + params.data.line2 + '</div>' +
+                       '<div style="font-size:13px; font-weight:900; margin-bottom:4px;">' + params.value + ' Compareceram (' + params.percent + '%)</div>' +
+                       '<div style="color:#10B981; font-size:11px; font-weight:600;">Show Rate: 87.2% de presença presencial</div>';
+              }
+              return '<div style="font-size:12px; font-weight:800; color:' + params.color + ';">' + params.data.line1 + ' ' + params.data.line2 + '</div>' +
+                     '<div style="font-size:13px; font-weight:900; margin-top:2px;">' + params.value + ' (' + params.percent + '%)</div>';
+            }
+          },
+          series: [
+            {
+              name: 'Funil Comercial',
+              type: 'funnel',
+              left: '8%',
+              top: 15,
+              bottom: 15,
+              width: '84%',
+              min: 0,
+              max: 228,
+              minSize: '16%',
+              maxSize: '100%',
+              sort: 'descending',
+              gap: 3,
+              label: {
+                show: true,
+                position: 'inside',
+                formatter: function(params) {
+                  return params.data.line1 + '\n' + params.data.line2 + ' (' + params.value + ')';
+                },
+                color: '#FFFFFF',
+                fontWeight: 'bold',
+                fontSize: 10,
+                lineHeight: 13,
+                overflow: 'truncate'
+              },
+              itemStyle: {
+                borderColor: isLight ? '#FFFFFF' : '#0D111D',
+                borderWidth: 2
+              },
+              data: [
+                { value: 228, line1: 'Leads', line2: 'Totais', key: 'leads', itemStyle: { color: '#0369A1' } },
+                { value: 180, line1: 'Leads', line2: 'Qualificados', key: 'qualificados', itemStyle: { color: '#0284C7' } },
+                { value: 94, line1: 'Agendamentos', line2: 'Únicos', key: 'agendamentos', itemStyle: { color: '#2563EB' } },
+                { value: 82, line1: 'Agendamentos', line2: 'Realizados', key: 'realizados', itemStyle: { color: '#6366F1' } },
+                { value: 38, line1: 'Propostas', line2: 'Apresentadas', key: 'propostas', itemStyle: { color: '#DB2777' } },
+                { value: 11, line1: 'Contratos', line2: 'Assinados', key: 'contratos', itemStyle: { color: '#059669' } }
+              ]
+            }
+          ]
+        });
+      }
+
+      // 2. AREACHART FATURAMENTO (TREMOR RAW GRADIENTE)
+      const areaDom = document.getElementById('echart-area-faturamento');
+      if (areaDom) {
+        if (areaChart) areaChart.dispose();
+        areaChart = echarts.init(areaDom);
+        
+        areaChart.setOption({
+          tooltip: {
+            trigger: 'axis',
+            backgroundColor: isLight ? 'rgba(255, 255, 255, 0.96)' : 'rgba(15, 23, 42, 0.95)',
+            borderColor: isLight ? '#E2E8F0' : 'rgba(255, 255, 255, 0.12)',
+            borderWidth: 1,
+            padding: 10,
+            textStyle: { color: isLight ? '#0F172A' : '#F8FAFC', fontSize: 12 }
+          },
+          grid: { left: '3%', right: '4%', bottom: '5%', top: '8%', containLabel: true },
+          xAxis: {
+            type: 'category',
+            boundaryGap: true,
+            data: ['Semana 1', 'Semana 2', 'Semana 3 (Atual)', 'Semana 4 (Projeção)'],
+            axisLine: { lineStyle: { color: isLight ? '#CBD5E1' : '#334155' } },
+            axisTick: { show: false },
+            axisLabel: { color: isLight ? '#64748B' : '#94A3B8', fontSize: 11, fontWeight: 600 }
+          },
+          yAxis: {
+            type: 'value',
+            axisLine: { show: false },
+            splitLine: { lineStyle: { color: isLight ? '#F1F5F9' : 'rgba(255,255,255,0.05)', type: 'dashed' } },
+            axisLabel: { color: isLight ? '#64748B' : '#94A3B8', fontSize: 11, formatter: 'R$ {value}k' }
+          },
+          series: [
+            {
+              name: 'Meta Semanal',
+              type: 'line',
+              step: 'middle',
+              data: [150, 150, 150, 150],
+              lineStyle: { color: '#F43F5E', type: 'dashed', width: 2 },
+              itemStyle: { color: '#F43F5E' },
+              symbol: 'circle',
+              symbolSize: 6
+            },
+            {
+              name: 'Faturamento Realizado',
+              type: 'line',
+              smooth: 0.35,
+              data: [142, 178, 162.5, 140],
+              lineStyle: { color: '#0284C7', width: 3 },
+              itemStyle: { color: '#0284C7' },
+              areaStyle: {
+                color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                  { offset: 0, color: 'rgba(2, 132, 199, 0.28)' },
+                  { offset: 1, color: 'rgba(2, 132, 199, 0.00)' }
+                ])
+              }
+            },
+            {
+              name: 'Realizado (Barras)',
+              type: 'bar',
+              barWidth: 16,
+              data: [142, 178, 162.5, 140],
+              itemStyle: {
+                color: isLight ? 'rgba(2, 132, 199, 0.15)' : 'rgba(2, 132, 199, 0.25)',
+                borderRadius: [4, 4, 0, 0]
+              }
+            }
+          ]
+        });
+      }
+
+      // 3. DONUT CHART TREMOR RAW
+      const donutDom = document.getElementById('echart-donut-categoria');
+      if (donutDom) {
+        if (donutChart) donutChart.dispose();
+        donutChart = echarts.init(donutDom);
+
+        donutChart.setOption({
+          tooltip: {
+            trigger: 'item',
+            backgroundColor: isLight ? 'rgba(255, 255, 255, 0.96)' : 'rgba(15, 23, 42, 0.95)',
+            borderColor: isLight ? '#E2E8F0' : 'rgba(255, 255, 255, 0.12)',
+            textStyle: { color: isLight ? '#0F172A' : '#F8FAFC', fontSize: 11 }
+          },
+          series: [
+            {
+              name: 'Receita por Categoria',
+              type: 'pie',
+              radius: ['68%', '88%'],
+              avoidLabelOverlap: false,
+              itemStyle: {
+                borderRadius: 4,
+                borderColor: isLight ? '#FFFFFF' : '#0D111D',
+                borderWidth: 2
+              },
+              label: { show: false },
+              data: [
+                { value: 265, name: '15 Anos / Debutantes', itemStyle: { color: '#EC4899' } },
+                { value: 130, name: 'Casamentos', itemStyle: { color: '#8B5CF6' } },
+                { value: 53.5, name: 'Corporativos', itemStyle: { color: '#0284C7' } },
+                { value: 34, name: 'Festas Infantis', itemStyle: { color: '#10B981' } }
+              ]
+            }
+          ]
+        });
+      }
+
+      // 4. BARRAS COMPARATIVAS SDR VS CLOSER (TREMOR BARCHART)
+      const barDom = document.getElementById('echart-sdr-closer-bars');
+      if (barDom) {
+        if (sdrCloserBarChart) sdrCloserBarChart.dispose();
+        sdrCloserBarChart = echarts.init(barDom);
+
+        sdrCloserBarChart.setOption({
+          tooltip: {
+            trigger: 'axis',
+            axisPointer: { type: 'shadow' },
+            backgroundColor: isLight ? 'rgba(255, 255, 255, 0.96)' : 'rgba(15, 23, 42, 0.95)',
+            borderColor: isLight ? '#E2E8F0' : 'rgba(255, 255, 255, 0.12)'
+          },
+          legend: {
+            top: 0,
+            textStyle: { color: isLight ? '#475569' : '#94A3B8', fontSize: 11 }
+          },
+          grid: { left: '3%', right: '4%', bottom: '5%', top: '15%', containLabel: true },
+          xAxis: {
+            type: 'category',
+            data: ['Juliana (Closer)', 'Rafael (Closer)', 'Camila (Closer)', 'Lucas (SDR)', 'Beatriz (SDR)'],
+            axisLine: { lineStyle: { color: isLight ? '#CBD5E1' : '#334155' } },
+            axisLabel: { color: isLight ? '#64748B' : '#94A3B8', fontSize: 10, fontWeight: 600 }
+          },
+          yAxis: {
+            type: 'value',
+            splitLine: { lineStyle: { color: isLight ? '#F1F5F9' : 'rgba(255,255,255,0.05)' } },
+            axisLabel: { color: isLight ? '#64748B' : '#94A3B8', fontSize: 10 }
+          },
+          series: [
+            {
+              name: 'Volume / Atendimentos',
+              type: 'bar',
+              barWidth: 14,
+              itemStyle: { color: '#0284C7', borderRadius: [3, 3, 0, 0] },
+              data: [34, 28, 20, 120, 108]
+            },
+            {
+              name: 'Conversões (Agendamentos ou Vendas)',
+              type: 'bar',
+              barWidth: 14,
+              itemStyle: { color: '#10B981', borderRadius: [3, 3, 0, 0] },
+              data: [5, 4, 2, 54, 40]
+            }
+          ]
+        });
+      }
+
+      // 5. HEATMAP DE WHATSAPP (ECHARTS HEATMAP)
+      const heatDom = document.getElementById('echart-heatmap-whatsapp');
+      if (heatDom) {
+        if (heatmapChart) heatmapChart.dispose();
+        heatmapChart = echarts.init(heatDom);
+
+        const hours = ['08h', '10h', '12h', '14h', '16h', '18h', '20h', '22h'];
+        const days = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'];
+        
+        // Mock data: [hourIndex, dayIndex, volume]
+        const heatData = [
+          [0,0,15],[1,0,32],[2,0,55],[3,0,48],[4,0,85],[5,0,140],[6,0,120],[7,0,30],
+          [0,1,18],[1,1,40],[2,1,60],[3,1,50],[4,1,90],[5,1,155],[6,1,110],[7,1,25],
+          [0,2,12],[1,2,28],[2,2,45],[3,2,42],[4,2,70],[5,2,95],[6,2,75],[7,2,20],
+          [0,3,20],[1,3,35],[2,3,50],[3,3,60],[4,3,105],[5,3,130],[6,3,90],[7,3,28],
+          [0,4,22],[1,4,45],[2,4,65],[3,4,55],[4,4,80],[5,4,115],[6,4,60],[7,4,15],
+          [0,5,30],[1,5,70],[2,5,80],[3,5,65],[4,5,40],[5,5,35],[6,5,20],[7,5,10],
+          [0,6,10],[1,6,25],[2,6,35],[3,6,40],[4,6,50],[5,6,65],[6,6,80],[7,6,45]
+        ];
+
+        heatmapChart.setOption({
+          tooltip: {
+            position: 'top',
+            backgroundColor: isLight ? 'rgba(255, 255, 255, 0.96)' : 'rgba(15, 23, 42, 0.95)',
+            borderColor: isLight ? '#E2E8F0' : 'rgba(255, 255, 255, 0.12)',
+            formatter: function(params) {
+              return '<div style="font-weight:800; font-size:12px;">' + days[params.value[1]] + ' às ' + hours[params.value[0]] + '</div>' +
+                     '<div style="font-size:13px; font-weight:900; color:#F59E0B; margin-top:2px;">' + params.value[2] + ' Mensagens Recebidas</div>' +
+                     '<div style="color:#10B981; font-size:10px;">SLA Médio de Resposta: 4m 12s</div>';
+            }
+          },
+          grid: { top: '5%', bottom: '15%', left: '8%', right: '5%' },
+          xAxis: {
+            type: 'category',
+            data: hours,
+            splitArea: { show: true },
+            axisLine: { lineStyle: { color: isLight ? '#CBD5E1' : '#334155' } },
+            axisLabel: { color: isLight ? '#64748B' : '#94A3B8', fontSize: 11, fontWeight: 700 }
+          },
+          yAxis: {
+            type: 'category',
+            data: days,
+            splitArea: { show: true },
+            axisLine: { lineStyle: { color: isLight ? '#CBD5E1' : '#334155' } },
+            axisLabel: { color: isLight ? '#64748B' : '#94A3B8', fontSize: 11, fontWeight: 700 }
+          },
+          visualMap: {
+            min: 10,
+            max: 160,
+            calculable: true,
+            orient: 'horizontal',
+            left: 'center',
+            bottom: '0%',
+            inRange: {
+              color: isLight 
+                ? ['#EFF6FF', '#93C5FD', '#3B82F6', '#1D4ED8', '#1E3A8A'] 
+                : ['#0B132B', '#1C2541', '#3A506B', '#5BC0BE', '#6FFFE9']
+            },
+            textStyle: { color: isLight ? '#64748B' : '#94A3B8', fontSize: 11 }
+          },
+          series: [{
+            name: 'Volume WhatsApp',
+            type: 'heatmap',
+            data: heatData,
+            label: { show: true, fontSize: 10, color: isLight ? '#1E293B' : '#FFFFFF' },
+            itemStyle: {
+              borderRadius: 4,
+              borderColor: isLight ? '#FFFFFF' : '#07090E',
+              borderWidth: 2
+            }
+          }]
+        });
+      }
+
+      // 6. DIAGRAMA DE SANKEY (ECHARTS SANKEY)
+      const sankeyDom = document.getElementById('echart-sankey-pipeline');
+      if (sankeyDom) {
+        if (sankeyChart) sankeyChart.dispose();
+        sankeyChart = echarts.init(sankeyDom);
+
+        sankeyChart.setOption({
+          tooltip: {
+            trigger: 'item',
+            triggerOn: 'mousemove',
+            backgroundColor: isLight ? 'rgba(255, 255, 255, 0.96)' : 'rgba(15, 23, 42, 0.95)',
+            borderColor: isLight ? '#E2E8F0' : 'rgba(255, 255, 255, 0.12)',
+            textStyle: { color: isLight ? '#0F172A' : '#F8FAFC', fontSize: 11 }
+          },
+          series: [{
+            type: 'sankey',
+            layout: 'none',
+            emphasis: { focus: 'adjacency' },
+            nodeAlign: 'justify',
+            lineStyle: { color: 'gradient', curveness: 0.5, opacity: 0.35 },
+            label: {
+              color: isLight ? '#0F172A' : '#F8FAFC',
+              fontSize: 11,
+              fontWeight: 700
+            },
+            data: [
+              { name: 'Instagram Ads', itemStyle: { color: '#EC4899' } },
+              { name: 'Meta Ads', itemStyle: { color: '#8B5CF6' } },
+              { name: 'WhatsApp Direto', itemStyle: { color: '#10B981' } },
+              { name: 'Indicação Debutantes', itemStyle: { color: '#F59E0B' } },
+              { name: 'SDR Lucas', itemStyle: { color: '#0284C7' } },
+              { name: 'SDR Beatriz', itemStyle: { color: '#0369A1' } },
+              { name: 'Visita Comercial', itemStyle: { color: '#2563EB' } },
+              { name: 'Degustação VIP', itemStyle: { color: '#6366F1' } },
+              { name: 'Bonomo Jardins', itemStyle: { color: '#10B981' } },
+              { name: 'Mansão Almirante', itemStyle: { color: '#14A9D7' } },
+              { name: 'Bonomo Flamboyant', itemStyle: { color: '#F59E0B' } },
+              { name: 'Contrato Assinado', itemStyle: { color: '#059669' } },
+              { name: 'Proposta Pendente', itemStyle: { color: '#94A3B8' } }
+            ],
+            links: [
+              { source: 'Instagram Ads', target: 'SDR Lucas', value: 65 },
+              { source: 'Instagram Ads', target: 'SDR Beatriz', value: 45 },
+              { source: 'Meta Ads', target: 'SDR Lucas', value: 30 },
+              { source: 'Meta Ads', target: 'SDR Beatriz', value: 25 },
+              { source: 'WhatsApp Direto', target: 'SDR Lucas', value: 25 },
+              { source: 'WhatsApp Direto', target: 'SDR Beatriz', value: 13 },
+              { source: 'Indicação Debutantes', target: 'SDR Beatriz', value: 25 },
+              { source: 'SDR Lucas', target: 'Visita Comercial', value: 35 },
+              { source: 'SDR Lucas', target: 'Degustação VIP', value: 20 },
+              { source: 'SDR Beatriz', target: 'Visita Comercial', value: 23 },
+              { source: 'SDR Beatriz', target: 'Degustação VIP', value: 16 },
+              { source: 'Visita Comercial', target: 'Bonomo Jardins', value: 30 },
+              { source: 'Visita Comercial', target: 'Mansão Almirante', value: 18 },
+              { source: 'Visita Comercial', target: 'Bonomo Flamboyant', value: 10 },
+              { source: 'Degustação VIP', target: 'Bonomo Jardins', value: 18 },
+              { source: 'Degustação VIP', target: 'Mansão Almirante', value: 12 },
+              { source: 'Degustação VIP', target: 'Bonomo Flamboyant', value: 6 },
+              { source: 'Bonomo Jardins', target: 'Contrato Assinado', value: 5 },
+              { source: 'Bonomo Jardins', target: 'Proposta Pendente', value: 12 },
+              { source: 'Mansão Almirante', target: 'Contrato Assinado', value: 4 },
+              { source: 'Mansão Almirante', target: 'Proposta Pendente', value: 9 },
+              { source: 'Bonomo Flamboyant', target: 'Contrato Assinado', value: 2 },
+              { source: 'Bonomo Flamboyant', target: 'Proposta Pendente', value: 6 }
+            ]
+          }]
+        });
+      }
+    }
+
+    // ALTERNADOR DE ABAS SUPERIORES DE INTELIGÊNCIA
+    function switchDashboardTab(tabName) {
+      currentActiveDashboardTab = tabName;
+      
+      const sExecutivo = document.getElementById('section-executivo');
+      const sHeatmap = document.getElementById('section-heatmap');
+      const sSankey = document.getElementById('section-sankey');
+
+      const bExec = document.getElementById('tab-btn-executivo');
+      const bHeat = document.getElementById('tab-btn-heatmap');
+      const bSank = document.getElementById('tab-btn-sankey');
+
+      [sExecutivo, sHeatmap, sSankey].forEach(el => el.classList.add('hidden'));
+      [bExec, bHeat, bSank].forEach(el => {
+        el.className = 'flex items-center gap-1.5 px-3 py-1 rounded-md transition-all text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white';
+      });
+
+      if (tabName === 'executivo') {
+        sExecutivo.classList.remove('hidden');
+        bExec.className = 'flex items-center gap-1.5 px-3 py-1 rounded-md transition-all shadow-xs bg-white dark:bg-slate-700 text-slate-900 dark:text-white';
+      } else if (tabName === 'heatmap') {
+        sHeatmap.classList.remove('hidden');
+        bHeat.className = 'flex items-center gap-1.5 px-3 py-1 rounded-md transition-all shadow-xs bg-white dark:bg-slate-700 text-slate-900 dark:text-white';
+      } else if (tabName === 'sankey') {
+        sSankey.classList.remove('hidden');
+        bSank.className = 'flex items-center gap-1.5 px-3 py-1 rounded-md transition-all shadow-xs bg-white dark:bg-slate-700 text-slate-900 dark:text-white';
+      }
+
+      lucide.createIcons();
+      setTimeout(() => {
+        if (tabName === 'heatmap' && heatmapChart) heatmapChart.resize();
+        if (tabName === 'sankey' && sankeyChart) sankeyChart.resize();
+      }, 50);
+    }
+
+    function toggleTheme() {
+      const body = document.body;
+      const themeIcon = document.getElementById('theme-icon');
+      if (body.classList.contains('theme-light')) {
+        body.classList.remove('theme-light');
+        body.classList.add('theme-dark');
+        themeIcon.setAttribute('data-lucide', 'sun');
+      } else {
+        body.classList.remove('theme-dark');
+        body.classList.add('theme-light');
+        themeIcon.setAttribute('data-lucide', 'moon');
+      }
+      lucide.createIcons();
+      initAllCharts();
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      lucide.createIcons();
+      initAllCharts();
+    });
+
+    window.addEventListener('resize', () => {
+      if (funnelChart) funnelChart.resize();
+      if (areaChart) areaChart.resize();
+      if (donutChart) donutChart.resize();
+      if (sdrCloserBarChart) sdrCloserBarChart.resize();
+      if (heatmapChart) heatmapChart.resize();
+      if (sankeyChart) sankeyChart.resize();
+    });
+  </script>
+</body>
+</html>

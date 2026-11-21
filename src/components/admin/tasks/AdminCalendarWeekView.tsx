@@ -1,7 +1,9 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Clock } from 'lucide-react';
+import { MonthYearSwitcher } from '../../ui';
 import type { AdminTask } from '../../../types/admin';
 import { getTaskTypeTheme, renderTaskTypeIcon } from '../../../utils/taskColors';
+import { toLocalDateStr, getTodayLocalStr } from '../../../utils/dateUtils';
 
 interface AdminCalendarWeekViewProps {
   tasks: AdminTask[];
@@ -10,6 +12,7 @@ interface AdminCalendarWeekViewProps {
   onOpenTask: (task: AdminTask) => void;
   onNewTaskForDate?: (dateStr: string, timeStr?: string) => void;
   onUpdateTask?: (id: string, data: Partial<AdminTask>) => void;
+  getTaskAccent?: (task: AdminTask) => { color: string; label: string } | null;
 }
 
 export const AdminCalendarWeekView: React.FC<AdminCalendarWeekViewProps> = ({
@@ -19,9 +22,10 @@ export const AdminCalendarWeekView: React.FC<AdminCalendarWeekViewProps> = ({
   onOpenTask,
   onNewTaskForDate,
   onUpdateTask,
+  getTaskAccent,
 }) => {
   const todayStr = useMemo(() => {
-    return new Date().toISOString().split('T')[0];
+    return getTodayLocalStr();
   }, []);
 
   // Compute the 7 days of the current week (Monday to Sunday)
@@ -35,7 +39,7 @@ export const AdminCalendarWeekView: React.FC<AdminCalendarWeekViewProps> = ({
     for (let i = 0; i < 7; i++) {
       const d = new Date(monday);
       d.setDate(monday.getDate() + i);
-      const dateStr = d.toISOString().split('T')[0];
+      const dateStr = toLocalDateStr(d);
       const weekdayShort = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'][i];
       const dayNum = d.getDate();
       
@@ -117,18 +121,31 @@ export const AdminCalendarWeekView: React.FC<AdminCalendarWeekViewProps> = ({
     return () => clearInterval(interval);
   }, []);
 
-  // Calculate pixel top and height for a task (default duration: 10 minutes)
+  // Calculate pixel top and height for a task (parse seguro de horário)
   const getTaskTopAndHeight = (task: AdminTask) => {
     if (!task.dueTime) return { top: 0, height: 28 };
-    const [h, m] = task.dueTime.split(':').map(Number);
+    const match = String(task.dueTime).match(/^(\d{1,2}):(\d{2})/);
+    if (!match) return { top: 0, height: 28 };
+    const h = parseInt(match[1], 10);
+    const m = parseInt(match[2], 10);
     const startMins = Math.max(0, (h - START_HOUR) * 60 + (m || 0));
     
-    // Default task duration is 10 minutes as requested
-    let durationMins = 10;
+    // Duração padrão: 60 minutos para eventos / tarefas na grade
+    let durationMins = 60;
     if (task.endTime) {
-      const [endH, endM] = task.endTime.split(':').map(Number);
-      const endTotalMins = (endH - START_HOUR) * 60 + (endM || 0);
-      durationMins = Math.max(10, endTotalMins - startMins);
+      const endMatch = String(task.endTime).match(/^(\d{1,2}):(\d{2})/);
+      if (endMatch) {
+        const endH = parseInt(endMatch[1], 10);
+        const endM = parseInt(endMatch[2], 10);
+        let endTotalMins = (endH - START_HOUR) * 60 + (endM || 0);
+        // Se cruzar meia-noite (ex: 20:00 às 02:00)
+        if (endH < h) {
+          endTotalMins = (24 - START_HOUR) * 60;
+        }
+        if (endTotalMins > startMins) {
+          durationMins = Math.max(20, endTotalMins - startMins);
+        }
+      }
     }
     
     const topPx = (startMins / 60) * HOUR_HEIGHT;
@@ -267,9 +284,9 @@ export const AdminCalendarWeekView: React.FC<AdminCalendarWeekViewProps> = ({
             <ChevronLeft size={16} />
           </button>
 
-          <span style={{ fontSize: '0.86rem', fontWeight: 800, color: 'var(--adm-text-title, #0F172A)', letterSpacing: '-0.2px' }}>
-            {weekRangeLabel}
-          </span>
+          <MonthYearSwitcher year={currentDate.getFullYear()} month={currentDate.getMonth()} label={weekRangeLabel}
+            onChange={(y, m) => onDateChange(new Date(y, m, Math.min(currentDate.getDate(), new Date(y, m + 1, 0).getDate())))}
+            style={{ fontSize: '0.86rem', color: 'var(--adm-text-title, #0F172A)', letterSpacing: '-0.2px' }} />
 
           <button
             type="button"
@@ -350,6 +367,122 @@ export const AdminCalendarWeekView: React.FC<AdminCalendarWeekViewProps> = ({
         </div>
       </div>
 
+      {/* 2.1 Linha de Eventos Sem Horário / O Dia Todo */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'stretch',
+        borderBottom: '1px solid var(--adm-border, #E2E8F0)',
+        background: 'var(--adm-bg-surface, #F8FAFC)',
+        minHeight: '42px',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+      }}>
+        <div style={{
+          width: `${GUTTER_WIDTH}px`,
+          flexShrink: 0,
+          borderRight: '1px solid var(--adm-border, #E2E8F0)',
+          background: 'var(--adm-bg-surface, #F8FAFC)',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '6px 2px',
+          gap: '2px',
+          userSelect: 'none',
+        }}>
+          <Clock size={11} color="#64748B" style={{ opacity: 0.8 }} />
+          <span style={{ fontSize: '0.58rem', fontWeight: 800, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.2px', textAlign: 'center', lineHeight: 1.1 }}>
+            Sem hora
+          </span>
+        </div>
+
+        <div style={{
+          flex: 1,
+          display: 'grid',
+          gridTemplateColumns: 'repeat(7, 1fr)',
+        }}>
+          {weekDays.map((wd, index) => {
+            const dayTasks = tasks.filter(t => t.dueDate === wd.dateStr);
+            const untimedTasks = dayTasks.filter(t => {
+              if (!t.dueTime || !t.dueTime.trim()) return true;
+              const match = String(t.dueTime).match(/^(\d{1,2}):(\d{2})/);
+              if (!match) return true;
+              const h = parseInt(match[1], 10);
+              return h < START_HOUR || h > END_HOUR;
+            });
+
+            return (
+              <div
+                key={`untimed-${wd.dateStr}`}
+                style={{
+                  padding: '4px',
+                  borderRight: index < 6 ? '1px solid #E2E8F0' : 'none',
+                  background: wd.isToday ? 'rgba(2, 132, 199, 0.03)' : 'transparent',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '3px',
+                  minHeight: '34px',
+                  maxHeight: '130px',
+                  overflowY: 'auto',
+                }}
+              >
+                {untimedTasks.map(task => {
+                  const accent = getTaskAccent ? getTaskAccent(task) : null;
+                  const isCompleted = task.status === 'completed';
+                  const theme = getTaskTypeTheme(task);
+
+                  return (
+                    <div
+                      key={task.id}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onOpenTask(task);
+                      }}
+                      style={{
+                        padding: '3px 6px',
+                        borderRadius: '5px',
+                        border: accent ? `1px solid ${accent.color}66` : `1px solid ${theme.badgeBorder}`,
+                        borderLeft: accent ? `3.5px solid ${accent.color}` : `3.5px solid ${theme.primaryColor}`,
+                        background: accent ? `${accent.color}14` : (isCompleted ? 'var(--adm-bg-surface, #F8FAFC)' : theme.badgeBg),
+                        color: 'var(--adm-text-title, #0F172A)',
+                        cursor: 'pointer',
+                        fontSize: '0.67rem',
+                        fontWeight: 800,
+                        lineHeight: 1.2,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+                        transition: 'transform 0.1s ease, box-shadow 0.1s ease',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.transform = 'translateY(-1px)';
+                        e.currentTarget.style.boxShadow = '0 2px 4px rgba(0,0,0,0.08)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.transform = 'none';
+                        e.currentTarget.style.boxShadow = '0 1px 2px rgba(0,0,0,0.04)';
+                      }}
+                      title={task.title}
+                    >
+                      <span style={{ display: 'flex', flexShrink: 0 }}>
+                        {renderTaskTypeIcon(theme.category, 10, accent ? accent.color : theme.primaryColor)}
+                      </span>
+                      <span style={{
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}>
+                        {task.title}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
       {/* 3. Main Grid (07:00 to 23:00 in 30min slots) */}
       <div style={{
         flex: 1,
@@ -407,7 +540,13 @@ export const AdminCalendarWeekView: React.FC<AdminCalendarWeekViewProps> = ({
         }}>
           {weekDays.map((wd, colIndex) => {
             const dayTasks = tasks.filter(t => t.dueDate === wd.dateStr);
-            const timedTasks = dayTasks.filter(t => Boolean(t.dueTime));
+            const timedTasks = dayTasks.filter(t => {
+              if (!t.dueTime || !t.dueTime.trim()) return false;
+              const match = String(t.dueTime).match(/^(\d{1,2}):(\d{2})/);
+              if (!match) return false;
+              const h = parseInt(match[1], 10);
+              return h >= START_HOUR && h <= END_HOUR;
+            });
 
             return (
               <div
@@ -483,6 +622,7 @@ export const AdminCalendarWeekView: React.FC<AdminCalendarWeekViewProps> = ({
                   const theme = getTaskTypeTheme(task);
                   const timeDisplay = task.endTime ? `${task.dueTime}-${task.endTime}` : task.dueTime;
                   const isBeingDragged = draggedTaskId === task.id;
+                  const accent = getTaskAccent ? getTaskAccent(task) : null;
 
                   return (
                     <div
@@ -502,12 +642,13 @@ export const AdminCalendarWeekView: React.FC<AdminCalendarWeekViewProps> = ({
                         zIndex: 10,
                         padding: '4px 6px',
                         borderRadius: '6px',
-                        border: isOverdue 
+                        border: accent ? `1px solid ${accent.color}66` : isOverdue
                           ? '1.5px solid #FCA5A5' 
                           : isCompleted 
                             ? '1px solid var(--adm-border, #E2E8F0)' 
                             : `1px solid ${theme.badgeBorder}`,
-                        background: isOverdue 
+                        borderLeft: accent ? `4px solid ${accent.color}` : undefined,
+                        background: accent ? `${accent.color}18` : isOverdue
                           ? '#FEF2F2' 
                           : isCompleted 
                             ? 'var(--adm-bg-surface, #F8FAFC)' 

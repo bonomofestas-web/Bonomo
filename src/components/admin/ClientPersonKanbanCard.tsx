@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
-import { MoreVertical, Eye, MessageSquare, Trash2, Check, Link2, Building2, Phone, User, Copy } from 'lucide-react';
+import { MoreVertical, Eye, MessageSquare, Trash2, Check, Link2, Building2, Phone, Copy } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatPhone } from '../../utils/phoneFormatter';
 import { relationshipLabel } from '../../utils/roleLabels';
+import { SafeAvatar } from './SafeAvatar';
 import type { Client, Collaborator, Venue } from '../../types/admin';
+import { useAdminState } from '../../context/AdminStateContext';
 
 export interface ClientPersonKanbanCardProps {
   client: Client;
@@ -32,6 +34,7 @@ export const ClientPersonKanbanCard: React.FC<ClientPersonKanbanCardProps> = ({
   onToggleSelect, onDragStart, onClick, onOpenInspector, onOpenWhatsApp, onDeleteClient, onLinkContractor,
   venues = [], collaborators = [],
 }) => {
+  const { leads = [] } = useAdminState();
   const [menuOpen, setMenuOpen] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -42,6 +45,29 @@ export const ClientPersonKanbanCard: React.FC<ClientPersonKanbanCardProps> = ({
   const managerId = client.assignedSuccessManagerId || (client as any).assignedToId;
   const responsible = collaborators.find(c => c.id === managerId)?.name || client.assignedSuccessManagerName || client.assignedTo || '';
   const displayName = (client.name || client.payerName || 'Sem nome').trim();
+  const clientAvatar = React.useMemo(() => {
+    const directAvatar = client.avatarUrl || (client as any).photoUrl || (client as any).profilePicUrl || (client as any).custom_field_values?.avatarUrl || (client as any).customFieldValues?.avatarUrl;
+    if (directAvatar) return directAvatar;
+
+    // Procura por ID direto no leads
+    const matchingById = (leads || []).find(l => l.id === client.id);
+    const picById = matchingById?.avatarUrl || (matchingById as any)?.custom_field_values?.avatarUrl || (matchingById as any)?.customFieldValues?.avatarUrl;
+    if (picById) return picById;
+
+    // Procura por telefone no leads
+    const rawPhone = phone || (client as any).phone || '';
+    const digits = rawPhone.replace(/\D/g, '');
+    if (digits.length >= 8) {
+      const last8 = digits.slice(-8);
+      const matchingLead = (leads || []).find(l => {
+        const lDigits = (l.phone || '').replace(/\D/g, '');
+        return lDigits.slice(-8) === last8 && (l.avatarUrl || (l as any).custom_field_values?.avatarUrl || (l as any).customFieldValues?.avatarUrl);
+      });
+      const leadPic = matchingLead?.avatarUrl || (matchingLead as any)?.custom_field_values?.avatarUrl || (matchingLead as any)?.customFieldValues?.avatarUrl;
+      if (leadPic) return leadPic;
+    }
+    return undefined;
+  }, [client, leads, phone]);
 
   const copyCode = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -133,9 +159,11 @@ export const ClientPersonKanbanCard: React.FC<ClientPersonKanbanCardProps> = ({
 
       {/* Pessoa */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-        <div style={{ width: 34, height: 34, borderRadius: '50%', background: 'rgba(100, 116, 139, 0.16)', color: '#64748B', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-          <User size={16} />
-        </div>
+        <SafeAvatar
+          src={clientAvatar}
+          name={displayName}
+          size={34}
+        />
         <div style={{ minWidth: 0, flex: 1 }}>
           <div style={{ fontSize: '0.86rem', fontWeight: 800, color: 'var(--adm-text-title, #0F172A)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={displayName}>
             {displayName}

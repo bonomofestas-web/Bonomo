@@ -20,13 +20,16 @@ export type AdminRole =
   | 'pos_venda'
   | 'financeiro';
 
+export type ContractFillStage = 'pendente' | 'aguardando_assinatura' | 'juntando_documentos' | 'preenchido';
+
 export type FeatureFlagId =
   | 'master_dashboard'
   | 'commercial_dashboard'
   | 'goals'
   | 'team_presence'
   | 'whatsapp_messaging'
-  | 'chat_local_cache';
+  | 'chat_local_cache'
+  | 'finance';
 
 export type FeatureFlagStatus = 'active' | 'coming_soon' | 'disabled';
 
@@ -142,6 +145,8 @@ export interface Venue {
   fontFamily: string;
   welcomeVideoUrl?: string; // Vídeo vertical 9:16 padrão da casa
   welcomeVideoName?: string;
+  /** Cor da casa nos calendarios (agenda de eventos, tarefas, compromissos, agendamentos) */
+  calendarColor?: string;
   active?: boolean; // Status da unidade (ativa ou desativada/pausada)
   createdAt: string;
   // Lead distribution config for this venue
@@ -870,6 +875,7 @@ export interface Client {
   id: string;
   code: string;                          // ex: 'CLI-8W3K9P'
   name: string;                          // Nome da Aniversariante / Homenageada (ex: Fernanda)
+  avatarUrl?: string;                    // URL da foto de perfil / WhatsApp
   honoreeName?: string;                  // Nome da Aniversariante (compatibilidade)
   honoreeBirthDate?: string;
   honoreeAge?: number;
@@ -1366,7 +1372,46 @@ export interface QuickMessage {
 // CENTRAL DE CONTATOS & CONTRATOS DE EVENTOS (F5 SYSTEM v1.2)
 // ==============================================================================
 
+/** Ficha do fornecedor (contacts.supplier_profile) */
+export interface SupplierProfile {
+  segment?: string;        // segmento (buffet, decoracao, foto, DJ...)
+  offers?: string;         // o que vende
+  companyName?: string;    // razao social / nome fantasia
+  cnpj?: string;
+  pixType?: 'cnpj' | 'cpf' | 'email' | 'telefone' | 'aleatoria';
+  pixKey?: string;
+  address?: string;
+  notes?: string;
+}
+
+export type SupplierQuoteStatus = 'pendente' | 'aprovado' | 'reprovado';
+
+/** Orcamento de fornecedor: os "ativos" do fornecedor no Contato */
+export interface SupplierQuote {
+  id: string;
+  masterId: string;
+  contactId: string;
+  venueId?: string;
+  contractId?: string;
+  title: string;
+  description?: string;
+  amount: number;
+  status: SupplierQuoteStatus;
+  requestedByName?: string;
+  decidedByName?: string;
+  decidedAt?: string;
+  decisionNote?: string;
+  createdAt: string;
+}
+
+export type ContactListFilter = 'all' | 'active_contract' | 'supplier';
+
 export interface Contact {
+  /** Marcado como fornecedor (vale para quem veio do comercial ou do pos-venda) */
+  isSupplier?: boolean;
+  supplierProfile?: SupplierProfile;
+  /** Transformado em colaborador */
+  isCollaborator?: boolean;
   id: string;
   masterId: string;
   code: string;                          // Código Base36 ex: 'CONT-4H8W2N9Q'
@@ -1485,8 +1530,17 @@ export interface Contract {
 
   // Valores e Condições
   totalAmount: number;
+  signalAmount?: number;
+  /** Data de fechamento da venda (YYYY-MM-DD) */
+  closedAt?: string;
   entryAmount?: number;
   balanceAmount?: number;
+  /** Condicao de pagamento combinada, em texto (o fluxo estruturado fica no financeiro) */
+  paymentSummary?: string;
+  /** Etapa de fechamento conduzida pelo closer */
+  fillStage?: ContractFillStage;
+  /** Recado do financeiro ao devolver o contrato ao closer */
+  financeMessage?: string;
   contractValue?: number;
   packageChosen?: string;
   paymentMethod?: string;
@@ -1573,7 +1627,15 @@ export type AdminTabType =
   | 'sla-settings'
   | 'debutantes'
   | 'venue-goals'
+  | 'finance'
+  | 'finance-approval'
+  | 'finance-payables'
+  | 'finance-cashflow'
+  | 'finance-calendar'
+  | 'finance-dre'
+  | 'finance-settings'
   | 'master-dashboard'
+  | 'system-settings'
   | 'venues'
   | 'benefits'
   | 'collaborators'

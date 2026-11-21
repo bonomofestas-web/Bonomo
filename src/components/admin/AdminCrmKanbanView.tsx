@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   Kanban, List, LayoutGrid, Search, Building2,
-  Inbox, Calendar, DollarSign,
+  Calendar, DollarSign,
   ChevronDown, Plus, Layers,
   Users, ArrowRight, X,
   Megaphone, Sparkles, Target,
@@ -36,6 +36,7 @@ import { useAdminState } from '../../context/AdminStateContext';
 import type { FilterState } from './AdminFilterBar';
 import { AdminWhatsAppWorkspaceView } from './AdminWhatsAppWorkspaceView';
 import { CloseDealValueModal } from './CloseDealValueModal';
+import { getClosingStatus, CLOSING_STATUS_META } from '../../utils/closingStatus';
 import { AdminLostReasonModal } from './AdminLostReasonModal';
 import { AdminLeadMissingFieldsModal } from './AdminLeadMissingFieldsModal';
 import { AdminLeadDetailModal } from './AdminLeadDetailModal';
@@ -691,10 +692,10 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
   const [isFilterBarExpanded, setIsFilterBarExpanded] = useState(false);
 
   const sortOptions = [
+    { id: 'message_recent', label: 'Mensagem Mais Recente' },
     { id: 'waiting_time', label: 'Tempo de Espera (Prioridade)' },
-    { id: 'recent', label: 'Mais Recentes (Data)' },
+    { id: 'recent', label: 'Mais Recentes (Entrada no Funil)' },
     { id: 'oldest', label: 'Mais Antigos (Data)' },
-    { id: 'message_recent', label: 'Mais Recente (Mensagem)' },
     { id: 'message_oldest', label: 'Mais Antiga (Mensagem)' },
     { id: 'name_asc', label: 'Ordem Alfabética (A-Z)' },
     { id: 'name_desc', label: 'Ordem Alfabética (Z-A)' },
@@ -1559,6 +1560,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
       contractTitle?: string;
       downPayment?: number;
       installmentsCount?: number;
+      paymentPlan?: import('../../utils/paymentPlan').PaymentPlan;
       hasCreditCard?: boolean;
       contractSignedFileUrl?: string;
       contractSignedFileName?: string;
@@ -2716,6 +2718,16 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
             )}
           </div>
 
+          {/* Seletor Rápido de Ordenação do Kanban */}
+          <div style={{ position: 'relative', flexShrink: 0 }}>
+            <AdminFilterDropdown
+              value={filterState.sortBy || 'waiting_time'}
+              options={sortOptions}
+              onChange={(val) => setFilterState(prev => ({ ...prev, sortBy: val as any }))}
+              maxWidth="215px"
+            />
+          </div>
+
           {/* Toggle Rápido: Todos vs Em Aberto vs Meus Leads */}
           <div style={{
             display: 'inline-flex',
@@ -2859,7 +2871,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                 setActiveLeadIdForWorkspace(null);
                 setViewMode('workspace');
               }}
-              title={totalUnreadMessages > 0 ? `Caixa de Entrada (${totalUnreadMessages} mensagens não lidas)` : "Caixa de Entrada / Chat"}
+              title={totalUnreadMessages > 0 ? `Mensagens / Caixa de Entrada (${totalUnreadMessages} mensagens não lidas)` : "Mensagens / Caixa de Entrada"}
               style={{
                 background: viewMode === 'workspace' ? 'var(--adm-accent-bg)' : 'transparent',
                 color: viewMode === 'workspace' ? 'var(--adm-accent)' : 'var(--adm-text-muted)',
@@ -2874,7 +2886,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                 position: 'relative',
               }}
             >
-              <Inbox size={14} />
+              <MessageSquare size={14} />
               {totalUnreadMessages > 0 && (
                 <span style={{
                   position: 'absolute',
@@ -3795,6 +3807,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                       }}>
                                         {formattedTotal}
                                       </span>
+                                      {(() => { const cs = getClosingStatus(lead as any); const m = cs ? CLOSING_STATUS_META[cs] : null; return m ? <span style={{ fontSize: '0.62rem', fontWeight: 800, padding: '1px 6px', borderRadius: 999, color: m.color, background: m.bg, whiteSpace: 'nowrap' }}>{m.label}</span> : null; })()}
                                       <div style={{
                                         width: '18px',
                                         height: '18px',

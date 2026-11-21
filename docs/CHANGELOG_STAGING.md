@@ -23,6 +23,8 @@ Grande reestruturação de governança, experiência do usuário, banco de dados
 1. **Central de Contatos Unificada:** Identificador alfanumérico Base36 (`CONT-XXXXXXXX`) de alta entropia, unificação de contatos e dependentes/família sem duplicação de pessoas.
 2. **Gestão e Mesa de Homologação de Contratos:** Fluxo de homologação formal de vendas (`CTR-AAAA-XXXXXX`) com congelamento unilateral permanente dos dados do cliente, termos e responsáveis (SDR, Closer e Aprovador).
 3. **Fluxo de Devolução e Ajuste de Contratos:** Criação automática de tarefa prioritária (SLA de 24h) atribuída diretamente ao Closer no cancelamento/revisão com justificativa.
+4. **Resolução e Adaptação Automática de Fichas de Clientes com Contratos:** Detecção e renderização completa de contratos vinculados por contato/telefone na gaveta de inspeção, mesmo para leads ainda sem card na tabela `clients`.
+5. **Agenda de Eventos - Modo Semana com Seção 'Sem Horário':** Exibição de eventos do dia sem horário fixo logo abaixo do cabeçalho da data e suporte a faixas horárias na grade.
 4. **Motor de Backend Multi-Funil e Unicidade 1:N:** Relação 1:N de Origens, ingestão atômica Base36 de Lead e Contato, e regras de contratos multi-funil com sincronização de conclusão global.
 5. **Stack Gráfica Oficial (Tremor Raw & Apache ECharts):** Gráficos de área com gradientes para faturamento, comparativo SDR vs Closer, anéis de metas por casa, funis de conversão com rótulos em 2 linhas, heatmaps de WhatsApp e diagramas Sankey de origem.
 6. **Funil Comercial Refinado com Unicidade:** Nova esteira oficial de 6 etapas e regra estrita de unicidade (visita + degustação para o mesmo contato contam como 1 único lead agendado).
@@ -39,6 +41,185 @@ Grande reestruturação de governança, experiência do usuário, banco de dados
 17. **Saneamento e Higienização Relacional do Banco:** Expurgo de duplicidades históricas na base de contratos e consolidação de vínculos reais e íntegros entre contratos, pessoas e funis por Barney.
 
 ### Recursos e Melhorias em Staging
+
+- **Refatoração da Ficha de Pós-Venda e Visualização Cirúrgica de Contatos** (`pos-venda` / `client-drawer` / `whatsapp`):
+  * **Regra de Vínculo Contratual (Ocultação de Card Solto no Kanban):**
+    - Quando um contato/lead (ex.: mãe Carla) é vinculado a um contrato oficial existente (ex.: Antônio / Vitória 15 Anos), ele é unificado sob o card oficial do contrato.
+    - No **Modo Kanban (`AdminPostSaleKanbanView`)**, contatos vinculados a contratos são ocultados como cards soltos/avulsos ("SEM CONTRATO"), eliminando poluição visual e duplicidade de cards nas colunas.
+    - Na **Caixa de Entrada e no WhatsApp Workspace**, o contato continua 100% visível e acessível na lista de conversas, com o selo do contrato vinculado para atendimento normal.
+  * **Blindagem Atômica Contra Mensagens e Leads Duplicados:**
+    - Purga de 235 mensagens duplicadas existentes na tabela `lead_activities`.
+    - Criação de índice único parcial no PostgreSQL: `idx_lead_activities_unique_msg_id` em `(lead_id, (metadata->>'messageId'))`.
+    - Tratamento atômico de corrida concorrente (`23505`) no webhook `api/whatsapp-webhook.ts`, impedindo criação de registros duplicados mesmo em retentativas simultâneas da UAZAPI.
+    - Blindagem na detecção de lead concorrente pelo número telefônico antes do cadastro.
+  * **Isolamento Estrito entre Instâncias / Multi-Chip:**
+    - Ao alternar a instância de envio (ex.: de "POS VENDA GLORIA" para "ERL 9915" na conversa de um cliente), as mensagens de outros chips são ocultadas com isolamento estrito, permitindo iniciar conversas limpas e segmentadas pelo novo número.
+  * **Padronização Visual de Título de Contrato na Lista de Conversas:**
+    - O subtítulo com ícone de documento no card de conversa passa a exibir unicamente o nome da debutante/homenageada (1º e 2º nome) e o tipo de evento (ex.: "Vitória Rodrigues • 15 Anos"), expurgando o nome do contratante ("Antônio Rodrigues") daquele indicador.
+  * **Exibição do Nome Real do Funil na Caixa de Entrada:**
+    - Corrigido rótulo genérico "Sucesso do Cliente" para priorizar o nome oficial do funil (ex.: "ERL PÓS").
+  * **Tratamento de Avatares Inexistentes e SafeAvatar:**
+    - Erradicação de fallbacks cegos de R2 gerando links 404 para telefones sem foto cadastrada.
+    - No `<SafeAvatar>`, para tamanhos pequenos (`size <= 28`), exibição cirúrgica apenas da 1ª inicial (ex.: "A"), e reset automático de estado de erro em caso de atualização de URL.
+  * **Cards Compactos com Fotos e Sem Botão 'Zap' (`AdminClientDrawerInspector.tsx`):**
+    - Contratante Pagante e Contatos Secundários (Mãe, Pai, Copagante) agora renderizam por padrão no formato compacto/recolhido: avatar oficial `<SafeAvatar size={34} />` à esquerda com foto de perfil, nome em negrito, badges de parentesco/decisor, telefone formatado com ícone `Phone` e chevron para expansão.
+    - Eliminação definitiva de botões externos "Zap" que desviavam o usuário para fora da plataforma.
+    - Ao expandir, o formulário completo de edição é exibido com opção de recolher a qualquer momento.
+  * **Tag Rápida da Unidade no Topo da Gaveta:** Exibição da unidade física do contrato com ícone `Building2` logo ao lado do badge de contrato vinculado/código do cliente.
+  * **Gestor de Sucesso Resiliente e Filtrado por Unidade:** Resolução do nome do gestor responsável atribuído mesmo em casos de discrepância de identificador, e filtragem do dropdown de atribuição para a equipe de pós-venda da unidade física do contrato.
+  * **Funis Relacionados com Adição Rápida via Botão `+`:** Seção de progresso nos funis renomeada para **Funis Relacionados**, trazendo botão `+` para Masters e Gerentes com popover para vincular o contrato a outro funil de pós-venda da mesma casa física (`contractService.addContractPlacement`).
+  * **Slot da Debutante / Protagonista com Avatar Oficial (`ClientContractSection.tsx`):** Renderização da foto de perfil `<SafeAvatar size={34} />` resolvida dinamicamente pelo número de WhatsApp cadastrado na linha da aniversariante.
+  * **Resolução Dinâmica e Universal de Avatars (`AdminWhatsAppWorkspaceView.tsx`):** Unificação da resolução de fotos de contatos no histórico e no cabeçalho de conversa através de `resolveAvatarForPhone`, garantindo fotos imediatas para familiares (Carla, Glória, etc.).
+  * **Isolamento de Conversas e Leitura por Destinatário Ativo:** Leitura cirúrgica de mensagens e encerramento de atendimento restrito estritamente ao membro da família com quem o chat está ativo, preservando chats de outros familiares.
+  * **Correção Crítica de TDZ em `resolveAvatarForPhone` (`AdminWhatsAppWorkspaceView.tsx`):** Erradicação definitiva do erro de runtime `ReferenceError: Cannot access 'currentClient' before initialization` que impedia a montagem do chat ao acessar `currentClient` antes de sua declaração, restaurando o carregamento imediato do workspace de mensagens.
+  * **Exibição Inteligente de Fotos nos Cards do Kanban de Pós-Venda (`AdminContractKanbanCard.tsx` e `ClientPersonKanbanCard.tsx`):** Implementada resolução dinâmica de avatares para cards de contratos e pessoas soltas no Kanban, buscando fotos sincronizadas pelo WhatsApp em `leads` e Cloudflare R2 por número telefônico tanto do contratante quanto dos contatos familiares vinculados (ex.: foto da Carla exibida com perfeição no contrato da família).
+  * **Preservação e Consolidação Segura de Atividades no Chat Familiar:** Auditoria de integridade no Supabase comprovou 100% das mensagens salvas intactas no banco; ampliada a varredura de atividades em `effectiveLeadActivities` para cobrir o conjunto consolidado de `sourceLeads` e `leads`, garantindo que o histórico completo de 77 mensagens reais seja renderizado sem perdas.
+  * **Central de Contatos como Single Source of Truth para Fotos do WhatsApp (TTL de 7 Dias):** Implementada a persistência centralizada de fotos de perfil em `contacts.profile_picture_url` e `contacts.avatar_refreshed_at`. Toda interação com lead ou cliente (ao abrir chat/ficha, enviar ou receber mensagem) checa se passaram mais de 7 dias da última verificação. Se houver foto nova, salva no Cloudflare R2 (`picture_{code}.jpg?v=timestamp`) e propaga instantaneamente para `contacts`, `leads` e `clients`, sincronizando Kanban, Chat e Fichas de uma só vez.
+
+- **Padronização Visual dos Cards de Conversa e Modo Caixa de Entrada** (`whatsapp` / `pos-venda` / `crm`):
+  - **Badges Padronizados no Rodapé das Conversas:** Remoção do badge de tipo de evento/anos (`lead.eventType`), posicionando o **Funil na frente** (com logo ou ícone do funil renderizado na frente do nome) e a **Unidade** ao lado (com ícone `Building2`), ambos com altura idêntica padronizada (`20px`), layout nivelado, simétrico e alinhado.
+  - **Subtítulo Limpo do Contrato Vinculado:** Extração direta e estrita da homenageada/aniversariante (1º e 2º nome) + evento (ex.: `Vitória Rodrigues • 15 Anos`), com eliminação definitiva de qualquer prefixo ou menção ao nome do contratante pagante (`formatContractHonoreeTitle`).
+  - **Abertura Direta da Ficha do Contrato para Contatos Familiares:** Ao clicar em um contato familiar (ex.: Carla Nogueira), o sistema identifica o contrato mestre associado e abre diretamente a **Ficha do Contrato de Pós-Venda** (onde constam contratante, mãe, debutante, checklist e detalhes do evento).
+  - **Alternador de Familiares no Topo do Chat por Recência:** Reordenação dinâmica dos botões de WhatsApp familiar no cabeçalho da mensagem pelo timestamp da mensagem mais recente (quem interagiu por último fica em 1º lugar à esquerda).
+  - **Fluxo do Modo Caixa de Entrada a partir do Kanban:** Ao alternar para o modo Caixa de Entrada sem lead selecionado previamente, a lista de conversas inicia aberta com a mensagem "Selecione uma conversa para iniciar o atendimento", sem forçar abertura arbitrária do primeiro lead; ao clicar em qualquer conversa, o sistema recolhe a lista e abre a conversa com a ficha lateral.
+  - **Ícone e Nome do Funil no Cabeçalho:** Substituição do ícone pelo oficial de mensagens (`MessageSquare`) e exibição dinâmica do nome real do funil ativo (ex.: `Caixa de Entrada • ERL PÓS`) em vez do texto estático "Sucesso do Cliente".
+
+- **Ordenação por Mensagem Mais Recente no Kanban Comercial e Pós-Venda** (`kanban` / `crm` / `pos-venda`):
+  * **Cálculo de Mensagem Multicontato Familiar (`getClientFamilyLatestMessageTime`):** No Kanban de Pós-Venda (`AdminPostSaleKanbanView.tsx` e `leadSorting.ts`), a ordenação por "Mensagem Mais Recente" varre simultaneamente todos os números de WhatsApp vinculados ao contrato (Pai pagante, Mãe e Debutante/dependentes) e elege a interação mais recente dentre todos eles para determinar a posição do card na coluna.
+  * **Seletor Rápido de Ordenação na Toolbar:** Adicionado na toolbar superior do Kanban de Pós-Venda e do CRM Comercial o dropdown direto de ordenação com opções claras: *Mensagem Mais Recente*, *Tempo de Espera (Prioridade)*, *Mais Recentes (Entrada no Funil)*, *Data da Festa*, *Maior Rentabilidade* e *Alfabética*.
+  * **Fim da Ambiguidade de 'Mais Recentes':** Distinção transparente entre ordenação por *Entrada no Funil* (`createdAt` / `funnelEnteredAt`) e *Mensagem Mais Recente* (última mensagem real de chat trocada no WhatsApp).
+
+- **Vínculo Familiar ao Contrato e Preservação de Conversas no WhatsApp** (`pos-venda` / `whatsapp` / `crm`):
+  * **Exibição da Família no Card do Contrato:** O card mestre do contrato no Kanban do Pós-Venda (`AdminContractKanbanCard.tsx`) agora renderiza de forma unificada os contatos secundários e familiares vinculados em `client.contacts` (ex: `Pai: Antônio Rodrigues`, `Mãe: Carla Nogueira`, `Debutante: Vitória`) com ícone elegante `Users` e tipografia refinada.
+  * **Absorção no Kanban sem Perda de Mensagem:** Quando um contato solto (ex: Carla Nogueira) é vinculado ao contrato no funil, o card mestre do contrato representa a família naquele funil, eliminando duplicidade visual de cards soltos solteiros no mesmo funil.
+  * **Identificação Imediata de Contrato e Funil nas Mensagens:** No WhatsApp Workspace (`AdminWhatsAppWorkspaceView.tsx`), cada pessoa mantém sua conversa individual com nome, foto e telefone. Logo abaixo do nome do contato, é renderizado pequenininho e discreto o nome do contrato vinculado (`<FileText size={10} color="#D4AF37" />`). Na linha de tags, o badge do **Funil** da mensagem é exibido com alto destaque visual (`#6366F1`), permitindo ao operador identificar instantaneamente por qual funil a cliente está interagindo.
+  * **Regras Oficiais de Duplicidade:** Comercial (mesmo WhatsApp em funis comerciais diferentes = permitido; no mesmo funil = duplicado); Pós-Venda (mesmo WhatsApp/contrato em funis de pós-venda diferentes = permitido; no mesmo funil = duplicado).
+
+- **Harmonização do Seletor de Unidades e Cabeçalho de Agenda** (`layout` / `events`):
+  * **Seletor de Unidades Limpo na Barra Lateral (`AdminSidebar.tsx`):** Removido o botão de engrenagem circular de dentro do switcher de unidades, substituindo por uma seta discreta (`ChevronDown`). Quando todas as unidades estiverem selecionadas, o seletor fechado exibe **"Todas"** e o menu popover exibe **"Todas as Unidades"** (sem o sufixo "(Rede Geral)").
+  * **Cabeçalho da Agenda de Eventos (`AdminVenueEventsView.tsx`):** O botão de Regras de Disponibilidade foi integrado com o design corporativo do sistema com rótulo "Disponibilidade" e ícone sutil, eliminando círculos e animações fora do padrão visual.
+  * **Agenda de Eventos - Modo Semana com Seção 'Sem Horário' (`AdminCalendarWeekView.tsx`):** Eventos de dia inteiro ou sem horário fixo agora são exibidos em destaque na linha logo abaixo da data de cada dia da semana, garantindo que nenhuma festa ou evento suma da visualização semanal.
+
+- **Preservação Estrita de Etapa e Posição ao Vincular Contratos** (`crm` / `core`):
+  * **Imutabilidade de Etapa:** Ao vincular qualquer cliente ou lead a um contrato (ou ao transformar e associar contrato), o card agora permanece **rigorosamente na mesma etapa e no mesmo funil** em que já se encontrava.
+  * **Eliminação de Resets:** Removida qualquer forçação de estágio (como forçar `onboarding` ou inicial) em `contractService.linkLooseLeadToContract` e em `contract_funnel_placements`.
+  * **Fim de Deleção Indevida por Merge:** Extirpada a chamada a `mergeLeads` no `AdminLinkContractorModal.tsx`, garantindo que o card vinculado não seja apagado nem suma do Kanban, mantendo 100% sua visibilidade e integridade.
+  * **Preservação de WhatsApps de Familiares e Dependentes:** Corrigido o `filterExtraPostSaleLeads` em `src/utils/funnelUtils.ts` e no `AdminWhatsAppWorkspaceView.tsx`. Contatos secundários e familiares (mãe, debutante, cônjuge) com telefones próprios não são mais suprimidos como se fossem duplicatas do titular pagante, garantindo que o card e a conversa de WhatsApp de cada membro da família permaneçam visíveis no Kanban de Pós-Venda e na Central de Mensagens.
+
+- **Classificação Estrita 'Cliente no Pós-Venda' vs 'Lead Comercial' em Ativos e Busca Global** (`ui` / `ux` / `crm`):
+  * **Regra Suprema Aplicada:** *"Lead é somente em funis comerciais; no pós-venda, a pessoa é classificada e tratada como Cliente."*
+  * **Visão 360 da Central de Contatos (`AdminContactsView.tsx`):**
+    - Criação da seção dedicada **Clientes no Pós-Venda ({count})** com ícone `ShieldCheck` (verde esmeralda), badge corporativo `CLIENTE` e botão de ação direta *"Abrir no Pós-Venda"*.
+    - Seção **Leads Comerciais ({count})** restrita estritamente a oportunidades em negociação comercial, com badge azul `LEAD` e botão *"Abrir no CRM Comercial"*.
+  * **Busca Universal / Command Palette (`AdminGlobalSearch.tsx`):**
+    - Adicionado chip de filtro e categoria independente para **Clientes Pós-Venda** com ícone `ShieldCheck` e contagem em tempo real.
+    - Seções de resultados de busca agora segregam perfeitamente clientes pós-venda (badge verde `CLIENTE`) de leads em prospecção (badge azul `LEAD`), impedindo qualquer rotulagem indevida.
+
+- **Refinamento do Modal de Planejamento de Agendamento & Padronização Visual** (`ui` / `improvement`):
+  * **Modal na Identidade do Sistema:** O `AdminAgendaAvailabilityModal.tsx` agora é um verdadeiro modal com backdrop fixo (`rgba(0,0,0,0.7)`), desfoque de fundo (`backdropFilter: blur(4px)`), card centralizado (`max-w-[1100px]`, cantos arredondados `16px` e sombra profunda), fechamento ao clicar fora e tipografia padronizada em `Inter`.
+  * **Eliminação de Telas Intermediárias:** Removido o labirinto de Etapas 1 e 2. O modal abre diretamente no painel de configurações, permitindo selecionar e alternar a unidade física através de um `<select>` nativo e elegante no cabeçalho.
+  * **Alternador Integrado:** Cabeçalho com seletor direto de Casa de Festa e alternador de abas entre **Visitas Comerciais** e **Degustações Gastronômicas**, além de botão de fechar (`X`) e salvamento ágil.
+  * **Remoção de Círculos e Animações nas Engrenagens:**
+    - No seletor de unidade do topo da Sidebar (`AdminSidebar.tsx`): Removido o círculo externo (`borderRadius: 50%`) e o giro no hover (`rotate(45deg)`), mantendo um ícone de engrenagem sóbrio e integrado ao card.
+    - Na barra superior da Agenda de Eventos (`AdminVenueEventsView.tsx`): A engrenagem agora segue a linguagem visual dos controles vizinhos (formato retangular com cantos suaves `10px`, fundo translúcido e transição sutil de cor, sem rotação e sem borda circular pesada).
+  * **Ajuste de Nomenclatura no Seletor de Unidades:**
+    - No card do menu lateral quando nenhuma unidade individual está filtrada: alterado de "Rede Geral" para **"Todas"**.
+    - No menu popover suspenso de unidades: alterado de "Todas as Unidades (Rede Geral)" para **"Todas as Unidades"**.
+
+- **Correção de Fuso Horário nos Calendários (Bug de Virada após as 21h)** (`fix` / `core`):
+  * **Causa Raiz Identificada:** O sistema calculava a data de "Hoje" e as células dos calendários utilizando `new Date().toISOString().split('T')[0]`. Como o fuso horário de Brasília é UTC-3, qualquer horário a partir das 21:00 BRT corresponde a 00:00+ UTC do dia seguinte, adiantando o marcador de "Hoje" para o dia 21 mesmo sendo 20 de novembro.
+  * **Novo Utilitário Central de Datas Locais (`src/utils/dateUtils.ts`):** Criadas as funções `toLocalDateStr(d)`, `getTodayLocalStr()` e `fromLocalDateStr(s)` que extraem ano, mês e dia com base estrita no calendário e timezone local do navegador do usuário (`getFullYear()`, `getMonth()`, `getDate()`).
+  * **Ajuste nas Visualizações de Calendário:** Corrigidos `AdminCalendarMonthView.tsx`, `AdminCalendarWeekView.tsx`, `AdminCalendarDayView.tsx`, `AdminVenueEventsView.tsx`, `AdminTasksKanbanView.tsx`, `AdminTasksTableView.tsx` e `AdminUnifiedCalendarView.tsx` para utilizarem data local, garantindo que o dia de "Hoje" (destaque azul) corresponda exatamente ao dia real do usuário independentemente da hora da noite.
+
+- **Engrenagem de Planejamento de Agendamento na Barra Superior & Despoluição do Menu** (`ui` / `feature`):
+  * **Engrenagem na Barra Superior de Agenda de Eventos:** Adicionado botão circular dourado com ícone de engrenagem (`Settings`) na barra superior preta (à esquerda do seletor de visualização `Mês / Semana / Dia / Lista` em `AdminVenueEventsView.tsx`).
+  * **Configuração Direta de Disponibilidade:** O clique na engrenagem abre diretamente o modal oficial de Planejamento de Agendamento (`AdminAgendaAvailabilityModal`), permitindo configurar regras de visitas, degustações, capacidade máxima e horários recorrentes da unidade sem trocar de tela.
+  * **Remoção de 'Compromissos' do Menu:** O item "Compromissos" foi removido da barra lateral de Pós-Venda (`postSaleItems`), concentrando a gestão de calendário e planejamento na Agenda de Eventos.
+
+- **Central de Configurações do Sistema & Integração de Tempo de Resposta em Metas** (`ui` / `feature`):
+  * **Engrenagem Circular de Configurações no Seletor de Unidades:** Substituída a setinha (`ChevronDown`) do card de Unidade do menu lateral por um botão circular elegante com o ícone de engrenagem (`Settings`). O clique no card abre o seletor de casas de festa, enquanto o clique na engrenagem conduz imediatamente à nova tela central de Configurações.
+  * **Nova Tela Unificada de Configurações (`AdminSystemSettingsView.tsx`):** Unificação da gestão administrativa da rede em duas abas dedicadas e fluidas: **Unidades** (gerenciamento das casas de festa) e **Colaboradores** (gestão de equipe, cargos e convites).
+  * **Despoluição do Menu Lateral (Gerência):** Removidos os itens avulsos "Casas de Festa", "Colaboradores" e "Tempo de Resposta", tornando a barra lateral muito mais enxuta, focada e intuitiva.
+  * **Tempo de Resposta Integrado às Metas Recorrentes (`AdminVenueGoalsView.tsx`):** O gerenciamento de SLA de atendimento foi transferido para a tela oficial de Metas (`venue-goals`), ganhando aba dedicada (`Clock`). O parâmetro configurado no sistema (`idealMinutes`, ex: 10 min) é sincronizado e gravado automaticamente como **meta recorrente** (`isRecurring: true`) para cada unidade da rede, acompanhado do painel comparativo de conformidade e desempenho por atendente/SDR.
+
+- **Higienização e Saneamento da Central de Contatos (Produção e Local)** (`database` / `improvement`):
+  * **Preservação Estrita e Cirúrgica:** Blindados e preservados 100% dos contatos vinculados a contratos ativos homologados e todos os 27 contatos/leads reais em operação nos funis de Pós-Venda (`ERL PÓS`, `ERL ADM`, `RLZ POS`) e Comercial (`TEEN ERL`).
+  * **Expurgo de Contatos Órfãos:** Removidos 308 contatos órfãos em Produção e 413 contatos residuais no ambiente Local (registros sem contrato, sem lead ativo e sem vínculo financeiro gerados em testes anteriores ou importações legadas), eliminando o risco de duplicidade de números de telefone e inconsistências em vínculos familiares.
+  * **Backup Preventivo:** Cópia completa dos estados pré-limpeza salva com segurança nos registros do sistema.
+
+- **Eliminação de Coluna Inexistente `whatsapp_phone` em `contactService.findByPhones`** (`fix`):
+  * **Causa Raiz Real do Erro "Não foi possível vincular o contato":** Na função `findByPhones`, a query executava `.or('primary_phone.ilike.%...,whatsapp_phone.ilike.%...')`. No PostgreSQL / Supabase, a tabela `contacts` NÃO possui a coluna `whatsapp_phone` (possui apenas `primary_phone` e `secondary_phone`). Isso causava o erro PostgreSQL `42703 (column contacts.whatsapp_phone does not exist)`, fazendo `findByPhones` retornar vazio.
+  * Em consequência, o sistema tentava recriar a Carla na tabela `contacts` via `findOrCreateContact`, estourando a restrição de unicidade `23505 (idx_contacts_master_primary_phone)`, retornando `null` em `linkFamilyMember` e exibindo o erro na tela.
+  * **Correção:** Substituída a coluna inexistente `whatsapp_phone` pelas colunas reais `primary_phone` e `secondary_phone`. O contato existente da Carla é agora localizado perfeitamente e o vínculo com o contratante é executado com sucesso imediato.
+
+- **Adaptação e Resolução Automática da Ficha do Cliente com Contrato Vinculado (`AdminClientDrawerInspector.tsx`, `contractService.ts`)** (`fix` / `feature`):
+  * **Causa Raiz Identificada:** Ao tentar criar o card de cliente pós-venda a partir do contrato em `createClientFromContract`, o código tentava gravar na coluna `contract_id` da tabela `clients`. Como essa coluna não existe no schema (a relação no banco é `contracts.client_id` e `clients.migrated_to_contract_id`), o Supabase retornava erro silencioso e o card de cliente nunca era criado, fazendo com que a ficha mantivesse o status "Sem Contrato". Além disso, o card criado caía no estágio `new_lead`, que ficava oculto no Kanban quando a etapa de entrada estava desativada, fazendo o card sumir da visão de pós-venda.
+  * **Correção no Schema & Etapa Inicial:** Atualizado o insert e updates em `clients` para a coluna oficial `migrated_to_contract_id` e garantido que todo card de pós-venda entre na primeira etapa operacional visível (`onboarding`), com registro automático em `contract_funnel_placements`.
+  * **Vínculo Completo da Família & Contatos:** O fluxo de vinculação agora atualiza o lead solto (`leads.contact_id`), define seu parentesco (`primary_contact_role`), adiciona a pessoa ao array `clients.contacts` com seu papel familiar (ex: Mãe), registra o parentesco em `contact_dependents` e vincula o contrato ao funil de pós-venda correspondente.
+  * **Busca Inteligente em Cascata (`getContractForFicha`):** O `contractService` agora realiza busca resiliente por: (1) `clientId`, (2) `contactId`, (3) `leadId` e (4) telefone/snapshot do cliente, priorizando contratos com data de evento e status aprovado.
+  * **Derivação de `effectiveClient` no Inspector:** Quando o contrato é localizado pelo contato/telefone (como no caso de Carla Nogueira `+55 (21) 98283-4494`), a ficha adapta o título da festa, exibe o escudo verde "Contrato vinculado", oculta o banner dashed "Sem Contrato" e renderiza a seção `ClientContractSection` completa com data, horário, convidados, pacote e valores contratuais.
+
+- **Blindagem Multi-Chip, Isolamento de Instâncias e Regra de Ocultação de Cards Vinculados no Kanban de Pós-Venda** (`fix` / `security`):
+  * **Prioridade Absoluta da Seleção Manual de Instância (`AdminWhatsAppWorkspaceView.tsx`):**
+    - Corrigido o hook `activeSenderSource`: antes, se o canal setorial (ex: "Pós venda") possuía uma instância amarrada (como POS VENDA GLORIA), o `channelExclusiveSource` anulava qualquer troca manual do usuário no seletor de instâncias do rodapé.
+    - Agora, a escolha manual do usuário (`selectedSenderSourceId`) tem precedência absoluta, permitindo alternar livremente para outras instâncias ativas do funil (ex: ERL 9915).
+  * **Resolução Estrita de Chip e Blindagem contra Vazamento de Mensagens (`resolveMsgChip`):**
+    - Aprimorada a identificação da instância em `resolveMsgChip`: agora inspeciona metadados de nome de remetente (`senderSourceName`), prefixos de telefone (`messageId`) e a rota do arquivo no Cloudflare R2 (`/whatsapp/<uuid>/`).
+    - Mensagens sem chip explícito agora pertencem estritamente ao chip de origem do atendimento e nunca são exibidas em instâncias secundárias não relacionadas. Ao alternar para o WhatsApp "ERL 9915", o chat da Carla e de outros contatos inicia completamente limpo (zero mensagens), garantindo que mensagens de voz e textos trocados pelo chip da Glória nunca vazem para outro número.
+  * **Saneamento e Backfill de Metadados no Banco de Dados (`lead_activities`):**
+    - Identificadas e carimbadas 21 atividades da Carla e 134 atividades de outros leads que haviam sido salvas com `metadata: {}` sem `sourceId` e `instance_id`. Todas foram mapeadas com precisão para suas respectivas instâncias oficiais.
+  * **Ocultação de Contatos Vinculados no Kanban de Pós-Venda (`funnelUtils.ts`, `AdminPostSaleKanbanView.tsx`):**
+    - Parametrizado `filterExtraPostSaleLeads` com a opção `{ forKanbanOnly: boolean }`.
+    - **No Modo Kanban:** Leads ou contatos que já estão vinculados a contratos homologados (como titular ou membro familiar, como a Carla no contrato da Vitória/Antônio) são estritamente ocultados da visão de cards soltos ("SEM CONTRATO") no Kanban.
+    - **Na Caixa de Entrada e Central de Mensagens:** Os contatos vinculados continuam 100% disponíveis para atendimento com a foto real, o badge do funil e o título do contrato vinculado ("Antônio Rodrigues • Vitória R...").
+
+- **Exibição de Eventos Sem Horário no Modo Semana da Agenda (`AdminCalendarWeekView.tsx`, `AdminVenueEventsView.tsx`)** (`feature` / `improvement`):
+  * **Nova Linha Horizontal "Sem hora" (All-Day Row):** Inserida logo abaixo do cabeçalho com os 7 dias da semana (`weekDays`), reservando espaço com gutter lateral e colunas alinhadas com o grid para listar todos os eventos do dia que não possuem horário pré-fixado.
+  * **Cards Clicáveis:** Os eventos sem hora aparecem como cards compactos elegantes com a cor de destaque da casa de festa (`getTaskAccent`), ícone da categoria e clique que abre os detalhes do evento (`onOpenTask`).
+  * **Suporte Robusto a Faixas Horárias:** Parse seguro com regex em `getTaskTopAndHeight` e em `AdminVenueEventsView.tsx` para tratar horários compostos como `"20:00 às 02:00"`, calculando a altura na grade horária sem gerar valores `NaN` ou quebras de posicionamento.
+
+- **Deduplicação de Mensagens no Banco de Dados e Blindagem com Regra "Message ID é o Rei" (`lead_activities`, `AdminWhatsAppWorkspaceView.tsx`, `leadService.ts`)** (`fix` / `database`):
+  * **Auditoria de Duplicatas no Banco Local:** Identificadas e expurgadas com precisão 42 atividades duplicadas idênticas em 22 leads (mensagens inseridas com 0s de diferença e UUIDs distintos durante sincronicidade de webhooks e importações legadas). O banco local agora possui **0 duplicatas**.
+  * **Regra Mestra "Message ID é o Rei" no Backend (`leadService.addActivity`):**
+    - Se a mensagem possui `messageId` (wamid do WhatsApp), a validação de duplicidade é **exclusivamente por ele**. Isso garante que mensagens intencionais sequenciais e rápidas enviadas pelo usuário ou cliente (ex: testes de "oi, oi, oi" seguidos no WhatsApp) entrem livremente no sistema sem nenhuma inibição, já que cada uma possui um `messageId` único gerado pela Meta/WhatsApp.
+    - Se a mensagem vier **sem `messageId`** (ex: webhooks legados sem wamid ou requisições HTTP repetidas): o sistema compara o texto estritamente com a **última mensagem gravada** daquele lead. Apenas se a última mensagem for idêntica e tiver ocorrido em menos de 3 segundos (disparo duplo acidental de rede/webhook), ela é descartada.
+  * **Blindagem no Front-End (`timelineActivities` em `AdminWhatsAppWorkspaceView.tsx`):**
+    - Se a mensagem possui `messageId`, a validação respeita rigorosamente o `messageId` único (exibindo todos os "oi, oi, oi" sequenciais legítimos).
+    - Se a mensagem não possui `messageId`, ela só é deduplicada se for idêntica à mensagem imediatamente anterior na timeline com diferença de até 3 segundos.
+
+- **Identificação Contextual Precisa na Unidade do Lead (`AdminLinkContractorModal.tsx`)** (`improvement`):
+  * **Eliminação de Fallback Entre Unidades:** Removida qualquer busca ou fallback para outras casas. A busca é 100% estrita à unidade selecionada (ex: `Espaço Rio Lounge`).
+  * **Causa Raiz Identificada:** O lead do WhatsApp (`5521982834494`) chamou com final 4494, enquanto no contrato `CTR-2026-4HFHL2` do contratante Antônio constava o número `(21) 98283-4495` (com 5 no final), sem CPF nem e-mail preenchidos no lead. Como o sistema antigo só buscava por telefone/CPF/e-mail exatos, nenhum contrato era trazido de início.
+  * **Descoberta Contextual Inteligente:** A busca inicial agora extrai dados presentes no próprio nome do lead (`20/11/2026` e `15A VITORIA`), localizando instantaneamente o contrato `CTR-2026-4HFHL2` (`Antônio Rodrigues • Vitória Rodrigues 15 anos`) estritamente dentro da unidade `Espaço Rio Lounge`.
+
+- **Desassociação Inteligente de WhatsApp e Reatribuição à Mãe/Familiar (`AdminLinkContractorModal.tsx`, `contractService.ts`)** (`feature`):
+  * **Cenário Real Solucionado:** Casos comuns onde o contrato jurídico foi registrado no nome do contratante titular (ex: marido), mas o WhatsApp informado é o da esposa/mãe da debutante (ou outro membro familiar).
+  * **Identificação Automática na Abertura:** A busca inicial identifica o contrato pelo telefone/CPF/e-mail no ato da abertura do modal, com fallback transparente para todas as casas da rede caso o lead esteja em unidade divergente.
+  * **Aviso Explicativo & Confirmação:** Ao selecionar o contrato, o sistema detecta que o WhatsApp está atualmente gravado no perfil do titular. Exibe um banner amigável de alerta com opção marcada por padrão: *"Deseja desassociar o WhatsApp do contratante ([Nome do Titular]) e vincular à [Mãe]?"*.
+  * **Execução Transacional no Banco:**
+    1. O contato do contratante titular tem o WhatsApp desassociado (preservando 100% de seu nome, CPF e dados jurídicos do contrato), registrando em histórico a transferência.
+    2. Cria/atualiza o contato individual da Mãe com seu próprio WhatsApp e parentesco na Central de Contatos.
+    3. Registra o vínculo mútuo formal entre Titular e Mãe em `contact_dependents`.
+    4. Adiciona a Mãe à lista de contatos do card do cliente no pós-venda e associa as conversas do WhatsApp à esteira do evento.
+
+- **Correção no Vínculo de Lead Solto ao Contrato (`contractService.ts`, `contactService.ts`)** (`fix`):
+  * **Causa do Erro:** Quando o lead solto do WhatsApp era a **própria pessoa titular/contratante** (mesmo número ou relação 'Titular'), o sistema chamava `linkFamilyMember` tentando criar um vínculo de dependente familiar da pessoa com ela mesma na tabela `contact_dependents`. A regra interna bloqueava a auto-relação (`contact.id === parentContactId`) e retornava nulo, gerando a mensagem `"Não foi possível vincular o contato"`.
+  * **Solução:** Implementada detecção de titularidade (`isSelf`). Quando o lead é a própria titular/contratante do contrato, o vínculo é associado diretamente ao card do cliente e ao contrato sem tentar registrar dependente consigo mesmo. Caso seja um familiar dependente com outro número (mãe, pai, etc.), o fluxo de dependente mútuo continua operando normalmente.
+
+- **Busca Accent-Insensitive e Tolerância a Acentos no Supabase (`src/utils/searchUtils.ts`, `contractService.ts`, `contactService.ts`)** (`fix`):
+  * **Causa do Problema:** O operador `ILIKE` nativo do PostgreSQL é sensível a acentos no Supabase, de modo que buscar por `"Vitoria"` não encontrava registros cadastrados como `"Vitória"`, e vice-versa.
+  * **Solução Implementada:** Criado o utilitário `generateSearchTermVariants` que gera variações combinadas (termo sem acento, termo original, palavras separadas e versões com o curinga `_` do PostgreSQL LIKE para cada vogal acentuável ou cedilha).
+  * **Resultados:** Digitar `"Vitoria"` agora localiza contratos e contatos com `"Vitória"` instantaneamente em tempo real.
+
+- **Vínculo de Contratos Inteligente e Automático (`AdminLinkContractorModal.tsx`)** (`improvement`):
+  * Identificação automática inicial por telefone (+ DDI/DDD), CPF e e-mail ao abrir o modal, sem necessidade de digitação prévia.
+  * Herança e detecção do parentesco/relação previamente cadastrado no lead/cliente.
+  * Seletor de Relação adicionado no topo do modal para conferência e alteração ágil antes de vincular.
+  * Mensagem amigável única de orientação para busca caso nenhum contrato seja encontrado por padrão.
+
+- **Ficha / Drawer do Cliente & Persistência de Dados Soltos (`AdminClientDrawerInspector.tsx`)** (`improvement`):
+  * Campo "Relação" desimpedido para leads soltos e clientes, permitindo registrar se o contato é mãe, pai, debutante, etc. antes da conversão em contrato.
+  * Persistência bidirecional garantida tanto em `client` quanto em `lead` (`customFieldValues` e `primaryContactRole`).
 
 - **Reformulação Visual do Kanban de Pós-Venda & Abas de Canais de Contato** (`new`):
   - **Novo Card de Contrato no Kanban (`AdminContractKanbanCard.tsx`):**
@@ -135,6 +316,79 @@ Grande reestruturação de governança, experiência do usuário, banco de dados
 
 - **Reestruturação e Ergonomia do Menu Lateral (Sidebar)** (`improved`):
   - Scroll independente do miolo, avatar circular do usuário, logo blindada e unificação dos menus 'Contratos' e 'Agenda de Eventos' exclusivamente no Pós-Venda.
+
+- **Vínculo Rápido de Contrato e Tratamento de Clientes sem Contrato no Pós-Venda** (`new`):
+  - **Identificação Correta do Cliente sem Contrato:**
+    * O nome exibido no topo do workspace de atendimento é estritamente o nome da pessoa que entrou em contato (em vez de títulos de contratos ou códigos).
+    * O card de dados pessoais na ficha passa a se intitular "Cliente" com ícone `<User />` (em vez de "Contratante / Pagante"), com placeholder "Nome do cliente...".
+    * Remoção da badge "Decisor Principal" quando o cliente não possui contrato vinculado.
+    * Extirpação completa de badges com texto `indefinido` no cabeçalho e canais de contato.
+  - **Eliminação de Duplicidades e Co-pagantes Fantasma:**
+    * Blindagem de filtros para impedir que o número de telefone e o nome do cliente principal sejam exibidos novamente abaixo como "Co-pagante / Decisor".
+    * Correção em `AdminStateContext.tsx` para não gerar contatos duplicados em `contacts` ao criar leads por mensagens recebidas.
+  - **Auditoria e Correção Relacional em Banco de Dados:**
+    * Revisão e limpeza executada no Supabase em todos os 24 leads do pós-venda sem contrato, removendo contatos fantasmas em `contacts` que duplicavam o telefone do lead e higienizando papéis para `cliente`.
+  - **Botão de Vínculo Interno na Ficha (`AdminClientDrawerInspector.tsx`):**
+    * Adicionado botão com ícone `Link2` ao lado da badge "Sem contrato" no cabeçalho da ficha do cliente/lead.
+    * Adicionado banner pontilhado convidativo na aba "Ficha" para leads soltos sem contrato, permitindo vincular diretamente a um contrato aprovado existente.
+  - **Ação Direta no Cabeçalho do Chat WhatsApp (`AdminWhatsAppWorkspaceView.tsx`):**
+    * Adicionado botão de ação rápida "Vincular Contrato" no cabeçalho da conversa de WhatsApp quando o cliente ativo no pós-venda não possui contrato vinculado.
+  - **Modal Inteligente de Vínculo e Fusão Familiar (`AdminLinkContractorModal.tsx`):**
+    * **Busca Inicial Direcionada aos Dados do Cliente:** Ao abrir o modal, o sistema pesquisa especificamente os identificadores da cliente em foco (WhatsApp/telefone com 8+ dígitos, CPF e e-mail). Se houver contrato correspondente (como o da Carla), ele já aparece de imediato sem despejar listas cegas da unidade e economizando egress do Supabase.
+    * **Mensagem Única Consolidada de Não Encontrado:** Eliminação de avisos duplicados ou redundantes. Quando o cliente não possuir contrato prévio, exibe exclusivamente uma mensagem clara, sutil e amigável orientando a buscar por data do evento, debutante, CPF ou contratante titular.
+    * **Eliminação de Contadores Desnecessários:** Remoção de contagens brutas em parênteses no cabeçalho da lista (`Contratos aprovados (62)`), mantendo apenas títulos limpos (`Contratos identificados para este cliente` ou `Resultados da busca`).
+    * **Diagnóstico e Correção de Resolução de Master ID:** Identificada a causa raiz de nenhum contrato ser retornado no modal. A propriedade `scopedMasterId` era declarada internamente no contexto mas não havia sido exposta na interface `AdminContextType` nem no valor do `AdminStateContext.Provider`, fazendo com que os hooks de carregamento abortassem silenciosamente. Agora o `scopedMasterId` é formalmente exposto pelo contexto e o modal possui fallback multinível robusto (`effectiveMasterId`: contexto, `lead.masterId`, `client.masterId`, `currentUser.masterId/id`).
+    * **Filtro Universal por Unidade e Seletor Dinâmico:** Isolamento absoluto por `master_id` (`scopedMasterId`) e unidade padrão selecionada automaticamente pelo funil/lead atual, com seletor no topo permitindo alternar de forma transparente entre as casas da rede ou ver todas as unidades da rede do cliente sem risco de vazamento.
+    * **Busca Dinâmica Instantânea em Tempo Real (0 ms):** Pré-carregamento dos contratos aprovados da unidade em memória com filtro dinâmico instantâneo na digitação (on input), casado com busca complementar debounced no Supabase.
+    * **Restauração e Blindagem do Banco de Contratos Aprovados:** Restauração completa dos 234 contratos da base (209 contratos para o Espaço Rio Lounge), preenchendo datas e titulares, solucionando a ausência de contratos decorrente do reset de teste anterior.
+    * **Detecção Inteligente de Padrões na Digitação:** Suporta busca por dígitos de CPF (mesmo sem pontos ou parciais), dígitos de telefone (com/sem DDD e formatação), variações de datas (`DD/MM`, `DD/MM/AAAA`, anos como `2027`, com ou sem barras como `20112026`), nome da debutante/aniversariante (`birthdayPersonName` / `birthday_person_name`), titular (`payerName` / `payer_name`), títulos de contratos e busca composta com múltiplos termos (ex: "Carla 20/11", "Vitoria 2026").
+    * **Card Resumo Enriquecido:** Exibe o contrato selecionado com código CTR, nome do titular, aniversariante/tipo de festa, telefone formatado, data do evento e unidade física vinculada.
+    * **Seleção Expandida de Parentesco/Papel:** Lista completa de relações familiares (Mãe, Pai, Titular/Contratante, Aniversariante/Debutante, Noivo(a), Cônjuge, Avó, Avô, Tia, Tio, Madrinha, Padrinho, Responsável Financeiro, Outro).
+    * **Integração com `contractService.linkLooseLeadToContract`:** Ao confirmar o vínculo, o cliente vira participante/dependente do contrato, sua conversa de WhatsApp é unificada no mesmo atendimento e a interface transiciona instantaneamente para a conversa do grupo familiar.
+
+- **Rastreabilidade de Instâncias, Direção de Mensagens e Indicador de Mensagens Encaminhadas no WhatsApp** (`improved`):
+  - **Auto-Scroll Confiável para o Fim da Conversa (`AdminWhatsAppWorkspaceView.tsx`):**
+    * Correção do problema onde a conversa abria parada no meio do histórico exigindo rolagem manual.
+    * A dependência anterior monitorava incorretamente `selectedLead.activities` (que chegava atrasada ou vazia), disparando antes da montagem real dos balões de mensagem.
+    * O auto-scroll agora monitora `timelineActivities.length` e alterações de contato/instância, com cadência multifásica (50ms, 150ms, 350ms e 700ms) para compensar tempo de renderização de áudios e imagens.
+    * Diferenciação física de rolagem intencional do usuário (`onWheel` e `onTouchMove`): redimensionamentos de layout ou chegada assíncrona de mensagens não travam mais o scroll no meio do caminho, garantindo que o chat sempre abra exatamente nas mensagens mais recentes (no final).
+    * Cada instância conectada ganha uma tonalidade sutil e elegante exclusiva no fundo do chat (bege clássico `#EFEAE2`, verde pastel WhatsApp `#E3ECE7`, azul celeste suave `#E5EEF5`, lilás discreto `#ECE8F3` e areia âmbar `#F5EFE6`).
+    * Adaptação correspondente de alto contraste para o modo escuro (`#0B141A`, `#0A1815`, `#0B1520`, `#14121F`, `#1A160E`).
+    * Proporciona sensação visual imediata de troca de ambiente de WhatsApp sem comprometer a legibilidade dos balões de mensagens.
+  - **Badge Flutuante de Identificação no Topo do Chat:**
+    * Componente pill flutuante com blur translúcido fixado no topo da conversa com avatar/foto oficial da instância, indicador verde de status online, nome da instância em negrito e telefone formatado.
+    * Fica discretamente posicionado no topo sem atrapalhar a rolagem e garantindo identificação instantânea de qual WhatsApp está emitindo e recebendo mensagens.
+  - **Isolamento Total de Conversas por Instância em Todos os Funis:**
+    * Comportamento estendido e validado para **Comercial, Pós-Venda e Financeiro**: ao alternar a instância de envio, a visualização isola estritamente as mensagens trafegadas por aquele número, deixando a conversa limpa para nova interação.
+  - **Descoberta e Tratamento de Mensagens Encaminhadas (`isForwarded`):**
+    * Diagnóstico da mensagem de buquês da cliente Carla (`5521982834494`), onde o texto "Oi Carla..." foi na realidade uma mensagem **encaminhada** pela cliente a partir de um fornecedor externo de flores (`isForwarded: true`).
+    * Implementação da badge oficial `↪ Encaminhada` no topo dos balões de mensagens do chat (com ícone `Forward` em itálico), deixando evidente quando qualquer contato repassou mensagens de terceiros.
+    * Captura e persistência do campo `isForwarded` no webhook da UAZAPI e nos serviços de sincronização.
+  - **Isolamento Total de Conversas por Instância (Multi-Chip):**
+    * Quando um funil ou unidade possui mais de uma instância de WhatsApp configurada (ex: `POS VENDA GLORIA` e `ERL 9915`), a alternância de instância no seletor isola rigorosamente as conversas.
+    * Ao selecionar uma nova instância (ex: `ERL 9915`), a conversa do chip anterior é ocultada e o chat abre 100% limpo, operando como uma nova janela de atendimento dedicada para o novo número.
+    * As mensagens enviadas e respostas recebidas para aquele número específico são roteadas e mantidas com exclusividade dentro da conversa daquela respectiva instância.
+  - **Identificação da Instância no Hover e Preservação do Avatar Oficial:**
+    * Manutenção do ícone oficial do WhatsApp (`WhatsAppBrandIcon`) nos balões de mensagens enviadas externamente pelo celular ou WhatsApp Web oficial (`isExternalWa`), evitando confusão visual com avatares de colaboradores do sistema.
+    * Tooltip detalhado em hover no nome do autor, no balão e no badge de disparo, identificando com precisão a instância responsável: `App/Web • [Instância] • [Telefone]`.
+  - **Correção Visual no Popover de Seleção de Instâncias:**
+    * Expansão da largura do popover para 420px-480px com espaçamento arejado e `whiteSpace: 'nowrap'`.
+    * Eliminação completa de quebras indesejadas nos nomes das instâncias (ex: `POS VENDA GLORIA`), badges de unidade (`Espaço Rio Lounge`) e botão de status de conexão (`Online`).
+  - **Recomendação Automática do Chip pela Última Interação da Conversa:**
+    * Implementação da função `lastInteractionSourceId` no `senderResolver.ts`.
+    * Ao abrir qualquer conversa, o seletor de envio no rodapé pré-seleciona automaticamente a **última instância conectada** que trocou mensagem com o contato (seja enviada por celular, WhatsApp Web, sistema ou recebida).
+
+- **Exibição da Foto de Perfil do WhatsApp nos Cards do Pós-Venda e Novo Placeholder Clean** (`improved`):
+  - **Redesign do Avatar Sem Foto (`SafeAvatar.tsx`):**
+    * Eliminação completa de fundos e gradientes coloridos pesados em contatos sem foto cadastrada.
+    * Novo padrão minimalista e elegante: círculo com borda tracejada (`1.5px dashed var(--adm-border, #94A3B8)`), fundo neutro suave (`rgba(148, 163, 184, 0.10)`) e iniciais em tipografia discreta (`#64748B`), transmitindo com sutileza a percepção deliberada de "sem foto cadastrada/pendência" sem carregar o visual dos cards e listas.
+  - **Avatar Dinâmico com Foto no Card de Pessoa (`ClientPersonKanbanCard.tsx`):**
+    * Substituição do ícone cinza genérico de usuário (`<User />`) pelo componente `SafeAvatar` de 34px.
+    * Mapeamento do `avatarUrl` do contato a partir dos metadados do WhatsApp e Cloudflare R2 (`avatarUrl`, `photoUrl`, `custom_field_values.avatarUrl`), exibindo a foto de perfil real da cliente no Kanban de pós-venda.
+  - **Avatar do Contratante nos Cards de Contrato (`AdminContractKanbanCard.tsx`):**
+    * Adicionado `SafeAvatar` no Bloco 2 do card de contrato, exibindo a foto do titular/contratante ao lado do título e do decisor principal.
+  - **Foto de Perfil na Visão em Lista do Pós-Venda (`AdminPostSaleKanbanView.tsx`):**
+    * Inclusão do `SafeAvatar` de 30px na coluna de nome da protagonista/cliente da tabela da visão em lista, mantendo consistência visual completa.
 
 - **Reorganização do Squad & Liderança de Frontend** (`improved`):
   - **Descontinuação de Protótipos HTML:** Encerramento definitivo de etapas intermediárias de prototipagem estática em HTML e retirada da Victoria da operação.

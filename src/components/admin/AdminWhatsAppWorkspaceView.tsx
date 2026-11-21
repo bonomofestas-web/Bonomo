@@ -1,8 +1,9 @@
-import { DateField, Select } from '../ui';
+import { DateField, Select , MonthYearSwitcher } from '../ui';
 import { createPortal } from 'react-dom';
 import { usePresenceContext } from '../../hooks/usePresence';
 import { animateList } from '../../utils/animateList';
 import { toast } from 'sonner';
+import { formatMonthYear } from '../ui';
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   MessageSquare, Search, SlidersHorizontal, Send, Mic,
@@ -13,9 +14,13 @@ import {
   History, RefreshCw, MoreVertical, CheckCheck, DollarSign, TrendingUp, Folder,
   ExternalLink, ShieldCheck, Sparkles, ShoppingBag, Video, Download, Loader2, Camera,
   Target, Lock, RotateCcw, XCircle, Flame, ArrowUpDown, ArrowUp, ArrowDown, BadgeCheck, UserCheck, Smartphone, QrCode,
-  Reply, ArrowRightLeft
+  Reply, ArrowRightLeft, Link2, Forward, Filter
 } from 'lucide-react';
 import { IcpTargetUserIcon } from './IcpTargetUserIcon';
+import { isFinanceSource } from '../../utils/financeSource';
+import { getUserTaskSectors } from '../../utils/taskSector';
+import { SupplierToggleButton } from './contacts/SupplierToggleButton';
+import { contactService } from '../../services/contactService';
 import { mqlBadge } from '../../utils/mqlScore';
 import { WhatsAppBrandIcon } from './WhatsAppBrandIcon';
 import { SafeAvatar } from './SafeAvatar';
@@ -49,6 +54,7 @@ import { uazapiSseService } from '../../services/uazapiSseService';
 import { isSupabaseConfigured } from '../../lib/supabase';
 import { leadService, mergeAndSortActivities, isPhoneMatch } from '../../services/leadService';
 import { contractService } from '../../services/contractService';
+import { getContractDocuments } from '../../utils/contractDocuments';
 import { whatsappMediaService, MediaDownloadError, describeMediaFailure, resolveMediaMessageIds } from '../../services/whatsappMediaService';
 
 // Ids da UAZAPI de uma mensagem: o id pode estar em metadata (webhook) ou no campo principal da atividade (envio/SSE)
@@ -63,10 +69,11 @@ import { mediaStorageService } from '../../services/mediaStorageService';
 import { WhatsAppFormattingToolbar } from './WhatsAppFormattingToolbar';
 import { AdminLeadInspector } from './AdminLeadInspector';
 import { AdminClientDrawerInspector } from './AdminClientDrawerInspector';
+import { AdminLinkContractorModal } from './AdminLinkContractorModal';
 import { AdminLeadReadOnlyModal } from './AdminLeadReadOnlyModal';
 import { ChannelAvatar } from './ChannelBadge';
 import { channelOfLead } from '../../utils/channels';
-import { funnelSenders, leadCarriedSourceIds, lastIncomingSourceId, lastSystemSentSourceId, recommendSender, readManualSender, saveManualSender } from '../../utils/senderResolver';
+import { funnelSenders, leadCarriedSourceIds, lastIncomingSourceId, lastSystemSentSourceId, lastInteractionSourceId, recommendSender, readManualSender, saveManualSender } from '../../utils/senderResolver';
 import { AdminNewLeadModal } from './AdminNewLeadModal';
 import { AdminTransferLeadVenueModal } from './AdminTransferLeadVenueModal';
 import { AdminTaskDetailModal, renderTaskTypeLucideIcon } from './AdminTaskDetailModal';
@@ -130,6 +137,10 @@ interface AdminWhatsAppWorkspaceViewProps {
   sortBy?: string;
   onClose?: () => void;
   isEmbeddedInFunnel?: boolean;
+  /** Mostra so a conversa (sem lista de conversas e sem ficha): usado dentro de modais que ja trazem os dados do cliente */
+  chatOnly?: boolean;
+  /** Numero obrigatorio de envio e de leitura (ex.: conexao fixa do Financeiro): so ele aparece e so ele envia */
+  forcedSourceId?: string;
   initialComposerTab?: 'whatsapp' | 'notes' | 'tasks' | 'appointments' | 'upsell' | 'documents';
   isPostSale?: boolean;
   onOpenDebutanteApp?: (slug: string) => void;
@@ -215,6 +226,102 @@ function formatPersonShortName(name: string): string {
     return `${parts[0]} ${parts[2]}`;
   }
   return `${parts[0]} ${parts[1]}`;
+}
+
+/**
+ * Extrai apenas o nome da Aniversariante / Protagonista (1º e 2º nome) + Evento
+ * Removendo categoricamente qualquer nome de contratante/pagante
+ * Ex: "Vitória Rodrigues • 15 Anos"
+ */
+function formatContractHonoreeTitle(contractOrClient: any): string | null {
+  if (!contractOrClient) return null;
+
+  const sanitize = (str?: string) => {
+    if (!str) return '';
+    return str
+      .replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F1E0}-\u{1F1FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1F900}-\u{1F9FF}\u{1FA70}-\u{1FAFF}]/gu, '')
+      .replace(/^(?:r{2,3}|erl|lead)[-\s_]+/i, '')
+      .replace(/\([^)]*\)/gi, '')
+      .replace(/\b15A?\s+[A-Za-zÀ-ÿ]+(?:\s+\d{2}\/\d{2}\/\d{2,4})?/gi, '')
+      .replace(/\b\d{2}\/\d{2}\/\d{2,4}\b/g, '')
+      .replace(/•\s*(?:15\s*Anos|Casamento|Infantil|Corporativo)/gi, '')
+      .replace(/\b15\s*Anos\b/gi, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  };
+
+  const getFirstTwoNames = (fullName: string) => {
+    const parts = fullName.trim().split(/\s+/).filter(Boolean);
+    return parts.slice(0, 2).join(' ');
+  };
+
+  // 1. Payer / Contratante (para saber quem remover se presente)
+  const payerRaw = contractOrClient.payerName || contractOrClient.payer_name || '';
+  const payerClean = sanitize(payerRaw);
+  const payerWords = payerClean.toLowerCase().split(/\s+/).filter(w => w.length >= 3);
+
+  // 2. Tipo de evento normalizado
+  let evt = contractOrClient.eventType || contractOrClient.event_type || contractOrClient.eventTypeName || '';
+  const evtLower = String(evt).toLowerCase();
+  if (evtLower.includes('15') || evtLower.includes('quinze') || evtLower.includes('debut')) {
+    evt = '15 Anos';
+  } else if (evtLower.includes('casamento') || evtLower.includes('noiv')) {
+    evt = 'Casamento';
+  } else if (evtLower.includes('infantil') || evtLower.includes('kids')) {
+    evt = 'Infantil';
+  } else if (evtLower.includes('corp')) {
+    evt = 'Corporativo';
+  } else if (!evt) {
+    evt = '15 Anos';
+  }
+
+  // 3. Candidato a Homenageada / Aniversariante / Protagonista
+  let honoreeCandidate = '';
+
+  const rawBday = contractOrClient.birthdayPersonName || contractOrClient.birthday_person_name || contractOrClient.debutanteName || contractOrClient.debutante_name || contractOrClient.honoreeName || '';
+  if (rawBday && sanitize(rawBday).toLowerCase() !== payerClean.toLowerCase()) {
+    honoreeCandidate = rawBday;
+  }
+
+  const rawTitle = contractOrClient.contractTitle || contractOrClient.contract_title || contractOrClient.title || contractOrClient.name || '';
+  const candidateToSplit = honoreeCandidate || rawTitle;
+
+  if (!honoreeCandidate || (payerWords.length > 0 && payerWords.some(w => honoreeCandidate.toLowerCase().includes(w)))) {
+    const parts = candidateToSplit.split(/[•–—]|\s+-\s+/).map((p: string) => sanitize(p)).filter(Boolean);
+    if (parts.length >= 2) {
+      const isFirstPayer = payerWords.length > 0 && payerWords.some(w => parts[0].toLowerCase().includes(w));
+      if (isFirstPayer && parts[1]) {
+        honoreeCandidate = parts[1];
+      } else {
+        const nonPayer = parts.find((p: string) => !payerWords.some((w: string) => p.toLowerCase().includes(w)));
+        honoreeCandidate = nonPayer || parts[1] || parts[0];
+      }
+    } else if (parts.length === 1 && !honoreeCandidate) {
+      honoreeCandidate = parts[0];
+    }
+  }
+
+  // Remove qualquer menção remanescente às palavras do payer
+  if (payerWords.length > 0 && honoreeCandidate) {
+    for (const w of payerWords) {
+      const regex = new RegExp(`\\b${w}\\b`, 'gi');
+      honoreeCandidate = honoreeCandidate.replace(regex, '').trim();
+    }
+  }
+
+  // Snapshot fallback
+  if (!honoreeCandidate && contractOrClient.clientSnapshot) {
+    const snap = contractOrClient.clientSnapshot;
+    honoreeCandidate = snap.birthdayPersonName || snap.debutanteName || snap.birthday_person_name || '';
+  }
+
+  let cleaned = sanitize(honoreeCandidate);
+  if (!cleaned) {
+    cleaned = sanitize(contractOrClient.name || 'Cliente');
+  }
+
+  const shortName = getFirstTwoNames(cleaned || 'Aniversariante');
+  return `${shortName} • ${evt}`;
 }
 
 /**
@@ -851,6 +958,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   sortBy,
   onClose,
   isEmbeddedInFunnel = false,
+  chatOnly = false,
+  forcedSourceId,
   initialComposerTab,
   isPostSale = false,
   onOpenDebutanteApp,
@@ -1014,8 +1123,10 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   const sortDropdownRef = useRef<HTMLDivElement>(null);
   const [isNewLeadModalOpen, setIsNewLeadModalOpen] = useState(false);
   const [isTransferVenueModalOpen, setIsTransferVenueModalOpen] = useState(false);
+  const [isLinkContractorModalOpen, setIsLinkContractorModalOpen] = useState(false);
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(() => {
     if (initialLeadId) return initialLeadId;
+    if (isEmbeddedInFunnel) return null;
     try {
       if (typeof window !== 'undefined') {
         const p = new URLSearchParams(window.location.search);
@@ -1140,7 +1251,28 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     return 'open';
   });
 
+  // Aba Fornecedores: so quem atua no pos-venda ou no financeiro (e a gerencia)
+  const [suppliersTab, setSuppliersTab] = useState(false);
+  const canSeeSuppliersTab = getUserTaskSectors(currentUser).some(sec => sec === 'pos_venda' || sec === 'financeiro');
+  const [supplierPhoneKeys, setSupplierPhoneKeys] = useState<Set<string>>(new Set());
+  const phoneKey = (p?: string | null) => String(p || '').replace(/\D/g, '').slice(-8);
+  useEffect(() => {
+    const mid = currentUser?.masterId || currentUser?.id;
+    if (!canSeeSuppliersTab || !mid) return;
+    let alive = true;
+    void contactService.getSuppliers(mid).then(list => {
+      if (!alive) return;
+      const keys = new Set<string>();
+      list.forEach(c => [c.primaryPhone, c.whatsappPhone, c.secondaryPhone].forEach(ph => { const k = phoneKey(ph); if (k.length === 8) keys.add(k); }));
+      setSupplierPhoneKeys(keys);
+    });
+    const refresh = () => { void contactService.getSuppliers(mid).then(list => { if (!alive) return; const keys = new Set<string>(); list.forEach(c => [c.primaryPhone, c.whatsappPhone, c.secondaryPhone].forEach(ph => { const k = phoneKey(ph); if (k.length === 8) keys.add(k); })); setSupplierPhoneKeys(keys); }); };
+    window.addEventListener('f5:suppliers-changed', refresh);
+    return () => { alive = false; window.removeEventListener('f5:suppliers-changed', refresh); };
+  }, [canSeeSuppliersTab, currentUser?.masterId, currentUser?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleUpdateQuickFilter = (val: 'open' | 'my' | 'all') => {
+    setSuppliersTab(false);
     setQuickFilter(val);
     try {
       localStorage.setItem(`f5_wa_quick_${currentUser?.id || 'default'}`, val);
@@ -1163,13 +1295,13 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   );
 
   // Side Drawer: Lead Inspector (Ficha do Lead / Contrato)
-  const [isInspectorOpen, setIsInspectorOpen] = useState<boolean>(isOpenedFromCrmOrKanban);
+  const [isInspectorOpen, setIsInspectorOpen] = useState<boolean>(() => isOpenedFromCrmOrKanban && Boolean(initialLeadId));
   const [isReadOnlyModalOpen, setIsReadOnlyModalOpen] = useState(false);
   const [highlightMissingFields, setHighlightMissingFields] = useState<boolean>(false);
 
-  // Coluna Lateral de Conversas: Recuada por padrão ao abrir pelo CRM / Kanban (Modo Foco)
+  // Coluna Lateral de Conversas: Recuada por padrão ao abrir pelo CRM / Kanban quando já há lead selecionado (Modo Foco)
   const isPostSaleWorkspace = Boolean(isPostSaleFunnel || isPostSale);
-  const [isConversationsCollapsed, setIsConversationsCollapsed] = useState<boolean>(() => isOpenedFromCrmOrKanban);
+  const [isConversationsCollapsed, setIsConversationsCollapsed] = useState<boolean>(() => isOpenedFromCrmOrKanban && Boolean(initialLeadId));
 
   useEffect(() => {
     if (isOpenedFromCrmOrKanban && selectedLeadId) {
@@ -1462,7 +1594,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     }
 
     // Próximo mês
-    const totalSlots = days.length <= 35 ? 35 : 42;
+    const totalSlots = 42; // sempre 6 semanas
     const remaining = totalSlots - days.length;
     for (let d = 1; d <= remaining; d++) {
       const m = month + 2 > 12 ? 1 : month + 2;
@@ -1481,7 +1613,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   }, [quickCalendarMonth, quickFollowupDate, todayStr]);
 
   const quickMonthTitle = useMemo(() => {
-    const m = quickCalendarMonth.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+    const m = formatMonthYear(quickCalendarMonth);
     return m.charAt(0).toUpperCase() + m.slice(1);
   }, [quickCalendarMonth]);
 
@@ -1837,7 +1969,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   const sourceLeads = useMemo(() => {
     const rawLeads = leads; // Usa estritamente leads (scopedLeads isolado por tenant)
     if (isPostSaleFunnel) {
-      const postSaleLeads = filterExtraPostSaleLeads(rawLeads || [], clients || []);
+      // No WhatsApp Workspace (Caixa de Entrada / Mensagens), mantém todos os contatos ativos visíveis para atendimento
+      const postSaleLeads = filterExtraPostSaleLeads(rawLeads || [], clients || [], { forKanbanOnly: false });
       return [...clientsAsLeads, ...postSaleLeads];
     }
     return rawLeads;
@@ -1989,8 +2122,12 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       }
 
       // 2. Ownership / Quick Filter Tabs
-      const effectiveOwnership = (isEmbeddedInFunnel && leadOwnershipFilter) ? leadOwnershipFilter : quickFilter;
-      if (effectiveOwnership === 'open') {
+      const effectiveOwnership = suppliersTab ? 'supplier' : ((isEmbeddedInFunnel && leadOwnershipFilter) ? leadOwnershipFilter : quickFilter);
+      if (effectiveOwnership === 'supplier') {
+        // Conversas de contatos marcados como fornecedor (nao importa quem atendeu)
+        const phones = [lead.phone, ...((lead.contacts || []).map(ct => ct.phone))];
+        if (!phones.some(ph => supplierPhoneKeys.has(phoneKey(ph)))) return false;
+      } else if (effectiveOwnership === 'open') {
         // Estritamente leads SEM RESPONSÁVEL comercial atribuído
         const hasAssignee = Boolean(
           lead.assignedTo || 
@@ -2140,7 +2277,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       }
       return new Date(b.createdAt || '').getTime() - new Date(a.createdAt || '').getTime();
     });
-  }, [canSeeAllConversations, sourceLeads, activeFunnel, selectedFunnelId, postSaleFunnels, funnels, activeVenueId, isPostSaleFunnel, quickFilter, leadOwnershipFilter, sortBy, localSortBy, filterVenueId, filterStage, filterCollaboratorId, filterTemperature, searchTerm, searchQuery, currentUser, effectiveUser, viewingAsCollaborator, selectedLeadId, initialLeadId, isEmbeddedInFunnel, collabIds]);
+  }, [canSeeAllConversations, sourceLeads, activeFunnel, selectedFunnelId, postSaleFunnels, funnels, activeVenueId, isPostSaleFunnel, quickFilter, leadOwnershipFilter, sortBy, localSortBy, filterVenueId, filterStage, filterCollaboratorId, filterTemperature, searchTerm, searchQuery, currentUser, effectiveUser, viewingAsCollaborator, selectedLeadId, initialLeadId, isEmbeddedInFunnel, collabIds, suppliersTab, supplierPhoneKeys]);
 
   // ── Janela da caixa de entrada (como o WhatsApp Web): 40 conversas e +10 a cada rolagem ──────────────
   // As 20 ultimas mensagens de cada conversa visivel (e das proximas 10) sao pre-carregadas em lote para abrir sem "carregando".
@@ -2148,7 +2285,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   const INBOX_STEP = 10;
   const [visibleCount, setVisibleCount] = useState(INBOX_INITIAL);
   const inboxSentinelRef = useRef<HTMLDivElement>(null);
-  const inboxFilterSignature = `${quickFilter}|${filterVenueId}|${filterCollaboratorId}|${filterTemperature}|${filterStage}|${searchTerm}|${searchQuery}|${localSortBy}|${selectedFunnelId}|${leadOwnershipFilter}`;
+  const inboxFilterSignature = `${suppliersTab ? 'forn' : ''}${quickFilter}|${filterVenueId}|${filterCollaboratorId}|${filterTemperature}|${filterStage}|${searchTerm}|${searchQuery}|${localSortBy}|${selectedFunnelId}|${leadOwnershipFilter}`;
   useEffect(() => { setVisibleCount(INBOX_INITIAL); }, [inboxFilterSignature]);
   // Conversa selecionada fora da janela: amplia a janela para ela aparecer
   useEffect(() => {
@@ -2212,16 +2349,57 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     }
 
     // Fallback: se não há seleção válida e o usuário NÃO fechou intencionalmente a conversa, seleciona o primeiro disponível
+    // (Apenas no modo WhatsApp standalone; quando embutido no Kanban, abre vazio aguardando o clique do usuário)
     if (!selectedLeadId && !isChatClosedByUserRef.current && filteredLeads.length > 0) {
-      setSelectedLeadId(filteredLeads[0].id);
+      if (!isEmbeddedInFunnel) {
+        setSelectedLeadId(filteredLeads[0].id);
+      }
     } else if (!selectedLeadId) {
       setSelectedLeadId(null);
     }
-  }, [filteredLeads, sourceLeads, initialLeadId, selectedLeadId, onLeadOpened]);
+  }, [filteredLeads, sourceLeads, initialLeadId, selectedLeadId, isEmbeddedInFunnel, onLeadOpened]);
 
   const selectedLead = useMemo(() => {
     return sourceLeads.find(l => l.id === selectedLeadId) || null;
   }, [sourceLeads, selectedLeadId]);
+
+  // Contrato Mestre de Pós-Venda associado ao lead selecionado (ex: Carla Nogueira vinculada ao contrato do Antônio / Vitória)
+  const targetContractClient = useMemo(() => {
+    if (!selectedLead) return null;
+    if ((selectedLead as any).contractNumber || (selectedLead as any).contractTitle) {
+      return selectedLead;
+    }
+    const contractRefId = (selectedLead as any).associated_contract_id || (selectedLead as any).contractId;
+    if (contractRefId) {
+      const found = clients.find(cl => cl.id === contractRefId || (cl as any).contractNumber === contractRefId);
+      if (found) return found;
+    }
+    if (selectedLead.phone) {
+      const lDigits = selectedLead.phone.replace(/\D/g, '').slice(-8);
+      if (lDigits.length >= 8) {
+        const found = clients.find(cl => {
+          if (cl.payerPhone && cl.payerPhone.replace(/\D/g, '').slice(-8) === lDigits) return true;
+          if (Array.isArray(cl.contacts) && cl.contacts.some(ct => ct.phone && ct.phone.replace(/\D/g, '').slice(-8) === lDigits)) return true;
+          return false;
+        });
+        if (found) return found;
+      }
+    }
+    return selectedLead;
+  }, [selectedLead, clients]);
+
+  const isPostSaleNoContract = useMemo(() => {
+    if (!selectedLead) return false;
+    const isPost = Boolean(isPostSaleFunnel || isPostSale || selectedLead.isClient || selectedLead.group === 'Pós-Venda');
+    if (!isPost) return false;
+    const hasCt = Boolean(
+      (selectedLead as any)?.contractId ||
+      (selectedLead as any)?.hasContract ||
+      (targetContractClient && (targetContractClient as any).contractNumber) ||
+      clients.some(c => (c.id === selectedLead.id || (c as any).leadId === selectedLead.id) && Boolean((c as any).hasContract || (c as any).contractId))
+    );
+    return !hasCt;
+  }, [selectedLead, isPostSaleFunnel, isPostSale, clients, targetContractClient]);
   usePresenceContext(selectedLead ? { type: (selectedLead as any).isClient ? 'client' : 'lead', id: selectedLead.id, label: selectedLead.debutanteName } : null);
 
   useEffect(() => {
@@ -2281,10 +2459,12 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     return allPostSaleChannels.find(c => c.id === activePostSaleChannelId) || null;
   }, [allPostSaleChannels, activePostSaleChannelId]);
 
+  const forcedSource = useMemo(() => (forcedSourceId ? (sources || []).find(s => s.id === forcedSourceId) || null : null), [forcedSourceId, sources]);
   const channelExclusiveSource = useMemo(() => {
+    if (forcedSource) return forcedSource;
     if (!activePostSaleChannel?.instanceId) return null;
     return (sources || []).find(s => s.id === activePostSaleChannel.instanceId) || null;
-  }, [activePostSaleChannel?.instanceId, sources]);
+  }, [forcedSource, activePostSaleChannel?.instanceId, sources]);
 
   // Se a aba geral estiver oculta e estiver no 'geral', chaveia para o primeiro canal visível
   useEffect(() => {
@@ -2513,9 +2693,10 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     const seenPhones = new Set<string>();
     const normPhone = (p?: string) => (p || '').replace(/\D/g, '').slice(-9);
     const leadAny = selectedLead as any;
+    const mainPhone = (selectedLead.phone || leadAny.whatsapp || leadAny.payerPhone)?.trim();
 
     const translateRole = (r?: string) => {
-      if (!r) return 'Contato';
+      if (!r || r.toLowerCase().trim() === 'indefinido') return 'Cliente';
       const low = r.toLowerCase().trim();
       if (low === 'mother' || low === 'mae' || low === 'mãe') return 'Mãe';
       if (low === 'father' || low === 'pai') return 'Pai';
@@ -2526,6 +2707,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       if (low === 'responsible' || low === 'responsavel' || low === 'responsável') return 'Contratante Pagante';
       if (low === 'guardian') return 'Responsável';
       if (low === 'self') return 'Próprio';
+      if (low === 'client' || low === 'cliente') return 'Cliente';
       if (low === 'other' || low === 'outro') return 'Contato';
       return r;
     };
@@ -2543,12 +2725,43 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
         .trim();
     };
 
+    const resolveAvatarForPhone = (phone?: string): string | undefined => {
+      if (!phone) return undefined;
+      const digits = normPhone(phone);
+      if (!digits) return undefined;
+
+      // 1. Procura em sourceLeads e leads gerais
+      const matchingLead = (sourceLeads || []).concat(leads || []).find(l => {
+        const lp = normPhone(l.phone);
+        const match = lp && (lp === digits || lp.includes(digits) || digits.includes(lp));
+        return match && (l.avatarUrl || (l as any).custom_field_values?.avatarUrl || (l as any).customFieldValues?.avatarUrl);
+      });
+      const leadAv = matchingLead?.avatarUrl || (matchingLead as any)?.custom_field_values?.avatarUrl || (matchingLead as any)?.customFieldValues?.avatarUrl;
+      if (leadAv) return leadAv;
+
+      // 2. Procura nos contatos dos clientes em clients
+      for (const cl of (clients || [])) {
+        if (Array.isArray(cl.contacts)) {
+          const matchCt: any = cl.contacts.find((c: any) => {
+            const cp = normPhone(c.primary_phone || c.primaryPhone || c.phone);
+            return cp && (cp === digits || cp.includes(digits) || digits.includes(cp)) && (c.profile_picture_url || c.profilePictureUrl || c.avatarUrl);
+          });
+          if (matchCt) {
+            return matchCt.profile_picture_url || matchCt.profilePictureUrl || matchCt.avatarUrl;
+          }
+        }
+      }
+
+      return undefined;
+    };
+
     if (selectedLead.contacts && selectedLead.contacts.length > 0) {
       selectedLead.contacts.forEach((c, idx) => {
         const clean = c.phone?.trim();
-        if (clean && !seenPhones.has(normPhone(clean))) {
+        const isSameAsMainPhone = Boolean(mainPhone && clean && normPhone(clean) === normPhone(mainPhone));
+        if (clean && !isSameAsMainPhone && !seenPhones.has(normPhone(clean))) {
           seenPhones.add(normPhone(clean));
-          const isDec = Boolean(c.isPrimaryDecisionMaker || leadAny.decisionMaker === c.role || leadAny.decisionMaker === c.name || (leadAny.decisionMaker === 'mae' && c.role?.toLowerCase().includes('m')));
+          const isDec = Boolean(!isPostSaleNoContract && (c.isPrimaryDecisionMaker || leadAny.decisionMaker === c.role || leadAny.decisionMaker === c.name || (leadAny.decisionMaker === 'mae' && c.role?.toLowerCase().includes('m'))));
           const rBadge = translateRole(c.role);
           const rawName = c.name || selectedLead.name || 'Contato';
           const cleanName = cleanRoleLabel(rawName);
@@ -2561,25 +2774,35 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
             roleBadge: rBadge,
             isDecisor: isDec,
             isMain: false,
-            avatarUrl: (c as any).avatarUrl || (c as any).photoUrl || (clean === selectedLead.phone ? selectedLead.avatarUrl : undefined),
+            avatarUrl: (c as any).avatarUrl || (c as any).photoUrl || resolveAvatarForPhone(clean) || (clean === selectedLead.phone ? selectedLead.avatarUrl : undefined),
           });
         }
       });
     }
 
-    // Contratante Pagante / Decisor Principal
-    const mainPhone = (selectedLead.phone || leadAny.whatsapp || leadAny.payerPhone)?.trim();
-    const contractorRole = leadAny.payerRelationship 
-      ? translateRole(leadAny.payerRelationship) 
-      : (selectedLead.name && /\((mother|mae|mãe)\)/i.test(selectedLead.name) ? 'Mãe (Contratante)' : 
-        (selectedLead.name && /\((father|pai)\)/i.test(selectedLead.name) ? 'Pai (Contratante)' : 'Contratante Pagante'));
+    // Contratante Pagante / Cliente (sem contrato)
+    const contractorRole = isPostSaleNoContract
+      ? 'Cliente'
+      : (leadAny.payerRelationship 
+        ? translateRole(leadAny.payerRelationship) 
+        : (selectedLead.name && /\((mother|mae|mãe)\)/i.test(selectedLead.name) ? 'Mãe (Contratante)' : 
+          (selectedLead.name && /\((father|pai)\)/i.test(selectedLead.name) ? 'Pai (Contratante)' : 'Contratante Pagante')));
 
-    const rawContractorName = leadAny.payerName || selectedLead.name || 'Contratante';
+    const extractPayerFromTitle = (title?: string) => {
+      if (!title) return '';
+      if (title.includes('•')) return title.split('•')[0].trim();
+      if (title.includes(' - ')) return title.split(' - ')[0].trim();
+      return title;
+    };
+
+    const rawContractorName = isPostSaleNoContract
+      ? (extractPayerFromTitle(selectedLead.name) || leadAny.payerName || 'Cliente')
+      : (leadAny.payerName || extractPayerFromTitle(selectedLead.name) || 'Contratante');
     const cleanMainName = cleanRoleLabel(rawContractorName);
 
     if (mainPhone && !seenPhones.has(normPhone(mainPhone))) {
       seenPhones.add(normPhone(mainPhone));
-      const isDec = Boolean(leadAny.isDecisionMaker || !list.some(l => l.isDecisor));
+      const isDec = Boolean(!isPostSaleNoContract && (leadAny.isDecisionMaker || !list.some(l => l.isDecisor)));
       list.push({
         key: `contractor-main-${mainPhone}`,
         phone: mainPhone,
@@ -2589,7 +2812,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
         roleBadge: contractorRole,
         isDecisor: isDec,
         isMain: true,
-        avatarUrl: selectedLead.avatarUrl,
+        avatarUrl: resolveAvatarForPhone(mainPhone) || selectedLead.avatarUrl,
       });
     }
 
@@ -2619,7 +2842,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
         roleBadge: 'Protagonista do Evento',
         isDecisor: false,
         isMain: false,
-        avatarUrl: undefined,
+        avatarUrl: resolveAvatarForPhone(debutantePhone),
       });
     } else if (!debutantePhone && debName && !PLACEHOLDER_PERSON_NAMES.has(debName.trim().toLowerCase()) && debName.toLowerCase() !== cleanMainName.toLowerCase()) {
       // Homenageada sem telefone proprio: aparece apenas como informacao (chip desabilitado), sem canal de envio
@@ -2636,9 +2859,6 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
         noPhone: true,
       });
     }
-    // Regra: so existe canal de conversa para pessoa com telefone PROPRIO cadastrado.
-    // (Antes criava um item "protagonista" reutilizando o telefone do contratante, o que
-    // duplicava o mesmo numero em todos os leads e podia enviar a mensagem para a pessoa errada.)
 
     const motherPhone = leadAny.motherPhone?.trim();
     if (motherPhone && !seenPhones.has(normPhone(motherPhone))) {
@@ -2653,7 +2873,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
         roleBadge: 'Mãe',
         isDecisor: leadAny.decisionMaker === 'mae',
         isMain: false,
-        avatarUrl: undefined,
+        avatarUrl: resolveAvatarForPhone(motherPhone),
       });
     }
 
@@ -2670,14 +2890,89 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
         roleBadge: 'Pai',
         isDecisor: leadAny.decisionMaker === 'pai',
         isMain: false,
-        avatarUrl: undefined,
+        avatarUrl: resolveAvatarForPhone(fatherPhone),
       });
     }
 
-    // O Decisor Principal SEMPRE fica no topo absoluto da lista de destinatários
-    list.sort((a, b) => (b.isDecisor ? 1 : 0) - (a.isDecisor ? 1 : 0));
+    // Se o lead atual estiver vinculado a um contrato mestre (ex: Carla vinculada ao contrato do Antônio / Vitória),
+    // puxa também os contatos do contrato para que apareçam na alternância familiar no topo do chat:
+    if (targetContractClient && targetContractClient.id !== selectedLead.id) {
+      const tc = targetContractClient as any;
+      if (Array.isArray(tc.contacts)) {
+        tc.contacts.forEach((c: any, idx: number) => {
+          const clean = c.phone?.trim();
+          if (clean && !seenPhones.has(normPhone(clean))) {
+            seenPhones.add(normPhone(clean));
+            const rawName = c.name || 'Contato';
+            const cleanName = cleanRoleLabel(rawName);
+            list.push({
+              key: `contract-contact-${c.id || idx}-${clean}`,
+              phone: clean,
+              name: cleanName,
+              label: cleanName,
+              role: c.role || 'Contato',
+              roleBadge: translateRole(c.role),
+              isDecisor: Boolean(c.isPrimaryDecisionMaker || tc.decisionMaker === c.role),
+              isMain: false,
+              avatarUrl: c.avatarUrl || c.photoUrl || resolveAvatarForPhone(clean),
+            });
+          }
+        });
+      }
+      if (tc.payerPhone && !seenPhones.has(normPhone(tc.payerPhone))) {
+        seenPhones.add(normPhone(tc.payerPhone));
+        const pName = cleanRoleLabel(tc.payerName || tc.name || 'Contratante');
+        list.push({
+          key: `contract-payer-${tc.payerPhone}`,
+          phone: tc.payerPhone,
+          name: pName,
+          label: pName,
+          role: 'Contratante Pagante',
+          roleBadge: 'Contratante Pagante',
+          isDecisor: true,
+          isMain: false,
+          avatarUrl: resolveAvatarForPhone(tc.payerPhone) || tc.avatarUrl,
+        });
+      }
+    }
+
+    // Ordenação por mensagem mais recente de cada pessoa da família (quem interagiu por último fica no topo à esquerda)
+    const getPhoneLastInteractionTime = (phone?: string) => {
+      if (!phone) return 0;
+      const digits = phone.replace(/\D/g, '').slice(-8);
+      if (!digits) return 0;
+      let latest = 0;
+      const allActs = [
+        ...(selectedLead?.activities || []),
+        ...((targetContractClient as any)?.activities || [])
+      ];
+      for (const a of allActs) {
+        if (a.type !== 'contact') continue;
+        const actPhone = (
+          (a.metadata as any)?.fromPhone ||
+          (a.metadata as any)?.customerPhone ||
+          (a.metadata as any)?.recipientPhone ||
+          (a.metadata as any)?.phone ||
+          (a as any).phone ||
+          ''
+        ).replace(/\D/g, '').slice(-8);
+        const at = new Date(a.date || a.createdAt || (a as any).timestamp || 0).getTime();
+        if (actPhone === digits || (!actPhone && normPhone(selectedLead.phone || '').slice(-8) === digits)) {
+          if (at > latest) latest = at;
+        }
+      }
+      return latest;
+    };
+
+    list.sort((a, b) => {
+      const timeA = getPhoneLastInteractionTime(a.phone);
+      const timeB = getPhoneLastInteractionTime(b.phone);
+      if (timeB !== timeA) return timeB - timeA;
+      return (b.isDecisor ? 1 : 0) - (a.isDecisor ? 1 : 0);
+    });
+
     return list;
-  }, [selectedLead]);
+  }, [selectedLead, isPostSaleNoContract, targetContractClient, sourceLeads, leads, clients]);
 
   // Apenas quem tem telefone proprio pode receber mensagem; os demais so aparecem como chip informativo
   const availableRecipients = useMemo(() => allRecipientsWithInfo.filter(r => !r.noPhone), [allRecipientsWithInfo]);
@@ -2714,9 +3009,19 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
 
   // Quem esta do outro lado do chat: o contato principal usa nome/foto do lead; qualquer outro contato (familiar, dependente)
   // usa os proprios dados e NUNCA herda a foto/nome do principal (sem foto => iniciais).
-  const peerOfRecipient = useCallback((r?: { name?: string; avatarUrl?: string; isMain?: boolean } | null) => {
-    if (r && !r.isMain) return { name: r.name || selectedLead?.name || '', avatarUrl: r.avatarUrl || undefined };
-    return { name: selectedLead?.name || '', avatarUrl: (selectedLead as any)?.avatarUrl || (selectedLead as any)?.profilePicUrl || undefined };
+  const peerOfRecipient = useCallback((r?: { name?: string; avatarUrl?: string; isMain?: boolean; phone?: string } | null) => {
+    if (r && r.name) {
+      return {
+        name: r.name,
+        avatarUrl: r.avatarUrl || undefined,
+      };
+    }
+    const raw = (selectedLead as any)?.payerName || selectedLead?.name || '';
+    const clean = raw.includes('•') ? raw.split('•')[0].trim() : (raw.includes(' - ') ? raw.split(' - ')[0].trim() : raw);
+    return {
+      name: clean || 'Cliente',
+      avatarUrl: (selectedLead as any)?.avatarUrl || (selectedLead as any)?.profilePicUrl || undefined,
+    };
   }, [selectedLead]);
   const chatPeer = useMemo(() => peerOfRecipient(activeRecipient), [peerOfRecipient, activeRecipient]);
   // Dono de uma mensagem recebida: casa o numero gravado na atividade com os contatos da ficha; senao, o chat aberto
@@ -2790,11 +3095,14 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     if (currentUser?.id) collabIdSet.add(currentUser.id);
     const waitingTime = getLeadPendingWaitingTime(selectedLead, collabIdSet);
 
-    // Marca visualização APENAS se houver mensagem pendente de resposta da equipe
+    const activePhoneDigits = (activeRecipient?.phone || selectedLead.phone || '').replace(/\D/g, '').slice(-8);
+    const matchingLeadToMark = (sourceLeads || []).find(l => (l.phone || '').replace(/\D/g, '').slice(-8) === activePhoneDigits) || selectedLead;
+
+    // Marca visualização APENAS para o lead do contato que foi realmente aberto
     if (waitingTime > 0) {
-      markLeadAsRead(selectedLead.id);
-    } else if ((selectedLead.unreadCount || 0) > 0) {
-      markLeadAsRead(selectedLead.id);
+      markLeadAsRead(matchingLeadToMark.id);
+    } else if ((matchingLeadToMark.unreadCount || 0) > 0) {
+      markLeadAsRead(matchingLeadToMark.id);
     }
 
     // 3. Auto-recuperação pontual de mensagens [Undecryptable] ao abrir a conversa (máximo 1x a cada 120s por lead, sem loops excessivos)
@@ -3018,7 +3326,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   const senderFunnelId = selectedLead?.funnelId || (selectedLead?.isClient ? (activeFunnelId || undefined) : undefined);
   const venueSenderSources = useMemo(() => {
     const allWhatsappSources = (sources || []).filter(
-      s => s.type === 'whatsapp_api' &&
+      s => s.type === 'whatsapp_api' && !isFinanceSource(s) &&
         Boolean(getSourceInstanceToken(s) || (s.configuration as any)?.connectedPhone)
     );
 
@@ -3042,6 +3350,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   const lastSentSourceId = useMemo(() => lastSystemSentSourceId(selectedLead?.activities), [selectedLead?.activities]);
   // Numero por onde o cliente falou por ultimo: ao abrir a conversa, ja vem selecionado (so ao abrir, nao troca sozinho depois)
   const lastIncomingSourceIdValue = useMemo(() => lastIncomingSourceId(selectedLead?.activities), [selectedLead?.activities]);
+  // Chip da ULTIMA INTERAÇÃO real na conversa (seja enviada por celular/web, pelo sistema ou recebida do cliente)
+  const lastInteractionSourceIdValue = useMemo(() => lastInteractionSourceId(selectedLead?.activities), [selectedLead?.activities]);
   const lastIncomingRef = useRef<string | undefined>(undefined);
   lastIncomingRef.current = lastIncomingSourceIdValue;
 
@@ -3057,23 +3367,29 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       : readManualSender(selectedLead.id);
     const rec = recommendSender(venueSenderSources.map(s => s.id), {
       manualId,
+      lastInteractionId: lastInteractionSourceIdValue,
       lastIncomingId: lastIncomingRef.current,
       lastSentId: lastSentSourceId,
       originId: selectedLead.sourceId,
     });
     setSelectedSenderSourceId(rec?.id || '');
-  }, [selectedLead?.id, selectedLead?.sourceId, lastSentSourceId, Boolean(lastIncomingSourceIdValue), venueSenderSources]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selectedLead?.id, selectedLead?.sourceId, lastInteractionSourceIdValue, lastSentSourceId, Boolean(lastIncomingSourceIdValue), venueSenderSources]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const baseSenderSource = useMemo(() => {
     return venueSenderSources.find(s => s.id === selectedSenderSourceId) || venueSenderSources[0] || null;
   }, [venueSenderSources, selectedSenderSourceId]);
 
   const activeSenderSource = useMemo(() => {
+    // Escolha manual do usuário no seletor de instâncias tem prioridade absoluta
+    if (selectedSenderSourceId) {
+      const manual = venueSenderSources.find(s => s.id === selectedSenderSourceId);
+      if (manual) return manual;
+    }
     if (channelExclusiveSource) {
       return channelExclusiveSource;
     }
     return baseSenderSource;
-  }, [channelExclusiveSource, baseSenderSource]);
+  }, [selectedSenderSourceId, channelExclusiveSource, baseSenderSource, venueSenderSources]);
 
   const isSenderDisconnected = useMemo(() => {
     if (!activeSenderSource) return true;
@@ -3120,40 +3436,41 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
 
     let isMounted = true;
 
-    // Sincroniza a foto de cada contato do lead (TTL 7 dias resolvido no service, por contacts.id)
-    const phones = new Set<string>();
-    if (selectedLead.phone) phones.add(selectedLead.phone);
-    (selectedLead.contacts || []).forEach((c: any) => { if (c?.phone) phones.add(c.phone); });
-    phones.forEach(async (ph) => {
-      try {
-        const result = await whatsappMediaService.syncContactAvatar({ phone: ph }, activeSenderToken, masterId);
-        if (result.updated && result.avatarUrl && isMounted && ph === selectedLead.phone) {
-          updateLeadData(selectedLead.id, { avatarUrl: result.avatarUrl });
-        }
-      } catch {
-        // Silencioso
+    // Sincroniza a foto de cada contato do lead/família na Central de Contatos (TTL 7 dias)
+    const contactsToCheck = new Map<string, string>();
+    if (selectedLead.phone) contactsToCheck.set(selectedLead.phone.replace(/\D/g, ''), selectedLead.name || '');
+    (selectedLead.contacts || []).forEach((c: any) => {
+      if (c?.phone) contactsToCheck.set(c.phone.replace(/\D/g, ''), c.name || '');
+    });
+    if (targetContractClient) {
+      if ((targetContractClient as any).payerPhone) {
+        contactsToCheck.set((targetContractClient as any).payerPhone.replace(/\D/g, ''), (targetContractClient as any).payerName || '');
       }
+      (((targetContractClient as any).contacts) || []).forEach((c: any) => {
+        if (c?.phone) contactsToCheck.set(c.phone.replace(/\D/g, ''), c.name || '');
+      });
+    }
+    (availableRecipients || []).forEach(r => {
+      if (r?.phone) contactsToCheck.set(r.phone.replace(/\D/g, ''), r.name || '');
     });
 
-    // Fallback: se o lead tem phone mas sem contato vinculado com code, usa fetchProfilePicture simples
-    if (selectedLead.phone && !selectedLead.avatarUrl && (!selectedLead.contacts || selectedLead.contacts.length === 0)) {
-      (async () => {
-        try {
-          const pic = await uazapiService.getProfilePicture(activeSenderToken, selectedLead.phone);
-          if (pic && isMounted) {
-            updateLeadData(selectedLead.id, { avatarUrl: pic });
-            leadService.update(selectedLead.id, { avatarUrl: pic }).catch(() => { });
+    contactsToCheck.forEach((cName, cPhone) => {
+      if (cPhone.length < 8) return;
+      whatsappMediaService.syncContactAvatar({ phone: cPhone, name: cName }, activeSenderToken, masterId)
+        .then(res => {
+          if (res.updated && res.avatarUrl && isMounted) {
+            if (cPhone === (selectedLead.phone || '').replace(/\D/g, '')) {
+              updateLeadData(selectedLead.id, { avatarUrl: res.avatarUrl });
+            }
           }
-        } catch {
-          // Silencioso
-        }
-      })();
-    }
+        })
+        .catch(() => { });
+    });
 
     return () => {
       isMounted = false;
     };
-  }, [selectedLead?.id, activeSenderToken]);
+  }, [selectedLead?.id, activeSenderToken, targetContractClient?.id]);
 
   const messagingPaused = useMessagingPause(); // pausa geral: desabilita o compositor
   const isManager = currentUser?.role === 'master' || currentUser?.role === 'admin';
@@ -3171,47 +3488,30 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
 
   // Controle de rolagem do chat para não prender o usuário quando ele sobe para ler mensagens antigas
   const isUserScrolledUpRef = useRef<boolean>(false);
+  const isManualUserScrollRef = useRef<boolean>(false);
   const lastScrolledLeadIdRef = useRef<string | null>(null);
   const lastScrolledTabRef = useRef<string | null>(null);
+  const lastScrolledChipRef = useRef<string | null>(null);
+  const lastScrolledRecipientRef = useRef<string | null>(null);
 
   const handleTimelineScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
     const el = e.currentTarget;
     const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-    // Se o usuário rolou mais de 70px do fundo, marcamos como scrolled up para NÃO puxar para baixo
-    isUserScrolledUpRef.current = distanceFromBottom > 70;
+    
+    // Se o usuário rolou para perto do fundo (menos de 50px), reseta qualquer trava de scroll
+    if (distanceFromBottom <= 50) {
+      isUserScrolledUpRef.current = false;
+      isManualUserScrollRef.current = false;
+    } else if (isManualUserScrollRef.current && distanceFromBottom > 70) {
+      // Só marca como scrolled up se foi uma ação intencional do usuário (wheel / touch)
+      isUserScrolledUpRef.current = true;
+    }
 
     // Se o usuário rolou até o topo (menos de 80px do topo) e existem mensagens anteriores no banco
     if (el.scrollTop < 80 && !isFetchingOlderRef.current && selectedLeadId && !reachedBeginningMap[selectedLeadId]) {
       loadOlderMessagesRef.current();
     }
   }, [selectedLeadId, reachedBeginningMap]);
-
-  // Auto-scroll inteligente: só força scroll para o fim se trocou de lead/aba, ou se o usuário NÃO subiu a rolagem
-  useEffect(() => {
-    if (!selectedLeadId || (composerTab !== 'whatsapp' && composerTab !== 'notes')) {
-      return;
-    }
-
-    const isDifferentLead = lastScrolledLeadIdRef.current !== selectedLeadId;
-    const isDifferentTab = lastScrolledTabRef.current !== composerTab;
-
-    if (isDifferentLead || isDifferentTab) {
-      lastScrolledLeadIdRef.current = selectedLeadId;
-      lastScrolledTabRef.current = composerTab;
-      isUserScrolledUpRef.current = false;
-      scrollToBottom('auto');
-      const timer = setTimeout(() => scrollToBottom('auto'), 100);
-      return () => clearTimeout(timer);
-    }
-
-    // Se o usuário rolou para cima para ler mensagens antigas ou busca histórica em andamento, NUNCA força scroll para o fim!
-    if (isUserScrolledUpRef.current || isFetchingOlderRef.current) {
-      return;
-    }
-
-    // Mantém no final se novas mensagens chegarem e o usuário já estiver na parte inferior
-    scrollToBottom('smooth');
-  }, [selectedLeadId, composerTab, selectedLead?.activities?.length, scrollToBottom]);
 
   // Controle de Presença em Tempo Real (Digitando... / Gravando áudio...) isolado por telefone de contato
   const lastPresenceTimeRef = useRef<number>(0);
@@ -3609,16 +3909,14 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
           }
         }
 
-        // Sincroniza foto de perfil se o lead ainda não tiver foto no R2
-        if (!selectedLead.avatarUrl) {
-          uazapiService.fetchChatContactInfo(activeSenderToken, targetPhone)
-            .then(async (info) => {
-              if (info.profilePicUrl && info.profilePicUrl !== selectedLead.avatarUrl) {
-                const permanentR2Avatar = await whatsappMediaService.syncWhatsAppAvatarToR2(info.realPhone || targetPhone, info.profilePicUrl);
-                const finalAvatar = permanentR2Avatar || info.profilePicUrl;
-                updateLeadData(selectedLead.id, { avatarUrl: finalAvatar });
-                if (isSupabaseConfigured) {
-                  leadService.update(selectedLead.id, { avatarUrl: finalAvatar }).catch(() => { });
+        // Sincroniza foto de perfil na Central de Contatos (TTL de 7 dias com propagação automática)
+        const currentMasterId = effectiveUser?.masterId || currentUser?.masterId || effectiveUser?.id || currentUser?.id;
+        if (currentMasterId && activeSenderToken && targetPhone) {
+          whatsappMediaService.syncContactAvatar({ phone: targetPhone, name: selectedLead.name }, activeSenderToken, currentMasterId)
+            .then(res => {
+              if (res.updated && res.avatarUrl) {
+                if (targetPhone === selectedLead.phone) {
+                  updateLeadData(selectedLead.id, { avatarUrl: res.avatarUrl });
                 }
               }
             })
@@ -3742,39 +4040,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     }
   };
 
-  /**
-   * Identifica se a conversa do lead selecionado já está com atendimento encerrado
-   * (Lembrando da regra: auditorias de visualização NÃO contam como reabertura da conversa)
-   */
-  const isConversationClosed = useMemo(() => {
-    if (!selectedLead?.activities || selectedLead.activities.length === 0) return false;
-    const chatActivities = (selectedLead.activities || []).filter(a => {
-      const isViewAudit = (a as any).metadata?.isViewAudit === true || a.title === 'Mensagem Visualizada' || (a.text && a.text.includes('visualizou esta mensagem'));
-      if (isViewAudit) return false;
-      return a.type === 'contact' || (a as any).type === 'whatsapp';
-    });
-    if (chatActivities.length === 0) return false;
 
-    const sortedActs = [...chatActivities].sort((a, b) => {
-      const timeA = new Date(a.timestamp || 0).getTime();
-      const timeB = new Date(b.timestamp || 0).getTime();
-      if (timeA !== timeB) return timeA - timeB;
-      const isEndA = Boolean((a as any).metadata?.isSessionEnd || (a.title || '').toLowerCase().includes('conversa encerrada'));
-      const isEndB = Boolean((b as any).metadata?.isSessionEnd || (b.title || '').toLowerCase().includes('conversa encerrada'));
-      if (isEndA && !isEndB) return 1;
-      if (!isEndA && isEndB) return -1;
-      return 0;
-    });
-
-    const lastAct = sortedActs[sortedActs.length - 1];
-    const isSessionEnd = Boolean(
-      (lastAct as any).metadata?.isSessionEnd === true ||
-      (lastAct.title || '').toLowerCase().includes('conversa encerrada') ||
-      (lastAct.text || '').toLowerCase().includes('atendimento encerrado') ||
-      (lastAct.title || '').toLowerCase().includes('atendimento finalizado')
-    );
-    return isSessionEnd;
-  }, [selectedLead?.activities]);
 
   /**
    * Helper para checar se a conversa de qualquer lead está encerrada
@@ -3809,10 +4075,13 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   }, []);
 
   /**
-   * Finaliza / Encerra o atendimento da conversa atual, registrando o encerramento no histórico e zerando a pendência de resposta (SLA)
+   * Finaliza / Encerra o atendimento da conversa atual especificamente do número/destinatário em aberto
    */
   const handleEndConversation = async (targetLeadId?: string) => {
-    const targetLead = targetLeadId ? sourceLeads.find(l => l.id === targetLeadId) : selectedLead;
+    const activePhone = activeRecipient?.phone || selectedRecipientPhone || selectedLead?.phone || '';
+    const activeDigits = activePhone.replace(/\D/g, '').slice(-8);
+    const matchingLead = (sourceLeads || []).find(l => (l.phone || '').replace(/\D/g, '').slice(-8) === activeDigits) || selectedLead;
+    const targetLead = targetLeadId ? (sourceLeads.find(l => l.id === targetLeadId) || selectedLead) : matchingLead;
     if (!targetLead) return;
 
     // Regra do Áudio 2: Garante timestamp estritamente posterior à última mensagem da conversa
@@ -3820,12 +4089,14 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     const lastActTime = currentActivities.reduce((max, a) => Math.max(max, new Date(a.timestamp || 0).getTime()), 0);
     const finalTimestampIso = new Date(Math.max(Date.now(), lastActTime + 1000)).toISOString();
 
+    const activeName = activeRecipient?.name ? ` (${activeRecipient.name})` : '';
+
     const endSessionActivity: LeadActivity = {
       id: generateUuid(),
       leadId: targetLead.id,
       type: 'contact',
       title: 'Conversa Encerrada',
-      text: `Atendimento encerrado por ${currentUser?.name || 'Equipe'}`,
+      text: `Atendimento encerrado por ${currentUser?.name || 'Equipe'}${activeName}`,
       authorName: currentUser?.name || 'Equipe',
       authorId: currentUser?.id || 'team',
       authorAvatarUrl: currentUser?.avatarUrl,
@@ -3836,6 +4107,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       isSessionEnd: true,
       closedById: currentUser?.id,
       closedByName: currentUser?.name,
+      recipientPhone: activePhone,
+      phone: activePhone,
       fromMe: true,
     };
 
@@ -3981,11 +4254,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       const ct = await contractService.getContractByClientId(currentClient.id, contractDocsMasterId);
       if (!alive) return;
       if (!ct) { setLinkedContractDocs([]); return; }
-      const files: Array<{ name: string; url: string }> = [
-        ...(ct.contractFileUrl ? [{ name: 'Contrato assinado', url: ct.contractFileUrl }] : []),
-        ...(ct.paymentFileUrl ? [{ name: 'Comprovante de sinal', url: ct.paymentFileUrl }] : []),
-        ...((ct.attachments || []).map(a => ({ name: a.name, url: a.url }))),
-      ];
+      const files = getContractDocuments(ct);
       setLinkedContractDocs(files.map((f, i) => ({
         id: `contract_file_${ct.id}_${i}`, clientId: currentClient.id, title: f.name, name: f.name,
         type: 'contract', fileUrl: f.url, url: f.url, uploadedAt: ct.approvedAt || ct.createdAt,
@@ -4518,14 +4787,114 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     setFilterTemperature('all');
   };
 
-  // Atividades do Lead com cache instantâneo de LocalStorage para abertura em 0ms
+  // Atividades do Lead com cache instantâneo de LocalStorage e consolidação de conversas da família/contrato
   const effectiveLeadActivities = useMemo(() => {
+    const actMap = new Map<string, LeadActivity>();
+
+    // 1. Atividades do lead selecionado
     const memActs = selectedLead?.activities || [];
-    if (memActs.length > 0) return memActs;
-    if (!selectedLeadId) return [];
-    const cached = leadService.getActivitiesFromCache(selectedLeadId);
-    return cached.length > 0 ? cached : memActs;
-  }, [selectedLead?.activities, selectedLeadId]);
+    memActs.forEach(a => { if (a && a.id) actMap.set(a.id, a); });
+
+    // 2. Cache local do lead selecionado
+    if (selectedLeadId) {
+      const cached = leadService.getActivitiesFromCache(selectedLeadId);
+      cached.forEach(a => { if (a && a.id && !actMap.has(a.id)) actMap.set(a.id, a); });
+    }
+
+    // 3. Se houver contrato vinculado (ex: Carla associada ao contrato do Antônio), mescla atividades do contrato
+    if (targetContractClient && targetContractClient.id !== selectedLead?.id) {
+      const tcActs = (targetContractClient as any).activities || [];
+      tcActs.forEach((a: LeadActivity) => { if (a && a.id && !actMap.has(a.id)) actMap.set(a.id, a); });
+      const cachedTc = leadService.getActivitiesFromCache(targetContractClient.id);
+      cachedTc.forEach(a => { if (a && a.id && !actMap.has(a.id)) actMap.set(a.id, a); });
+    }
+
+    // 4. Varre sourceLeads e leads gerais para encontrar leads individuais de familiares (ex: lead da Carla quando estamos no contrato do Antônio)
+    const familyPhones = (availableRecipients || [])
+      .map(r => (r.phone || '').replace(/\D/g, ''))
+      .filter(p => p.length >= 8);
+
+    if (familyPhones.length > 0) {
+      const candidates = (sourceLeads || []).concat(leads || []);
+      const scannedIds = new Set<string>();
+      candidates.forEach(sl => {
+        if (!sl || sl.id === selectedLead?.id || scannedIds.has(sl.id)) return;
+        scannedIds.add(sl.id);
+        const slP = (sl.phone || '').replace(/\D/g, '');
+        if (slP && familyPhones.some(fp => fp.slice(-8) === slP.slice(-8))) {
+          const enrich = (act: LeadActivity): LeadActivity => ({
+            ...act,
+            recipientPhone: (act as any).recipientPhone || (act as any).metadata?.recipientPhone || (act as any).metadata?.fromPhone || sl.phone,
+            metadata: {
+              ...((act as any).metadata || {}),
+              fromPhone: (act as any).metadata?.fromPhone || sl.phone,
+              recipientPhone: (act as any).metadata?.recipientPhone || sl.phone,
+            }
+          } as any);
+          (sl.activities || []).forEach(a => { if (a && a.id && !actMap.has(a.id)) actMap.set(a.id, enrich(a)); });
+          const cachedSl = leadService.getActivitiesFromCache(sl.id);
+          cachedSl.forEach(a => { if (a && a.id && !actMap.has(a.id)) actMap.set(a.id, enrich(a)); });
+        }
+      });
+    }
+
+    const all = Array.from(actMap.values());
+    all.sort((a, b) => new Date(a.timestamp || 0).getTime() - new Date(b.timestamp || 0).getTime());
+    return all;
+  }, [selectedLead?.activities, selectedLeadId, targetContractClient, availableRecipients, sourceLeads, leads]);
+
+  /**
+   * Identifica se a conversa ativa (específica do destinatário em aberto) já está com atendimento encerrado
+   * (Lembrando da regra: auditorias de visualização NÃO contam como reabertura da conversa)
+   */
+  const isConversationClosed = useMemo(() => {
+    const baseActs = (effectiveLeadActivities && effectiveLeadActivities.length > 0) ? effectiveLeadActivities : (selectedLead?.activities || []);
+    if (baseActs.length === 0) return false;
+    const currentChatPhone = (activeRecipient?.phone || selectedRecipientPhone || selectedLead?.phone || '').replace(/\D/g, '').slice(-8);
+
+    const chatActivities = baseActs.filter(a => {
+      const isViewAudit = (a as any).metadata?.isViewAudit === true || a.title === 'Mensagem Visualizada' || (a.text && a.text.includes('visualizou esta mensagem'));
+      if (isViewAudit) return false;
+      const isChat = a.type === 'contact' || (a as any).type === 'whatsapp';
+      if (!isChat) return false;
+
+      // Se temos telefone ativo na conversa, verifica se a atividade pertence ao destinatário ativo
+      if (currentChatPhone) {
+        const actPhone = (
+          (a as any).recipientPhone ||
+          (a as any).metadata?.recipientPhone ||
+          (a as any).metadata?.fromPhone ||
+          (a as any).metadata?.phone ||
+          (a as any).phone ||
+          ''
+        ).replace(/\D/g, '').slice(-8);
+        if (actPhone && actPhone !== currentChatPhone) return false;
+      }
+      return true;
+    });
+
+    if (chatActivities.length === 0) return false;
+
+    const sortedActs = [...chatActivities].sort((a, b) => {
+      const timeA = new Date(a.timestamp || 0).getTime();
+      const timeB = new Date(b.timestamp || 0).getTime();
+      if (timeA !== timeB) return timeA - timeB;
+      const isEndA = Boolean((a as any).metadata?.isSessionEnd || (a.title || '').toLowerCase().includes('conversa encerrada'));
+      const isEndB = Boolean((b as any).metadata?.isSessionEnd || (b.title || '').toLowerCase().includes('conversa encerrada'));
+      if (isEndA && !isEndB) return 1;
+      if (!isEndA && isEndB) return -1;
+      return 0;
+    });
+
+    const lastAct = sortedActs[sortedActs.length - 1];
+    const isSessionEnd = Boolean(
+      (lastAct as any).metadata?.isSessionEnd === true ||
+      (lastAct.title || '').toLowerCase().includes('conversa encerrada') ||
+      (lastAct.text || '').toLowerCase().includes('atendimento encerrado') ||
+      (lastAct.title || '').toLowerCase().includes('atendimento finalizado')
+    );
+    return isSessionEnd;
+  }, [effectiveLeadActivities, selectedLead?.activities, activeRecipient?.phone, selectedRecipientPhone, selectedLead?.phone]);
 
   // Timeline Activities (Chat do WhatsApp - Exclusivamente mensagens de conversação e anotações internas)
   const timelineActivities = useMemo(() => {
@@ -4594,19 +4963,97 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       a.metadata?.phone || a.metadata?.senderPhone || a.metadata?.to || a.metadata?.from || ''
     );
 
-    // Conversa por NUMERO: com 2+ WhatsApps no lead, mostra so as mensagens do numero selecionado (sem chip = aparece em todos)
-    const chipOf = (a: any): string => a.instanceId || a.metadata?.senderSourceId || a.metadata?.sourceId || a.metadata?.instanceId || '';
-    const chipsInChat = new Set(chatOnly.map(chipOf).filter(Boolean));
-    const selectedChipId = chipsInChat.size > 1 ? (activeSenderSource?.id || '') : '';
+    // Conversa por NÚMERO (Multi-Chip / Instâncias do Funil):
+    // Cada mensagem pertence estritamente à instância com a qual foi trocada.
+    // Ao alternar para outra instância (ex: ERL 9915), o chat inicia limpo como um novo WhatsApp Web daquele número.
+    const resolveMsgChip = (a: any): string => {
+      // 1. Identificador direto gravado na atividade ou nos metadados
+      const direct = a.instanceId || a.metadata?.senderSourceId || a.metadata?.sourceId || a.metadata?.instanceId;
+      if (direct) return String(direct);
+
+      // 2. Prefixo de telefone no messageId (padrão UAZAPI: '5521996803826:3EB0...' ou 'ownerPhone:...')
+      const rawMsgId = String(a.metadata?.messageId || a.messageId || a.metadata?.waId || a.metadata?.wamid || '');
+      if (rawMsgId.includes(':')) {
+        const ownerDigits = rawMsgId.split(':')[0].replace(/\D/g, '');
+        if (ownerDigits.length >= 8) {
+          const match = (sources || []).find(s => {
+            const p = String((s.configuration as any)?.connectedPhone || (s.configuration as any)?.whatsappNumber || '').replace(/\D/g, '');
+            return p && (p.includes(ownerDigits) || ownerDigits.includes(p));
+          });
+          if (match) return match.id;
+        }
+      }
+
+      // 3. Telefone explícito do remetente/instância gravado nos metadados
+      const sPhone = String(a.metadata?.senderPhone || a.metadata?.instancePhone || a.metadata?.connectedPhone || '').replace(/\D/g, '');
+      if (sPhone.length >= 8) {
+        const match = (sources || []).find(s => {
+          const p = String((s.configuration as any)?.connectedPhone || (s.configuration as any)?.whatsappNumber || '').replace(/\D/g, '');
+          return p && (p.includes(sPhone) || sPhone.includes(p));
+        });
+        if (match) return match.id;
+      }
+
+      // 4. Se a mensagem foi enviada para um número específico (inbound) gravado no destination/to/remoteJid
+      const toPhone = String(a.metadata?.to || a.metadata?.toPhone || a.metadata?.destinationJid || '').replace(/\D/g, '');
+      if (toPhone.length >= 8) {
+        const match = (sources || []).find(s => {
+          const p = String((s.configuration as any)?.connectedPhone || (s.configuration as any)?.whatsappNumber || '').replace(/\D/g, '');
+          return p && (p.includes(toPhone) || toPhone.includes(p));
+        });
+        if (match) return match.id;
+      }
+
+      // 5. Nome da fonte ou remetente gravado nos metadados (ex: "POS VENDA GLORIA")
+      const sName = String(a.metadata?.senderSourceName || '').trim().toLowerCase();
+      if (sName) {
+        const match = (sources || []).find(s => {
+          const sn = (s.name || '').toLowerCase();
+          return sn === sName || sn.includes(sName) || sName.includes(sn);
+        });
+        if (match) return match.id;
+      }
+
+      // 6. UUID da instância presente no link de áudio ou mídia no Cloudflare R2
+      const textStr = String(a.text || (a as any).description || '');
+      if (textStr.includes('/whatsapp/')) {
+        const match = (sources || []).find(s => s.id && textStr.includes(`/whatsapp/${s.id}/`));
+        if (match) return match.id;
+      }
+
+      return '';
+    };
+
+    const hasMultipleSenders = (venueSenderSources || []).length > 1 || (sources || []).filter(s => s.type === 'whatsapp_api').length > 1;
+    const selectedChipId = forcedSource ? forcedSource.id : (hasMultipleSenders ? (activeSenderSource?.id || '') : '');
 
     // Filtra pelo canal setorial selecionado (Comercial) ou bilateralidade multi-decisor (Pós-Venda)
     const filteredByChannel = chatOnly.filter(a => {
       const isSessionMarker = Boolean((a as any).metadata?.isSessionEnd || (a as any).metadata?.isViewAudit || (a.title || '').toLowerCase().includes('conversa encerrada'));
       if (isSessionMarker) return true;
 
+      // Isolamento total entre instâncias (Multi-Chip)
       if (selectedChipId) {
-        const chip = chipOf(a);
-        if (chip && chip !== selectedChipId) return false;
+        const chip = resolveMsgChip(a);
+        if (chip) {
+          // Se a mensagem pertence comprovadamente a outro chip, oculta deste chat
+          if (chip !== selectedChipId) return false;
+        } else {
+          // Mensagem sem chip explícito (ex: mensagens legadas anteriores ao isolamento multi-chip):
+          // Pertencem estritamente ao chip padrão onde a conversa foi originada
+          const defaultLeadChipId = selectedLead?.sourceId || (targetContractClient as any)?.sourceId || (selectedLead?.activities ? lastSystemSentSourceId(selectedLead.activities) : '') || '';
+          if (defaultLeadChipId) {
+            if (selectedChipId !== defaultLeadChipId) {
+              return false;
+            }
+          } else {
+            // Se o lead/contrato não tem chip de origem gravado, associa ao chip principal do canal/funil
+            const funnelPrimaryChip = venueSenderSources.find(s => s.id === (activeChannelsFunnel?.postSaleChannels?.[0]?.instanceId)) || venueSenderSources[0];
+            if (funnelPrimaryChip && selectedChipId !== funnelPrimaryChip.id) {
+              return false;
+            }
+          }
+        }
       }
 
       if (splitByContact && selectedChatPhone) {
@@ -4614,8 +5061,14 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
         const ownerPhone = ap.length >= 8 ? distinctRecipientPhones.find(p => isPhoneMatch(p, ap)) : undefined;
         if (ownerPhone) {
           if (!isPhoneMatch(ownerPhone, selectedChatPhone)) return false;
-        } else if (!isPhoneMatch(primaryChatPhone, selectedChatPhone)) {
-          return false;
+        } else {
+          // Se não encontrou pelo ap, verifica metadata ou leadId original
+          const rawP = ((a as any).recipientPhone || (a as any).metadata?.recipientPhone || (a as any).metadata?.fromPhone || (a as any).metadata?.phone || '').replace(/\D/g, '');
+          if (rawP.length >= 8 && isPhoneMatch(rawP, selectedChatPhone)) {
+            // Pertence ao contato selecionado!
+          } else if (!isPhoneMatch(primaryChatPhone, selectedChatPhone)) {
+            return false;
+          }
         }
       }
 
@@ -4667,7 +5120,6 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     // Deduplicação estrita de mensagens (por ID da atividade e por messageId do WhatsApp)
     // NUNCA descarta mensagens sequenciais com o mesmo texto se possuírem IDs distintos!
     const seenIds = new Set<string>();
-    const seenFingerprints = new Set<string>();
     const seenMsgIds = new Set<string>();
     const deduped: LeadActivity[] = [];
 
@@ -4690,28 +5142,76 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       if (act.id && seenIds.has(act.id)) continue;
       if (act.id) seenIds.add(act.id);
 
-      const minuteBucket = Math.floor(new Date(act.timestamp || 0).getTime() / 60000);
-      const textKey = (act.text || act.title || '').trim().toLowerCase();
-      const authorKey = (act.authorName || '').trim().toLowerCase();
-      const fingerprint = `${act.type}_${minuteBucket}_${authorKey}_${textKey}_${chipOf(act)}`;
-
-      if (textKey && act.type === 'contact' && seenFingerprints.has(fingerprint)) {
-        continue;
-      }
-      const actMsgId = act.messageId || (act.metadata as any)?.messageId;
+      // REGRA MESTRA: O messageId é o REI absoluto!
+      // Se a mensagem possui messageId, deduplica estritamente por ele (permitindo mensagens intencionais sequenciais como "oi, oi, oi")
+      const actMsgId = act.messageId || (act.metadata as any)?.messageId || (act.metadata as any)?.waId;
       if (actMsgId) {
         if (seenMsgIds.has(actMsgId)) continue;
         seenMsgIds.add(actMsgId);
-      }
-      if (textKey && act.type === 'contact') {
-        seenFingerprints.add(fingerprint);
+      } else {
+        // Se a mensagem veio SEM messageId:
+        // Compara com a última mensagem adicionada na timeline para evitar duplicação imediata de renderização
+        const prevAct = deduped[deduped.length - 1];
+        if (prevAct) {
+          const prevText = (prevAct.text || prevAct.title || '').trim().toLowerCase();
+          const currText = (act.text || act.title || '').trim().toLowerCase();
+          if (prevText && prevText === currText) {
+            const prevTime = new Date(prevAct.timestamp || 0).getTime();
+            const currTime = new Date(act.timestamp || 0).getTime();
+            const diffSec = Math.abs(currTime - prevTime) / 1000;
+            // Se tem o mesmo texto exato e ocorreu em até 3 segundos sem messageId: é duplicata de renderização/webhook
+            if (diffSec <= 3) {
+              continue;
+            }
+          }
+        }
       }
 
       deduped.push(act);
     }
 
     return deduped;
-  }, [effectiveLeadActivities, isPostSaleChat, activePostSaleChannelId, availableRecipients, activeRecipient, activeSenderSource?.id]);
+  }, [effectiveLeadActivities, isPostSaleChat, activePostSaleChannelId, availableRecipients, activeRecipient, activeSenderSource?.id, venueSenderSources, sources, selectedLead?.sourceId, forcedSource]);
+
+  // Auto-scroll robusto: garante que ao abrir qualquer conversa ou ao carregar mensagens, ela SEMPRE abre no final!
+  useEffect(() => {
+    if (!selectedLeadId || (composerTab !== 'whatsapp' && composerTab !== 'notes')) {
+      return;
+    }
+
+    const isDifferentLead = lastScrolledLeadIdRef.current !== selectedLeadId;
+    const isDifferentTab = lastScrolledTabRef.current !== composerTab;
+    const isDifferentChip = lastScrolledChipRef.current !== activeSenderSource?.id;
+    const isDifferentRec = lastScrolledRecipientRef.current !== (selectedRecipientPhone || activeRecipient?.phone);
+
+    if (isDifferentLead || isDifferentTab || isDifferentChip || isDifferentRec) {
+      lastScrolledLeadIdRef.current = selectedLeadId;
+      lastScrolledTabRef.current = composerTab;
+      lastScrolledChipRef.current = activeSenderSource?.id || null;
+      lastScrolledRecipientRef.current = (selectedRecipientPhone || activeRecipient?.phone) || null;
+      isUserScrolledUpRef.current = false;
+      isManualUserScrollRef.current = false;
+      
+      scrollToBottom('auto');
+      const t1 = setTimeout(() => scrollToBottom('auto'), 50);
+      const t2 = setTimeout(() => scrollToBottom('auto'), 150);
+      const t3 = setTimeout(() => scrollToBottom('auto'), 350);
+      const t4 = setTimeout(() => scrollToBottom('auto'), 700);
+      return () => {
+        clearTimeout(t1);
+        clearTimeout(t2);
+        clearTimeout(t3);
+        clearTimeout(t4);
+      };
+    }
+
+    // Se o usuário NÃO subiu intencionalmente, mantém SEMPRE no final conforme as mensagens são renderizadas
+    if (!isUserScrolledUpRef.current && !isFetchingOlderRef.current) {
+      scrollToBottom('auto');
+      const t = setTimeout(() => scrollToBottom('auto'), 100);
+      return () => clearTimeout(t);
+    }
+  }, [selectedLeadId, composerTab, activeSenderSource?.id, selectedRecipientPhone, activeRecipient?.phone, timelineActivities.length, scrollToBottom]);
 
   // Numeros (WhatsApp) que ja falaram neste lead: 2+ => aparece o seletor "WhatsApp A / B" acima da conversa
   const chatChipSources = useMemo(() => {
@@ -4914,7 +5414,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
 
   return (
     <div style={{
-      height: isEmbeddedInFunnel ? 'calc(100vh - 100px)' : '100%',
+      height: chatOnly ? '100%' : isEmbeddedInFunnel ? 'calc(100vh - 100px)' : '100%',
       display: 'flex',
       flex: 1,
       width: '100%',
@@ -4930,7 +5430,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     }}>
 
       {/* ── COLUNA 1: TRILHO COMPACTO OU LISTA DE CONVERSAS ─────────────── */}
-      {isConversationsCollapsed ? (
+      {chatOnly ? null : isConversationsCollapsed ? (
         <div 
           onClick={() => setIsConversationsCollapsed(false)}
           title="Expandir Conversas / Contratos"
@@ -5008,17 +5508,17 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                 width: '32px',
                 height: '32px',
                 borderRadius: '10px',
-                background: isPostSaleFunnel ? 'rgba(6, 182, 212, 0.15)' : 'rgba(37, 211, 102, 0.15)',
-                color: isPostSaleFunnel ? '#06B6D4' : '#25D366',
+                background: isPostSaleFunnel ? 'rgba(6, 182, 212, 0.15)' : 'rgba(99, 102, 241, 0.15)',
+                color: isPostSaleFunnel ? '#06B6D4' : 'var(--adm-accent, #6366F1)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
               }}>
-                <WhatsAppBrandIcon size={18} color={isPostSaleFunnel ? '#06B6D4' : '#25D366'} />
+                <MessageSquare size={16} color={isPostSaleFunnel ? '#06B6D4' : 'var(--adm-accent, #6366F1)'} />
               </div>
               <div>
                 <h2 style={{ fontSize: '1.02rem', fontWeight: 800, color: 'var(--adm-text-title)', margin: 0, whiteSpace: 'nowrap' }}>
-                  {isEmbeddedInFunnel ? 'Caixa de Entrada' : 'WhatsApp'}
+                  Caixa de Entrada
                 </h2>
                 {isEmbeddedInFunnel && (
                   <div style={{
@@ -5029,7 +5529,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                     letterSpacing: '0.4px',
                     marginTop: '1px',
                   }}>
-                    {isPostSaleFunnel ? 'Sucesso do Cliente' : (activeFunnel?.name || 'Comercial')}
+                    {activeFunnel?.name || (isPostSaleFunnel ? 'Pós-Venda' : 'Comercial')}
                   </div>
                 )}
               </div>
@@ -5149,9 +5649,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                         ? 'Todos os Funis Comerciais'
                         : selectedFunnelId === 'all_post_sale'
                           ? 'Todos os Funis de Pós-Venda'
-                          : selectedFunnelId === 'post_sale_default' || selectedFunnelId === 'post_sale'
-                            ? 'Sucesso do Cliente'
-                            : (activeFunnel?.name || (isPostSaleFunnel ? 'Funil de Pós-Venda' : 'Funil Comercial'))}
+                          : (activeFunnel?.name || (isPostSaleFunnel ? 'Pós-Venda' : 'Funil Comercial'))}
                     </span>
                   </div>
                   <ChevronRight size={13} style={{ transform: isFunnelSelectOpen ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s ease' }} />
@@ -5472,6 +5970,26 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                   Todos
                 </button>
                 )}
+                {canSeeSuppliersTab && (
+                <button
+                  type="button"
+                  onClick={() => setSuppliersTab(true)}
+                  style={{
+                    flex: 1,
+                    padding: '6px 4px',
+                    borderRadius: '7px',
+                    background: suppliersTab ? 'rgba(245, 158, 11, 0.16)' : 'transparent',
+                    border: suppliersTab ? '1px solid #F59E0B' : '1px solid transparent',
+                    color: suppliersTab ? '#B45309' : 'var(--adm-text-muted)',
+                    fontSize: '0.72rem',
+                    fontWeight: suppliersTab ? 800 : 600,
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  Fornecedores
+                </button>
+                )}
               </div>
 
               {/* Busca + Ordenar (icone) + Filtros (engrenagem) */}
@@ -5789,27 +6307,30 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
               const pendingWaitMs = getLeadPendingWaitingTime(lead, collabIds);
               const sla = getLeadWaitTimeSla(pendingWaitMs, systemSlaConfig);
 
-              const isCardPostSale = Boolean(
-                lead.isClient ||
-                lead.group === 'Pós-Venda' ||
-                (lead.funnelId && funnels.find(f => f.id === lead.funnelId)?.isPostSale) ||
-                (lead.funnelId && funnels.find(f => f.id === lead.funnelId)?.category === 'Pós-Venda') ||
-                isPostSaleFunnel
-              );
-
               const hasRealName = Boolean(lead.name && lead.name.trim() !== '' && !lead.name.startsWith('LEAD-') && lead.name !== lead.code);
-              let displayName = hasRealName ? lead.name : (lead.code || 'Lead sem nome');
-              if (isCardPostSale) {
-                const payerPart = ((lead as any).payerName || '').trim();
-                const hostPart = ((lead as any).birthdayPersonName || ((lead.debutanteName && lead.debutanteName !== 'WhatsApp Direto' && lead.debutanteName !== 'Indicação Externa') ? lead.debutanteName : ''))?.trim();
-                if (payerPart && hostPart && payerPart.toLowerCase() !== hostPart.toLowerCase()) {
-                  displayName = `${payerPart} • ${hostPart}`;
-                } else if (payerPart) {
-                  displayName = payerPart;
-                } else if (hostPart) {
-                  displayName = hostPart;
+              const displayName = hasRealName ? lead.name : (lead.code || 'Lead sem nome');
+
+              // Contrato vinculado (seja titular pagante, dependente ou lead com contrato associado)
+              const linkedContract = (() => {
+                if ((lead as any).associated_contract_id) {
+                  const c = clients.find(cl => cl.id === (lead as any).associated_contract_id);
+                  if (c) return c;
                 }
-              }
+                const cDirect = clients.find(cl => cl.id === lead.id || cl.commercialLeadId === lead.id);
+                if (cDirect) return cDirect;
+                if (lead.phone) {
+                  const lDigits = lead.phone.replace(/\D/g, '').slice(-8);
+                  if (lDigits.length >= 8) {
+                    return clients.find(cl => {
+                      if (cl.payerPhone && cl.payerPhone.replace(/\D/g, '').slice(-8) === lDigits) return true;
+                      if (Array.isArray(cl.contacts) && cl.contacts.some(ct => ct.phone && ct.phone.replace(/\D/g, '').slice(-8) === lDigits)) return true;
+                      return false;
+                    });
+                  }
+                }
+                return null;
+              })();
+              const linkedContractTitle = linkedContract ? formatContractHonoreeTitle(linkedContract) : null;
 
               const sdrCollab = lead.sdrId ? collaborators.find(c => c.id === lead.sdrId) : (lead.assignedTo ? collaborators.find(c => c.name === lead.assignedTo) : undefined);
               const closerCollab = lead.closerId ? collaborators.find(c => c.id === lead.closerId) : undefined;
@@ -5910,12 +6431,13 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
 
                   {/* Info Column */}
                   <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                    {/* 1. Linha Superior: Nome do Usuário + Menu 3 Pontinhos + Horário no Topo Direito */}
+                    {/* 1. Linha Superior: Nome do Usuário + Contrato Vinculado (Pequenininho) + Menu 3 Pontinhos + Horário no Topo Direito */}
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '6px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', minWidth: 0, flex: 1 }}>
-                        <div style={{ fontSize: '0.84rem', fontWeight: 700, color: 'var(--adm-text-title)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                          {displayName}
-                        </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', minWidth: 0 }}>
+                          <div style={{ fontSize: '0.84rem', fontWeight: 700, color: 'var(--adm-text-title)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {displayName}
+                          </div>
 
                         {/* Menu de 3 Pontinhos (Ações Rápidas do Lead) */}
                         <div style={{ position: 'relative' }}>
@@ -6165,7 +6687,30 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                         </div>
                       </div>
 
-                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px', flexShrink: 0 }}>
+                      {/* Contrato Vinculado exibido pequenininho logo abaixo do nome */}
+                      {linkedContractTitle && (
+                        <div
+                          title={`Contrato Vinculado: ${linkedContractTitle}`}
+                          style={{
+                            fontSize: '0.64rem',
+                            color: '#D4AF37',
+                            fontWeight: 600,
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '3px',
+                            marginTop: '2px',
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                          }}
+                        >
+                          <FileText size={10} color="#D4AF37" style={{ flexShrink: 0 }} />
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{linkedContractTitle}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px', flexShrink: 0 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
                           {pendingWaitMs > 0 && (
                             <span
@@ -6280,28 +6825,84 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                       )}
                     </div>
 
-                    {/* 3. Linha Inferior: Etiquetas à Esquerda + Avatar do Responsável no Canto Inferior Direito */}
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px', marginTop: '1px' }}>
+                    {/* 3. Linha Inferior: Funil na Frente (com Logo) + Unidade com Ícone (Mesma Altura Uniforme) */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px', marginTop: '2px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap', flex: 1, minWidth: 0 }}>
+                        {/* 1º Badge: Funil (com Logo ou Ícone na Frente) */}
+                        {(() => {
+                          const leadFunnel = funnels.find(f => f.id === lead.funnelId) || activeFunnel;
+                          if (!leadFunnel?.name) return null;
+                          const hasCustomImg = Boolean(leadFunnel.customImageUrl || (leadFunnel.icon && (leadFunnel.icon.startsWith('http') || leadFunnel.icon.startsWith('/') || leadFunnel.icon.startsWith('data:'))));
+                          const funnelColor = leadFunnel.badgeColor || '#6366F1';
+
+                          return (
+                            <span 
+                              title={`Funil: ${leadFunnel.name}`}
+                              style={{
+                                height: '20px',
+                                boxSizing: 'border-box',
+                                fontSize: '0.62rem',
+                                fontWeight: 800,
+                                padding: '0 6px',
+                                borderRadius: '4px',
+                                background: `${funnelColor}18`,
+                                color: funnelColor,
+                                border: `1px solid ${funnelColor}45`,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                whiteSpace: 'nowrap',
+                                letterSpacing: '0.2px',
+                                flexShrink: 0,
+                              }}
+                            >
+                              {hasCustomImg ? (
+                                <img 
+                                  src={leadFunnel.customImageUrl || leadFunnel.icon} 
+                                  alt="" 
+                                  style={{ width: '12px', height: '12px', borderRadius: '2px', objectFit: 'cover', flexShrink: 0 }} 
+                                />
+                              ) : leadFunnel.icon ? (
+                                <span style={{ display: 'inline-flex', alignItems: 'center', flexShrink: 0 }}>
+                                  {renderFunnelOrStageIcon(leadFunnel.icon, 11, funnelColor)}
+                                </span>
+                              ) : (
+                                <Filter size={10} color={funnelColor} style={{ flexShrink: 0 }} />
+                              )}
+                              <span style={{ maxWidth: '100px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                {leadFunnel.name}
+                              </span>
+                            </span>
+                          );
+                        })()}
+
+                        {/* 2º Badge: Unidade (com Ícone de Prédio e Mesma Altura Uniforme) */}
                         {venue && (
-                          <span style={{
-                            fontSize: '0.60rem',
-                            fontWeight: 700,
-                            padding: '1px 6px',
-                            borderRadius: '4px',
-                            background: 'rgba(59, 130, 246, 0.12)',
-                            color: '#3B82F6',
-                            border: '1px solid rgba(59, 130, 246, 0.35)',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '3px',
-                            whiteSpace: 'nowrap',
-                          }}>
-                            <Building2 size={10} color="#3B82F6" />
-                            <span>{venue.name}</span>
+                          <span 
+                            title={`Unidade: ${venue.name}`}
+                            style={{
+                              height: '20px',
+                              boxSizing: 'border-box',
+                              fontSize: '0.60rem',
+                              fontWeight: 700,
+                              padding: '0 6px',
+                              borderRadius: '4px',
+                              background: 'rgba(59, 130, 246, 0.12)',
+                              color: '#3B82F6',
+                              border: '1px solid rgba(59, 130, 246, 0.35)',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '3px',
+                              whiteSpace: 'nowrap',
+                              flexShrink: 0,
+                            }}
+                          >
+                            <Building2 size={10} color="#3B82F6" style={{ flexShrink: 0 }} />
+                            <span style={{ maxWidth: '110px', overflow: 'hidden', textOverflow: 'ellipsis' }}>{venue.name}</span>
                           </span>
                         )}
 
+                        {/* Stage Badge opcional se aplicável (não exibe 'new_lead' ou 'entry') */}
                         {(() => {
                           const isLeadPostSale = Boolean(
                             lead.isClient ||
@@ -6310,220 +6911,35 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                             (lead.funnelId && funnels.find(f => f.id === lead.funnelId)?.category === 'Pós-Venda') ||
                             isPostSaleFunnel
                           );
-                          const leadFunnel = funnels.find(f => f.id === lead.funnelId);
+                          const leadFunnel = funnels.find(f => f.id === lead.funnelId) || activeFunnel;
+                          const stgKey = (lead.stage as string) || '';
+                          const customStage = leadFunnel?.stages?.find(s => s.id === stgKey);
+                          const stgCfg = isLeadPostSale
+                            ? ((customStage ? { label: customStage.name, color: customStage.color || '#3B82F6', bg: `${customStage.color || '#3B82F6'}15` } : null) || POST_SALE_STAGE_CONFIG[stgKey])
+                            : (customStage ? { label: customStage.name, color: customStage.color || '#3B82F6', bg: `${customStage.color || '#3B82F6'}15` } : null);
 
-                          if (isLeadPostSale) {
-                            const stgKey = (lead.stage as string) || '';
-                            const customStage = leadFunnel?.stages?.find(s => s.id === stgKey);
-                            const stgCfg = (customStage ? {
-                              label: customStage.name,
-                              color: customStage.color || '#3B82F6',
-                              bg: `${customStage.color || '#3B82F6'}15`,
-                            } : null) || POST_SALE_STAGE_CONFIG[stgKey];
-
+                          if (stgKey && stgKey !== 'new_lead' && stgKey !== 'entry' && stgCfg) {
                             return (
-                              <>
-                                {/* Nome do Funil de Pós-Venda */}
-                                {leadFunnel?.name && (
-                                  <span style={{
-                                    fontSize: '0.58rem',
-                                    fontWeight: 700,
-                                    padding: '1px 5px',
-                                    borderRadius: '4px',
-                                    background: 'rgba(99, 102, 241, 0.12)',
-                                    color: '#6366F1',
-                                    border: '1px solid rgba(99, 102, 241, 0.25)',
-                                    whiteSpace: 'nowrap',
-                                  }}>
-                                    {leadFunnel.name}
-                                  </span>
-                                )}
-
-                                {/* Stage Badge for Post-Sale (NUNCA exibe 'new_lead' ou 'entry') */}
-                                {stgKey && stgKey !== 'new_lead' && stgKey !== 'entry' && stgCfg ? (
-                                  <span style={{
-                                    fontSize: '0.58rem',
-                                    fontWeight: 800,
-                                    padding: '1px 5px',
-                                    borderRadius: '4px',
-                                    background: stgCfg.bg,
-                                    color: stgCfg.color,
-                                    border: `1px solid ${stgCfg.color}40`,
-                                    whiteSpace: 'nowrap',
-                                  }}>
-                                    {stgCfg.label}
-                                  </span>
-                                ) : null}
-
-                                {/* Tipo de Evento (se definido) */}
-                                {lead.eventType && (
-                                  <span style={{
-                                    fontSize: '0.58rem',
-                                    fontWeight: 700,
-                                    padding: '1px 5px',
-                                    borderRadius: '4px',
-                                    background: 'rgba(236, 72, 153, 0.12)',
-                                    color: '#EC4899',
-                                    border: '1px solid rgba(236, 72, 153, 0.25)',
-                                    whiteSpace: 'nowrap',
-                                  }}>
-                                    {lead.eventType}
-                                  </span>
-                                )}
-
-                                {/* Party Date Badge with Countdown */}
-                                {(lead.partyDate || lead.eventDate) && (() => {
-                                  const pStr = (lead.partyDate || lead.eventDate) as string;
-                                  const pTime = new Date(pStr + 'T12:00:00').getTime();
-                                  const diff = Math.ceil((pTime - Date.now()) / (1000 * 60 * 60 * 24));
-                                  return (
-                                    <span style={{
-                                      fontSize: '0.58rem',
-                                      fontWeight: 700,
-                                      color: '#F59E0B',
-                                      display: 'inline-flex',
-                                      alignItems: 'center',
-                                      gap: '2px',
-                                      whiteSpace: 'nowrap',
-                                    }}>
-                                      <Calendar size={10} color="#F59E0B" />
-                                      {new Date(pStr + 'T12:00:00').toLocaleDateString('pt-BR')} {diff >= 0 ? `(${diff}d)` : ''}
-                                    </span>
-                                  );
-                                })()}
-
-                                {/* Deal Value */}
-                                {lead.dealValue ? (
-                                  <span style={{
-                                    fontSize: '0.62rem',
-                                    fontWeight: 800,
-                                    color: '#10B981',
-                                    whiteSpace: 'nowrap',
-                                  }}>
-                                    {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(lead.dealValue)}
-                                  </span>
-                                ) : null}
-                              </>
-                            );
-                          } else {
-                            const customStage = leadFunnel?.stages?.find(s => s.id === lead.stage);
-                            const stageLabel = customStage?.name || (lead.stage === 'new_lead' ? 'Novo Lead' : lead.stage);
-                            const stageColor = customStage?.color || '#3B82F6';
-
-                            return (
-                              <>
-                                {/* Nome do Funil Comercial */}
-                                {leadFunnel?.name && (
-                                  <span style={{
-                                    fontSize: '0.58rem',
-                                    fontWeight: 700,
-                                    padding: '1px 5px',
-                                    borderRadius: '4px',
-                                    background: 'rgba(99, 102, 241, 0.12)',
-                                    color: '#6366F1',
-                                    border: '1px solid rgba(99, 102, 241, 0.25)',
-                                    whiteSpace: 'nowrap',
-                                  }}>
-                                    {leadFunnel.name}
-                                  </span>
-                                )}
-
-                                {/* Etapa do Funil Comercial */}
-                                {stageLabel && (
-                                  <span style={{
-                                    fontSize: '0.58rem',
-                                    fontWeight: 800,
-                                    padding: '1px 5px',
-                                    borderRadius: '4px',
-                                    background: `${stageColor}15`,
-                                    color: stageColor,
-                                    border: `1px solid ${stageColor}40`,
-                                    whiteSpace: 'nowrap',
-                                  }}>
-                                    {stageLabel}
-                                  </span>
-                                )}
-
-                                {/* Tipo de Evento (se definido) */}
-                                {lead.eventType && (
-                                  <span style={{
-                                    fontSize: '0.58rem',
-                                    fontWeight: 700,
-                                    padding: '1px 5px',
-                                    borderRadius: '4px',
-                                    background: 'rgba(236, 72, 153, 0.12)',
-                                    color: '#EC4899',
-                                    border: '1px solid rgba(236, 72, 153, 0.25)',
-                                    whiteSpace: 'nowrap',
-                                  }}>
-                                    {lead.eventType}
-                                  </span>
-                                )}
-
-                                {/* Party Date Badge with Countdown */}
-                                {(lead.partyDate || lead.eventDate) && (() => {
-                                  const pStr = (lead.partyDate || lead.eventDate) as string;
-                                  const pTime = new Date(pStr + 'T12:00:00').getTime();
-                                  const diff = Math.ceil((pTime - Date.now()) / (1000 * 60 * 60 * 24));
-                                  return (
-                                    <span style={{
-                                      fontSize: '0.58rem',
-                                      fontWeight: 700,
-                                      color: '#F59E0B',
-                                      display: 'inline-flex',
-                                      alignItems: 'center',
-                                      gap: '2px',
-                                      whiteSpace: 'nowrap',
-                                    }}>
-                                      <Calendar size={10} color="#F59E0B" />
-                                      {new Date(pStr + 'T12:00:00').toLocaleDateString('pt-BR')} {diff >= 0 ? `(${diff}d)` : ''}
-                                    </span>
-                                  );
-                                })()}
-
-                                {/* ICP Badge (se configurado) */}
-                                {hasIcpConfigured(lead) && (() => {
-                                  const listBadge = mqlBadge(lead.mqlScore, lead.mqlAnswers);
-                                  if (listBadge.isUndefined) {
-                                    return (
-                                      <span style={{
-                                        fontSize: '0.58rem',
-                                        fontWeight: 700,
-                                        padding: '1px 5px',
-                                        borderRadius: '4px',
-                                        background: 'var(--adm-bg-card)',
-                                        color: 'var(--adm-text-muted)',
-                                        border: '1px solid var(--adm-border)',
-                                        whiteSpace: 'nowrap',
-                                        display: 'inline-flex',
-                                        alignItems: 'center',
-                                        gap: '3px',
-                                      }}>
-                                        <IcpTargetUserIcon size={10} color="var(--adm-text-muted)" />
-                                        <span>Indefinido</span>
-                                      </span>
-                                    );
-                                  }
-                                  const lbl = listBadge.label;
-                                  const col = listBadge.color;
-                                  const bgCol = listBadge.bg;
-                                  return (
-                                    <span style={{
-                                      fontSize: '0.58rem',
-                                      fontWeight: 700,
-                                      padding: '1px 4px',
-                                      borderRadius: '4px',
-                                      background: bgCol,
-                                      color: col,
-                                      whiteSpace: 'nowrap',
-                                    }}>
-                                      {lbl}
-                                    </span>
-                                  );
-                                })()}
-                              </>
+                              <span style={{
+                                height: '20px',
+                                boxSizing: 'border-box',
+                                fontSize: '0.58rem',
+                                fontWeight: 800,
+                                padding: '0 5px',
+                                borderRadius: '4px',
+                                background: stgCfg.bg,
+                                color: stgCfg.color,
+                                border: `1px solid ${stgCfg.color}40`,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                whiteSpace: 'nowrap',
+                                flexShrink: 0,
+                              }}>
+                                {stgCfg.label}
+                              </span>
                             );
                           }
+                          return null;
                         })()}
                       </div>
 
@@ -6649,7 +7065,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       )}
 
       {/* ── COLUNA 2: INSPECTOR DO LEAD / FICHA DO CONTRATO (SEMPRE CENTRAL) ──────────── */}
-      {isInspectorOpen && selectedLead ? (
+      {!chatOnly && isInspectorOpen && selectedLead ? (
         <div style={{
           order: 2,
           width: '390px',
@@ -6663,15 +7079,16 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
           overflowY: 'auto',
           animation: 'fadeIn 0.15s ease-out',
         }}>
-          {isPostSaleFunnel || selectedLead.isClient ? (
+          {isPostSaleFunnel || selectedLead.isClient || (targetContractClient && (targetContractClient as any).contractNumber) ? (
             <AdminClientDrawerInspector
-              lead={selectedLead}
+              lead={(targetContractClient || selectedLead) as any}
               onStageChange={(newStage: ClientStage) => {
-                updateClientStage(selectedLead.id, newStage);
+                updateClientStage((targetContractClient || selectedLead).id, newStage);
               }}
               onToggleCollapse={() => setIsInspectorOpen(false)}
               onOpenDebutanteApp={onOpenDebutanteApp}
               onOpenFullInspector={onOpenClientFullProfile}
+              onLeadMerged={(targetId) => setSelectedLeadId(targetId)}
               readOnly={isReadOnlyForPosVenda || isLeadSpectator}
             />
           ) : (
@@ -6742,8 +7159,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                   </button>
                 )}
                 <SafeAvatar
-                  src={chatPeer.avatarUrl}
-                  name={activeRecipient?.name || selectedLead.name}
+                  src={activeRecipient?.avatarUrl || chatPeer.avatarUrl}
+                  name={activeRecipient?.name || chatPeer.name || selectedLead.name}
                   size={40}
                   border={activeRecipient?.isDecisor ? "2px solid #10B981" : "1.5px solid var(--adm-accent)"}
                 />
@@ -6752,7 +7169,9 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                   {(() => {
                     const hasRealLeadName = Boolean(selectedLead.name && selectedLead.name.trim() !== '' && !selectedLead.name.startsWith('LEAD-') && selectedLead.name !== selectedLead.code);
                     const baseDisplayName = hasRealLeadName ? selectedLead.name : (selectedLead.code || 'Lead sem nome');
-                    const headerDisplayName = activeRecipient?.name ? activeRecipient.name : baseDisplayName;
+                    const headerDisplayName = activeRecipient?.name && !activeRecipient.name.startsWith('LEAD-')
+                      ? activeRecipient.name
+                      : (chatPeer.name || baseDisplayName);
 
                     return (
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
@@ -6761,7 +7180,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                         </h3>
 
                         {isPostSaleWorkspace ? (
-                          activeRecipient?.roleBadge ? (
+                          activeRecipient?.roleBadge && activeRecipient.roleBadge !== 'indefinido' && activeRecipient.roleBadge !== 'Cliente' ? (
                             <span
                               style={{
                                 fontSize: '0.66rem',
@@ -6787,7 +7206,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                           ) : null
                         ) : (
                           <>
-                            {activeRecipient?.roleBadge && (
+                            {activeRecipient?.roleBadge && activeRecipient.roleBadge !== 'indefinido' && (
                               <span style={{
                                 fontSize: '0.68rem',
                                 fontWeight: 700,
@@ -6801,7 +7220,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                               </span>
                             )}
 
-                            {activeRecipient?.isDecisor && (
+                            {activeRecipient?.isDecisor && !isPostSaleNoContract && (
                               <span
                                 title="Decisor Principal do Contrato"
                                 style={{
@@ -6925,6 +7344,35 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
 
               {/* Right: Actions (Ficha do Contrato + Encerrar Conversa + Fechar se aplicável) */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                {(isPostSaleFunnel || isPostSale) && !isLeadSpectator && !linkedContractDocs.length && !(currentClient as any)?.hasContract && !(currentClient as any)?.contractId && (
+                  <button
+                    type="button"
+                    onClick={() => setIsLinkContractorModalOpen(true)}
+                    title="Vincular este cliente a um contrato existente no sistema"
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '7px 12px',
+                      borderRadius: '8px',
+                      background: 'rgba(2, 132, 199, 0.12)',
+                      border: '1px solid rgba(2, 132, 199, 0.35)',
+                      color: '#0284C7',
+                      fontSize: '0.74rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease',
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(2, 132, 199, 0.20)'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(2, 132, 199, 0.12)'; }}
+                  >
+                    <Link2 size={13} />
+                    <span>Vincular Contrato</span>
+                  </button>
+                )}
+                {!isLeadSpectator && selectedLead?.phone && !(isPostSaleWorkspace || (selectedLead as any).contractId || (selectedLead as any).associated_contract_id || (targetContractClient && (targetContractClient as any).contractNumber)) && (
+                  <SupplierToggleButton masterId={effectiveUser?.masterId || currentUser?.masterId || effectiveUser?.id || currentUser?.id || ''} name={selectedLead.name} phone={selectedLead.phone} venueId={selectedLead.venueId} />
+                )}
                 {!isLeadSpectator && (
                   <button
                     type="button"
@@ -7026,6 +7474,17 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
             {isReadOnlyModalOpen && selectedLead && (
               <AdminLeadReadOnlyModal lead={selectedLead} onClose={() => setIsReadOnlyModalOpen(false)} />
             )}
+            {isLinkContractorModalOpen && selectedLead && (
+              <AdminLinkContractorModal
+                leadId={selectedLead.id}
+                venueId={selectedLead.venueId || (selectedLead as any).venue_id || activeVenueId}
+                onClose={() => setIsLinkContractorModalOpen(false)}
+                onLinked={(_ct, targetLeadId) => {
+                  setIsLinkContractorModalOpen(false);
+                  if (targetLeadId) setSelectedLeadId(targetLeadId);
+                }}
+              />
+            )}
 
             {/* ── BARRA DE CANAIS DE CONTATO CONECTADOS (PÓS-VENDA) ── */}
             {(isPostSaleWorkspace || allRecipientsWithInfo.length > 1) && (
@@ -7058,11 +7517,11 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                   {(availableRecipients.length > 0 ? allRecipientsWithInfo : [{
                     key: 'default-contractor',
                     phone: selectedLead?.phone || '',
-                    name: selectedLead?.name || 'Contratante',
-                    label: selectedLead?.name || 'Contratante',
-                    role: 'Contratante',
-                    roleBadge: 'Contratante Pagante',
-                    isDecisor: true,
+                    name: selectedLead?.name || (isPostSaleNoContract ? 'Cliente' : 'Contratante'),
+                    label: selectedLead?.name || (isPostSaleNoContract ? 'Cliente' : 'Contratante'),
+                    role: isPostSaleNoContract ? 'Cliente' : 'Contratante',
+                    roleBadge: isPostSaleNoContract ? 'Cliente' : 'Contratante Pagante',
+                    isDecisor: !isPostSaleNoContract,
                     isMain: true,
                     avatarUrl: selectedLead?.avatarUrl,
                   }]).map((rec) => {
@@ -7322,6 +7781,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
             <div
               ref={timelineContainerRef}
               onScroll={handleTimelineScroll}
+              onWheel={() => { isManualUserScrollRef.current = true; }}
+              onTouchMove={() => { isManualUserScrollRef.current = true; }}
               style={{
                 flex: 1,
                 overflowY: 'auto',
@@ -7331,17 +7792,103 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                 gap: '4px',
                 background: composerTab === 'whatsapp'
                   ? (() => {
-                      // Com 2+ numeros no lead, o fundo muda levemente conforme o numero em foco
-                      const idx = chatChipSources.length > 1 ? Math.max(0, chatChipSources.findIndex(src => src.id === activeSenderSource?.id)) : 0;
-                      const dark = ['#0b141a', '#0b1a1a', '#14121f'];
-                      const light = ['#efeae2', '#e4eeee', '#ece8f2'];
-                      return (isDarkMode ? dark : light)[idx % 3];
+                      // Com múltiplas instâncias na unidade/funil, o fundo muda sutilmente conforme o WhatsApp ativo
+                      const senderIdx = venueSenderSources.length > 1
+                        ? Math.max(0, venueSenderSources.findIndex(src => src.id === activeSenderSource?.id))
+                        : 0;
+                      // Paletas clássicas e elegantes adaptadas por instância:
+                      // 0: Bege clássico original do WhatsApp
+                      // 1: Esverdeado pastel sutil WhatsApp
+                      // 2: Azulado suave / Celeste
+                      // 3: Lavanda / Lilás suave
+                      // 4: Âmbar / Areia sutil
+                      const darkPalette = ['#0B141A', '#0A1815', '#0B1520', '#14121F', '#1A160E'];
+                      const lightPalette = ['#EFEAE2', '#E3ECE7', '#E5EEF5', '#ECE8F3', '#F5EFE6'];
+                      return (isDarkMode ? darkPalette : lightPalette)[senderIdx % 5];
                     })()
                   : 'radial-gradient(ellipse at 50% 10%, rgba(212, 175, 55, 0.03) 0%, transparent 60%)',
+                transition: 'background 0.3s ease',
               }}>
               {/* 1. ABA WHATSAPP: Exibe histórico de mensagens com layout bilateral */}
               {composerTab === 'whatsapp' && (
                 <>
+                  {/* Badge Flutuante no Topo com a Instância Ativa (Foto, Nome e Telefone) */}
+                  {activeSenderSource && (
+                    <div style={{
+                      position: 'sticky',
+                      top: 0,
+                      zIndex: 8,
+                      display: 'flex',
+                      justifyContent: 'center',
+                      marginBottom: '8px',
+                      pointerEvents: 'none',
+                    }}>
+                      <div
+                        style={{
+                          pointerEvents: 'auto',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          padding: '3px 10px 3px 5px',
+                          borderRadius: '20px',
+                          background: isDarkMode ? 'rgba(30, 41, 59, 0.90)' : 'rgba(255, 255, 255, 0.94)',
+                          backdropFilter: 'blur(8px)',
+                          WebkitBackdropFilter: 'blur(8px)',
+                          border: isDarkMode ? '1px solid rgba(255, 255, 255, 0.12)' : '1px solid rgba(0, 0, 0, 0.08)',
+                          boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)',
+                          fontSize: '0.68rem',
+                          color: 'var(--adm-text-title)',
+                          maxWidth: '92%',
+                          animation: 'fadeIn 0.2s ease-out',
+                          userSelect: 'none',
+                        }}
+                        title={`Canal de disparo atual: ${getSourceCleanLabel(activeSenderSource).cleanName} (${getSourceCleanLabel(activeSenderSource).formattedPhone || ''})`}
+                      >
+                        {/* Avatar da Instância ou Ícone do WhatsApp */}
+                        {getSourceAvatar(activeSenderSource) ? (
+                          <img
+                            src={getSourceAvatar(activeSenderSource)!}
+                            alt=""
+                            style={{ width: 17, height: 17, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }}
+                          />
+                        ) : (
+                          <div style={{
+                            width: 17,
+                            height: 17,
+                            borderRadius: '50%',
+                            background: isSourceOnline(activeSenderSource) ? '#25D366' : '#EF4444',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            flexShrink: 0,
+                          }}>
+                            <WhatsAppBrandIcon size={10} color="#FFFFFF" />
+                          </div>
+                        )}
+
+                        {/* Ponto verde de conexão */}
+                        <span style={{
+                          width: 6,
+                          height: 6,
+                          borderRadius: '50%',
+                          background: isSourceOnline(activeSenderSource) ? '#10B981' : '#EF4444',
+                          flexShrink: 0,
+                        }} />
+
+                        {/* Nome da Instância */}
+                        <span style={{ fontWeight: 800, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {getSourceCleanLabel(activeSenderSource).cleanName}
+                        </span>
+
+                        {/* Telefone da Instância */}
+                        {getSourceCleanLabel(activeSenderSource).formattedPhone && (
+                          <span style={{ color: 'var(--adm-text-muted)', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                            • {getSourceCleanLabel(activeSenderSource).formattedPhone}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )}
                   {/* Top status indicator for older messages loading */}
                   {isLoadingOlder ? (
                     <div style={{
@@ -7823,6 +8370,21 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                     width: (act.mediaType === 'image' || effectiveMediaType === 'image') && (act.mediaUrl || effectiveMediaUrl) ? 'fit-content' : undefined,
                                   }}
                                 >
+                                  {Boolean((act as any)?.metadata?.isForwarded || (act as any)?.isForwarded) && (
+                                    <div style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '4px',
+                                      fontSize: '0.66rem',
+                                      fontStyle: 'italic',
+                                      color: isDarkMode ? '#8696a0' : '#667781',
+                                      marginBottom: '3px',
+                                      userSelect: 'none',
+                                    }}>
+                                      <Forward size={12} style={{ transform: 'scaleX(-1)' }} />
+                                      <span>Encaminhada</span>
+                                    </div>
+                                  )}
                                   {!isSameAsPrev && (
                                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '14px', marginBottom: '2px' }}>
                                       <span style={{ fontSize: '0.72rem', fontWeight: 800, color: isDarkMode ? '#53bdeb' : '#128c7e' }}>
@@ -8210,7 +8772,6 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
 
                       // Identificação da Instância de WhatsApp que disparou a mensagem internamente
                       const meta = (act as any).metadata;
-                      const isSentInternally = !isExternalWa;
 
                       // 1. Tenta encontrar a source pelo ID gravado nos metadados da mensagem
                       const matchedSourceById = meta?.senderSourceId 
@@ -8253,66 +8814,69 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                             }}
                           >
                             {/* Hover à Esquerda da Mensagem Enviada: Identifica exatamente qual WhatsApp da empresa efetuou o disparo */}
-                            {isSentInternally && (
-                              <div
-                                style={{
-                                  opacity: hoveredMsgId === act.id ? 1 : 0,
-                                  visibility: hoveredMsgId === act.id ? 'visible' : 'hidden',
-                                  transition: 'opacity 0.16s ease-in-out',
-                                  pointerEvents: hoveredMsgId === act.id ? 'auto' : 'none',
+                            <div
+                              style={{
+                                opacity: hoveredMsgId === act.id ? 1 : 0,
+                                visibility: hoveredMsgId === act.id ? 'visible' : 'hidden',
+                                transition: 'opacity 0.16s ease-in-out',
+                                pointerEvents: hoveredMsgId === act.id ? 'auto' : 'none',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                padding: '4px 10px',
+                                borderRadius: '8px',
+                                background: isDarkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.04)',
+                                border: isDarkMode ? '1px solid rgba(255, 255, 255, 0.08)' : '1px solid rgba(0, 0, 0, 0.07)',
+                                color: 'var(--adm-text-muted)',
+                                fontSize: '0.68rem',
+                                whiteSpace: 'nowrap',
+                                flexShrink: 0,
+                                userSelect: 'none',
+                                boxShadow: isDarkMode ? '0 1px 4px rgba(0,0,0,0.3)' : '0 1px 2px rgba(0,0,0,0.06)',
+                              }}
+                              title={`${isExternalWa ? 'WhatsApp App / Web • ' : ''}Disparado por ${displayedSenderName}${displayedSenderPhone ? ` (${displayedSenderPhone})` : ''}`}
+                            >
+                              <span style={{ color: 'var(--adm-text-muted)', fontWeight: 500 }}>
+                                <ArrowUp size={13} aria-label="Disparado por" />
+                              </span>
+
+                              {displayedSenderAvatar ? (
+                                <img
+                                  src={displayedSenderAvatar}
+                                  alt={displayedSenderName}
+                                  style={{ width: '16px', height: '16px', borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }}
+                                />
+                              ) : (
+                                <div style={{
+                                  width: '16px',
+                                  height: '16px',
+                                  borderRadius: '50%',
+                                  background: '#25D366',
                                   display: 'flex',
                                   alignItems: 'center',
-                                  gap: '6px',
-                                  padding: '4px 10px',
-                                  borderRadius: '8px',
-                                  background: isDarkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.04)',
-                                  border: isDarkMode ? '1px solid rgba(255, 255, 255, 0.08)' : '1px solid rgba(0, 0, 0, 0.07)',
-                                  color: 'var(--adm-text-muted)',
-                                  fontSize: '0.68rem',
-                                  whiteSpace: 'nowrap',
+                                  justifyContent: 'center',
                                   flexShrink: 0,
-                                  userSelect: 'none',
-                                  boxShadow: isDarkMode ? '0 1px 4px rgba(0,0,0,0.3)' : '0 1px 2px rgba(0,0,0,0.06)',
-                                }}
-                                title={`Disparado por ${displayedSenderName}${displayedSenderPhone ? ` (${displayedSenderPhone})` : ''}`}
-                              >
-                                <span style={{ color: 'var(--adm-text-muted)', fontWeight: 500 }}>
-                                  <ArrowUp size={13} aria-label="Disparado por" />
-                                </span>
+                                }}>
+                                  <WhatsAppBrandIcon size={10} color="#FFFFFF" />
+                                </div>
+                              )}
 
-                                {displayedSenderAvatar ? (
-                                  <img
-                                    src={displayedSenderAvatar}
-                                    alt={displayedSenderName}
-                                    style={{ width: '16px', height: '16px', borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }}
-                                  />
-                                ) : (
-                                  <div style={{
-                                    width: '16px',
-                                    height: '16px',
-                                    borderRadius: '50%',
-                                    background: '#25D366',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    flexShrink: 0,
-                                  }}>
-                                    <WhatsAppBrandIcon size={10} color="#FFFFFF" />
-                                  </div>
+                              <span>
+                                {isExternalWa && (
+                                  <span style={{ fontWeight: 600, color: '#10B981', marginRight: '4px' }}>
+                                    App/Web •
+                                  </span>
                                 )}
-
-                                <span>
-                                  <strong style={{ color: isDarkMode ? 'var(--adm-text-title)' : '#1e293b' }}>
-                                    {displayedSenderName}
-                                  </strong>
-                                  {displayedSenderPhone && (
-                                    <span style={{ opacity: 0.85, marginLeft: '4px' }}>
-                                      • {displayedSenderPhone}
-                                    </span>
-                                  )}
-                                </span>
-                              </div>
-                            )}
+                                <strong style={{ color: isDarkMode ? 'var(--adm-text-title)' : '#1e293b' }}>
+                                  {displayedSenderName}
+                                </strong>
+                                {displayedSenderPhone && (
+                                  <span style={{ opacity: 0.85, marginLeft: '4px' }}>
+                                    • {displayedSenderPhone}
+                                  </span>
+                                )}
+                              </span>
+                            </div>
 
                             {/* Botão de Responder Mensagem no Hover do Balão Enviado */}
                             {hoveredMsgId === act.id && (
@@ -8370,7 +8934,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                             ) : (
                               <div 
                                 onDoubleClick={() => setReplyingToMessage(act)}
-                                title="Duplo clique para responder"
+                                title={isExternalWa ? `Duplo clique para responder • Enviada via WhatsApp (${displayedSenderName}${displayedSenderPhone ? ` • ${displayedSenderPhone}` : ''})` : "Duplo clique para responder"}
                                 style={{
                                   background: isFailedMsg
                                     ? (isDarkMode ? 'rgba(239, 68, 68, 0.22)' : '#fee2e2')
@@ -8392,10 +8956,28 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                   width: (act.mediaType === 'image' || effectiveMediaType === 'image') && (act.mediaUrl || effectiveMediaUrl) ? 'fit-content' : undefined,
                                 }}
                               >
+                                {Boolean((act as any)?.metadata?.isForwarded || (act as any)?.isForwarded) && (
+                                  <div style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                    fontSize: '0.66rem',
+                                    fontStyle: 'italic',
+                                    color: isDarkMode ? '#aebac1' : '#667781',
+                                    marginBottom: '3px',
+                                    userSelect: 'none',
+                                  }}>
+                                    <Forward size={12} style={{ transform: 'scaleX(-1)' }} />
+                                    <span>Encaminhada</span>
+                                  </div>
+                                )}
                                 {!isSameAsPrev && (
                                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '14px', marginBottom: '2px' }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                      <span style={{ fontSize: '0.72rem', fontWeight: 800, color: isFailedMsg ? '#EF4444' : (isDarkMode ? '#d9fdd3' : '#008069') }}>
+                                      <span 
+                                        title={isExternalWa ? `App/Web • ${displayedSenderName}${displayedSenderPhone ? ` • ${displayedSenderPhone}` : ''}` : undefined}
+                                        style={{ fontSize: '0.72rem', fontWeight: 800, color: isFailedMsg ? '#EF4444' : (isDarkMode ? '#d9fdd3' : '#008069'), cursor: isExternalWa ? 'help' : 'default' }}
+                                      >
                                         {authorName}
                                       </span>
                                       {Boolean((act as any).channelName || meta?.channelName) && (
@@ -8845,11 +9427,11 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                               </div>
                             )}
 
-                            {/* Avatar do Autor: Se for WhatsApp App / Web Oficial externo, exibe ícone do WhatsApp */}
+                            {/* Avatar do Autor: Se for WhatsApp App / Web Oficial externo, exibe ícone oficial do WhatsApp */}
                             {!isSameAsNext ? (
                               isExternalWa ? (
                                 <div
-                                  title="Mensagem enviada pelo celular ou WhatsApp Web"
+                                  title={`Mensagem enviada pelo celular ou WhatsApp Web (${displayedSenderName})`}
                                   style={{
                                     width: '30px',
                                     height: '30px',
@@ -11592,9 +12174,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                             }}>
                               {/* Top Header com Mês e Atalhos */}
                               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
-                                <span style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
-                                  {quickMonthTitle}
-                                </span>
+                                <MonthYearSwitcher year={quickCalendarMonth.getFullYear()} month={quickCalendarMonth.getMonth()} label={quickMonthTitle}
+                                  onChange={(y, m) => setQuickCalendarMonth(new Date(y, m, 1))} style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--adm-text-title)' }} />
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
                                   <button
                                     type="button"
@@ -12223,7 +12804,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                 setIsSenderDropdownOpen(prev => !prev);
                               }
                             }}
-                            title={channelExclusiveSource ? `Chip Dedicado do Setor "${activePostSaleChannel?.name}" (Fixo e Imutável)` : 'Selecionar instância de envio'}
+                            title={channelExclusiveSource ? (forcedSource ? 'Número fixo do Financeiro' : `Chip Dedicado do Setor "${activePostSaleChannel?.name}" (Fixo e Imutável)`) : 'Selecionar instância de envio'}
                             style={{
                               display: 'inline-flex',
                               alignItems: 'center',
@@ -12293,16 +12874,17 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                   fontWeight: 800,
                                   fontSize: '0.72rem',
                                   color: online ? (isDarkMode ? '#34D399' : '#059669') : '#EF4444',
+                                  whiteSpace: 'nowrap',
                                 }}>
-                                  <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: online ? '#10B981' : '#EF4444', display: 'inline-block' }} />
-                                  <span>{info.cleanName}</span>
+                                  <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: online ? '#10B981' : '#EF4444', display: 'inline-block', flexShrink: 0 }} />
+                                  <span style={{ whiteSpace: 'nowrap' }}>{info.cleanName}</span>
                                   {info.formattedPhone && (
-                                    <span style={{ opacity: 0.85, fontWeight: 700 }}>• {info.formattedPhone}</span>
+                                    <span style={{ opacity: 0.85, fontWeight: 700, whiteSpace: 'nowrap' }}>• {info.formattedPhone}</span>
                                   )}
                                 </span>
                               );
                             })() : (
-                              <span style={{ fontSize: '0.70rem', fontWeight: 700, color: '#EF4444' }}>
+                              <span style={{ fontSize: '0.70rem', fontWeight: 700, color: '#EF4444', whiteSpace: 'nowrap' }}>
                                 Nenhuma instância disponível
                               </span>
                             )}
@@ -12321,6 +12903,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                   fontSize: '0.62rem',
                                   fontWeight: 800,
                                   marginLeft: '2px',
+                                  whiteSpace: 'nowrap',
+                                  flexShrink: 0,
                                 }}
                               >
                                 <Lock size={10} />
@@ -12334,13 +12918,14 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                     transform: isSenderDropdownOpen ? 'rotate(180deg)' : 'rotate(0)',
                                     transition: 'transform 0.15s ease',
                                     color: 'var(--adm-text-muted)',
-                                    marginLeft: '2px'
+                                    marginLeft: '2px',
+                                    flexShrink: 0,
                                   }}
                                 />
                               )
                             )}
                             {Object.values(unreadByChip).some(n => n > 0) && (
-                              <span title="Mensagem nao lida em outro numero" style={{ minWidth: 16, height: 16, borderRadius: 8, background: '#EF4444', color: '#fff', fontSize: '0.6rem', fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px', marginLeft: 2 }}>
+                              <span title="Mensagem não lida em outro número" style={{ minWidth: 16, height: 16, borderRadius: 8, background: '#EF4444', color: '#fff', fontSize: '0.6rem', fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px', marginLeft: 2, flexShrink: 0 }}>
                                 {Object.values(unreadByChip).reduce((x, y) => x + y, 0)}
                               </span>
                             )}
@@ -12353,18 +12938,19 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                               bottom: 'calc(100% + 6px)',
                               left: 0,
                               zIndex: 9999,
-                              minWidth: '330px',
+                              minWidth: '420px',
+                              maxWidth: '480px',
                               background: 'var(--adm-bg-card, #1e293b)',
                               border: '1px solid var(--adm-border)',
                               borderRadius: '12px',
                               boxShadow: '0 12px 28px rgba(0,0,0,0.28)',
-                              padding: '6px',
+                              padding: '8px',
                               display: 'flex',
                               flexDirection: 'column',
-                              gap: '4px',
+                              gap: '6px',
                               animation: 'fadeIn 0.15s ease-out',
                             }}>
-                              <div style={{ padding: '6px 8px 4px', fontSize: '0.68rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                              <div style={{ padding: '4px 8px 6px', fontSize: '0.68rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                                 Selecione a Instância de Disparo
                               </div>
 
@@ -12392,8 +12978,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                       display: 'flex',
                                       alignItems: 'center',
                                       justifyContent: 'space-between',
-                                      gap: '10px',
-                                      padding: '8px 10px',
+                                      gap: '12px',
+                                      padding: '9px 12px',
                                       borderRadius: '8px',
                                       cursor: isOnline ? 'pointer' : 'not-allowed',
                                       opacity: isOnline ? 1 : 0.85,
@@ -12416,13 +13002,13 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                       if (isOnline && !isSelected) e.currentTarget.style.background = 'transparent';
                                     }}
                                   >
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '9px', minWidth: 0, flex: 1 }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, flex: 1 }}>
                                       {instanceAvatar ? (
-                                        <SafeAvatar name={info.cleanName} src={instanceAvatar} size={28} />
+                                        <SafeAvatar name={info.cleanName} src={instanceAvatar} size={30} />
                                       ) : (
                                         <div style={{
-                                          width: '28px',
-                                          height: '28px',
+                                          width: '30px',
+                                          height: '30px',
                                           borderRadius: '50%',
                                           background: isOnline ? '#25D366' : '#EF4444',
                                           display: 'flex',
@@ -12435,19 +13021,19 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                         </div>
                                       )}
 
-                                      <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                          <span style={{ fontSize: '0.78rem', fontWeight: 800, color: isOnline ? 'var(--adm-text-title)' : '#EF4444' }}>
+                                      <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, gap: '2px', flex: 1 }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flexWrap: 'nowrap' }}>
+                                          <span style={{ fontSize: '0.80rem', fontWeight: 800, color: isOnline ? 'var(--adm-text-title)' : '#EF4444', whiteSpace: 'nowrap' }}>
                                             {info.cleanName}
                                           </span>
                                           {vName && (
-                                            <span style={{ fontSize: '0.62rem', padding: '1px 6px', borderRadius: '4px', background: 'var(--adm-bg-input)', color: 'var(--adm-text-muted)', border: '1px solid var(--adm-border)' }}>
+                                            <span style={{ fontSize: '0.62rem', padding: '1px 7px', borderRadius: '4px', background: 'var(--adm-bg-input)', color: 'var(--adm-text-muted)', border: '1px solid var(--adm-border)', whiteSpace: 'nowrap', flexShrink: 0 }}>
                                               {vName}
                                             </span>
                                           )}
                                         </div>
                                         {info.formattedPhone && (
-                                          <span style={{ fontSize: '0.70rem', color: isOnline ? 'var(--adm-text-muted)' : '#EF4444', fontWeight: 600 }}>
+                                          <span style={{ fontSize: '0.70rem', color: isOnline ? 'var(--adm-text-muted)' : '#EF4444', fontWeight: 600, whiteSpace: 'nowrap' }}>
                                             {info.formattedPhone}
                                           </span>
                                         )}
@@ -12456,7 +13042,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
 
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
                                       {(unreadByChip[src.id] || 0) > 0 && (
-                                        <span title="Mensagens nao lidas neste numero" style={{ minWidth: 18, height: 18, borderRadius: 9, background: '#EF4444', color: '#fff', fontSize: '0.64rem', fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '0 5px' }}>
+                                        <span title="Mensagens não lidas neste número" style={{ minWidth: 18, height: 18, borderRadius: 9, background: '#EF4444', color: '#fff', fontSize: '0.64rem', fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '0 5px', flexShrink: 0 }}>
                                           {unreadByChip[src.id]}
                                         </span>
                                       )}
@@ -12468,6 +13054,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                         background: isOnline ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
                                         color: isOnline ? '#10B981' : '#EF4444',
                                         border: `1px solid ${isOnline ? 'rgba(16, 185, 129, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`,
+                                        whiteSpace: 'nowrap',
+                                        flexShrink: 0,
                                       }}>
                                         {isOnline ? 'Online' : 'Desconectada'}
                                       </span>

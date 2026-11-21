@@ -11,6 +11,7 @@ import { FunnelKindIcon, isPostSaleFunnel } from './FunnelKindIcon';
 import { HeaderActions } from './HeaderActions';
 import { AdminSourceEmbedModal } from './AdminSourceEmbedModal';
 import { AdminWhatsAppConnectModal } from './AdminWhatsAppConnectModal';
+import { isFinanceSource } from '../../utils/financeSource';
 import { AdminWhatsAppSyncModal } from './AdminWhatsAppSyncModal';
 import { formatPhone } from '../../utils/phoneFormatter';
 import { uazapiService } from '../../services/uazapiService';
@@ -182,7 +183,7 @@ export const AdminSourcesView: React.FC = () => {
 
   // Uma lista so, por casa. Dentro de cada casa, as origens se dividem pelo FUNIL de origem: funil de pos-venda = Pos-venda;
   // todo o resto (inclusive formulario, indicacao e origem sem funil) entra como lead para fim comercial = Comercial.
-  type VenueGroup = { venueId: string; venue: Venue | null; venueName: string; commercial: Source[]; postSale: Source[]; total: number; contacts: number };
+  type VenueGroup = { venueId: string; venue: Venue | null; venueName: string; commercial: Source[]; postSale: Source[]; finance: Source[]; total: number; contacts: number };
   const venueGroups = useMemo(() => {
     const relevantVenues = venues.filter(v => {
       if (activeVenueId && activeVenueId !== 'all' && activeVenueId !== 'multi') return v.id === activeVenueId;
@@ -194,8 +195,9 @@ export const AdminSourcesView: React.FC = () => {
 
     const build = (venueId: string, venue: Venue | null, venueName: string, list: Source[]): VenueGroup => ({
       venueId, venue, venueName,
-      commercial: sortSources(list.filter(s => !isPostSaleSource(s))),
-      postSale: sortSources(list.filter(isPostSaleSource)),
+      commercial: sortSources(list.filter(s => !isFinanceSource(s) && !isPostSaleSource(s))),
+      postSale: sortSources(list.filter(s => !isFinanceSource(s) && isPostSaleSource(s))),
+      finance: sortSources(list.filter(isFinanceSource)),
       total: list.length,
       contacts: list.reduce((acc, s) => acc + (movement[s.id]?.total || 0), 0),
     });
@@ -415,6 +417,7 @@ export const AdminSourcesView: React.FC = () => {
                       {[
                         { key: 'commercial', label: 'Comercial', postSale: false, list: group.commercial },
                         { key: 'post_sale', label: 'Pós-venda', postSale: true, list: group.postSale },
+                        { key: 'finance', label: 'Financeiro (conexão fixa, único número do Financeiro)', postSale: false, list: group.finance },
                       ].filter(part => part.list.length > 0).map(part => (
                         <React.Fragment key={part.key}>
                           {/* Rotulo discreto do tipo de funil */}
@@ -470,6 +473,8 @@ export const AdminSourcesView: React.FC = () => {
                                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontWeight: 700, fontSize: '0.78rem', color: fColor }}>
                                       <FunnelKindIcon postSale={isPostSaleFunnel(funnel)} size={13} /> {funnel.name}
                                     </span>
+                                  ) : isFinanceSource(source) ? (
+                                    <span style={{ fontSize: '0.76rem', fontWeight: 700, color: '#0369A1' }}>Fixo do Financeiro</span>
                                   ) : (
                                     <span style={{ fontSize: '0.76rem', fontWeight: 700, color: '#F59E0B' }}>Sem funil</span>
                                   )}

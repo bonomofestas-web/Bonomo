@@ -1277,6 +1277,16 @@ export const uazapiService = {
           const fullWaId = typeof msg.id === 'string' ? msg.id : undefined;
           const shortWaId = msg.messageid || msg.messageId || (fullWaId && fullWaId.includes(':') ? fullWaId.split(':').pop() : fullWaId) || msg.key?.id;
 
+          const isForwarded = Boolean(
+            msg.isForwarded === true || msg.isForwarded === 'true' ||
+            msg.contextInfo?.isForwarded === true || msg.contextInfo?.isForwarded === 'true' ||
+            msg.content?.contextInfo?.isForwarded === true || msg.content?.contextInfo?.isForwarded === 'true' ||
+            msg.message?.extendedTextMessage?.contextInfo?.isForwarded === true ||
+            msg.message?.imageMessage?.contextInfo?.isForwarded === true ||
+            msg.message?.videoMessage?.contextInfo?.isForwarded === true ||
+            msg.message?.documentMessage?.contextInfo?.isForwarded === true
+          );
+
           recoveredMessages.push({
             instanceToken,
             senderPhone: phone,
@@ -1287,6 +1297,7 @@ export const uazapiService = {
             mediaUrl,
             timestamp: new Date(msgTime || Date.now()).toISOString(),
             fromMe: isFromMe,
+            isForwarded,
             messageId: shortWaId,
             waId: fullWaId,
             rawPayload: msg,

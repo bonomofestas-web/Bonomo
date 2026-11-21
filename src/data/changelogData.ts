@@ -15,6 +15,57 @@ export interface ChangelogItem {
 
 export const CHANGELOG_DATA: ChangelogItem[] = [
   {
+    id: 'deploy-2026-11-21-central-contatos-contratos-financeiro-r2',
+    version: 'v2.9.0',
+    date: '21 de Novembro de 2026',
+    title: 'Central de Contatos Unificada, Gestão Oficial de Contratos, Módulo Financeiro, Upload no Cloudflare R2 e Blindagem WhatsApp',
+    type: 'major',
+    badge: 'Grande Atualização',
+    summary: 'Grande atualização estrutural do F5 System: lançamento da Central de Contatos Unificada e Família, Mesa de Homologação de Contratos com snapshot imutável, módulo Financeiro integrado (DRE gerencial, a receber, a pagar, conciliação e rateio), upload e hospedagem definitiva de contratos no Cloudflare R2, novo funil temporal VIENA POS e blindagem atômica contra duplicidades de mensagens.',
+    features: [
+      {
+        name: 'Central de Contatos Unificada & Identificador Base36',
+        description: 'Estruturação da base única de pessoas com identificador de alta entropia CONT-XXXXXXXX, unificação de contatos e dependentes familiares com vínculo contratual direto e avatar central com persistência permanente no Cloudflare R2.',
+        status: 'new',
+      },
+      {
+        name: 'Mesa de Homologação e Gestão Oficial de Contratos',
+        description: 'Fluxo oficial de homologação formal de vendas CTR-AAAA-XXXXXX com congelamento unilateral permanente de dados, anexos contratuais hospedados no Cloudflare R2, rastreio de data de fechamento e devolução ágil ao Closer via tarefas.',
+        status: 'new',
+      },
+      {
+        name: 'Módulo Financeiro Gerencial e DRE por Unidade',
+        description: 'Tabelas base de transações financeiras, controle de contas e maquininhas de cartão, liquidação futura de recebíveis, controle de despesas e custos por evento com rateio multi-festas e resumo financeiro automático por contrato.',
+        status: 'new',
+      },
+      {
+        name: 'Hospedagem Definitiva de Contratos no Cloudflare R2',
+        description: 'Migração de 247 documentos PDF para o Cloudflare R2 com entrega pública ultrarrápida, links imutáveis e erradicação definitiva de caminhos locais e dependências de middleware.',
+        status: 'replaced',
+      },
+      {
+        name: 'Funil Pós-Venda VIENA POS com 10 Etapas Cronológicas',
+        description: 'Esteira de acompanhamento plurianual estruturada para a casa Viena com etapas dedicadas: Entrada, Boas-Vindas, Briefing, Acompanhamento 2026, 2027 (1º e 2º Semestre), 2028, 2029+, Realizado e Cancelado.',
+        status: 'new',
+      },
+      {
+        name: 'Blindagem Atômica Contra Mensagens e Leads Duplicados',
+        description: 'Índice único no PostgreSQL idx_lead_activities_unique_msg_id e tratamento de corrida 23505 no webhook do WhatsApp, eliminando qualquer duplicação por retentativas da UAZAPI e garantindo isolamento estrito multi-chip.',
+        status: 'improved',
+      },
+      {
+        name: 'Agenda de Eventos - Visualização Sem Horário e Modo Semana',
+        description: 'Exibição de eventos de dia inteiro logo abaixo do cabeçalho da semana e suporte completo a faixas horárias estendidas na grade.',
+        status: 'improved',
+      },
+      {
+        name: 'Central de Configurações do Sistema',
+        description: 'Tela administrativa unificada em abas para Casas de Festa e Colaboradores, despoluindo o menu lateral da Gerência e integrando o monitor de SLA de tempo de resposta às metas da unidade.',
+        status: 'new',
+      },
+    ],
+  },
+  {
     id: 'deploy-2026-11-11-venue-events-split-upsell-r2-docs',
     version: 'v2.8.0',
     date: '11 de Novembro de 2026',

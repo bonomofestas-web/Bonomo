@@ -2,7 +2,7 @@ import { Select } from '../ui';
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Search, X, Users, Briefcase, FileText,
-  ChevronRight, Building2, ExternalLink, Tag, UserCheck
+  ChevronRight, Building2, ExternalLink, Tag, UserCheck, SlidersHorizontal, ShieldCheck
 } from 'lucide-react';
 
 // ── Chip inline do input ────────────────────────────────────────────────────
@@ -10,8 +10,10 @@ interface FilterChipProps {
   label: string;
   onRemove: () => void;
   isLight: boolean;
+  /** Engrenagem: abre as opcoes (unidade, atendente, tag) que a tag aplica na tela */
+  onConfigure?: () => void;
 }
-const FilterChip: React.FC<FilterChipProps> = ({ label, onRemove, isLight }) => (
+const FilterChip: React.FC<FilterChipProps> = ({ label, onRemove, isLight, onConfigure }) => (
   <span
     style={{
       display: 'inline-flex',
@@ -30,6 +32,12 @@ const FilterChip: React.FC<FilterChipProps> = ({ label, onRemove, isLight }) => 
     }}
   >
     {label}
+    {onConfigure && (
+      <button type="button" onClick={onConfigure} title="Configurar o filtro (unidade, atendente, tag)"
+        style={{ display: 'flex', alignItems: 'center', background: 'none', border: 'none', padding: '1px', cursor: 'pointer', color: '#14A9D7', lineHeight: 0 }}>
+        <SlidersHorizontal size={12} />
+      </button>
+    )}
     <button
       type="button"
       onClick={onRemove}
@@ -53,6 +61,7 @@ import { useAdminState } from '../../context/AdminStateContext';
 import { contactService } from '../../services/contactService';
 import { contractService } from '../../services/contractService';
 import { formatPhone } from '../../utils/phoneFormatter';
+import { setScreenSearch, clearScreenSearch } from '../../utils/screenSearch';
 import type { Contact, Lead, Contract, ContractFunnelPlacement, AdminTabType } from '../../types/admin';
 
 interface AdminGlobalSearchProps {
@@ -64,7 +73,7 @@ interface AdminGlobalSearchProps {
   onFilterFunnelLeads?: (query: string) => void;
 }
 
-export type SearchCategoryFilter = 'all' | 'contacts' | 'leads' | 'contracts';
+export type SearchCategoryFilter = 'all' | 'contacts' | 'clients' | 'leads' | 'contracts';
 
 export const AdminGlobalSearch: React.FC<AdminGlobalSearchProps> = ({
   activeTab,
@@ -86,6 +95,9 @@ export const AdminGlobalSearch: React.FC<AdminGlobalSearchProps> = ({
   const isLight = theme === 'light';
 
   const [searchQuery, setSearchQuery] = useState('');
+  // Enter confirma o texto: ele vira uma tag (com engrenagem) que continua filtrando a tela
+  const [committed, setCommitted] = useState('');
+  const [optionsOpen, setOptionsOpen] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
   const [activeCategory, setActiveCategory] = useState<SearchCategoryFilter>('all');
   const [selectedVenueFilter, setSelectedVenueFilter] = useState<string>('all');
@@ -157,12 +169,22 @@ export const AdminGlobalSearch: React.FC<AdminGlobalSearchProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen]);
 
-  // Se o usuário fechar e estiver no funil comercial, aplica filtro local do funil
+  // Texto efetivo: tag confirmada + o que esta sendo digitado
+  const effectiveQuery = [committed, searchQuery.trim()].filter(Boolean).join(' ');
+
+  // Filtro AO VIVO da tela aberta (Contatos, Contratos, listas, Kanban, Mensagens), com a configuracao da tag
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setScreenSearch({ query: effectiveQuery, venueId: selectedVenueFilter, collaboratorId: selectedCollaboratorFilter, tag: selectedTagFilter });
+      if (activeTab === 'whatsapp') window.dispatchEvent(new CustomEvent('f5_whatsapp_filter_query', { detail: { query: effectiveQuery } }));
+      else window.dispatchEvent(new CustomEvent('f5_crm_filter_query', { detail: { query: effectiveQuery } }));
+    }, 120);
+    return () => clearTimeout(t);
+  }, [effectiveQuery, selectedVenueFilter, selectedCollaboratorFilter, selectedTagFilter, activeTab]);
+
+  // Fechar o painel nao apaga o filtro: ele continua valendo na tela
   const handleClose = () => {
     setIsOpen(false);
-    if (activeTab === 'crm' && onFilterFunnelLeads) {
-      onFilterFunnelLeads(searchQuery.trim());
-    }
   };
 
   // Busca assíncrona de Contatos e Contratos no Supabase quando digita
@@ -246,8 +268,32 @@ export const AdminGlobalSearch: React.FC<AdminGlobalSearchProps> = ({
       const matchTag = l.tags?.some(t => t.toLowerCase().includes(q));
 
       return matchName || matchPhone || matchCode || matchMsg || matchTag;
-    }).slice(0, 20);
+    }).slice(0, 30);
   }, [leads, searchQuery, selectedVenueFilter, selectedCollaboratorFilter, selectedTagFilter]);
+
+  // Separação estrita: Leads Comerciais vs Clientes no Pós-Venda
+  const { filteredCommercialLeads, filteredPostSaleClients } = useMemo(() => {
+    const commercial: typeof filteredLeads = [];
+    const postSale: typeof filteredLeads = [];
+    filteredLeads.forEach(l => {
+      const funnel = funnels.find(f => f.id === l.funnelId);
+      const isPostSale = Boolean(
+        funnel?.isPostSale ||
+        funnel?.category === 'Pós-Venda' ||
+        funnel?.name?.toLowerCase().includes('pós-venda') ||
+        funnel?.name?.toLowerCase().includes('pos-venda') ||
+        l.isClient ||
+        l.group === 'Pós-Venda' ||
+        (Array.isArray(l.tags) && l.tags.some(t => t.toLowerCase() === 'cliente'))
+      );
+      if (isPostSale) {
+        postSale.push(l);
+      } else {
+        commercial.push(l);
+      }
+    });
+    return { filteredCommercialLeads: commercial, filteredPostSaleClients: postSale };
+  }, [filteredLeads, funnels]);
 
   // Contatos filtrados por unidade
   const displayContacts = useMemo(() => {
@@ -272,7 +318,7 @@ export const AdminGlobalSearch: React.FC<AdminGlobalSearchProps> = ({
   }, [contractsResults, selectedVenueFilter, selectedCollaboratorFilter]);
 
   // Total de correspondências
-  const totalMatches = displayContacts.length + filteredLeads.length + displayContracts.length;
+  const totalMatches = displayContacts.length + filteredCommercialLeads.length + filteredPostSaleClients.length + displayContracts.length;
   // Sem filtro de unidade/colaborador/tag, os totais de contatos e contratos vêm do banco (não das 20 linhas exibidas)
   const noExtraFilters = selectedVenueFilter === 'all' && selectedCollaboratorFilter === 'all' && selectedTagFilter === 'all';
   const allLabelTotal = totalMatches
@@ -344,6 +390,12 @@ export const AdminGlobalSearch: React.FC<AdminGlobalSearchProps> = ({
       >
         <Search size={15} color="#14A9D7" style={{ flexShrink: 0 }} />
 
+        {committed && (
+          <FilterChip key="chip-query" label={`“${committed}”`} isLight={isLight}
+            onConfigure={() => setOptionsOpen(o => !o)}
+            onRemove={() => { setCommitted(''); setOptionsOpen(false); }} />
+        )}
+
         {/* ── Chips de filtros ativos DENTRO do input ── */}
         {selectedVenueFilter !== 'all' && (() => {
           const v = venues.find(v => v.id === selectedVenueFilter);
@@ -380,31 +432,27 @@ export const AdminGlobalSearch: React.FC<AdminGlobalSearchProps> = ({
           ref={inputRef}
           type="text"
           value={searchQuery}
-          readOnly={hasActiveFilters}
           onChange={e => {
-            if (hasActiveFilters) return;
             setSearchQuery(e.target.value);
-            if (activeTab === 'whatsapp') {
-              // No WhatsApp a busca central filtra a lista de conversas ao vivo
-              window.dispatchEvent(new CustomEvent('f5_whatsapp_filter_query', { detail: { query: e.target.value } }));
-              return;
-            }
-            if (!isOpen) setIsOpen(true);
+            if (activeTab !== 'whatsapp' && !isOpen) setIsOpen(true);
           }}
           onFocus={() => { if (activeTab !== 'whatsapp') setIsOpen(true); }}
           onKeyDown={e => {
             if (e.key === 'Enter') {
               e.preventDefault();
-              if (onFilterFunnelLeads) {
-                onFilterFunnelLeads(searchQuery.trim());
-              }
+              // Confirma: o texto vira uma tag com engrenagem e segue filtrando a tela
+              if (searchQuery.trim()) { setCommitted(effectiveQuery); setSearchQuery(''); }
               setIsOpen(false);
+            } else if (e.key === 'Backspace' && !searchQuery && committed) {
+              setCommitted('');
             } else if (e.key === 'Escape') {
               handleClose();
             }
           }}
           placeholder={
-            hasActiveFilters
+            committed
+              ? 'Adicionar ao filtro...'
+              : hasActiveFilters
               ? ''
               : activeTab === 'whatsapp'
               ? 'Buscar conversas...'
@@ -422,14 +470,17 @@ export const AdminGlobalSearch: React.FC<AdminGlobalSearchProps> = ({
             fontSize: '0.80rem',
             fontWeight: 600,
             fontFamily: 'inherit',
-            cursor: hasActiveFilters ? 'default' : 'text',
+            cursor: 'text',
           }}
         />
-        {(searchQuery || hasActiveFilters) ? (
+        {(searchQuery || committed || hasActiveFilters) ? (
           <button
             type="button"
             onClick={() => {
               setSearchQuery('');
+              setCommitted('');
+              setOptionsOpen(false);
+              clearScreenSearch();
               clearAllFilters();
               if (onFilterFunnelLeads) onFilterFunnelLeads('');
               if (activeTab === 'whatsapp') window.dispatchEvent(new CustomEvent('f5_whatsapp_filter_query', { detail: { query: '' } }));
@@ -465,6 +516,33 @@ export const AdminGlobalSearch: React.FC<AdminGlobalSearchProps> = ({
           </span>
         )}
       </div>
+
+      {/* Opcoes da tag: o que ela aplica na tela */}
+      {optionsOpen && committed && (
+        <div onClick={e => e.stopPropagation()} style={{
+          position: 'absolute', top: 'calc(100% + 8px)', left: 0, width: '340px', zIndex: 100000, padding: 14, borderRadius: 12,
+          backgroundColor: isLight ? '#FFFFFF' : '#0F172A', border: `1.5px solid ${isLight ? '#CBD5E1' : 'rgba(20,169,215,0.35)'}`,
+          boxShadow: '0 20px 40px -10px rgba(0,0,0,0.35)', display: 'flex', flexDirection: 'column', gap: 10,
+        }}>
+          <div style={{ fontSize: '0.74rem', fontWeight: 800, color: isLight ? '#0F172A' : '#FFFFFF' }}>Configurar filtro “{committed}”</div>
+          <div style={{ fontSize: '0.68rem', color: isLight ? '#64748B' : '#94A3B8' }}>Vale para tudo o que você está vendo nesta tela.</div>
+          <Select value={selectedVenueFilter} onChange={e => setSelectedVenueFilter(e.target.value)} title="Unidade" style={{ height: 34, fontSize: '0.76rem' }}>
+            <option value="all">Todas as unidades</option>
+            {venues.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
+          </Select>
+          <Select value={selectedCollaboratorFilter} onChange={e => setSelectedCollaboratorFilter(e.target.value)} title="Atendente" style={{ height: 34, fontSize: '0.76rem' }}>
+            <option value="all">Todos os atendentes</option>
+            {(collaborators || []).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </Select>
+          {availableTags.length > 0 && (
+            <Select value={selectedTagFilter} onChange={e => setSelectedTagFilter(e.target.value)} title="Tag" style={{ height: 34, fontSize: '0.76rem' }}>
+              <option value="all">Todas as tags</option>
+              {availableTags.map(t => <option key={t} value={t}>#{t}</option>)}
+            </Select>
+          )}
+          <button type="button" onClick={() => setOptionsOpen(false)} style={{ alignSelf: 'flex-end', padding: '6px 14px', borderRadius: 8, border: 'none', background: '#14A9D7', color: '#fff', fontWeight: 800, fontSize: '0.74rem', cursor: 'pointer' }}>Pronto</button>
+        </div>
+      )}
 
       {/* ── 2. POPOVER DE RESULTADOS: CENTRALIZADO E ALINHADO LOGO ABAIXO DA BUSCA ── */}
       {isOpen && (
@@ -502,7 +580,7 @@ export const AdminGlobalSearch: React.FC<AdminGlobalSearchProps> = ({
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <span style={{ fontSize: '0.74rem', color: isLight ? '#475569' : '#94A3B8', fontWeight: 600 }}>
-                Pressione <strong style={{ color: '#14A9D7' }}>Enter</strong> para filtrar o funil atual ou selecione um resultado:
+                A tela já está sendo filtrada enquanto você digita. <strong style={{ color: '#14A9D7' }}>Enter</strong> guarda o texto como filtro (com opções); ou selecione um resultado:
               </span>
             </div>
             <button
@@ -540,7 +618,8 @@ export const AdminGlobalSearch: React.FC<AdminGlobalSearchProps> = ({
                 {[
                   { id: 'all', label: `Todos (${allLabelTotal})` },
                   { id: 'contacts', label: `Contatos (${noExtraFilters ? Math.max(displayContacts.length, dbTotals.contacts) : displayContacts.length})`, icon: <Users size={12} /> },
-                  { id: 'leads', label: `Leads Comerciais (${filteredLeads.length})`, icon: <Briefcase size={12} /> },
+                  { id: 'clients', label: `Clientes Pós-Venda (${filteredPostSaleClients.length})`, icon: <ShieldCheck size={12} /> },
+                  { id: 'leads', label: `Leads Comerciais (${filteredCommercialLeads.length})`, icon: <Briefcase size={12} /> },
                   { id: 'contracts', label: `Contratos (${noExtraFilters ? Math.max(displayContracts.length, dbTotals.contracts) : displayContracts.length})`, icon: <FileText size={12} /> },
                 ].map(cat => {
                   const isSelected = activeCategory === cat.id;
@@ -847,8 +926,8 @@ export const AdminGlobalSearch: React.FC<AdminGlobalSearchProps> = ({
                     </div>
                   )}
 
-                  {/* 2. SEÇÃO DE LEADS COMERCIAIS */}
-                  {(activeCategory === 'all' || activeCategory === 'leads') && filteredLeads.length > 0 && (
+                  {/* 2A. SEÇÃO DE CLIENTES NO PÓS-VENDA */}
+                  {(activeCategory === 'all' || activeCategory === 'clients') && filteredPostSaleClients.length > 0 && (
                     <div>
                       <div style={{
                         display: 'flex',
@@ -861,12 +940,12 @@ export const AdminGlobalSearch: React.FC<AdminGlobalSearchProps> = ({
                         textTransform: 'uppercase',
                         letterSpacing: '0.5px',
                       }}>
-                        <Briefcase size={14} />
-                        Leads Comerciais ({filteredLeads.length})
+                        <ShieldCheck size={14} />
+                        Clientes no Pós-Venda ({filteredPostSaleClients.length})
                       </div>
 
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '8px' }}>
-                        {filteredLeads.map(l => {
+                        {filteredPostSaleClients.map(l => {
                           const funnel = funnels.find(f => f.id === l.funnelId);
                           const venue = venues.find(v => v.id === l.venueId);
 
@@ -903,6 +982,140 @@ export const AdminGlobalSearch: React.FC<AdminGlobalSearchProps> = ({
                                   <strong style={{ color: isLight ? '#0F172A' : '#FFFFFF', fontSize: '0.86rem' }}>
                                     {l.name}
                                   </strong>
+                                  <span style={{
+                                    fontSize: '0.66rem',
+                                    padding: '1px 6px',
+                                    borderRadius: '4px',
+                                    backgroundColor: 'rgba(16, 185, 129, 0.2)',
+                                    color: '#059669',
+                                    fontWeight: 700,
+                                    letterSpacing: '0.5px',
+                                  }}>
+                                    CLIENTE
+                                  </span>
+                                  {l.code && (
+                                    <span style={{
+                                      fontSize: '0.66rem',
+                                      padding: '1px 5px',
+                                      borderRadius: '4px',
+                                      backgroundColor: 'rgba(212, 175, 55, 0.15)',
+                                      color: isLight ? '#B45309' : '#D4AF37',
+                                      fontWeight: 700,
+                                    }}>
+                                      {l.code}
+                                    </span>
+                                  )}
+                                  <span style={{
+                                    fontSize: '0.68rem',
+                                    padding: '1px 6px',
+                                    borderRadius: '4px',
+                                    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                                    color: isLight ? '#047857' : '#34D399',
+                                    fontWeight: 600,
+                                  }}>
+                                    {getStageRealName(l)}
+                                  </span>
+                                  {Array.isArray(l.tags) && l.tags.map(tag => (
+                                    <span
+                                      key={tag}
+                                      style={{
+                                        fontSize: '0.64rem',
+                                        padding: '1px 5px',
+                                        borderRadius: '3px',
+                                        backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                                        color: '#34D399',
+                                        fontWeight: 600,
+                                      }}
+                                    >
+                                      #{tag}
+                                    </span>
+                                  ))}
+                                </div>
+
+                                <div style={{ fontSize: '0.74rem', color: isLight ? '#64748B' : '#94A3B8', marginTop: '3px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                  <span>Funil: {funnel?.name || 'Pós-Venda'}</span>
+                                  {venue && <span>• {venue.name}</span>}
+                                  {l.phone && <span>• {formatPhone(l.phone)}</span>}
+                                  {l.partyDate && <span>• Festa: {new Date(l.partyDate + 'T12:00:00').toLocaleDateString('pt-BR')}</span>}
+                                  {l.dealValue ? <span>• R$ {l.dealValue.toLocaleString('pt-BR')}</span> : null}
+                                </div>
+                              </div>
+
+                              <ExternalLink size={14} color={isLight ? '#64748B' : '#94A3B8'} style={{ flexShrink: 0 }} />
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 2B. SEÇÃO DE LEADS COMERCIAIS */}
+                  {(activeCategory === 'all' || activeCategory === 'leads') && filteredCommercialLeads.length > 0 && (
+                    <div>
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        marginBottom: '10px',
+                        color: isLight ? '#2563EB' : '#3B82F6',
+                        fontSize: '0.78rem',
+                        fontWeight: 700,
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.5px',
+                      }}>
+                        <Briefcase size={14} />
+                        Leads Comerciais ({filteredCommercialLeads.length})
+                      </div>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '8px' }}>
+                        {filteredCommercialLeads.map(l => {
+                          const funnel = funnels.find(f => f.id === l.funnelId);
+                          const venue = venues.find(v => v.id === l.venueId);
+
+                          return (
+                            <div
+                              key={l.id}
+                              onClick={() => {
+                                onOpenLead(l.id, l.funnelId);
+                                handleClose();
+                              }}
+                              style={{
+                                padding: '12px 14px',
+                                borderRadius: '8px',
+                                backgroundColor: isLight ? '#F8FAFC' : '#162238',
+                                border: `1px solid ${isLight ? '#E2E8F0' : 'rgba(255, 255, 255, 0.08)'}`,
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                gap: '12px',
+                                transition: 'all 0.15s ease',
+                              }}
+                              onMouseEnter={e => {
+                                e.currentTarget.style.backgroundColor = isLight ? '#EDF2F7' : 'rgba(59, 130, 246, 0.12)';
+                                e.currentTarget.style.borderColor = '#3B82F6';
+                              }}
+                              onMouseLeave={e => {
+                                e.currentTarget.style.backgroundColor = isLight ? '#F8FAFC' : '#162238';
+                                e.currentTarget.style.borderColor = isLight ? '#E2E8F0' : 'rgba(255, 255, 255, 0.08)';
+                              }}
+                            >
+                              <div style={{ minWidth: 0 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                  <strong style={{ color: isLight ? '#0F172A' : '#FFFFFF', fontSize: '0.86rem' }}>
+                                    {l.name}
+                                  </strong>
+                                  <span style={{
+                                    fontSize: '0.66rem',
+                                    padding: '1px 6px',
+                                    borderRadius: '4px',
+                                    backgroundColor: 'rgba(59, 130, 246, 0.2)',
+                                    color: '#2563EB',
+                                    fontWeight: 700,
+                                    letterSpacing: '0.5px',
+                                  }}>
+                                    LEAD
+                                  </span>
                                   {l.commercialCode && (
                                     <span style={{
                                       fontSize: '0.66rem',

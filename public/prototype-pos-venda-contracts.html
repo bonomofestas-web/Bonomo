@@ -1,0 +1,1389 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>F5 System • Pós-Venda & Contratos (Clone Comercial Real)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      transition: background-color 0.15s ease, color 0.15s ease;
+    }
+    .font-mono {
+      font-family: 'JetBrains Mono', monospace;
+    }
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(148, 163, 184, 0.25);
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(148, 163, 184, 0.45);
+    }
+
+    /* THEME DARK (#07090E / #090814) */
+    body.theme-dark {
+      background-color: #07090E;
+      color: #F1F5F9;
+    }
+    body.theme-dark .app-header {
+      background-color: #090B12;
+      border-color: rgba(255, 255, 255, 0.08);
+    }
+    body.theme-dark .adm-bg-app {
+      background-color: #07090E;
+    }
+    body.theme-dark .adm-bg-card {
+      background-color: #0D111D;
+      border-color: rgba(255, 255, 255, 0.08);
+    }
+    body.theme-dark .adm-bg-sub {
+      background-color: rgba(255, 255, 255, 0.03);
+      border-color: rgba(255, 255, 255, 0.06);
+    }
+    body.theme-dark .adm-border {
+      border-color: rgba(255, 255, 255, 0.08);
+    }
+    body.theme-dark .adm-input {
+      background-color: rgba(255, 255, 255, 0.04);
+      border-color: rgba(255, 255, 255, 0.1);
+      color: #FFFFFF;
+    }
+
+    /* THEME LIGHT (PADRÃO PRIORITÁRIO - ALTO CONTRASTE) */
+    body.theme-light {
+      background-color: #F8FAFC;
+      color: #0F172A;
+    }
+    body.theme-light .app-header {
+      background-color: #FFFFFF;
+      border-color: #E2E8F0;
+    }
+    body.theme-light .adm-bg-app {
+      background-color: #F8FAFC;
+    }
+    body.theme-light .adm-bg-card {
+      background-color: #FFFFFF;
+      border-color: #E2E8F0;
+      box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05);
+    }
+    body.theme-light .adm-bg-sub {
+      background-color: #F8FAFC;
+      border-color: #E2E8F0;
+    }
+    body.theme-light .adm-border {
+      border-color: #E2E8F0;
+    }
+    body.theme-light .adm-input {
+      background-color: #FFFFFF;
+      border-color: #CBD5E1;
+      color: #0F172A;
+    }
+    body.theme-light .text-slate-400 {
+      color: #64748B !important;
+    }
+    body.theme-light .text-slate-300 {
+      color: #475569 !important;
+    }
+    body.theme-light .text-white {
+      color: #0F172A !important;
+    }
+  </style>
+</head>
+<body class="theme-light min-h-screen flex flex-col">
+
+  <!-- Top bar do Sistema F5 -->
+  <header class="app-header h-14 border-b px-6 flex items-center justify-between sticky top-0 z-40 transition-colors">
+    <div class="flex items-center gap-4">
+      <div class="flex items-center gap-2">
+        <span class="text-[#14A9D7] font-black text-xl tracking-tight">F5</span>
+        <span class="text-xs font-bold tracking-widest uppercase text-slate-800 dark:text-slate-100">System</span>
+      </div>
+      <span class="opacity-25 text-sm">/</span>
+      <div class="flex items-center gap-2 text-xs font-medium">
+        <span class="text-slate-400">Operação & Contratos</span>
+        <span class="opacity-25">/</span>
+        <span class="font-bold text-[#0284C7] bg-[#0284C7]/10 px-2 py-0.5 rounded border border-[#0284C7]/20">Pós-Venda (Clone Comercial)</span>
+      </div>
+    </div>
+
+    <!-- Controles de Visão (Kanban vs Workspace) + Links + Master ID + Tema -->
+    <div class="flex items-center gap-2.5">
+      <!-- Seletor de Modo: Kanban vs Workspace -->
+      <div class="flex items-center bg-slate-100 dark:bg-slate-800/80 p-0.5 rounded-lg border border-slate-200 dark:border-slate-700/60 text-xs font-bold">
+        <button id="btn-mode-kanban" onclick="switchView('kanban')" class="flex items-center gap-1.5 px-3 py-1 rounded-md transition-all shadow-xs bg-white dark:bg-slate-700 text-slate-900 dark:text-white">
+          <i data-lucide="layout-grid" class="w-3.5 h-3.5 text-[#0284C7]"></i>
+          <span>Kanban</span>
+        </button>
+        <button id="btn-mode-workspace" onclick="switchView('workspace')" class="flex items-center gap-1.5 px-3 py-1 rounded-md transition-all text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white">
+          <i data-lucide="columns-3" class="w-3.5 h-3.5 text-purple-500"></i>
+          <span>Workspace (3 Colunas)</span>
+        </button>
+      </div>
+
+      <div class="h-4 w-px bg-slate-200 dark:bg-slate-700 hidden sm:block"></div>
+
+      <a href="prototype-dashboard-metas.html" class="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700/60 hover:border-slate-400 bg-white dark:bg-slate-800/40 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition-all shadow-2xs">
+        <i data-lucide="trending-up" class="w-3.5 h-3.5 text-sky-500"></i>
+        <span>Dashboard</span>
+      </a>
+      <a href="prototype-visitas-planilha.html" class="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700/60 hover:border-slate-400 bg-white dark:bg-slate-800/40 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition-all shadow-2xs">
+        <i data-lucide="calendar-check-2" class="w-3.5 h-3.5 text-purple-500"></i>
+        <span>Visitas</span>
+      </a>
+
+      <!-- Seletor de Master ID Blindado -->
+      <div class="hidden lg:flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-md bg-emerald-500/10 border border-emerald-500/25 text-emerald-700 dark:text-emerald-400 font-mono font-medium">
+        <i data-lucide="shield-check" class="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400"></i>
+        <span>master_id: Bonomo Rede</span>
+      </div>
+
+      <!-- Alternador Dark/Light -->
+      <button onclick="toggleTheme()" class="p-2 rounded-lg border border-slate-300 dark:border-slate-700/60 hover:border-slate-400 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition-colors" title="Alternar Modo Claro/Escuro">
+        <i id="theme-icon" data-lucide="moon" class="w-4 h-4"></i>
+      </button>
+
+      <!-- Badge de Status do Protótipo -->
+      <div class="text-[11px] font-bold px-2 py-0.5 rounded bg-emerald-500/15 border border-emerald-500/30 text-emerald-800 dark:text-emerald-300">
+        CLONE CRM REAL • VICTORIA
+      </div>
+    </div>
+  </header>
+
+
+  <!-- ========================================================================= -->
+  <!-- VISÃO 1: MODO KANBAN (CARDS SÓLIDOS, NÍTIDOS COM QUEBRA DE NOME EM 2 LINHAS) -->
+  <!-- ========================================================================= -->
+  <main id="view-kanban" class="flex-1 max-w-[1720px] w-full mx-auto p-6 space-y-5">
+    
+    <!-- Filtros Superiores do Kanban -->
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-200 dark:border-slate-800">
+      <div>
+        <h1 class="text-xl font-black text-slate-900 dark:text-white tracking-tight">Esteira Kanban de Contratos Pós-Venda</h1>
+        <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Gestão de transição comercial, alinhamento técnico e execução operacional dos eventos fechados.</p>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <div class="relative">
+          <i data-lucide="search" class="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
+          <input type="text" id="kanban-search" placeholder="Buscar contratante, homenageado, código..." oninput="renderKanbanCards()" class="adm-input text-xs pl-8 pr-3 py-1.5 rounded-lg border outline-none font-medium w-64">
+        </div>
+
+        <select id="kanban-venue-filter" onchange="renderKanbanCards()" class="adm-input text-xs px-3 py-1.5 rounded-lg border outline-none font-semibold cursor-pointer">
+          <option value="all">Todas as Unidades</option>
+          <option value="Bonomo Festas Jardins">Bonomo Festas Jardins</option>
+          <option value="Bonomo Flamboyant">Bonomo Flamboyant</option>
+          <option value="Mansão Almirante">Mansão Almirante</option>
+        </select>
+
+        <select id="kanban-type-filter" onchange="renderKanbanCards()" class="adm-input text-xs px-3 py-1.5 rounded-lg border outline-none font-semibold cursor-pointer">
+          <option value="all">Todos os Tipos de Evento</option>
+          <option value="15-anos">15 Anos / Debutante</option>
+          <option value="casamento">Casamento</option>
+          <option value="corporativo">Corporativo</option>
+          <option value="infantil">Infantil</option>
+        </select>
+
+        <span id="kanban-total-count" class="text-xs font-mono font-bold px-2.5 py-1 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+          5 Contratos Ativos
+        </span>
+      </div>
+    </div>
+
+    <!-- Grid das 5 Colunas do Funil Pós-Venda -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+      
+      <!-- COLUNA 1: Transição & Boas-Vindas -->
+      <div class="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/40 p-3 space-y-3 flex flex-col">
+        <div class="flex items-center justify-between pb-2 border-b border-slate-200 dark:border-slate-800">
+          <div class="flex items-center gap-2">
+            <span class="w-2.5 h-2.5 rounded-full bg-blue-500"></span>
+            <span class="text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-wide">Transição & Acolhimento</span>
+          </div>
+          <span class="text-[11px] font-bold px-1.5 py-0.2 rounded bg-blue-500/10 text-blue-600 dark:text-blue-400 font-mono">1</span>
+        </div>
+        <div class="space-y-3 kanban-cards-container flex-1" id="col-transicao"></div>
+      </div>
+
+      <!-- COLUNA 2: Alinhamento Inicial -->
+      <div class="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/40 p-3 space-y-3 flex flex-col">
+        <div class="flex items-center justify-between pb-2 border-b border-slate-200 dark:border-slate-800">
+          <div class="flex items-center gap-2">
+            <span class="w-2.5 h-2.5 rounded-full bg-purple-500"></span>
+            <span class="text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-wide">Alinhamento Técnico</span>
+          </div>
+          <span class="text-[11px] font-bold px-1.5 py-0.2 rounded bg-purple-500/10 text-purple-600 dark:text-purple-400 font-mono">1</span>
+        </div>
+        <div class="space-y-3 kanban-cards-container flex-1" id="col-alinhamento"></div>
+      </div>
+
+      <!-- COLUNA 3: Execução & Detalhamento -->
+      <div class="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/40 p-3 space-y-3 flex flex-col">
+        <div class="flex items-center justify-between pb-2 border-b border-slate-200 dark:border-slate-800">
+          <div class="flex items-center gap-2">
+            <span class="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
+            <span class="text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-wide">Execução & Detalhes</span>
+          </div>
+          <span class="text-[11px] font-bold px-1.5 py-0.2 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 font-mono">1</span>
+        </div>
+        <div class="space-y-3 kanban-cards-container flex-1" id="col-execucao"></div>
+      </div>
+
+      <!-- COLUNA 4: Reta Final (30 Dias) -->
+      <div class="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/40 p-3 space-y-3 flex flex-col">
+        <div class="flex items-center justify-between pb-2 border-b border-slate-200 dark:border-slate-800">
+          <div class="flex items-center gap-2">
+            <span class="w-2.5 h-2.5 rounded-full bg-rose-500"></span>
+            <span class="text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-wide">Reta Final (30 Dias)</span>
+          </div>
+          <span class="text-[11px] font-bold px-1.5 py-0.2 rounded bg-rose-500/10 text-rose-600 dark:text-rose-400 font-mono">1</span>
+        </div>
+        <div class="space-y-3 kanban-cards-container flex-1" id="col-reta-final"></div>
+      </div>
+
+      <!-- COLUNA 5: Pós-Evento & Auditoria -->
+      <div class="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/40 p-3 space-y-3 flex flex-col">
+        <div class="flex items-center justify-between pb-2 border-b border-slate-200 dark:border-slate-800">
+          <div class="flex items-center gap-2">
+            <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+            <span class="text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-wide">Pós-Evento & NPS</span>
+          </div>
+          <span class="text-[11px] font-bold px-1.5 py-0.2 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-mono">1</span>
+        </div>
+        <div class="space-y-3 kanban-cards-container flex-1" id="col-pos-evento"></div>
+      </div>
+
+    </div>
+  </main>
+
+
+  <!-- ========================================================================= -->
+  <!-- VISÃO 2: WORKSPACE 3 COLUNAS (CLONE EXATO DE AdminCrmWorkspaceView.tsx)   -->
+  <!-- ========================================================================= -->
+  <div id="view-workspace" class="hidden flex-1 flex flex-col h-[calc(100vh-56px)] overflow-hidden">
+    
+    <!-- SUB-HEADER DO WORKSPACE -->
+    <div class="h-12 border-b px-6 flex items-center justify-between bg-white dark:bg-[#0D111D] z-20 shrink-0">
+      <div class="flex items-center gap-3">
+        <button onclick="switchView('kanban')" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 text-xs font-bold hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-slate-700 dark:text-slate-200">
+          <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i>
+          <span>Voltar ao Kanban</span>
+        </button>
+
+        <div class="h-4 w-px bg-slate-300 dark:bg-slate-700"></div>
+
+        <!-- Identificação do Contrato Ativo -->
+        <div class="flex items-center gap-2">
+          <span id="ws-contract-code" class="text-xs font-mono font-bold px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+            #CTR-10492
+          </span>
+          <h2 id="ws-contract-client-name" class="text-sm font-black text-slate-900 dark:text-white">Marcos Paulo & Renata Silveira</h2>
+          <span class="text-xs text-slate-400">•</span>
+          <span id="ws-contract-honoree" class="text-xs font-semibold text-slate-600 dark:text-slate-300">Fernanda Rafaela</span>
+          <span id="ws-event-tag" class="text-[11px] font-bold px-2 py-0.5 rounded-md border shadow-2xs bg-purple-100 text-purple-700 border-purple-300">
+            15 Anos
+          </span>
+        </div>
+      </div>
+
+      <!-- Metadados da Barra -->
+      <div class="flex items-center gap-4 text-xs">
+        <div class="flex items-center gap-1.5 text-slate-500">
+          <i data-lucide="building-2" class="w-3.5 h-3.5 text-[#14A9D7]"></i>
+          <span id="ws-contract-venue" class="font-bold text-slate-800 dark:text-slate-200">Bonomo Festas Jardins</span>
+        </div>
+        <div class="flex items-center gap-1.5 text-slate-500">
+          <i data-lucide="calendar" class="w-3.5 h-3.5 text-amber-500"></i>
+          <span id="ws-contract-date" class="font-semibold text-slate-700 dark:text-slate-300">20/03/2027 (Em 124 dias)</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- CONTAINER DAS 3 COLUNAS OFICIAIS (PADRÃO ADMIN CRM WORKSPACE) -->
+    <div class="flex-1 flex overflow-hidden">
+
+      <!-- ===================================================================== -->
+      <!-- COLUNA 1 — INBOX: LISTA DE CONVERSAS / CONTRATOS (LARGURA FIXA 320px)   -->
+      <!-- ===================================================================== -->
+      <aside class="w-80 border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0D111D] flex flex-col overflow-hidden shrink-0">
+        
+        <!-- Header do Inbox: Badge de Contagem + Abas [Abertas] [Minhas] -->
+        <div class="p-3 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between shrink-0">
+          <div class="flex items-center gap-2">
+            <span class="text-xs font-black tracking-wider uppercase text-slate-900 dark:text-white">INBOX</span>
+            <span id="inbox-count-badge" class="text-[10px] font-bold font-mono px-2 py-0.5 rounded-full bg-sky-100 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 border border-sky-300 dark:border-sky-800">
+              5
+            </span>
+          </div>
+
+          <!-- Abas [Abertas] [Minhas] -->
+          <div class="flex bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg border border-slate-200 dark:border-slate-700 text-[11px] font-bold">
+            <button id="inbox-filter-all" onclick="setInboxFilter('all')" class="px-2.5 py-0.5 rounded-md bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-2xs">
+              Abertas
+            </button>
+            <button id="inbox-filter-mine" onclick="setInboxFilter('mine')" class="px-2.5 py-0.5 rounded-md text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white">
+              Minhas
+            </button>
+          </div>
+        </div>
+
+        <!-- Campo de Filtro do Inbox -->
+        <div class="p-2.5 border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/30">
+          <div class="relative">
+            <i data-lucide="search" class="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400"></i>
+            <input type="text" id="inbox-search" placeholder="Filtrar conversas de contratos..." oninput="filterInboxList()" class="adm-input w-full pl-8 pr-2.5 py-1 text-xs rounded-md border focus:outline-none">
+          </div>
+        </div>
+
+        <!-- Feed de Contratos do Inbox -->
+        <div id="inbox-contracts-feed" class="flex-1 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800/60">
+          <!-- Renderizado via JavaScript -->
+        </div>
+      </aside>
+
+
+      <!-- ===================================================================== -->
+      <!-- COLUNA 2 — ÁREA CENTRAL DE TRABALHO / CHAT / HISTÓRICO / TAREFAS (1fr)  -->
+      <!-- ===================================================================== -->
+      <section class="flex-1 flex flex-col bg-slate-50 dark:bg-[#07090E] overflow-hidden">
+        
+        <!-- Header da Conversa: Titular Ativo + Telefone + Botão WhatsApp Web -->
+        <div class="border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0D111D] px-6 py-2.5 flex items-center justify-between shrink-0 shadow-2xs">
+          <div class="flex items-center gap-3">
+            <div class="relative">
+              <img id="active-person-avatar" src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80" alt="Avatar" class="w-10 h-10 rounded-full object-cover border border-slate-200 dark:border-slate-700 shadow-2xs">
+              <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 absolute bottom-0 right-0 ring-2 ring-white dark:ring-slate-900" title="Online"></span>
+            </div>
+            <div>
+              <div class="flex items-center gap-2">
+                <h3 id="active-person-name" class="text-sm font-black text-slate-900 dark:text-white">Marcos Paulo da Silva</h3>
+                <span id="active-person-role-badge" class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">Pai / Decisor Principal</span>
+              </div>
+              <div class="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                <i data-lucide="phone" class="w-3 h-3 text-emerald-600"></i>
+                <span id="active-person-phone" class="font-mono">(11) 98765-4321</span>
+                <span>•</span>
+                <span class="text-emerald-600 font-semibold text-[11px]">Conexão Oficial WhatsApp API</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-2 text-xs">
+            <button onclick="shareActiveWhatsApp()" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/30 hover:bg-emerald-100 font-bold transition-colors">
+              <i data-lucide="external-link" class="w-3.5 h-3.5"></i>
+              <span>Abrir WhatsApp Web</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Abas Nominais de Canais/Decisores -->
+        <div class="border-b border-slate-200 dark:border-slate-800 bg-slate-100/70 dark:bg-slate-900/60 px-6 py-2 flex items-center gap-2 overflow-x-auto shrink-0" id="channel-tabs-container">
+          <!-- Injetado via JS -->
+        </div>
+
+        <!-- Top Tabs Oficiais do CRM: [WhatsApp] [Histórico & Notas] [Tarefas] [Compromissos] -->
+        <div class="border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0D111D] px-6 py-2 flex items-center justify-between shrink-0">
+          <div class="flex items-center gap-2">
+            <button id="tab-btn-whatsapp" onclick="switchContentTab('whatsapp')" class="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors bg-sky-50 dark:bg-sky-950/40 text-[#0284C7] border border-sky-300 dark:border-sky-800">
+              <i data-lucide="message-square" class="w-3.5 h-3.5"></i>
+              <span>WhatsApp (Sigiloso)</span>
+            </button>
+            <button id="tab-btn-history" onclick="switchContentTab('history')" class="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white border border-transparent">
+              <i data-lucide="clock" class="w-3.5 h-3.5"></i>
+              <span>Histórico & Notas (<span id="history-notes-count">4</span>)</span>
+            </button>
+            <button id="tab-btn-tasks" onclick="switchContentTab('tasks')" class="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white border border-transparent">
+              <i data-lucide="check-square" class="w-3.5 h-3.5"></i>
+              <span>Tarefas Operacionais (<span id="tasks-open-count">3</span>)</span>
+            </button>
+            <button id="tab-btn-schedule" onclick="switchContentTab('schedule')" class="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white border border-transparent">
+              <i data-lucide="calendar" class="w-3.5 h-3.5"></i>
+              <span>Cronograma & Marcos</span>
+            </button>
+          </div>
+
+          <div class="text-[11px] font-mono text-slate-400">
+            Sincronização Contínua
+          </div>
+        </div>
+
+        <!-- Corpo do Conteúdo por Aba -->
+        <div class="flex-1 overflow-y-auto p-6 relative">
+          
+          <!-- CONTEÚDO 1: ABA WHATSAPP (SIGILOSO COM BLUR E LINK DIRETO) -->
+          <div id="content-tab-whatsapp" class="space-y-4 max-w-2xl mx-auto">
+            <div class="p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0D111D] text-center space-y-3 shadow-xs">
+              <div class="w-12 h-12 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 flex items-center justify-center mx-auto border border-emerald-200 dark:border-emerald-800">
+                <i data-lucide="shield-check" class="w-6 h-6"></i>
+              </div>
+              <div>
+                <h4 class="text-sm font-black text-slate-900 dark:text-white">Canal Oficial e Sigiloso de WhatsApp</h4>
+                <p class="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-md mx-auto">
+                  A comunicação de pós-venda deste contrato é mantida em sigilo corporativo. Todas as mensagens trocadas são auditadas para cumprimento do SLA operacional.
+                </p>
+              </div>
+
+              <div class="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 text-left text-xs space-y-2">
+                <div class="flex justify-between items-center pb-2 border-b border-slate-200 dark:border-slate-800">
+                  <span class="text-slate-500">Última Mensagem Recebida:</span>
+                  <span class="font-mono text-slate-400 text-[11px]">Hoje às 11:15</span>
+                </div>
+                <div class="text-slate-700 dark:text-slate-300 font-medium italic">
+                  "<span id="ws-last-message-preview">Olá Juliana! Conseguimos agendar a degustação gastronômica para esta quinta-feira às 19h?</span>"
+                </div>
+              </div>
+
+              <div class="pt-2 flex items-center justify-center gap-3">
+                <button onclick="shareActiveWhatsApp()" class="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-2 transition-all shadow-sm">
+                  <i data-lucide="message-circle" class="w-4 h-4"></i>
+                  <span>Abrir Conversa no WhatsApp Web</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- CONTEÚDO 2: ABA HISTÓRICO & NOTAS -->
+          <div id="content-tab-history" class="hidden space-y-4 max-w-2xl mx-auto">
+            <!-- Campo para Adicionar Nota Rápida -->
+            <div class="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0D111D] space-y-2.5 shadow-xs">
+              <label class="block text-xs font-bold text-slate-700 dark:text-slate-300">Adicionar Nota Interna de Operação</label>
+              <textarea id="history-new-note" rows="2" placeholder="Digite uma nota técnica, detalhe alinhado com o cliente ou pendência..." class="adm-input w-full p-2.5 text-xs rounded-lg border outline-none resize-none"></textarea>
+              <div class="flex justify-end">
+                <button onclick="saveNewHistoryNote()" class="px-3.5 py-1.5 rounded-lg bg-[#0284C7] hover:bg-sky-600 text-white text-xs font-bold flex items-center gap-1.5 transition-colors">
+                  <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+                  <span>Salvar Nota</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Feed Cronológico de Notas -->
+            <div id="history-feed" class="space-y-3">
+              <!-- Renderizado via JS -->
+            </div>
+          </div>
+
+          <!-- CONTEÚDO 3: ABA TAREFAS OPERACIONAIS -->
+          <div id="content-tab-tasks" class="hidden space-y-4 max-w-2xl mx-auto">
+            <!-- Criador Rápido de Tarefas -->
+            <div class="p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0D111D] flex items-center gap-2.5 shadow-xs">
+              <input type="text" id="new-task-input" placeholder="Nova tarefa operacional (ex: 'Enviar layout da pista de dança')..." class="adm-input flex-1 px-3 py-1.5 text-xs rounded-lg border outline-none">
+              <select id="new-task-priority" class="adm-input text-xs px-2.5 py-1.5 rounded-lg border outline-none font-semibold">
+                <option value="Alta">Alta</option>
+                <option value="Média" selected>Média</option>
+                <option value="Normal">Normal</option>
+              </select>
+              <button onclick="addNewTask()" class="px-3.5 py-1.5 rounded-lg bg-[#0284C7] hover:bg-sky-600 text-white text-xs font-bold flex items-center gap-1 transition-colors">
+                <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+                <span>Adicionar</span>
+              </button>
+            </div>
+
+            <!-- Lista de Tarefas com Checkbox -->
+            <div id="tasks-list-container" class="space-y-2.5">
+              <!-- Renderizado via JS -->
+            </div>
+          </div>
+
+          <!-- CONTEÚDO 4: ABA CRONOGRAMA & MARCOS -->
+          <div id="content-tab-schedule" class="hidden space-y-4 max-w-2xl mx-auto">
+            <div class="p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0D111D] space-y-4 shadow-xs">
+              <div class="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
+                <h4 class="text-sm font-black text-slate-900 dark:text-white">Marcos Operacionais do Evento</h4>
+                <span class="text-xs font-mono font-bold text-amber-600 dark:text-amber-400">Data do Evento: 20/03/2027</span>
+              </div>
+
+              <div class="space-y-3" id="schedule-milestones-container">
+                <!-- Renderizado via JS -->
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+
+      <!-- ===================================================================== -->
+      <!-- COLUNA 3 — FICHA DO CONTRATO (LARGURA FIXA 380px - ESTILO LEAD INSPECTOR)-->
+      <!-- ===================================================================== -->
+      <aside class="w-96 border-l border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0D111D] flex flex-col overflow-y-auto shrink-0 p-5 space-y-5">
+        
+        <!-- Header da Ficha -->
+        <div class="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
+          <div class="flex items-center gap-2">
+            <div class="w-7 h-7 rounded-lg bg-sky-100 dark:bg-sky-950/60 text-[#0284C7] flex items-center justify-center font-black">
+              <i data-lucide="file-text" class="w-4 h-4"></i>
+            </div>
+            <h3 class="text-xs font-black uppercase tracking-wider text-slate-900 dark:text-white">Ficha do Contrato</h3>
+          </div>
+          <span class="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
+            Assinado & Vigente
+          </span>
+        </div>
+
+        <!-- 1. DADOS ESTRUTURAIS DO CONTRATO NO TOPO (MANDATÓRIO) -->
+        <div class="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 space-y-2.5 text-xs">
+          <div class="flex justify-between items-center">
+            <span class="text-slate-400 font-medium">Nº Contrato:</span>
+            <span id="inspector-code" class="font-mono font-extrabold text-slate-900 dark:text-white">#CTR-10492</span>
+          </div>
+          <div class="flex justify-between items-center">
+            <span class="text-slate-400 font-medium">Valor Fechado:</span>
+            <span id="inspector-value" class="font-mono font-black text-emerald-600 dark:text-emerald-400 text-sm">R$ 48.500</span>
+          </div>
+          <div class="flex justify-between items-center">
+            <span class="text-slate-400 font-medium">Condições:</span>
+            <span id="inspector-terms" class="font-semibold text-slate-700 dark:text-slate-300">Entrada R$ 10k + 10x R$ 3.850</span>
+          </div>
+          <div class="flex justify-between items-center">
+            <span class="text-slate-400 font-medium">Data do Evento:</span>
+            <span id="inspector-date" class="font-bold text-amber-600 dark:text-amber-400">20/03/2027</span>
+          </div>
+          <div class="flex justify-between items-center">
+            <span class="text-slate-400 font-medium">Casa de Festa:</span>
+            <span id="inspector-venue" class="font-bold text-slate-800 dark:text-slate-200">Bonomo Festas Jardins</span>
+          </div>
+          <div class="flex justify-between items-center">
+            <span class="text-slate-400 font-medium">Capacidade:</span>
+            <span id="inspector-pax" class="font-semibold text-slate-700 dark:text-slate-300">180 convidados</span>
+          </div>
+        </div>
+
+        <!-- 2. BOTÃO DE DESTAQUE: CONSULTAR LEAD COMERCIAL DE ORIGEM (MANDATÓRIO) -->
+        <button onclick="openLeadOriginModal()" class="w-full p-3 rounded-xl border border-sky-300 dark:border-sky-800/80 bg-sky-50 hover:bg-sky-100 dark:bg-sky-950/40 dark:hover:bg-sky-900/50 text-[#0284C7] dark:text-sky-300 transition-all flex items-center justify-between group shadow-2xs">
+          <div class="flex items-center gap-2.5">
+            <div class="w-8 h-8 rounded-lg bg-sky-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+              <i data-lucide="history" class="w-4 h-4"></i>
+            </div>
+            <div class="text-left">
+              <div class="text-[10px] uppercase font-bold tracking-wider text-sky-600 dark:text-sky-400">Lead Comercial de Origem</div>
+              <div id="inspector-lead-ref" class="text-xs font-black text-slate-900 dark:text-white">Consultar Lead #LD-10492</div>
+            </div>
+          </div>
+          <i data-lucide="chevron-right" class="w-4 h-4 text-sky-500 group-hover:translate-x-0.5 transition-transform"></i>
+        </button>
+
+        <!-- 3. BARRA DE PROGRESSO PONDERADA DA JORNADA OPERACIONAL (68%) -->
+        <div class="p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/60 space-y-2">
+          <div class="flex justify-between items-center text-xs">
+            <span class="font-bold text-slate-700 dark:text-slate-300">Progresso Operacional</span>
+            <span id="inspector-progress-val" class="font-mono font-black text-[#0284C7]">68%</span>
+          </div>
+          <div class="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2 overflow-hidden p-0.5 border border-slate-300 dark:border-slate-600">
+            <div id="inspector-progress-bar" class="bg-gradient-to-r from-sky-500 to-emerald-500 h-full rounded-full transition-all duration-500" style="width: 68%"></div>
+          </div>
+          <div class="text-[10px] text-slate-400 flex justify-between pt-0.5">
+            <span>Alinhamento & Cardápio</span>
+            <span>Reta Final (Faltam 32%)</span>
+          </div>
+        </div>
+
+        <!-- 4. FUNIS SETORIAIS COM CONTROLE DE PERMISSÃO DE ACESSO -->
+        <div class="space-y-2.5">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-slate-200">Funis Setoriais (Permissões)</span>
+            <span class="text-[10px] text-slate-400">Acesso por Perfil</span>
+          </div>
+
+          <!-- Setor 1: Gastronomia -->
+          <div class="p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0D111D] space-y-1.5 shadow-2xs">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <i data-lucide="utensils" class="w-3.5 h-3.5 text-amber-500"></i>
+                <span class="text-xs font-bold text-slate-800 dark:text-slate-200">Gastronomia & Degustação</span>
+              </div>
+              <span class="text-[9px] font-bold px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">Concluído</span>
+            </div>
+            <div class="text-[11px] text-slate-500 flex justify-between">
+              <span>Cardápio Imperial degustado e validado</span>
+              <span class="text-[10px] font-mono text-slate-400">Permissão: A&B / Chef</span>
+            </div>
+          </div>
+
+          <!-- Setor 2: Decoração -->
+          <div class="p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0D111D] space-y-1.5 shadow-2xs">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <i data-lucide="palette" class="w-3.5 h-3.5 text-pink-500"></i>
+                <span class="text-xs font-bold text-slate-800 dark:text-slate-200">Decoração & Cenografia</span>
+              </div>
+              <span class="text-[9px] font-bold px-1.5 py-0.2 rounded bg-sky-100 text-sky-800 dark:bg-sky-950/60 dark:text-sky-300">Em Andamento</span>
+            </div>
+            <div class="text-[11px] text-slate-500 flex justify-between">
+              <span>Paleta Rosé Gold e Floral Central</span>
+              <span class="text-[10px] font-mono text-slate-400">Permissão: Decorador</span>
+            </div>
+          </div>
+
+          <!-- Setor 3: Cerimonial & Recepção -->
+          <div class="p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0D111D] space-y-1.5 shadow-2xs">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <i data-lucide="sparkles" class="w-3.5 h-3.5 text-purple-500"></i>
+                <span class="text-xs font-bold text-slate-800 dark:text-slate-200">Cerimonial & Recepção</span>
+              </div>
+              <span class="text-[9px] font-bold px-1.5 py-0.2 rounded bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300">Aguardando</span>
+            </div>
+            <div class="text-[11px] text-slate-500 flex justify-between">
+              <span>Cronograma do cortejo e valsa</span>
+              <span class="text-[10px] font-mono text-slate-400">Permissão: Cerimonial</span>
+            </div>
+          </div>
+
+          <!-- Setor 4: Financeiro & Pagamentos -->
+          <div class="p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0D111D] space-y-1.5 shadow-2xs">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <i data-lucide="dollar-sign" class="w-3.5 h-3.5 text-emerald-500"></i>
+                <span class="text-xs font-bold text-slate-800 dark:text-slate-200">Financeiro & Pagamentos</span>
+              </div>
+              <span class="text-[9px] font-bold px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">Em Dia</span>
+            </div>
+            <div class="text-[11px] text-slate-500 flex justify-between">
+              <span>Parcela 03/10 quitada com sucesso</span>
+              <span class="text-[10px] font-mono text-slate-400">Permissão: Financeiro</span>
+            </div>
+          </div>
+        </div>
+
+      </aside>
+
+    </div>
+  </div>
+
+
+  <!-- ========================================================================= -->
+  <!-- MODAL: CONSULTAR LEAD COMERCIAL DE ORIGEM (#LD-10492)                      -->
+  <!-- ========================================================================= -->
+  <div id="modal-lead-origin" class="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-sm hidden flex items-center justify-center p-4">
+    <div class="bg-white dark:bg-[#0D111D] border border-slate-200 dark:border-slate-800 rounded-2xl max-w-lg w-full overflow-hidden shadow-2xl relative animate-in fade-in zoom-in duration-150">
+      
+      <!-- Topo do Modal -->
+      <div class="h-2 w-full bg-[#0284C7]"></div>
+      <div class="p-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+        <div class="flex items-center gap-2.5">
+          <div class="w-8 h-8 rounded-lg bg-sky-100 dark:bg-sky-950/60 text-[#0284C7] flex items-center justify-center font-bold">
+            <i data-lucide="history" class="w-4 h-4"></i>
+          </div>
+          <div>
+            <h3 class="text-sm font-black text-slate-900 dark:text-white">Ficha do Lead Comercial de Origem</h3>
+            <span id="modal-lead-id" class="text-xs font-mono font-bold text-[#0284C7]">#LD-10492</span>
+          </div>
+        </div>
+        <button onclick="closeLeadOriginModal()" class="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+      <!-- Conteúdo Estruturado do Lead Original -->
+      <div class="p-5 space-y-4 text-xs">
+        <div class="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 space-y-2">
+          <div class="flex justify-between">
+            <span class="text-slate-400">Nome do Lead Comercial:</span>
+            <span id="modal-lead-name" class="font-bold text-slate-900 dark:text-white">Marcos Paulo da Silva</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-slate-400">Origem da Campanha:</span>
+            <span class="font-bold text-pink-600 dark:text-pink-400">Instagram Ads • Campanha Debutantes Jardins</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-slate-400">SDR / Pré-Atendimento:</span>
+            <span class="font-semibold text-slate-700 dark:text-slate-300">Lucas Menezes</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-slate-400">Closer Responsável:</span>
+            <span id="modal-lead-closer" class="font-bold text-slate-900 dark:text-white">Juliana Almirante</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-slate-400">Data do Fechamento Comercial:</span>
+            <span class="font-mono font-bold text-emerald-600 dark:text-emerald-400">12/11/2026</span>
+          </div>
+        </div>
+
+        <div class="space-y-1.5">
+          <span class="font-bold text-slate-700 dark:text-slate-300">Notas Comerciais da Negociação:</span>
+          <div class="p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#07090E] text-slate-600 dark:text-slate-300 text-[11px] leading-relaxed">
+            "Cliente muito criterioso com a gastronomia. Foi oferecido o upgrade do Menu Imperial e cortesia na cascata de chocolate para fechamento imediato no plantão de domingo. Contrato assinado presencialmente com o casal."
+          </div>
+        </div>
+      </div>
+
+      <div class="p-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/40 flex justify-end">
+        <button onclick="closeLeadOriginModal()" class="px-4 py-2 rounded-lg bg-slate-200 dark:bg-slate-800 text-slate-800 dark:text-slate-200 font-bold text-xs hover:bg-slate-300 dark:hover:bg-slate-700 transition-colors">
+          Fechar Consulta
+        </button>
+      </div>
+
+    </div>
+  </div>
+
+
+  <!-- ========================================================================= -->
+  <!-- JAVASCRIPT: DADOS DOS CONTRATOS, RENDERIZAÇÃO E CLONE DO COMPORTAMENTO     -->
+  <!-- ========================================================================= -->
+  <script>
+    const CONTRACTS_DATA = [
+      {
+        id: 'ctr-01',
+        code: 'CTR-10492',
+        leadOriginId: 'LD-10492',
+        clientName: 'Marcos Paulo & Renata Silveira',
+        clientPhone: '(11) 98765-4321',
+        honoree: 'Fernanda Rafaela',
+        typeKey: '15-anos',
+        typeLabel: '15 Anos',
+        typeColorClass: 'bg-purple-100 text-purple-700 dark:bg-purple-950/60 dark:text-purple-300 border-purple-300 dark:border-purple-800',
+        venue: 'Bonomo Festas Jardins',
+        date: '20/03/2027',
+        daysToEvent: 'Em 124 dias',
+        value: 'R$ 48.500',
+        terms: 'Entrada R$ 10.000 + 10x R$ 3.850',
+        financeStatus: 'Entrada Paga • Em Dia',
+        financeColor: 'text-emerald-600 dark:text-emerald-400',
+        pax: 180,
+        closer: 'Juliana Almirante',
+        producer: 'Mariana Duarte',
+        col: 'col-execucao',
+        progress: 68,
+        channels: [
+          { id: 'chan-01', name: 'Marcos Paulo (Pai)', role: 'Pai / Decisor Principal', phone: '(11) 98765-4321', avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80', active: true },
+          { id: 'chan-02', name: 'Renata Silveira (Mãe)', role: 'Mãe / Co-Decisora', phone: '(11) 98765-4322', avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80', active: false },
+          { id: 'chan-03', name: 'Fernanda Rafaela', role: 'Debutante / Homenageada', phone: '(11) 98765-4323', avatar: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=150&auto=format&fit=crop&q=80', active: false },
+          { id: 'chan-04', name: 'Canal Família (Geral)', role: 'Grupo Oficial da Recepção', phone: '(11) 98765-4321', avatar: 'https://images.unsplash.com/photo-1511632765486-a01980e01a18?w=150&auto=format&fit=crop&q=80', active: false }
+        ],
+        notes: [
+          { author: 'Mariana Duarte', role: 'Produtora', time: 'Hoje às 11:15', text: 'Cliente confirmou presença na degustação de quinta-feira. Solicitaram ênfase no risoto de camarão.' },
+          { author: 'Juliana Almirante', role: 'Closer', time: '12/11/2026', text: 'Contrato fechado com cascata de chocolate de cortesia. Repassado para Mariana iniciar alinhamento.' }
+        ],
+        tasks: [
+          { id: 't-1', text: 'Confirmar lista de convidados final para cálculo de buffet', done: false, priority: 'Alta' },
+          { id: 't-2', text: 'Aprovar layout da pista de dança com a debutante', done: true, priority: 'Média' },
+          { id: 't-3', text: 'Definir paleta das flores da mesa principal com o decorador', done: false, priority: 'Alta' }
+        ],
+        milestones: [
+          { date: '19/11/2026', title: 'Degustação Gastronômica Presencial (Jardins)', done: true },
+          { date: '15/12/2026', title: 'Reunião de Layout Cenográfico & Iluminação', done: false },
+          { date: '10/02/2027', title: 'Fechamento da Lista de Convidados (RSVP)', done: false },
+          { date: '20/03/2027', title: 'Grande Dia: Realização do Evento', done: false }
+        ]
+      },
+      {
+        id: 'ctr-02',
+        code: 'CTR-10493',
+        leadOriginId: 'LD-10493',
+        clientName: 'Carolina Silveira & Guilherme Vaz',
+        clientPhone: '(11) 97654-3210',
+        honoree: 'Carolina & Guilherme',
+        typeKey: 'casamento',
+        typeLabel: 'Casamento',
+        typeColorClass: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800',
+        venue: 'Mansão Almirante',
+        date: '15/05/2027',
+        daysToEvent: 'Em 180 dias',
+        value: 'R$ 72.000',
+        terms: 'Entrada R$ 15.000 + 12x R$ 4.750',
+        financeStatus: 'Entrada Paga • Em Dia',
+        financeColor: 'text-emerald-600 dark:text-emerald-400',
+        pax: 220,
+        closer: 'Rafael Guimarães',
+        producer: 'Luciana Prado',
+        col: 'col-alinhamento',
+        progress: 35,
+        channels: [
+          { id: 'chan-11', name: 'Carolina Silveira (Noiva)', role: 'Noiva / Decisora', phone: '(11) 97654-3210', avatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&auto=format&fit=crop&q=80', active: true },
+          { id: 'chan-12', name: 'Guilherme Vaz (Noivo)', role: 'Noivo / Co-Decisor', phone: '(11) 97654-3211', avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80', active: false }
+        ],
+        notes: [
+          { author: 'Luciana Prado', role: 'Produtora', time: 'Ontem às 16:30', text: 'Reunião de alinhamento técnico agendada. Noivos têm interesse em banda ao vivo no jardim.' }
+        ],
+        tasks: [
+          { id: 't-11', text: 'Validar rider técnico da banda contratada pelos noivos', done: false, priority: 'Alta' }
+        ],
+        milestones: [
+          { date: '05/12/2026', title: 'Visita Técnica com o Decorador', done: false },
+          { date: '15/05/2027', title: 'Cerimônia & Festa de Casamento', done: false }
+        ]
+      },
+      {
+        id: 'ctr-03',
+        code: 'CTR-10494',
+        leadOriginId: 'LD-10494',
+        clientName: 'Apex Soluções Corporativas (Renato A.)',
+        clientPhone: '(11) 96543-2109',
+        honoree: 'Confraternização Apex',
+        typeKey: 'corporativo',
+        typeLabel: 'Corporativo',
+        typeColorClass: 'bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300 border-blue-300 dark:border-blue-800',
+        venue: 'Mansão Almirante',
+        date: '18/12/2026',
+        daysToEvent: 'Em 32 dias',
+        value: 'R$ 38.000',
+        terms: 'Faturamento Direto PJ • Quitado 50%',
+        financeStatus: 'Quitado 50% • Em Dia',
+        financeColor: 'text-emerald-600 dark:text-emerald-400',
+        pax: 150,
+        closer: 'Rafael Guimarães',
+        producer: 'Mariana Duarte',
+        col: 'col-reta-final',
+        progress: 88,
+        channels: [
+          { id: 'chan-21', name: 'Renato Albuquerque', role: 'Diretor Geral', phone: '(11) 96543-2109', avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80', active: true }
+        ],
+        notes: [
+          { author: 'Mariana Duarte', role: 'Produtora', time: 'Há 2 dias', text: 'Definido menu volante e estação de drinks com open bar premium.' }
+        ],
+        tasks: [
+          { id: 't-21', text: 'Enviar relação de fornecedores para credenciamento na portaria', done: true, priority: 'Normal' }
+        ],
+        milestones: [
+          { date: '18/12/2026', title: 'Confraternização Corporativa de Fim de Ano', done: false }
+        ]
+      },
+      {
+        id: 'ctr-04',
+        code: 'CTR-10495',
+        leadOriginId: 'LD-10495',
+        clientName: 'Beatriz Vasconcelos',
+        clientPhone: '(11) 95432-1098',
+        honoree: 'Luiza • 15 Anos',
+        typeKey: '15-anos',
+        typeLabel: '15 Anos',
+        typeColorClass: 'bg-purple-100 text-purple-700 dark:bg-purple-950/60 dark:text-purple-300 border-purple-300 dark:border-purple-800',
+        venue: 'Bonomo Flamboyant',
+        date: '10/10/2027',
+        daysToEvent: 'Em 328 dias',
+        value: 'R$ 52.000',
+        terms: 'Entrada R$ 12.000 + 15x R$ 2.666',
+        financeStatus: 'Entrada Paga • Em Dia',
+        financeColor: 'text-emerald-600 dark:text-emerald-400',
+        pax: 200,
+        closer: 'Camila Torres',
+        producer: 'Mariana Duarte',
+        col: 'col-transicao',
+        progress: 15,
+        channels: [
+          { id: 'chan-31', name: 'Beatriz Vasconcelos (Mãe)', role: 'Mãe / Titular', phone: '(11) 95432-1098', avatar: 'https://images.unsplash.com/photo-1580489944761-15a19d654956?w=150&auto=format&fit=crop&q=80', active: true }
+        ],
+        notes: [
+          { author: 'Camila Torres', role: 'Closer', time: 'Hoje', text: 'Contrato assinado esta manhã. Família muito animada.' }
+        ],
+        tasks: [
+          { id: 't-31', text: 'Agendar telefonema de boas-vindas com a produtora', done: false, priority: 'Alta' }
+        ],
+        milestones: [
+          { date: '25/11/2026', title: 'Call de Boas-Vindas da Operação', done: false }
+        ]
+      },
+      {
+        id: 'ctr-05',
+        code: 'CTR-10499',
+        leadOriginId: 'LD-10499',
+        clientName: 'Valéria Soares',
+        clientPhone: '(11) 91098-7654',
+        honoree: 'Isabela • 1 Aninho',
+        typeKey: 'infantil',
+        typeLabel: 'Infantil',
+        typeColorClass: 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border-amber-300 dark:border-amber-800',
+        venue: 'Bonomo Festas Jardins',
+        date: '08/11/2026',
+        daysToEvent: 'Realizado há 8 dias',
+        value: 'R$ 31.000',
+        terms: 'Quitado Integralmente',
+        financeStatus: 'Quitado',
+        financeColor: 'text-emerald-600 dark:text-emerald-400',
+        pax: 100,
+        closer: 'Juliana Almirante',
+        producer: 'Mariana Duarte',
+        col: 'col-pos-evento',
+        progress: 100,
+        channels: [
+          { id: 'chan-41', name: 'Valéria Soares (Mãe)', role: 'Mãe / Contratante', phone: '(11) 91098-7654', avatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&auto=format&fit=crop&q=80', active: true }
+        ],
+        notes: [
+          { author: 'Mariana Duarte', role: 'Produtora', time: '09/11/2026', text: 'Festa foi um sucesso estrondoso. Feedback 10/10 no WhatsApp.' }
+        ],
+        tasks: [
+          { id: 't-41', text: 'Coletar depoimento em vídeo da família para o Instagram', done: true, priority: 'Normal' }
+        ],
+        milestones: [
+          { date: '08/11/2026', title: 'Realização da Festa Infantil', done: true },
+          { date: '10/11/2026', title: 'Envio da Pesquisa de Satisfação NPS', done: true }
+        ]
+      }
+    ];
+
+    let currentContractId = 'ctr-01';
+    let currentActivePerson = CONTRACTS_DATA[0].channels[0];
+    let currentInboxFilter = 'all';
+
+    // RENDERIZAR CARDS NO KANBAN COM NOME EM 2 LINHAS E ALTO CONTRASTE
+    function renderKanbanCards() {
+      ['col-transicao', 'col-alinhamento', 'col-execucao', 'col-reta-final', 'col-pos-evento'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.innerHTML = '';
+      });
+
+      const q = (document.getElementById('kanban-search')?.value || '').toLowerCase().trim();
+      const venueFilter = document.getElementById('kanban-venue-filter')?.value || 'all';
+      const typeFilter = document.getElementById('kanban-type-filter')?.value || 'all';
+
+      let count = 0;
+
+      CONTRACTS_DATA.forEach(ctr => {
+        if (q) {
+          const m1 = ctr.clientName.toLowerCase().includes(q);
+          const m2 = ctr.honoree.toLowerCase().includes(q);
+          const m3 = ctr.code.toLowerCase().includes(q);
+          if (!m1 && !m2 && !m3) return;
+        }
+        if (venueFilter !== 'all' && ctr.venue !== venueFilter) return;
+        if (typeFilter !== 'all' && ctr.typeKey !== typeFilter) return;
+
+        count++;
+        const col = document.getElementById(ctr.col);
+        if (!col) return;
+
+        const card = document.createElement('div');
+        card.className = 'adm-bg-card rounded-xl border border-slate-200 dark:border-slate-800 p-3.5 space-y-2.5 cursor-pointer hover:border-slate-400 dark:hover:border-slate-600 transition-all shadow-xs';
+        card.onclick = () => openContractInWorkspace(ctr.id);
+
+        card.innerHTML = `
+          <!-- Topo do Card: Código, Tag Colorida do Tipo de Evento e Contagem -->
+          <div class="flex items-center justify-between gap-2">
+            <span class="text-[11px] font-mono font-bold text-slate-500 dark:text-slate-400">#${ctr.code}</span>
+            <div class="flex items-center gap-1.5">
+              <span class="text-[10px] font-bold px-2 py-0.5 rounded-md border shadow-2xs ${ctr.typeColorClass}">
+                ${ctr.typeLabel}
+              </span>
+              <span class="text-[10px] font-semibold px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                ${ctr.daysToEvent}
+              </span>
+            </div>
+          </div>
+
+          <!-- TÍTULO QUEBRADO EM 2 LINHAS (MANDATÓRIO: 1. Contratante | 2. Homenageado / Casal) -->
+          <div class="space-y-0.5">
+            <h4 class="text-xs font-black text-slate-900 dark:text-white leading-tight">
+              ${ctr.clientName}
+            </h4>
+            <div class="text-[11px] font-semibold text-slate-600 dark:text-slate-300 flex items-center gap-1.5 pt-0.5">
+              <span class="w-1.5 h-1.5 rounded-full bg-[#14A9D7]"></span>
+              <span>${ctr.honoree}</span>
+            </div>
+          </div>
+
+          <!-- Avatar Monograma Dourado & Unidade da Casa de Festas -->
+          <div class="flex items-center gap-2 pt-1 border-t border-slate-100 dark:border-slate-800/80">
+            <div class="w-6 h-6 rounded-full bg-gradient-to-br from-[#1E1B2E] to-[#0D0B14] border border-[#D4AF37]/50 text-[#D4AF37] flex items-center justify-center font-bold text-[10px] shrink-0">
+              ${ctr.clientName.charAt(0)}
+            </div>
+            <div class="text-[11px] text-slate-500 dark:text-slate-400 font-medium truncate">
+              ${ctr.venue}
+            </div>
+          </div>
+
+          <!-- Dados Financeiros & Convidados -->
+          <div class="pt-2 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs">
+            <div>
+              <span class="font-bold font-mono text-slate-900 dark:text-white">${ctr.value}</span>
+              <div class="text-[10px] font-bold ${ctr.financeColor}">${ctr.financeStatus}</div>
+            </div>
+            <div class="text-right">
+              <span class="text-[11px] font-semibold text-slate-700 dark:text-slate-300">${ctr.pax} pessoas</span>
+              <div class="text-[10px] text-slate-400 font-mono">📅 ${ctr.date}</div>
+            </div>
+          </div>
+
+          <!-- Rodapé do Card: Closer & Ação Workspace -->
+          <div class="pt-2 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-[11px]">
+            <div class="text-slate-500">
+              Closer: <b class="text-slate-700 dark:text-slate-300">${ctr.closer}</b>
+            </div>
+            <button onclick="event.stopPropagation(); openContractInWorkspace('${ctr.id}')" class="p-1 rounded-md bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition-colors" title="Abrir Workspace">
+              <i data-lucide="columns-3" class="w-3.5 h-3.5"></i>
+            </button>
+          </div>
+        `;
+
+        col.appendChild(card);
+      });
+
+      const totalBadge = document.getElementById('kanban-total-count');
+      if (totalBadge) totalBadge.innerText = count + ' Contratos Ativos';
+      lucide.createIcons();
+    }
+
+    // RENDERIZAR FEED DO INBOX NA COLUNA 1 DO WORKSPACE
+    function renderInboxFeed() {
+      const feed = document.getElementById('inbox-contracts-feed');
+      if (!feed) return;
+      feed.innerHTML = '';
+
+      const q = (document.getElementById('inbox-search')?.value || '').toLowerCase().trim();
+
+      CONTRACTS_DATA.forEach(ctr => {
+        if (q) {
+          const match = ctr.clientName.toLowerCase().includes(q) || ctr.honoree.toLowerCase().includes(q) || ctr.code.toLowerCase().includes(q);
+          if (!match) return;
+        }
+
+        const isSelected = ctr.id === currentContractId;
+        const item = document.createElement('div');
+        item.className = 'p-3 cursor-pointer transition-all flex flex-col gap-1 ' +
+          (isSelected ? 'bg-sky-50 dark:bg-sky-950/30 border-l-4 border-[#0284C7]' : 'hover:bg-slate-50 dark:hover:bg-slate-800/40 border-l-4 border-transparent');
+        item.onclick = () => selectContractInWorkspace(ctr.id);
+
+        const lastNote = ctr.notes[0]?.text || 'Aguardando alinhamento da operação...';
+
+        item.innerHTML = `
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2 min-w-0">
+              <!-- Avatar com Monograma Dourado -->
+              <div class="relative shrink-0">
+                <div class="w-7 h-7 rounded-full bg-gradient-to-br from-[#1E1B2E] to-[#0D0B14] border border-[#D4AF37]/50 text-[#D4AF37] flex items-center justify-center font-bold text-[11px]">
+                  ${ctr.clientName.charAt(0)}
+                </div>
+                <span class="w-2 h-2 rounded-full bg-emerald-500 absolute -bottom-0.5 -right-0.5 ring-1 ring-white dark:ring-slate-900"></span>
+              </div>
+              <div class="min-w-0">
+                <div class="text-xs font-black text-slate-900 dark:text-white truncate">${ctr.clientName}</div>
+              </div>
+            </div>
+            <div class="flex items-center gap-1.5 shrink-0">
+              <span class="text-[10px] font-mono font-bold text-slate-500 dark:text-slate-400">#${ctr.code}</span>
+            </div>
+          </div>
+
+          <!-- Linha do Meio: Homenageado e Unidade -->
+          <div class="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
+            <div class="flex items-center gap-1 font-semibold text-[#14A9D7] truncate">
+              <i data-lucide="crown" class="w-3 h-3 text-amber-500 shrink-0"></i>
+              <span class="truncate">${ctr.honoree}</span>
+            </div>
+            <span class="text-[10px] px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 shrink-0">
+              ${ctr.venue.replace('Bonomo Festas ', '')}
+            </span>
+          </div>
+
+          <!-- Linha Inferior: Preview da Última Mensagem / Nota -->
+          <div class="text-[11px] text-slate-400 truncate opacity-90 mt-0.5">
+            ${lastNote}
+          </div>
+        `;
+
+        feed.appendChild(item);
+      });
+
+      lucide.createIcons();
+    }
+
+    // CARREGAR DADOS DO CONTRATO ATIVO NO WORKSPACE
+    function loadContractDetails(ctr) {
+      document.getElementById('ws-contract-code').innerText = '#' + ctr.code;
+      document.getElementById('ws-contract-client-name').innerText = ctr.clientName;
+      document.getElementById('ws-contract-honoree').innerText = ctr.honoree;
+      document.getElementById('ws-event-tag').innerText = ctr.typeLabel;
+      document.getElementById('ws-event-tag').className = 'text-[11px] font-bold px-2 py-0.5 rounded-md border shadow-2xs ' + ctr.typeColorClass;
+      document.getElementById('ws-contract-venue').innerText = ctr.venue;
+      document.getElementById('ws-contract-date').innerText = ctr.date + ' (' + ctr.daysToEvent + ')';
+
+      // Coluna 3: Ficha
+      document.getElementById('inspector-code').innerText = '#' + ctr.code;
+      document.getElementById('inspector-value').innerText = ctr.value;
+      document.getElementById('inspector-terms').innerText = ctr.terms;
+      document.getElementById('inspector-date').innerText = ctr.date;
+      document.getElementById('inspector-venue').innerText = ctr.venue;
+      document.getElementById('inspector-pax').innerText = ctr.pax + ' convidados';
+      document.getElementById('inspector-lead-ref').innerText = 'Consultar Lead #' + ctr.leadOriginId;
+      document.getElementById('inspector-progress-val').innerText = ctr.progress + '%';
+      document.getElementById('inspector-progress-bar').style.width = ctr.progress + '%';
+
+      // Canais Nominais
+      currentActivePerson = ctr.channels[0];
+      renderChannelTabs(ctr);
+      updateActivePersonHeader();
+
+      // Notas e Tarefas
+      renderHistoryFeed(ctr);
+      renderTasksList(ctr);
+      renderMilestones(ctr);
+
+      // Preview WhatsApp
+      const lastMsg = ctr.notes[0]?.text || 'Aguardando alinhamento de operação...';
+      const prevEl = document.getElementById('ws-last-message-preview');
+      if (prevEl) prevEl.innerText = lastMsg;
+    }
+
+    function renderChannelTabs(ctr) {
+      const container = document.getElementById('channel-tabs-container');
+      if (!container) return;
+      container.innerHTML = '';
+
+      ctr.channels.forEach(ch => {
+        const isActive = ch.id === currentActivePerson.id;
+        const btn = document.createElement('button');
+        btn.className = 'flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold transition-all shrink-0 ' +
+          (isActive ? 'bg-[#0284C7] text-white shadow-xs' : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:border-slate-300');
+        btn.onclick = () => {
+          currentActivePerson = ch;
+          renderChannelTabs(ctr);
+          updateActivePersonHeader();
+        };
+
+        btn.innerHTML = `
+          <img src="${ch.avatar}" class="w-4 h-4 rounded-full object-cover">
+          <span>${ch.name}</span>
+        `;
+        container.appendChild(btn);
+      });
+    }
+
+    function updateActivePersonHeader() {
+      document.getElementById('active-person-name').innerText = currentActivePerson.name;
+      document.getElementById('active-person-role-badge').innerText = currentActivePerson.role;
+      document.getElementById('active-person-phone').innerText = currentActivePerson.phone;
+      document.getElementById('active-person-avatar').src = currentActivePerson.avatar;
+    }
+
+    function renderHistoryFeed(ctr) {
+      const container = document.getElementById('history-feed');
+      if (!container) return;
+      container.innerHTML = '';
+
+      document.getElementById('history-notes-count').innerText = ctr.notes.length;
+
+      ctr.notes.forEach(note => {
+        const div = document.createElement('div');
+        div.className = 'p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0D111D] space-y-1.5 shadow-2xs';
+        div.innerHTML = `
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <span class="text-xs font-bold text-slate-900 dark:text-white">${note.author}</span>
+              <span class="text-[10px] font-semibold px-2 py-0.2 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">${note.role}</span>
+            </div>
+            <span class="text-[11px] text-slate-400 font-mono">${note.time}</span>
+          </div>
+          <p class="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">${note.text}</p>
+        `;
+        container.appendChild(div);
+      });
+    }
+
+    function renderTasksList(ctr) {
+      const container = document.getElementById('tasks-list-container');
+      if (!container) return;
+      container.innerHTML = '';
+
+      const openCount = ctr.tasks.filter(t => !t.done).length;
+      document.getElementById('tasks-open-count').innerText = openCount;
+
+      ctr.tasks.forEach(t => {
+        const div = document.createElement('div');
+        div.className = 'p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0D111D] flex items-center justify-between gap-3 shadow-2xs';
+        div.innerHTML = `
+          <div class="flex items-center gap-2.5">
+            <input type="checkbox" ${t.done ? 'checked' : ''} onchange="toggleTask('${t.id}')" class="w-4 h-4 rounded text-sky-600 cursor-pointer">
+            <span class="text-xs font-semibold ${t.done ? 'line-through text-slate-400' : 'text-slate-800 dark:text-slate-200'}">${t.text}</span>
+          </div>
+          <span class="text-[10px] font-bold px-2 py-0.5 rounded-full ${t.priority === 'Alta' ? 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300' : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'}">${t.priority}</span>
+        `;
+        container.appendChild(div);
+      });
+    }
+
+    function renderMilestones(ctr) {
+      const container = document.getElementById('schedule-milestones-container');
+      if (!container) return;
+      container.innerHTML = '';
+
+      ctr.milestones.forEach(m => {
+        const div = document.createElement('div');
+        div.className = 'p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/30 flex items-center justify-between';
+        div.innerHTML = `
+          <div class="flex items-center gap-2.5">
+            <div class="w-5 h-5 rounded-full ${m.done ? 'bg-emerald-500 text-white' : 'border border-slate-300 dark:border-slate-600 text-transparent'} flex items-center justify-center shrink-0">
+              <i data-lucide="check" class="w-3 h-3 stroke-[3]"></i>
+            </div>
+            <span class="text-xs font-bold text-slate-800 dark:text-slate-200">${m.title}</span>
+          </div>
+          <span class="text-[11px] font-mono font-bold text-slate-500">${m.date}</span>
+        `;
+        container.appendChild(div);
+      });
+      lucide.createIcons();
+    }
+
+    // TROCA DE ABAS DE CONTEÚDO (COLUNA 2)
+    function switchContentTab(tabKey) {
+      ['whatsapp', 'history', 'tasks', 'schedule'].forEach(k => {
+        const content = document.getElementById('content-tab-' + k);
+        const btn = document.getElementById('tab-btn-' + k);
+        if (content) content.classList.add('hidden');
+        if (btn) {
+          btn.className = 'flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white border border-transparent';
+        }
+      });
+
+      const activeContent = document.getElementById('content-tab-' + tabKey);
+      const activeBtn = document.getElementById('tab-btn-' + tabKey);
+      if (activeContent) activeContent.classList.remove('hidden');
+      if (activeBtn) {
+        activeBtn.className = 'flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors bg-sky-50 dark:bg-sky-950/40 text-[#0284C7] border border-sky-300 dark:border-sky-800';
+      }
+      lucide.createIcons();
+    }
+
+    // TROCA DE VISÃO GERAL (KANBAN VS WORKSPACE)
+    function switchView(viewName) {
+      const vKanban = document.getElementById('view-kanban');
+      const vWorkspace = document.getElementById('view-workspace');
+      const btnK = document.getElementById('btn-mode-kanban');
+      const btnW = document.getElementById('btn-mode-workspace');
+
+      if (viewName === 'workspace') {
+        vKanban.classList.add('hidden');
+        vWorkspace.classList.remove('hidden');
+        btnW.className = 'flex items-center gap-1.5 px-3 py-1 rounded-md transition-all shadow-xs bg-white dark:bg-slate-700 text-slate-900 dark:text-white';
+        btnK.className = 'flex items-center gap-1.5 px-3 py-1 rounded-md transition-all text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white';
+        renderInboxFeed();
+      } else {
+        vWorkspace.classList.add('hidden');
+        vKanban.classList.remove('hidden');
+        btnK.className = 'flex items-center gap-1.5 px-3 py-1 rounded-md transition-all shadow-xs bg-white dark:bg-slate-700 text-slate-900 dark:text-white';
+        btnW.className = 'flex items-center gap-1.5 px-3 py-1 rounded-md transition-all text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white';
+        renderKanbanCards();
+      }
+      lucide.createIcons();
+    }
+
+    function openContractInWorkspace(id) {
+      currentContractId = id;
+      const ctr = CONTRACTS_DATA.find(x => x.id === id) || CONTRACTS_DATA[0];
+      loadContractDetails(ctr);
+      switchView('workspace');
+    }
+
+    function selectContractInWorkspace(id) {
+      currentContractId = id;
+      const ctr = CONTRACTS_DATA.find(x => x.id === id) || CONTRACTS_DATA[0];
+      loadContractDetails(ctr);
+      renderInboxFeed();
+    }
+
+    function setInboxFilter(type) {
+      currentInboxFilter = type;
+      const btnAll = document.getElementById('inbox-filter-all');
+      const btnMine = document.getElementById('inbox-filter-mine');
+      if (type === 'all') {
+        btnAll.className = 'px-2.5 py-0.5 rounded-md bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-2xs';
+        btnMine.className = 'px-2.5 py-0.5 rounded-md text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white';
+      } else {
+        btnMine.className = 'px-2.5 py-0.5 rounded-md bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-2xs';
+        btnAll.className = 'px-2.5 py-0.5 rounded-md text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white';
+      }
+      renderInboxFeed();
+    }
+
+    function filterInboxList() {
+      renderInboxFeed();
+    }
+
+    function shareActiveWhatsApp() {
+      const cleanPhone = currentActivePerson.phone.replace(/\D/g, '');
+      const text = encodeURIComponent('Olá ' + currentActivePerson.name + '! Sou a Mariana Duarte, da equipe de produção do F5 System. Como podemos ajudar hoje no seu evento?');
+      window.open('https://wa.me/55' + cleanPhone + '?text=' + text, '_blank');
+    }
+
+    function saveNewHistoryNote() {
+      const input = document.getElementById('history-new-note');
+      if (!input || !input.value.trim()) return;
+      const ctr = CONTRACTS_DATA.find(x => x.id === currentContractId);
+      if (ctr) {
+        ctr.notes.unshift({
+          author: 'Mariana Duarte',
+          role: 'Produtora',
+          time: 'Agora',
+          text: input.value.trim()
+        });
+        input.value = '';
+        renderHistoryFeed(ctr);
+        renderInboxFeed();
+      }
+    }
+
+    function addNewTask() {
+      const input = document.getElementById('new-task-input');
+      const prio = document.getElementById('new-task-priority').value;
+      if (!input || !input.value.trim()) return;
+      const ctr = CONTRACTS_DATA.find(x => x.id === currentContractId);
+      if (ctr) {
+        ctr.tasks.unshift({
+          id: 't-' + Date.now(),
+          text: input.value.trim(),
+          done: false,
+          priority: prio
+        });
+        input.value = '';
+        renderTasksList(ctr);
+      }
+    }
+
+    function toggleTask(taskId) {
+      const ctr = CONTRACTS_DATA.find(x => x.id === currentContractId);
+      if (ctr) {
+        const t = ctr.tasks.find(x => x.id === taskId);
+        if (t) {
+          t.done = !t.done;
+          renderTasksList(ctr);
+        }
+      }
+    }
+
+    // MODAL LEAD DE ORIGEM
+    function openLeadOriginModal() {
+      const ctr = CONTRACTS_DATA.find(x => x.id === currentContractId) || CONTRACTS_DATA[0];
+      document.getElementById('modal-lead-id').innerText = '#' + ctr.leadOriginId;
+      document.getElementById('modal-lead-name').innerText = ctr.clientName;
+      document.getElementById('modal-lead-closer').innerText = ctr.closer;
+      document.getElementById('modal-lead-origin').classList.remove('hidden');
+      lucide.createIcons();
+    }
+
+    function closeLeadOriginModal() {
+      document.getElementById('modal-lead-origin').classList.add('hidden');
+    }
+
+    function toggleTheme() {
+      const body = document.body;
+      const themeIcon = document.getElementById('theme-icon');
+      if (body.classList.contains('theme-light')) {
+        body.classList.remove('theme-light');
+        body.classList.add('theme-dark');
+        themeIcon.setAttribute('data-lucide', 'sun');
+      } else {
+        body.classList.remove('theme-dark');
+        body.classList.add('theme-light');
+        themeIcon.setAttribute('data-lucide', 'moon');
+      }
+      lucide.createIcons();
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      renderKanbanCards();
+      const first = CONTRACTS_DATA[0];
+      loadContractDetails(first);
+      lucide.createIcons();
+    });
+  </script>
+</body>
+</html>

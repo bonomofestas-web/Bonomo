@@ -2,11 +2,31 @@ import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { existsSync, readFileSync } from 'node:fs';
 
 function r2DevUploadPlugin() {
   return {
     name: 'r2-dev-upload-middleware',
     configureServer(server: any) {
+      // -1. SOMENTE DEV: simula o R2 servindo PDFs do proprio computador. So entrega arquivos listados no manifesto
+      // (id -> caminho), definido por LOCAL_DOCS_MANIFEST; sem a variavel o endpoint nao existe.
+      server.middlewares.use('/local-docs', (req: any, res: any) => {
+        try {
+          const manifestPath = loadEnv('development', process.cwd(), '').LOCAL_DOCS_MANIFEST || process.env.LOCAL_DOCS_MANIFEST;
+          if (!manifestPath || !existsSync(manifestPath)) { res.statusCode = 404; return res.end('Manifesto local nao configurado.'); }
+          const id = String(req.url || '').split('?')[0].replace(/^\/+/, '').replace(/\.pdf$/i, '');
+          const manifest = JSON.parse(readFileSync(manifestPath, 'utf-8')) as Record<string, string>;
+          const file = /^[a-f0-9]{16}$/.test(id) ? manifest[id] : undefined;
+          if (!file || !existsSync(file)) { res.statusCode = 404; return res.end('Arquivo nao encontrado.'); }
+          res.setHeader('Content-Type', 'application/pdf');
+          res.setHeader('Content-Disposition', 'inline');
+          res.end(readFileSync(file));
+        } catch (err: any) {
+          res.statusCode = 500;
+          res.end(err?.message || 'Falha ao servir arquivo local.');
+        }
+      });
+
       // 0. Endpoint /api/referral em desenvolvimento: executa o mesmo handler serverless de api/referral.ts
       server.middlewares.use('/api/referral', async (req: any, res: any) => {
         const env = loadEnv('development', process.cwd(), '');

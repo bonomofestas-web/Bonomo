@@ -5,8 +5,10 @@ import {
   Trash2, Gem, Link2
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { SafeAvatar } from './SafeAvatar';
 import type { Client, Collaborator, Venue } from '../../types/admin';
-import { buildContractTitle, normalizeEventKind, type EventKind } from '../../utils/contractTitle';
+import { normalizeEventKind, type EventKind } from '../../utils/contractTitle';
+import { useAdminState } from '../../context/AdminStateContext';
 
 const KIND_LABEL: Record<EventKind, string> = {
   quinze_anos: '15 Anos', casamento: 'Casamento', infantil: 'Infantil', corporativo: 'Corporativo', outro: 'Evento',
@@ -50,6 +52,7 @@ export const AdminContractKanbanCard: React.FC<AdminContractKanbanCardProps> = (
   venues = [],
   collaborators = [],
 }) => {
+  const { leads = [] } = useAdminState();
   const [isCopied, setIsCopied] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isRevenueHovered, setIsRevenueHovered] = useState(false);
@@ -166,21 +169,41 @@ export const AdminContractKanbanCard: React.FC<AdminContractKanbanCardProps> = (
       else if (relLower.includes('outro') || relLower.includes('familiar') || relLower === 'other') roleText = 'Familiar';
     }
 
-    // Padrao unico: `Contratante • Protagonista + tipo`. Prefere o titulo gravado no contrato.
-    const stored = String(client.contractTitle || '').trim();
-    const title = stored || buildContractTitle({
-      contractors: [client.payerName || client.name],
-      protagonists: client.birthdayPersonName ? [client.birthdayPersonName] : [],
-      eventType: client.eventType || detectedEventType,
-      age: client.birthdayPersonAge,
-      contractorIsProtagonist: relLower === 'self',
-      contractCode: ctrCode,
-    });
+    // Regra Oficial do Kanban de Pós-Venda: Nome da Aniversariante (1º e 2º nome) + Evento
+    const getFirstTwoNames = (fullName: string) => {
+      const parts = fullName.trim().split(/\s+/).filter(Boolean);
+      return parts.slice(0, 2).join(' ');
+    };
+
+    let targetPerson = protagonista;
+    if (!targetPerson) {
+      const stored = String(client.contractTitle || '').trim();
+      if (stored.includes('•')) {
+        const parts = stored.split('•').map(p => sanitize(p));
+        if (parts.length >= 2 && parts[1]) {
+          targetPerson = parts[1];
+        }
+      }
+    }
+    if (!targetPerson) {
+      targetPerson = contratante;
+    }
+
+    const shortName = getFirstTwoNames(targetPerson || 'Cliente');
+    const eventName = detectedEventType || '15 Anos';
+    const title = `${shortName} • ${eventName}`;
 
     const decisor = `Decisor: ${contratante || 'Cliente'}${roleText ? ` (${roleText})` : ''}`;
 
     return { contractTitle: title, decisorLine: decisor };
   }, [client.payerName, client.name, client.birthdayPersonName, client.birthdayPersonAge, client.contractTitle, client.eventType, client.payerRelationship, detectedEventType, ctrCode]);
+
+  // Contatos Secundários / Familiares vinculados ao contrato (Mãe, Pai, Debutante)
+  const secondaryContacts = React.useMemo(() => {
+    const list = Array.isArray(client.contacts) ? client.contacts : [];
+    const payerClean = (client.payerName || client.name || '').trim().toLowerCase();
+    return list.filter(c => c && c.name && c.name.trim().toLowerCase() !== payerClean);
+  }, [client.contacts, client.payerName, client.name]);
 
   // 4b. Detalhe por tipo de evento (layout base unico; so muda o que aparece na linha)
   const typeDetail = React.useMemo(() => {
@@ -230,6 +253,45 @@ export const AdminContractKanbanCard: React.FC<AdminContractKanbanCardProps> = (
   const responsibleStaff = managerCollab?.name || client.assignedTo || (client as any).commercialHistory?.closedBy || (client as any).responsibleStaff || '';
   const responsibleAvatar = managerCollab?.avatarUrl || (managerCollab as any)?.photoUrl;
   const guestCount = client.guestCount || (client as any).estimatedGuests || 0;
+
+  const clientAvatar = React.useMemo(() => {
+    // 1. Imagem direta no objeto client
+    const directAvatar = client.avatarUrl || (client as any).photoUrl || (client as any).profilePicUrl || (client as any).custom_field_values?.avatarUrl || (client as any).customFieldValues?.avatarUrl;
+    if (directAvatar) return directAvatar;
+
+    // 2. Coleta telefones da família vinculada ao contrato
+    const phonesToTry: string[] = [];
+    if (client.payerPhone) phonesToTry.push(client.payerPhone);
+    if (Array.isArray(client.contacts)) {
+      client.contacts.forEach(c => {
+        if (c && c.phone) phonesToTry.push(c.phone);
+      });
+    }
+
+    // 3. Procura nos leads registrados no sistema (onde as fotos sincronizadas pelo WhatsApp residem)
+    for (const rawPhone of phonesToTry) {
+      const digits = rawPhone.replace(/\D/g, '');
+      if (digits.length >= 8) {
+        const last8 = digits.slice(-8);
+        const matchingLead = (leads || []).find(l => {
+          const lDigits = (l.phone || '').replace(/\D/g, '');
+          return lDigits.slice(-8) === last8 && (l.avatarUrl || (l as any).custom_field_values?.avatarUrl || (l as any).customFieldValues?.avatarUrl);
+        });
+        const leadPic = matchingLead?.avatarUrl || (matchingLead as any)?.custom_field_values?.avatarUrl || (matchingLead as any)?.customFieldValues?.avatarUrl;
+        if (leadPic) return leadPic;
+      }
+    }
+
+    // 4. Procura se algum contato já tem profile_picture_url salvo
+    if (Array.isArray(client.contacts)) {
+      for (const c of client.contacts) {
+        const ctPic = (c as any).profile_picture_url || (c as any).profilePictureUrl || (c as any).avatarUrl;
+        if (ctPic) return ctPic;
+      }
+    }
+
+    return undefined;
+  }, [client, leads]);
 
   return (
     <div
@@ -530,32 +592,57 @@ export const AdminContractKanbanCard: React.FC<AdminContractKanbanCardProps> = (
       </div>
 
       {/* ── 2. TÍTULO DO CONTRATO: Carla Dias – Sophia Dias 15 Anos ── */}
-      <div>
-        <h4 
-          style={{
-            fontSize: '0.84rem',
-            fontWeight: 800,
-            color: 'var(--adm-text-title, #0F172A)',
-            margin: 0,
-            lineHeight: 1.25,
-            whiteSpace: 'nowrap',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-          }}
-          title={contractTitle}
-        >
-          {contractTitle}
-        </h4>
-        {typeDetail && (
-          <div style={{ fontSize: '0.70rem', fontWeight: 600, color: eventBadgeStyle.color, marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={typeDetail}>
-            {typeDetail}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '9px', minWidth: 0 }}>
+        <SafeAvatar
+          src={clientAvatar}
+          name={client.payerName || client.name || 'Cliente'}
+          size={34}
+        />
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <h4 
+            style={{
+              fontSize: '0.84rem',
+              fontWeight: 800,
+              color: 'var(--adm-text-title, #0F172A)',
+              margin: 0,
+              lineHeight: 1.25,
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+            }}
+            title={contractTitle}
+          >
+            {contractTitle}
+          </h4>
+          {typeDetail && (
+            <div style={{ fontSize: '0.70rem', fontWeight: 600, color: eventBadgeStyle.color, marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={typeDetail}>
+              {typeDetail}
+            </div>
+          )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.72rem', color: 'var(--adm-text-muted)', marginTop: '2px' }}>
+            <User size={11} style={{ flexShrink: 0 }} />
+            <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {decisorLine}
+            </span>
           </div>
-        )}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.72rem', color: 'var(--adm-text-muted)', marginTop: '2px' }}>
-          <User size={11} style={{ flexShrink: 0 }} />
-          <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-            {decisorLine}
-          </span>
+          {secondaryContacts.length > 0 && (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                fontSize: '0.68rem',
+                color: 'var(--adm-text-muted)',
+                marginTop: '2px',
+              }}
+              title={secondaryContacts.map(sc => `${sc.role ? `${sc.role}: ` : ''}${sc.name}`).join(' • ')}
+            >
+              <Users size={11} color="#D4AF37" style={{ flexShrink: 0 }} />
+              <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {secondaryContacts.map(sc => `${sc.role ? `${sc.role}: ` : ''}${sc.name}`).join(' • ')}
+              </span>
+            </div>
+          )}
         </div>
       </div>
 

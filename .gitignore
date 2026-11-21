@@ -32,3 +32,7 @@ supabase/backups/
 
 # Generated audit and report files
 scripts/*.json
+
+# Local agent & tool configs
+.playwright-mcp/
+.mcp.json

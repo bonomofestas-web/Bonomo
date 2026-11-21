@@ -288,6 +288,21 @@ export const AdminCollaboratorsView: React.FC<AdminCollaboratorsViewProps> = ({ 
 
   const handleOpenCreate = handleOpenAdd;
 
+  // Contato transformado em colaborador: abre o cadastro ja preenchido
+  useEffect(() => {
+    let raw: string | null = null;
+    try { raw = localStorage.getItem('f5_prefill_collaborator'); } catch { /* ignore */ }
+    if (!raw) return;
+    try { localStorage.removeItem('f5_prefill_collaborator'); } catch { /* ignore */ }
+    try {
+      const d = JSON.parse(raw) as { name?: string; phone?: string; email?: string };
+      handleOpenAdd();
+      setFormName(d.name || '');
+      setFormPhone(d.phone || '');
+      setFormEmail(d.email || '');
+    } catch { /* ignore */ }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Atalho: abre Metas > Equipe ja com o modal de metas deste colaborador
   const openGoals = (collaboratorId: string) => {
     try { sessionStorage.setItem(GOALS_COLLAB_KEY, collaboratorId); } catch { /* sem sessionStorage */ }

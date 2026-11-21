@@ -36,6 +36,12 @@ Período em um único campo: clica no início e no fim.
 <DateRangeField className="adm-input" start={start} end={end} onChange={(s, e) => { setStart(s); setEnd(e); }} />
 ```
 
+### `MonthYearSwitcher`
+Título de calendário clicável: clique no mês abre o seletor de meses; clique no ano abre o seletor de anos (blocos de 12). Use no lugar do texto fixo "Novembro 2026" em **todo** calendário que navega por mês. `CalendarGrid` (portanto `DateField` e `DateRangeField`) já traz isso embutido.
+```tsx
+<MonthYearSwitcher year={d.getFullYear()} month={d.getMonth()} onChange={(y, m) => setD(new Date(y, m, 1))} />
+```
+
 ### `CalendarGrid`, `PopoverPanel`
 Peças de base (grade do calendário e painel flutuante em portal). Use para criar novos campos, não direto nas telas.
 
@@ -63,3 +69,13 @@ Aviso fixo (não dispensável) enquanto o envio e o recebimento de mensagens do 
 ```
 - Estado fora do React: `src/utils/messagingPause.ts` (`isMessagingPaused`, `ensureMessagingEnabled`, `MessagingPausedError`); hook `useMessagingPause()`.
 - Envios passam pela barreira em `uazapiService` (`sendText`, `sendMedia`, `sendSticker`, `reactMessage`): erro `Função desabilitada temporariamente`.
+
+### `EmbeddedDocViewer` (`src/components/admin/EmbeddedDocViewer.tsx`)
+Abre documentos (PDF e imagem) **dentro do sistema**, sem nova aba. Lista os documentos em abas e mostra o escolhido em um visualizador. Use onde hoje o documento abre em outra aba.
+```tsx
+<EmbeddedDocViewer docs={getContractDocuments(contract)} />
+```
+- Em modais com `Select`/`DateField`, mantenha o `zIndex` do modal abaixo de 5000 (os popovers do kit ficam em 5000).
+
+### `PaymentPlanEditor` (`src/components/admin/finance/PaymentPlanEditor.tsx`)
+Editor do plano de pagamento do contrato (sinal/entrada, parcelas PIX/boleto, cartão com taxa e líquido, pós-evento) com conferência da soma contra o total. Lógica e validação em `src/utils/paymentPlan.ts`. Usado na venda (`CloseDealValueModal`), na aprovação do financeiro e na revisão dos contratos importados.

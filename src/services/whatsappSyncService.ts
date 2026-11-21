@@ -415,6 +415,11 @@ export async function applySyncPlan(params: {
             messageId: shortIdOf(m) || m.messageId,
             waId: m.waId,
             sourceId: source?.id,
+            senderSourceId: source?.id,
+            senderSourceName: source?.name,
+            senderPhone: (source?.configuration as any)?.connectedPhone || (source?.configuration as any)?.whatsappNumber,
+            senderAvatar: (source?.configuration as any)?.connectedAvatar || (source?.configuration as any)?.profilePicUrl,
+            ...((m as any).isForwarded ? { isForwarded: true } : {}),
             ...(hasMedia ? { needsManualDownload: true } : {}),
           };
           if (hasMedia && messageIds.length > 0) {

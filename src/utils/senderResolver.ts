@@ -81,15 +81,34 @@ export function lastIncomingSourceId(activities?: LeadActivity[]): string | unde
   return best?.id;
 }
 
-export type SenderReason = 'manual' | 'last_incoming' | 'last_sent' | 'origin' | 'first';
+/**
+ * Chip da ULTIMA INTERAÇÃO da conversa (independente se enviada pelo sistema, enviada pelo celular ou recebida do cliente).
+ * Garante que se a última mensagem foi trocada por uma instância conectada, ela é automaticamente selecionada como recomendada.
+ */
+export function lastInteractionSourceId(activities?: LeadActivity[]): string | undefined {
+  let best: { at: number; id: string } | null = null;
+  for (const a of activities || []) {
+    if (a.type !== 'contact') continue;
+    const meta: any = a.metadata || {};
+    const id = a.instanceId || meta.senderSourceId || meta.instanceId || meta.sourceId;
+    if (!id) continue;
+    const at = new Date(a.timestamp || 0).getTime();
+    if (!best || at > best.at) best = { at, id };
+  }
+  return best?.id;
+}
+
+export type SenderReason = 'manual' | 'last_interaction' | 'last_incoming' | 'last_sent' | 'origin' | 'first';
 
 /** Chip recomendado entre os disponiveis (ids na ordem de cadastro). */
 export function recommendSender(
   allowedIds: string[],
-  opts: { manualId?: string; lastIncomingId?: string; lastSentId?: string; originId?: string },
+  opts: { manualId?: string; lastInteractionId?: string; lastIncomingId?: string; lastSentId?: string; originId?: string },
 ): { id: string; reason: SenderReason } | null {
   const has = (id?: string) => Boolean(id && allowedIds.includes(id));
   if (has(opts.manualId)) return { id: opts.manualId as string, reason: 'manual' };
+  // Prioriza o chip da última interação real trocada nesta conversa
+  if (has(opts.lastInteractionId)) return { id: opts.lastInteractionId as string, reason: 'last_interaction' };
   if (has(opts.lastIncomingId)) return { id: opts.lastIncomingId as string, reason: 'last_incoming' };
   if (has(opts.lastSentId)) return { id: opts.lastSentId as string, reason: 'last_sent' };
   if (has(opts.originId)) return { id: opts.originId as string, reason: 'origin' };

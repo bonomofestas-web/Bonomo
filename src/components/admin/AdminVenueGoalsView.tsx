@@ -2,7 +2,7 @@ import { Select } from '../ui';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import {
-  AlertTriangle, Building2, CalendarRange, History, Lock, Pencil, Plus, Repeat, Target, Trash2, Users, X, Zap,
+  AlertTriangle, Building2, CalendarRange, History, Lock, Pencil, Plus, Repeat, Target, Trash2, Users, X, Zap, Clock, Check, RotateCcw, Sparkles,
 } from 'lucide-react';
 import { HeaderActions } from './HeaderActions';
 import { useAdminState } from '../../context/AdminStateContext';
@@ -30,22 +30,27 @@ const UNIT_COLORS = ['#14A9D7', '#D4AF37', '#8B5CF6', '#10B981', '#F59E0B', '#EC
 const fmtDate = (iso: string) => fromISO(iso).toLocaleDateString('pt-BR');
 const firstOfMonth = () => { const n = new Date(); return toISO(new Date(n.getFullYear(), n.getMonth(), 1)); };
 
-type Tab = 'unidade' | 'equipe' | 'historico';
+type Tab = 'unidade' | 'equipe' | 'sla' | 'historico';
 const TABS: { id: Tab; label: string; Icon: typeof Target }[] = [
   { id: 'unidade', label: 'Unidade', Icon: Target },
   { id: 'equipe', label: 'Equipe', Icon: Users },
+  { id: 'sla', label: 'Tempo de Resposta', Icon: Clock },
   { id: 'historico', label: 'Histórico', Icon: History },
 ];
 
-export const AdminVenueGoalsView: React.FC = () => {
-  const { venues, activeVenueId, leads, clients, funnels, collaborators, currentUser } = useAdminState();
+export interface AdminVenueGoalsViewProps {
+  initialTab?: Tab;
+}
+
+export const AdminVenueGoalsView: React.FC<AdminVenueGoalsViewProps> = ({ initialTab = 'unidade' }) => {
+  const { venues, activeVenueId, leads, clients, funnels, collaborators, currentUser, systemSlaConfig, updateSystemSlaConfig } = useAdminState();
   const masterId = currentUser?.masterId || currentUser?.id || '';
   const canEdit = currentUser?.role === 'master' || currentUser?.role === 'admin' || (currentUser as any)?.role === 'manager';
   const actor = useMemo(() => ({ id: currentUser?.id, name: currentUser?.name }), [currentUser]);
 
   const [venueId, setVenueId] = useState<string>(() => (activeVenueId && venues.some(v => v.id === activeVenueId) ? activeVenueId : venues.length > 1 ? 'all' : venues[0]?.id || ''));
   const scopeAll = venueId === 'all';
-  const [tab, setTab] = useState<Tab>('unidade');
+  const [tab, setTab] = useState<Tab>(initialTab);
   const [available, setAvailable] = useState<boolean | null>(null);
   const [periods, setPeriods] = useState<GoalPeriod[]>([]);
   const [goals, setGoals] = useState<CollaboratorGoal[]>([]);
@@ -59,6 +64,32 @@ export const AdminVenueGoalsView: React.FC = () => {
   const [legacyCount, setLegacyCount] = useState(0);
   const [legacyDismissed, setLegacyDismissed] = useState(false);
   const [response, setResponse] = useState<{ total: ResponseWindowStats; byResponder: Map<string, ResponderStats> } | null>(null);
+
+  // Estados do Tempo de Resposta (SLA) sincronizados como meta recorrente
+  const [slaIdealMinutes, setSlaIdealMinutes] = useState<number>(systemSlaConfig?.idealMinutes ?? 10);
+  const [slaCriticalMinutes, setSlaCriticalMinutes] = useState<number>(systemSlaConfig?.criticalMinutes ?? 60);
+  const [isSavingSla, setIsSavingSla] = useState(false);
+
+  useEffect(() => {
+    if (systemSlaConfig?.idealMinutes) setSlaIdealMinutes(systemSlaConfig.idealMinutes);
+    if (systemSlaConfig?.criticalMinutes) setSlaCriticalMinutes(systemSlaConfig.criticalMinutes);
+  }, [systemSlaConfig?.idealMinutes, systemSlaConfig?.criticalMinutes]);
+
+  // Aplica automaticamente o tempo de resposta configurado como meta recorrente para cada unidade
+  useEffect(() => {
+    if (!masterId || !venues.length || periods.length === 0) return;
+    const currentIdeal = systemSlaConfig?.idealMinutes ?? 10;
+    venues.forEach(v => {
+      const activeP = periods.find(p => p.venueId === v.id && p.status === 'active');
+      if (activeP && (activeP.responseTimeTargetMinutes === 0 || !activeP.isRecurring)) {
+        goalPlanService.savePeriod(masterId, {
+          ...activeP,
+          isRecurring: true,
+          responseTimeTargetMinutes: currentIdeal,
+        }, actor, activeP).catch(() => {});
+      }
+    });
+  }, [masterId, venues, periods, systemSlaConfig?.idealMinutes, actor]);
 
   useEffect(() => { if (!venueId && venues[0]) setVenueId(venues[0].id); }, [venues, venueId]);
 
@@ -440,6 +471,390 @@ export const AdminVenueGoalsView: React.FC = () => {
 
   const visibleCollabs = eligible.filter(c => roleFilter === 'all' || rolesById[c.id]?.[roleFilter]);
 
+  const handleSaveSlaGoals = async (applyToAll: boolean) => {
+    if (slaIdealMinutes <= 0) {
+      toast.warning('O tempo ideal deve ser maior que zero minutos.');
+      return;
+    }
+    if (slaCriticalMinutes <= slaIdealMinutes) {
+      toast.warning('O tempo alarmante (crítico) deve ser estritamente maior que o tempo ideal.');
+      return;
+    }
+
+    setIsSavingSla(true);
+    try {
+      await updateSystemSlaConfig({
+        idealMinutes: Number(slaIdealMinutes),
+        warningMinutes: Number(slaIdealMinutes),
+        criticalMinutes: Number(slaCriticalMinutes),
+      });
+
+      const targetVenues = applyToAll || scopeAll ? venues : venues.filter(v => v.id === venueId);
+      for (const v of targetVenues) {
+        const activeP = periods.find(p => p.venueId === v.id && p.status === 'active');
+        if (activeP) {
+          await goalPlanService.savePeriod(masterId, {
+            ...activeP,
+            isRecurring: true,
+            responseTimeTargetMinutes: Number(slaIdealMinutes),
+          }, actor, activeP);
+        }
+      }
+
+      toast.success(applyToAll || scopeAll 
+        ? 'Meta recorrente de tempo de resposta atualizada para todas as unidades!' 
+        : `Meta recorrente de tempo de resposta atualizada para ${venue?.name || 'a unidade'}!`
+      );
+      await load();
+    } catch (err) {
+      console.error('Erro ao salvar meta de tempo de resposta:', err);
+      toast.error('Erro ao salvar as configurações.');
+    } finally {
+      setIsSavingSla(false);
+    }
+  };
+
+  const renderSlaTab = () => {
+    const responderEntries = response?.byResponder ? Array.from(response.byResponder.entries()) : [];
+
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+        <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
+                  Meta Recorrente de Tempo de Resposta (SLA)
+                </span>
+                <span style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  background: 'rgba(212, 175, 55, 0.15)',
+                  color: '#D4AF37',
+                  border: '1px solid rgba(212, 175, 55, 0.35)',
+                  borderRadius: '6px',
+                  padding: '2px 8px',
+                  fontSize: '0.68rem',
+                  fontWeight: 800,
+                }}>
+                  <Repeat size={11} /> Recorrente Automática
+                </span>
+              </div>
+              <p style={{ margin: '4px 0 0', fontSize: '0.78rem', color: 'var(--adm-text-muted)' }}>
+                {scopeAll 
+                  ? 'Configuração global aplicada a todas as casas da rede como meta permanente.'
+                  : `Meta contínua de agilidade comercial para ${venue?.name || 'esta unidade'}.`}
+              </p>
+            </div>
+
+            {canEdit && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSlaIdealMinutes(10);
+                    setSlaCriticalMinutes(60);
+                  }}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '8px 14px',
+                    borderRadius: '8px',
+                    background: 'transparent',
+                    border: '1px solid var(--adm-border)',
+                    color: 'var(--adm-text-muted)',
+                    fontSize: '0.76rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                  }}
+                >
+                  <RotateCcw size={13} />
+                  <span>Restaurar (10m / 60m)</span>
+                </button>
+
+                <button
+                  type="button"
+                  disabled={isSavingSla}
+                  onClick={() => handleSaveSlaGoals(false)}
+                  className="adm-btn-primary"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '8px 18px',
+                    borderRadius: '8px',
+                    fontSize: '0.78rem',
+                    fontWeight: 800,
+                    cursor: isSavingSla ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  <Check size={14} />
+                  <span>{isSavingSla ? 'Salvando...' : 'Salvar Meta da Casa'}</span>
+                </button>
+
+                {venues.length > 1 && (
+                  <button
+                    type="button"
+                    disabled={isSavingSla}
+                    onClick={() => handleSaveSlaGoals(true)}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '8px 18px',
+                      borderRadius: '8px',
+                      background: 'rgba(212, 175, 55, 0.16)',
+                      border: '1px solid #D4AF37',
+                      color: '#D4AF37',
+                      fontSize: '0.78rem',
+                      fontWeight: 800,
+                      cursor: isSavingSla ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    <Sparkles size={14} />
+                    <span>Aplicar a Toda a Rede</span>
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+            gap: '14px',
+            marginTop: '6px',
+          }}>
+            <div style={{
+              background: 'var(--adm-bg-input)',
+              borderRadius: '12px',
+              border: '1.5px solid rgba(56, 189, 248, 0.35)',
+              padding: '16px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '10px',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <div style={{ width: '9px', height: '9px', borderRadius: '50%', background: '#38BDF8' }} />
+                  <span style={{ fontSize: '0.84rem', fontWeight: 800, color: '#0284C7' }}>
+                    Tempo Ideal (Meta)
+                  </span>
+                </div>
+                <span style={{
+                  fontSize: '0.70rem',
+                  fontWeight: 800,
+                  background: 'rgba(56, 189, 248, 0.15)',
+                  color: '#0284C7',
+                  padding: '2px 8px',
+                  borderRadius: '6px',
+                }}>
+                  ≤ {slaIdealMinutes} min
+                </span>
+              </div>
+              <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--adm-text-muted)', lineHeight: 1.4 }}>
+                Meta recorrente recomendada para resposta no WhatsApp da unidade.
+              </p>
+              {canEdit && (
+                <div style={{ marginTop: 'auto', paddingTop: '8px', borderTop: '1px solid var(--adm-border)' }}>
+                  <label style={{ display: 'block', fontSize: '0.70rem', fontWeight: 700, color: 'var(--adm-text-muted)', marginBottom: '4px' }}>
+                    Limite Ideal (minutos):
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={120}
+                    value={slaIdealMinutes}
+                    onChange={(e) => setSlaIdealMinutes(Math.max(1, Number(e.target.value)))}
+                    className="adm-input"
+                    style={{ width: '100%', height: '34px', borderRadius: '8px', padding: '0 10px', fontSize: '0.82rem', fontWeight: 700 }}
+                  />
+                </div>
+              )}
+            </div>
+
+            <div style={{
+              background: 'var(--adm-bg-input)',
+              borderRadius: '12px',
+              border: '1.5px solid rgba(245, 158, 11, 0.35)',
+              padding: '16px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '10px',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <div style={{ width: '9px', height: '9px', borderRadius: '50%', background: '#F59E0B' }} />
+                  <span style={{ fontSize: '0.84rem', fontWeight: 800, color: '#D97706' }}>
+                    Atenção (Preocupante)
+                  </span>
+                </div>
+                <span style={{
+                  fontSize: '0.70rem',
+                  fontWeight: 800,
+                  background: 'rgba(245, 158, 11, 0.15)',
+                  color: '#D97706',
+                  padding: '2px 8px',
+                  borderRadius: '6px',
+                }}>
+                  &gt; {slaIdealMinutes}m e ≤ {slaCriticalMinutes}m
+                </span>
+              </div>
+              <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--adm-text-muted)', lineHeight: 1.4 }}>
+                Leads aguardando além do ideal. Cartões recebem alerta âmbar para priorização.
+              </p>
+              <div style={{ marginTop: 'auto', paddingTop: '8px', borderTop: '1px solid var(--adm-border)' }}>
+                <span style={{ fontSize: '0.70rem', color: '#D97706', fontWeight: 700 }}>
+                  Faixa intermediária calculada automaticamente.
+                </span>
+              </div>
+            </div>
+
+            <div style={{
+              background: 'var(--adm-bg-input)',
+              borderRadius: '12px',
+              border: '1.5px solid rgba(239, 68, 68, 0.35)',
+              padding: '16px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '10px',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <div style={{ width: '9px', height: '9px', borderRadius: '50%', background: '#EF4444' }} />
+                  <span style={{ fontSize: '0.84rem', fontWeight: 800, color: '#DC2626' }}>
+                    Crítico (Alarmante)
+                  </span>
+                </div>
+                <span style={{
+                  fontSize: '0.70rem',
+                  fontWeight: 800,
+                  background: 'rgba(239, 68, 68, 0.15)',
+                  color: '#DC2626',
+                  padding: '2px 8px',
+                  borderRadius: '6px',
+                }}>
+                  &gt; {slaCriticalMinutes} min
+                </span>
+              </div>
+              <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--adm-text-muted)', lineHeight: 1.4 }}>
+                Tempo excessivo de espera. Sinaliza gargalo na operação de atendimento.
+              </p>
+              {canEdit && (
+                <div style={{ marginTop: 'auto', paddingTop: '8px', borderTop: '1px solid var(--adm-border)' }}>
+                  <label style={{ display: 'block', fontSize: '0.70rem', fontWeight: 700, color: 'var(--adm-text-muted)', marginBottom: '4px' }}>
+                    Limite Crítico (minutos):
+                  </label>
+                  <input
+                    type="number"
+                    min={slaIdealMinutes + 1}
+                    max={240}
+                    value={slaCriticalMinutes}
+                    onChange={(e) => setSlaCriticalMinutes(Math.max(slaIdealMinutes + 1, Number(e.target.value)))}
+                    className="adm-input"
+                    style={{ width: '100%', height: '34px', borderRadius: '8px', padding: '0 10px', fontSize: '0.82rem', fontWeight: 700 }}
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div style={card}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
+            <div>
+              <span style={{ fontSize: '0.90rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
+                Desempenho Comercial em Tempo de Resposta
+              </span>
+              <p style={{ margin: '2px 0 0', fontSize: '0.74rem', color: 'var(--adm-text-muted)' }}>
+                Resultados computados com base nos atendimentos de leads no período atual.
+              </p>
+            </div>
+            {response?.total && (
+              <span style={{
+                fontSize: '0.74rem',
+                fontWeight: 800,
+                color: ((response.total.avgFirst ?? response.total.avgAll) ?? 0) <= slaIdealMinutes ? '#10B981' : '#F59E0B',
+                background: 'var(--adm-bg-input)',
+                padding: '4px 10px',
+                borderRadius: '8px',
+                border: '1px solid var(--adm-border)',
+              }}>
+                Média da Casa: {(response.total.avgFirst ?? response.total.avgAll) ? `${Math.round(response.total.avgFirst ?? response.total.avgAll ?? 0)} min` : '—'}
+              </span>
+            )}
+          </div>
+
+          {responderEntries.length === 0 ? (
+            <div style={{ padding: '24px', textAlign: 'center', color: 'var(--adm-text-muted)', fontSize: '0.80rem' }}>
+              Nenhum dado de resposta registrado para este período nesta unidade ainda.
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {responderEntries.map(([collabId, stats]) => {
+                const collab = collaborators.find(c => c.id === collabId);
+                const avgVal = stats.avgFirst ?? stats.avgAll;
+                const avg = avgVal !== null && avgVal !== undefined ? Math.round(avgVal) : null;
+                const isUnder = avg !== null && avg <= slaIdealMinutes;
+
+                return (
+                  <div key={collabId} style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '10px 14px',
+                    borderRadius: '10px',
+                    background: 'var(--adm-bg-input)',
+                    border: '1px solid var(--adm-border)',
+                    gap: '12px',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <div style={{
+                        width: '28px',
+                        height: '28px',
+                        borderRadius: '50%',
+                        background: isUnder ? 'rgba(16, 185, 129, 0.15)' : 'rgba(245, 158, 11, 0.15)',
+                        color: isUnder ? '#10B981' : '#F59E0B',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: '0.72rem',
+                        fontWeight: 800,
+                      }}>
+                        <Clock size={14} />
+                      </div>
+                      <div>
+                        <div style={{ fontSize: '0.80rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
+                          {collab?.name || 'Atendente'}
+                        </div>
+                        <div style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)' }}>
+                          {stats.pairs || 0} respostas computadas
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontSize: '0.82rem', fontWeight: 800, color: isUnder ? '#10B981' : '#F59E0B' }}>
+                          {avg !== null ? `${avg} min` : '—'}
+                        </div>
+                        <div style={{ fontSize: '0.64rem', color: 'var(--adm-text-muted)' }}>
+                          {isUnder ? 'Dentro da meta' : 'Acima da meta'}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '18px', padding: '16px 28px 60px', width: '100%', boxSizing: 'border-box' }}>
       {canEdit && available !== false && (
@@ -661,6 +1076,8 @@ export const AdminVenueGoalsView: React.FC = () => {
                 )}
               </>
             )
+          ) : tab === 'sla' ? (
+            renderSlaTab()
           ) : (
             /* ───── Historico ───── */
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>

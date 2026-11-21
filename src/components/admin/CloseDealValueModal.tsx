@@ -1,6 +1,9 @@
-import { DateField, Select } from '../ui';
-import React, { useState, useMemo } from 'react';
-import { X, CheckCircle2, DollarSign, Package, FileText, UserCheck, User, ChevronDown, ChevronUp } from 'lucide-react';
+import { PaymentPlanEditor, type CardTerminalOption } from './finance/PaymentPlanEditor';
+import { EMPTY_PLAN, parsePlan, planFromLegacy, type PaymentPlan, type PlanValidation } from '../../utils/paymentPlan';
+import { financeService } from '../../services/financeService';
+import { DateField } from '../ui';
+import React, { useState, useMemo, useEffect } from 'react';
+import { X, DollarSign, Package, FileText, UserCheck, User, ChevronDown, ChevronUp } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import type { Lead } from '../../types/admin';
 import { samePhone } from '../../utils/phoneDuplicates';
@@ -19,6 +22,7 @@ interface CloseDealValueModalProps {
       contractTitle?: string;
       downPayment?: number;
       installmentsCount?: number;
+      paymentPlan?: import('../../utils/paymentPlan').PaymentPlan;
       hasCreditCard?: boolean;
       contractSignedFileUrl?: string;
       contractSignedFileName?: string;
@@ -113,17 +117,24 @@ export const CloseDealValueModal: React.FC<CloseDealValueModalProps> = ({
     const val = lead.dealValue || lead.estimatedBudget || 0;
     return val > 0 ? String(val) : '';
   });
-  const [downPaymentStr, setDownPaymentStr] = useState(() => {
-    if (!lead) return '';
-    const val = lead.downPayment ?? (lead as any).contractDownPayment ?? (lead as any).signalValue ?? 0;
-    return val > 0 ? String(val) : '';
-  });
-  const [installmentsCount, setInstallmentsCount] = useState<number>(() => {
-    return lead?.installments || (lead as any)?.contractInstallmentsCount || 10;
-  });
   const [hasCreditCard, setHasCreditCard] = useState<boolean>(() => {
     return Boolean(lead?.hasCreditCard ?? (lead as any)?.customFieldValues?.hasCreditCard);
   });
+  // Plano de pagamento estruturado: chega pronto ao financeiro (docs/PLANO_FINANCEIRO.md)
+  const [plan, setPlan] = useState<PaymentPlan>(() => {
+    const saved = parsePlan((lead as any)?.customFieldValues?.paymentPlan);
+    if (saved) return saved;
+    const total = Number(lead?.dealValue || lead?.estimatedBudget || 0);
+    const down = Number(lead?.downPayment ?? (lead as any)?.contractDownPayment ?? (lead as any)?.signalValue ?? 0);
+    return total > 0 && down > 0 ? planFromLegacy({ total, downPayment: down, installmentsCount: lead?.installments || (lead as any)?.contractInstallmentsCount }) : EMPTY_PLAN;
+  });
+  const [planValidation, setPlanValidation] = useState<PlanValidation | null>(null);
+  const [terminals, setTerminals] = useState<CardTerminalOption[]>([]);
+  useEffect(() => {
+    const mid = (lead as any)?.masterId;
+    if (!mid) return;
+    financeService.getCardTerminals(mid).then(setTerminals);
+  }, [lead]);
   const [guestCount, setGuestCount] = useState<number>(() => {
     return lead?.estimatedGuests || (lead as any)?.guestCount || 150;
   });
@@ -167,10 +178,13 @@ export const CloseDealValueModal: React.FC<CloseDealValueModalProps> = ({
     if (lead && isOpen) {
       const val = lead.dealValue || lead.estimatedBudget || 0;
       setDealValueStr(val > 0 ? String(val) : '');
-      const down = lead.downPayment ?? (lead as any).contractDownPayment ?? (lead as any).signalValue ?? 0;
-      setDownPaymentStr(down > 0 ? String(down) : '');
+      const saved = parsePlan((lead as any)?.customFieldValues?.paymentPlan);
+      if (saved) setPlan(saved);
+      else {
+        const down = lead.downPayment ?? (lead as any).contractDownPayment ?? (lead as any).signalValue ?? 0;
+        if (val > 0 && down > 0) setPlan(planFromLegacy({ total: val, downPayment: down, installmentsCount: lead.installments || (lead as any)?.contractInstallmentsCount }));
+      }
       setPackageSold(lead.packageSold || lead.interestService || '');
-      setInstallmentsCount(lead.installments || (lead as any)?.contractInstallmentsCount || 10);
       setHasCreditCard(Boolean(lead.hasCreditCard ?? (lead as any)?.customFieldValues?.hasCreditCard));
       setGuestCount(lead.estimatedGuests || (lead as any)?.guestCount || 150);
       if (lead.eventYear) {
@@ -258,15 +272,17 @@ export const CloseDealValueModal: React.FC<CloseDealValueModalProps> = ({
       return;
     }
 
-    if (!packageSold.trim()) {
-      setError('Por favor, descreva o pacote ou serviços contratados.');
+    // Obrigatorios na venda: contratante (nome e telefone) e aniversariante. Contrato, pagamento e documentos ficam para o fechamento.
+    if (!payerName.trim() || !payerPhone.trim()) {
+      setError('Informe o nome e o telefone do contratante.');
       return;
     }
-
-    if (!closerNotes.trim()) {
-      setError('Por favor, preencha o Relatório do Closer (passagem de bastão para o Pós-Venda).');
+    if (!birthdayPersonName.trim()) {
+      setError('Informe o nome do aniversariante.');
       return;
     }
+    // Venda enxuta: so o valor e obrigatorio. Pacote, relatorio, sinal, entrada e parcelamento
+    // podem ser completados depois, na aba Contratos (fechamento).
 
     // Cada pessoa precisa de um numero proprio: contratante e debutante nao podem repetir o telefone
     if (samePhone(payerPhone, birthdayPersonPhone)) {
@@ -274,13 +290,20 @@ export const CloseDealValueModal: React.FC<CloseDealValueModalProps> = ({
       return;
     }
 
-    const downNum = downPaymentStr ? parseFloat(downPaymentStr.replace(/\./g, '').replace(',', '.')) : 0;
-    const computedTerms = paymentTerms.trim() || `${downNum > 0 ? `Sinal de R$ ${downNum.toLocaleString('pt-BR')} + ` : ''}${installmentsCount}x parcelado`;
+    // Plano e opcional; se foi preenchido, precisa estar coerente
+    if (plan.items.length > 0 && planValidation && !planValidation.ok) {
+      setError(planValidation.errors[0] || 'Revise o plano de pagamento ou limpe os itens para preencher depois.');
+      return;
+    }
+    const downNum = plan.items.filter(it => it.type === 'entrada' || it.type === 'sinal').reduce((a, it) => a + Number((it as any).amount || 0), 0);
+    const plannedInstallments = (plan.items.find(it => it.type === 'parcelas') as any)?.count || (plan.items.find(it => it.type === 'cartao') as any)?.installments || 1;
+    const computedTerms = paymentTerms.trim() || (plan.items.length === 0 ? 'A definir no fechamento do contrato' : `${downNum > 0 ? `Sinal de R$ ${downNum.toLocaleString('pt-BR')} + ` : ''}${plannedInstallments}x parcelado`);
 
     onConfirmSale(lead.id, valueNum, packageSold.trim(), closerNotes.trim(), {
       contractTitle: contractTitle.trim() || undefined,
       downPayment: isNaN(downNum) ? 0 : downNum,
-      installmentsCount: Number(installmentsCount) || 10,
+      installmentsCount: Number(plannedInstallments) || 1,
+      paymentPlan: { ...plan, source: 'venda' },
       hasCreditCard,
       contractSignedFileUrl: contractSignedFileUrl || undefined,
       contractSignedFileName: contractSignedFileName || undefined,
@@ -336,9 +359,6 @@ export const CloseDealValueModal: React.FC<CloseDealValueModalProps> = ({
   };
 
   const valueNum = parseFloat(dealValueStr.replace(/\./g, '').replace(',', '.')) || 0;
-  const downNum = parseFloat(downPaymentStr.replace(/\./g, '').replace(',', '.')) || 0;
-  const remainingNum = Math.max(0, valueNum - downNum);
-  const parcelValue = installmentsCount > 0 ? (remainingNum / installmentsCount) : 0;
 
   return (
     <div style={{
@@ -539,7 +559,7 @@ export const CloseDealValueModal: React.FC<CloseDealValueModalProps> = ({
           </div>
 
           {/* Grid: Valor do Contrato & Entrada */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '10px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '10px' }}>
             <div>
               <label style={labelStyle}>
                 Valor Total do Contrato (R$) *
@@ -568,94 +588,34 @@ export const CloseDealValueModal: React.FC<CloseDealValueModalProps> = ({
               </div>
             </div>
 
-            <div>
-              <label style={labelStyle}>
-                Valor de Entrada / Sinal (R$)
-              </label>
-              <div style={{ position: 'relative' }}>
-                <span style={{ position: 'absolute', left: '12px', top: '9px', color: '#10B981', fontWeight: 800, fontSize: '0.85rem' }}>
-                  R$
-                </span>
-                <input
-                  type="text"
-                  value={downPaymentStr}
-                  onChange={(e) => setDownPaymentStr(e.target.value)}
-                  placeholder="Ex: 10000"
-                  style={{
-                    ...inputStyle,
-                    paddingLeft: '38px',
-                    fontSize: '0.98rem',
-                    fontWeight: 800,
-                    color: '#10B981',
-                  }}
-                />
-              </div>
-            </div>
           </div>
 
-          {/* Grid: Parcelas & Cartão de Crédito */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '10px' }}>
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '5px' }}>
-                <label style={{ ...labelStyle, margin: 0 }}>Parcelamento do Saldo</label>
-                {remainingNum > 0 && installmentsCount > 0 && (
-                  <span style={{ fontSize: '0.68rem', color: '#F59E0B', fontWeight: 700 }}>
-                    {installmentsCount}x de R$ {parcelValue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </span>
-                )}
-              </div>
-              <Select
-                value={installmentsCount}
-                onChange={(e) => setInstallmentsCount(Number(e.target.value))}
-                style={{ ...inputStyle, fontWeight: 700 }}
-              >
-                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 14, 15, 18, 20, 24].map(num => (
-                  <option key={num} value={num}>{num}x {num === 1 ? '(À Vista / Sem Parcelamento)' : `Parcelas (Restante: R$ ${remainingNum.toLocaleString('pt-BR')})`}</option>
-                ))}
-              </Select>
+          {/* Plano de pagamento: o financeiro aprova com base nisso */}
+          <div>
+            <label style={labelStyle}>Plano de pagamento (opcional)</label>
+            <div style={{ fontSize: '0.7rem', color: 'var(--adm-text-muted)', marginBottom: 6 }}>
+              Sinal, entrada e parcelas podem ficar para depois: o Closer completa no fechamento do contrato e o financeiro monta o plano final. O saldo é calculado sozinho e vence 30 dias antes da festa.
             </div>
+            <PaymentPlanEditor
+              value={plan}
+              onChange={(p) => { setPlan(p); setError(''); }}
+              total={valueNum}
+              terminals={terminals}
+              hasEventDate={Boolean(lead?.partyDate || lead?.eventDate)}
+              eventDate={(lead?.partyDate || lead?.eventDate || null) as string | null}
+              onValidation={setPlanValidation}
+            />
+          </div>
 
-            <div>
-              <label style={labelStyle}>Possui Cartão de Crédito?</label>
-              <div style={{ display: 'flex', gap: '6px', height: '38px' }}>
-                <button
-                  type="button"
-                  onClick={() => setHasCreditCard(true)}
-                  style={{
-                    flex: 1,
-                    borderRadius: '8px',
-                    border: `1.5px solid ${hasCreditCard ? '#10B981' : 'var(--adm-border)'}`,
-                    background: hasCreditCard ? 'rgba(16, 185, 129, 0.15)' : 'var(--adm-bg-input)',
-                    color: hasCreditCard ? '#10B981' : 'var(--adm-text-muted)',
-                    fontWeight: 800,
-                    fontSize: '0.76rem',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '4px',
-                  }}
-                >
-                  {hasCreditCard && <CheckCircle2 size={12} />}
-                  <span>Sim</span>
+          <div>
+            <label style={labelStyle}>Cliente possui cartão de crédito?</label>
+            <div style={{ display: 'flex', gap: '6px', height: '38px', maxWidth: 320 }}>
+              {([true, false] as const).map(v => (
+                <button key={String(v)} type="button" onClick={() => setHasCreditCard(v)}
+                  style={{ flex: 1, borderRadius: '8px', border: `1.5px solid ${hasCreditCard === v ? (v ? '#10B981' : '#64748B') : 'var(--adm-border)'}`, background: hasCreditCard === v ? (v ? 'rgba(16, 185, 129, 0.15)' : 'rgba(100, 116, 139, 0.15)') : 'var(--adm-bg-input)', color: hasCreditCard === v ? (v ? '#10B981' : 'var(--adm-text-title)') : 'var(--adm-text-muted)', fontWeight: 800, fontSize: '0.76rem', cursor: 'pointer' }}>
+                  {v ? 'Sim' : 'Não'}
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setHasCreditCard(false)}
-                  style={{
-                    flex: 1,
-                    borderRadius: '8px',
-                    border: `1.5px solid ${!hasCreditCard ? '#64748B' : 'var(--adm-border)'}`,
-                    background: !hasCreditCard ? 'rgba(100, 116, 139, 0.15)' : 'var(--adm-bg-input)',
-                    color: !hasCreditCard ? 'var(--adm-text-title)' : 'var(--adm-text-muted)',
-                    fontWeight: 800,
-                    fontSize: '0.76rem',
-                    cursor: 'pointer',
-                  }}
-                >
-                  <span>Não</span>
-                </button>
-              </div>
+              ))}
             </div>
           </div>
 
@@ -686,13 +646,12 @@ export const CloseDealValueModal: React.FC<CloseDealValueModalProps> = ({
           {/* Pacote / Descrição */}
           <div>
             <label style={labelStyle}>
-              Pacote / Serviços Contratados *
+              Pacote / Serviços Contratados
             </label>
             <div style={{ position: 'relative' }}>
               <Package size={14} color="var(--adm-accent)" style={{ position: 'absolute', left: '12px', top: '11px' }} />
               <input
                 type="text"
-                required
                 value={packageSold}
                 onChange={(e) => {
                   setPackageSold(e.target.value);
@@ -956,7 +915,7 @@ export const CloseDealValueModal: React.FC<CloseDealValueModalProps> = ({
               <label style={{ ...labelStyle, margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <FileText size={13} color="var(--adm-accent)" />
                 <span>
-                  {existingClient ? 'Relatório do Closer & Motivo da Retomada (Passagem de Bastão) *' : 'Relatório do Closer / Passagem de Bastão *'}
+                  {existingClient ? 'Relatório do Closer & Motivo da Retomada (Passagem de Bastão)' : 'Relatório do Closer / Passagem de Bastão (opcional)'}
                 </span>
               </label>
               <span style={{ fontSize: '0.68rem', color: 'var(--adm-accent)', fontWeight: 700 }}>
@@ -964,7 +923,6 @@ export const CloseDealValueModal: React.FC<CloseDealValueModalProps> = ({
               </span>
             </div>
             <textarea
-              required
               rows={2}
               value={closerNotes}
               onChange={(e) => {

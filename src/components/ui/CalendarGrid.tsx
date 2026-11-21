@@ -1,5 +1,7 @@
+import { formatMonthYear } from './MonthYearSwitcher';
 import React, { useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { MonthYearPanel } from './MonthYearSwitcher';
 
 /** 'YYYY-MM-DD' <-> Date (calendario local, sem fuso). */
 export const toDateStr = (d: Date): string =>
@@ -36,6 +38,8 @@ const WEEKDAYS = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'];
 export const CalendarGrid: React.FC<CalendarGridProps> = ({ value, onSelect, min, max, rangeStart, rangeEnd, onClear, showToday = true }) => {
   const initial = fromDateStr(value || '') || fromDateStr(rangeStart || '') || new Date();
   const [month, setMonth] = useState<Date>(new Date(initial.getFullYear(), initial.getMonth(), 1));
+  // Clique no titulo: escolhe mes e ano sem ficar empurrando de um lado para o outro
+  const [picking, setPicking] = useState(false);
   const today = toDateStr(new Date());
 
   const days = useMemo(() => {
@@ -49,7 +53,8 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({ value, onSelect, min
       cells.push({ date: toDateStr(d), num: d.getDate(), inMonth: false });
     }
     for (let n = 1; n <= total; n++) cells.push({ date: toDateStr(new Date(y, m, n)), num: n, inMonth: true });
-    while (cells.length % 7 !== 0) {
+    // Sempre 6 semanas (42 dias): o calendario nao muda de altura de um mes para outro
+    while (cells.length < 42) {
       const d = new Date(y, m + 1, cells.length - firstWeekday - total + 1);
       cells.push({ date: toDateStr(d), num: d.getDate(), inMonth: false });
     }
@@ -65,12 +70,16 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({ value, onSelect, min
     <div style={{ padding: '12px', width: '100%', boxSizing: 'border-box' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
         <button type="button" aria-label="Mês anterior" style={nav} onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))}><ChevronLeft size={16} /></button>
-        <span style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--adm-text-title)', textTransform: 'capitalize' }}>
-          {month.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}
-        </span>
+        <button type="button" onClick={() => setPicking(v => !v)} title="Ir para outro mês ou ano"
+          style={{ background: picking ? 'var(--adm-accent-bg, rgba(20,169,215,0.14))' : 'transparent', border: 'none', cursor: 'pointer', padding: '4px 10px', borderRadius: 7, fontSize: '0.82rem', fontWeight: 800, color: 'var(--adm-text-title)', textTransform: 'capitalize' }}>
+          {formatMonthYear(month)}
+        </button>
         <button type="button" aria-label="Próximo mês" style={nav} onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))}><ChevronRight size={16} /></button>
       </div>
 
+      {picking ? (
+        <MonthYearPanel year={month.getFullYear()} month={month.getMonth()} onPick={(y, m) => { setMonth(new Date(y, m, 1)); setPicking(false); }} />
+      ) : (<>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', textAlign: 'center', fontSize: '0.64rem', fontWeight: 700, color: 'var(--adm-text-muted)', marginBottom: '4px' }}>
         {WEEKDAYS.map((w, i) => <span key={i}>{w}</span>)}
       </div>
@@ -101,6 +110,8 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({ value, onSelect, min
           );
         })}
       </div>
+
+      </>)}
 
       {(showToday || onClear) && (
         <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '8px', paddingTop: '8px', borderTop: '1px solid var(--adm-border)' }}>

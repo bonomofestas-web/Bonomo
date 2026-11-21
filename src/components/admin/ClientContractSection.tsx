@@ -1,6 +1,7 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { FileText, Link2, Eye, Users, Calendar, CheckCircle2, CalendarPlus, Building2, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { SafeAvatar } from './SafeAvatar';
 import { DateField } from '../ui';
 import { useAdminState } from '../../context/AdminStateContext';
 import { contractService } from '../../services/contractService';
@@ -32,24 +33,38 @@ const heading = (icon: React.ReactNode, text: string): React.ReactNode => (
   <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.72rem', fontWeight: 800, color: 'var(--adm-text-title)', textTransform: 'uppercase', letterSpacing: '0.4px' }}>{icon}<span>{text}</span></div>
 );
 
+function resolveAvatarForPhone(_phone?: string, person?: any): string | undefined {
+  if (person?.avatarUrl || person?.profile_picture_url || person?.profilePictureUrl) {
+    return person.avatarUrl || person.profile_picture_url || person.profilePictureUrl;
+  }
+  return undefined;
+}
+
 /** Uma pessoa do evento: nome + WhatsApp (o numero vinculado vira aba de conversa no chat). */
 const PersonRow: React.FC<{ label: string; placeholder: string; optional?: boolean; person?: LeadContact; readOnly?: boolean; onCommit: (name: string, phone: string) => void; onRemove?: () => void }> = ({ label, placeholder, optional, person, readOnly, onCommit, onRemove }) => {
   const [name, setName] = useState(person?.name || '');
   const [phone, setPhone] = useState(person?.phone || '');
   const commit = () => { if ((person?.name || '') !== name.trim() || (person?.phone || '') !== phone.trim()) onCommit(name.trim(), phone.trim()); };
+  const avatarUrl = resolveAvatarForPhone(phone || person?.phone);
+
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 8, alignItems: 'end' }}>
-      <label style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
-        <span style={{ fontSize: '0.62rem', fontWeight: 700, color: 'var(--adm-text-muted)', textTransform: 'uppercase' }}>{label}{optional ? ' (opcional)' : ''}</span>
-        <input style={inputStyle} disabled={readOnly} value={name} placeholder={placeholder} onChange={e => setName(e.target.value)} onBlur={commit} />
-      </label>
-      <label style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
-        <span style={{ fontSize: '0.62rem', fontWeight: 700, color: 'var(--adm-text-muted)', textTransform: 'uppercase' }}>WhatsApp</span>
-        <input style={inputStyle} disabled={readOnly} value={phone} placeholder="(00) 00000-0000" inputMode="tel" onChange={e => setPhone(e.target.value)} onBlur={commit} />
-      </label>
-      {onRemove && person && !readOnly ? (
-        <button type="button" onClick={onRemove} title="Remover pessoa" style={{ background: 'none', border: 'none', color: '#EF4444', cursor: 'pointer', padding: 2 }}><Trash2 size={13} /></button>
-      ) : <span style={{ width: 17 }} />}
+    <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10 }}>
+      <div style={{ paddingBottom: 2, flexShrink: 0 }}>
+        <SafeAvatar name={name || placeholder} src={avatarUrl} size={34} />
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 8, alignItems: 'end', flex: 1, minWidth: 0 }}>
+        <label style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+          <span style={{ fontSize: '0.62rem', fontWeight: 700, color: 'var(--adm-text-muted)', textTransform: 'uppercase' }}>{label}{optional ? ' (opcional)' : ''}</span>
+          <input style={inputStyle} disabled={readOnly} value={name} placeholder={placeholder} onChange={e => setName(e.target.value)} onBlur={commit} />
+        </label>
+        <label style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+          <span style={{ fontSize: '0.62rem', fontWeight: 700, color: 'var(--adm-text-muted)', textTransform: 'uppercase' }}>WhatsApp</span>
+          <input style={inputStyle} disabled={readOnly} value={phone} placeholder="(00) 00000-0000" inputMode="tel" onChange={e => setPhone(e.target.value)} onBlur={commit} />
+        </label>
+        {onRemove && person && !readOnly ? (
+          <button type="button" onClick={onRemove} title="Remover pessoa" style={{ background: 'none', border: 'none', color: '#EF4444', cursor: 'pointer', padding: 2 }}><Trash2 size={13} /></button>
+        ) : <span style={{ width: 17 }} />}
+      </div>
     </div>
   );
 };

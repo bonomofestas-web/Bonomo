@@ -1,6 +1,9 @@
+import { financeService } from './financeService';
+import { describePlan, parsePlan, planSignalEntry } from '../utils/paymentPlan';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { isUuid, generateUuid } from '../utils/uuid';
-import { generateBase36Code, buildContactSearchFilter, contactService } from './contactService';
+import { generateBase36Code, buildContactSearchFilter, contactService, reciprocalKinship } from './contactService';
+import { generateSearchTermVariants } from '../utils/searchUtils';
 import { buildContractTitle } from '../utils/contractTitle';
 import { canChangeEventType } from '../utils/accessPermissions';
 import { taskService } from './taskService';
@@ -25,15 +28,90 @@ async function buildContractSearchFilter(masterId: string, search?: string): Pro
   const term = raw.replace(/[,()"\\%_]/g, ' ').replace(/\s+/g, ' ').trim();
   if (!term) return undefined;
 
-  const parts = [
-    `contract_code.ilike.%${term}%`,
-    `contract_title.ilike.%${term}%`,
-    `title.ilike.%${term}%`,
-    `event_title.ilike.%${term}%`,
-    `sdr_name.ilike.%${term}%`,
-    `closer_name.ilike.%${term}%`,
-    `client_snapshot->>name.ilike.%${term}%`,
-  ];
+  const variants = generateSearchTermVariants(raw);
+  const parts: string[] = [];
+
+  for (const v of variants) {
+    parts.push(
+      `contract_code.ilike.%${v}%`,
+      `contract_title.ilike.%${v}%`,
+      `title.ilike.%${v}%`,
+      `event_title.ilike.%${v}%`,
+      `sdr_name.ilike.%${v}%`,
+      `closer_name.ilike.%${v}%`,
+      `client_snapshot->>name.ilike.%${v}%`,
+      `client_snapshot->>payerName.ilike.%${v}%`,
+      `client_snapshot->>birthdayPersonName.ilike.%${v}%`,
+      `client_snapshot->>email.ilike.%${v}%`,
+      `client_snapshot->>payerEmail.ilike.%${v}%`,
+    );
+  }
+
+  // Busca textual direta no telefone e CPF
+  parts.push(
+    `client_snapshot->>phone.ilike.%${term}%`,
+    `client_snapshot->>payerPhone.ilike.%${term}%`,
+    `client_snapshot->>cpf.ilike.%${term}%`,
+    `client_snapshot->>payerCpf.ilike.%${term}%`
+  );
+
+  // CPF e Telefone por digitos (suporta busca parcial mesmo se o banco tiver mascara com pontos, tracos e espacos)
+  const digits = raw.replace(/\D/g, '');
+  if (digits.length >= 3) {
+    parts.push(`client_snapshot->>cpf.ilike.%${digits}%`);
+    parts.push(`client_snapshot->>payerCpf.ilike.%${digits}%`);
+    parts.push(`client_snapshot->>phone.ilike.%${digits}%`);
+    parts.push(`client_snapshot->>payerPhone.ilike.%${digits}%`);
+
+    // Variacao de CPF com pontos (ex: 201.521 ou 201.521.187)
+    if (digits.length >= 6) {
+      const p1 = digits.slice(0, 3);
+      const p2 = digits.slice(3, 6);
+      parts.push(`client_snapshot->>cpf.ilike.%${p1}.${p2}%`);
+      parts.push(`client_snapshot->>payerCpf.ilike.%${p1}.${p2}%`);
+    }
+    if (digits.length >= 9) {
+      const p1 = digits.slice(0, 3);
+      const p2 = digits.slice(3, 6);
+      const p3 = digits.slice(6, 9);
+      parts.push(`client_snapshot->>cpf.ilike.%${p1}.${p2}.${p3}%`);
+      parts.push(`client_snapshot->>payerCpf.ilike.%${p1}.${p2}.${p3}%`);
+    }
+
+    // Variacao de Telefone com traco (ex: 98779-4348)
+    if (digits.length >= 8) {
+      const last8 = digits.slice(-8);
+      const t1 = last8.slice(0, 4);
+      const t2 = last8.slice(4);
+      parts.push(`client_snapshot->>phone.ilike.%${t1}-${t2}%`);
+      parts.push(`client_snapshot->>payerPhone.ilike.%${t1}-${t2}%`);
+    }
+    if (digits.length >= 9) {
+      const last9 = digits.slice(-9);
+      const t1 = last9.slice(0, 5);
+      const t2 = last9.slice(5);
+      parts.push(`client_snapshot->>phone.ilike.%${t1}-${t2}%`);
+      parts.push(`client_snapshot->>payerPhone.ilike.%${t1}-${t2}%`);
+    }
+  }
+  if (digits.length === 11) {
+    parts.push(`client_snapshot->>cpf.ilike.%${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}%`);
+    parts.push(`client_snapshot->>payerCpf.ilike.%${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}%`);
+  }
+  // Ano ou data do evento: 2026, 2027, dd/mm/aaaa, dd/mm ou aaaa-mm-dd
+  if (/^20\d{2}$/.test(term)) {
+    parts.push(`event_date.ilike.${term}-%`);
+  }
+  const br = term.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})$/);
+  const brShort = term.match(/^(\d{1,2})[\/.-](\d{1,2})$/);
+  const iso = term.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (br) {
+    parts.push(`event_date.eq.${br[3]}-${br[2].padStart(2, '0')}-${br[1].padStart(2, '0')}`);
+  } else if (brShort) {
+    parts.push(`event_date.ilike.%-${brShort[2].padStart(2, '0')}-${brShort[1].padStart(2, '0')}%`);
+  } else if (iso) {
+    parts.push(`event_date.eq.${term}`);
+  }
 
   // Contratos do(s) contato(s) encontrado(s) por nome, telefone (com/sem máscara), CPF ou e-mail
   const contactFilter = buildContactSearchFilter(raw);
@@ -48,6 +126,19 @@ async function buildContractSearchFilter(masterId: string, search?: string): Pro
     if (ids.length > 0) parts.push(`contact_id.in.(${ids.join(',')})`);
   }
   return parts.join(',');
+}
+
+/** Grava o status automatico de fechamento no lead de origem (aparece no card, dentro do Ganho). */
+export async function setLeadClosingStatus(masterId: string, leadId: string | null | undefined, status: 'em_fechamento' | 'financeiro' | 'ganho'): Promise<void> {
+  if (!isSupabaseConfigured || !masterId || !leadId || !isUuid(leadId)) return;
+  try {
+    const { data: ld } = await supabase.from('leads').select('custom_field_values').eq('id', leadId).eq('master_id', masterId).maybeSingle();
+    if (!ld) return;
+    const cfv = { ...(ld.custom_field_values || {}), closingStatus: status } as Record<string, any>;
+    await supabase.from('leads').update({ custom_field_values: cfv }).eq('id', leadId).eq('master_id', masterId);
+  } catch (e) {
+    console.warn('[setLeadClosingStatus]', e);
+  }
 }
 
 export const contractService = {
@@ -219,12 +310,15 @@ export const contractService = {
     title?: string;
     eventDate?: string;
     eventTime?: string;
+    /** Data de fechamento da venda (YYYY-MM-DD); sem ela vale o dia da criacao */
+    closedAt?: string;
     guestCount?: number;
     packageName?: string;
     clientSnapshot?: Record<string, any>;
     commercialFieldsSnapshot?: Record<string, any>;
     totalAmount?: number;
     dealValue?: number;
+    signalAmount?: number;
     entryAmount?: number;
     balanceAmount?: number;
     paymentTerms?: Record<string, any> | string;
@@ -322,7 +416,8 @@ export const contractService = {
 
       const totalAmount = Number(params.totalAmount ?? params.dealValue ?? 0);
       const entryAmount = Number(params.entryAmount ?? 0);
-      const balanceAmount = Number(params.balanceAmount ?? Math.max(0, totalAmount - entryAmount));
+      const signalAmount = Number(params.signalAmount ?? 0);
+      const balanceAmount = Number(params.balanceAmount ?? Math.max(0, totalAmount - entryAmount - signalAmount));
 
       // Origem do contrato = origem do lead que o gerou (mesmo Master)
       let originSourceId: string | null = null;
@@ -353,13 +448,16 @@ export const contractService = {
         title: computedTitle,
         event_date: params.eventDate || null,
         event_time: params.eventTime || null,
+        closed_at: params.closedAt || new Date().toLocaleDateString('en-CA'),
         guest_count: params.guestCount || 0,
         package_name: params.packageName || null,
         client_snapshot: params.clientSnapshot || {},
         commercial_fields_snapshot: params.commercialFieldsSnapshot || {},
         total_amount: totalAmount,
+        signal_amount: signalAmount,
         entry_amount: entryAmount,
         balance_amount: balanceAmount,
+        payment_summary: (typeof params.paymentTerms === 'object' ? describePlan(parsePlan(params.paymentTerms), totalAmount) : '') || null,
         payment_terms: params.paymentTerms || {},
         sdr_id: params.sdrId && isUuid(params.sdrId) ? params.sdrId : null,
         sdr_name: params.sdrName || 'Equipe Comercial',
@@ -433,6 +531,7 @@ export const contractService = {
               console.warn('[contractService.createContract] Aviso ao limpar alteracao contratual:', e);
             }
           }
+          void setLeadClosingStatus(params.masterId, originLead, 'em_fechamento');
           return mapRowToContract(updated);
         }
       }
@@ -452,6 +551,7 @@ export const contractService = {
         throw new Error(error?.message || 'Falha ao salvar contrato no banco.');
       }
 
+      void setLeadClosingStatus(params.masterId, payload.origin_lead_id as string | null, 'em_fechamento');
       return mapRowToContract(data);
     } catch (err: any) {
       console.error('Exceção em contractService.createContract:', err);
@@ -636,8 +736,16 @@ export const contractService = {
       }
       let stage = 'onboarding';
       if (funnelId) {
-        const { data: f } = await supabase.from('commercial_funnels').select('stages').eq('id', funnelId).eq('master_id', params.masterId).maybeSingle();
-        if (Array.isArray(f?.stages) && f!.stages.length > 0) stage = f!.stages[0].id || stage;
+        const { data: f } = await supabase.from('commercial_funnels').select('stages, is_entry_stage_active, enable_inbox_stage').eq('id', funnelId).eq('master_id', params.masterId).maybeSingle();
+        const isEntryActive = Boolean(f?.is_entry_stage_active || f?.enable_inbox_stage);
+        if (Array.isArray(f?.stages) && f!.stages.length > 0) {
+          if (isEntryActive) {
+            stage = f!.stages[0].id || stage;
+          } else {
+            const nonEntry = f!.stages.find((st: any) => st.id !== 'new_lead' && st.id !== 'entry');
+            stage = nonEntry?.id || f!.stages[0].id || stage;
+          }
+        }
       }
 
       const snap = (c.client_snapshot || {}) as Record<string, any>;
@@ -665,17 +773,30 @@ export const contractService = {
         funnel_id: funnelId,
         stage,
         commercial_lead_id: c.origin_lead_id || null,
+        migrated_to_contract_id: params.contractId,
       });
       if (error) { console.warn('[createClientFromContract] erro ao criar card:', error.message); return null; }
 
       const { error: linkErr } = await supabase
-        .from('contracts').update({ client_id: clientId }).eq('id', params.contractId).eq('master_id', params.masterId);
+        .from('contracts').update({ client_id: clientId, target_pos_sale_funnel_ids: funnelId ? [funnelId] : [] }).eq('id', params.contractId).eq('master_id', params.masterId);
       if (linkErr) {
         // Outro processo ligou um card primeiro (indice unico): descarta o nosso e usa o existente
         await supabase.from('clients').delete().eq('id', clientId).eq('master_id', params.masterId);
         const { data: again } = await supabase.from('contracts').select('client_id').eq('id', params.contractId).eq('master_id', params.masterId).maybeSingle();
         return (again?.client_id as string | null) || null;
       }
+
+      if (funnelId) {
+        await supabase.from('contract_funnel_placements').upsert({
+          master_id: params.masterId,
+          contract_id: params.contractId,
+          funnel_id: funnelId,
+          stage_id: stage,
+          status: 'in_progress',
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'contract_id,funnel_id' });
+      }
+
       return clientId;
     } catch (err) {
       console.warn('[createClientFromContract] excecao:', err);
@@ -689,6 +810,108 @@ export const contractService = {
    * - Tipo do evento: SO gerencia (verificado aqui, nao so na tela), motivo obrigatorio; regera o titulo do contrato.
    *   O snapshot juridico do contrato nao e reescrito.
    */
+  /**
+   * Campos CONECTADOS ao contrato: ao salvar a ficha de um card de pos-venda, os campos compartilhados sao gravados em
+   * todos os cards do mesmo contrato (clients.contract_id), no contato, na agenda e no titulo do contrato.
+   * So o historico (atividades) continua separado por setor. O snapshot juridico do contrato NAO muda.
+   * Devolve os ids dos cards irmaos atualizados (para o estado local refletir a mudanca).
+   */
+  async syncLinkedCardFields(params: { masterId: string; clientId: string; updates: Record<string, any> }): Promise<{ siblingIds: string[]; patch: Record<string, any> }> {
+    const none = { siblingIds: [] as string[], patch: {} as Record<string, any> };
+    if (!isSupabaseConfigured || !params.masterId || !isUuid(params.clientId)) return none;
+    const MAP: Record<string, string> = {
+      birthdayPersonName: 'birthday_person_name', payerName: 'payer_name', payerPhone: 'payer_phone', payerEmail: 'payer_email',
+      payerCpf: 'payer_cpf', payerAddress: 'payer_address', eventDate: 'event_date', eventTime: 'event_time', guestCount: 'guest_count',
+      eventType: 'event_type', packageSold: 'package_sold', contractTitle: 'contract_title',
+    };
+    const patch: Record<string, any> = {};
+    for (const [k, col] of Object.entries(MAP)) {
+      if (params.updates[k] !== undefined) patch[col] = params.updates[k] === '' && (col === 'event_date' || col === 'event_time') ? null : params.updates[k];
+    }
+    if (Object.keys(patch).length === 0) return none;
+    try {
+      const { data: me } = await supabase.from('clients').select('id, contract_id').eq('id', params.clientId).eq('master_id', params.masterId).maybeSingle();
+      if (!me) return none;
+      let contractId = (me.contract_id as string | null) || null;
+      if (!contractId) {
+        const { data: ct } = await supabase.from('contracts').select('id').eq('client_id', params.clientId).eq('master_id', params.masterId).maybeSingle();
+        contractId = (ct?.id as string | undefined) || null;
+        if (contractId) await supabase.from('clients').update({ contract_id: contractId }).eq('id', params.clientId).eq('master_id', params.masterId);
+      }
+      if (!contractId) return none; // card sem contrato (ex.: legado): nada a conectar
+
+      // 1. cards irmaos (todos os setores do mesmo contrato)
+      const { data: sibs } = await supabase.from('clients').select('id').eq('master_id', params.masterId).eq('contract_id', contractId).neq('id', params.clientId);
+      const siblingIds = (sibs || []).map((r: any) => r.id as string);
+      const clientPatch: Record<string, any> = { ...patch };
+      if (patch.birthday_person_name) clientPatch.name = patch.birthday_person_name;
+      if (siblingIds.length > 0) {
+        const { error } = await supabase.from('clients').update({ ...clientPatch, updated_at: new Date().toISOString() }).in('id', siblingIds).eq('master_id', params.masterId);
+        if (error) console.warn('[syncLinkedCardFields] cards irmaos:', error.message);
+      }
+
+      // 2. contrato (campos operacionais; o snapshot juridico nao muda) e titulo
+      const { data: base } = await supabase.from('clients').select('payer_name, birthday_person_name, event_type, contract_title').eq('id', params.clientId).maybeSingle();
+      const cPatch: Record<string, any> = {};
+      if (patch.event_date !== undefined) cPatch.event_date = patch.event_date;
+      if (patch.event_time !== undefined) cPatch.event_time = patch.event_time;
+      if (patch.guest_count !== undefined) cPatch.guest_count = patch.guest_count;
+      if (patch.event_type !== undefined) cPatch.event_type = patch.event_type;
+      if (patch.package_sold !== undefined) cPatch.package_name = patch.package_sold;
+      if (patch.contract_title !== undefined) { cPatch.contract_title = patch.contract_title; cPatch.title = patch.contract_title; cPatch.event_title = patch.contract_title; }
+      else if (patch.payer_name !== undefined || patch.birthday_person_name !== undefined) {
+        const { data: cr } = await supabase.from('contracts').select('contract_code').eq('id', contractId).maybeSingle();
+        const title = buildContractTitle({
+          contractors: [base?.payer_name || ''].filter(Boolean),
+          protagonists: base?.birthday_person_name ? [base.birthday_person_name] : [],
+          eventType: base?.event_type || undefined,
+          contractCode: cr?.contract_code || '',
+        });
+        if (title) {
+          cPatch.contract_title = title; cPatch.title = title; cPatch.event_title = title;
+          await supabase.from('clients').update({ contract_title: title }).eq('contract_id', contractId).eq('master_id', params.masterId);
+          patch.contract_title = title;
+        }
+      }
+      if (Object.keys(cPatch).length > 0) {
+        await supabase.from('contracts').update({ ...cPatch, updated_at: new Date().toISOString() }).eq('id', contractId).eq('master_id', params.masterId);
+      }
+
+      // 3. contato: nome e e-mail (o telefone e a chave do contato e nao e alterado por aqui)
+      if (patch.payer_name !== undefined || patch.payer_email !== undefined) {
+        const { data: cr } = await supabase.from('contracts').select('contact_id').eq('id', contractId).maybeSingle();
+        const contactPatch: Record<string, any> = {};
+        if (patch.payer_name) contactPatch.name = patch.payer_name;
+        if (patch.payer_email) contactPatch.email = patch.payer_email;
+        if (cr?.contact_id && Object.keys(contactPatch).length > 0) {
+          await supabase.from('contacts').update({ ...contactPatch, updated_at: new Date().toISOString() }).eq('id', cr.contact_id).eq('master_id', params.masterId);
+        }
+      }
+
+      // 4. agenda: o evento do contrato acompanha data, convidados e nome
+      const allIds = [params.clientId, ...siblingIds];
+      const evPatch: Record<string, any> = {};
+      if (patch.event_date) evPatch.event_date = patch.event_date;
+      if (patch.guest_count !== undefined) evPatch.guest_count = patch.guest_count;
+      if (patch.event_time !== undefined) {
+        // "20:00 às 02:00" vira inicio/fim; vazio ou ilegivel = evento de dia inteiro
+        const tm = String(patch.event_time || '').match(/(\d{1,2})\s*(?:[:h]\s*(\d{2}))?\s*(?:as|às|-|a)\s*(\d{1,2})\s*(?:[:h]\s*(\d{2}))?/i);
+        const hhmm = (h: string, m?: string) => `${h.padStart(2, '0')}:${m || '00'}`;
+        evPatch.start_time = tm ? hhmm(tm[1], tm[2]) : null;
+        evPatch.end_time = tm ? hhmm(tm[3], tm[4]) : null;
+      }
+      if (patch.contract_title) evPatch.title = patch.contract_title;
+      if (patch.payer_name) evPatch.client_name = patch.payer_name;
+      if (Object.keys(evPatch).length > 0) {
+        await supabase.from('venue_events').update({ ...evPatch, updated_at: new Date().toISOString() }).in('client_id', allIds).eq('master_id', params.masterId);
+      }
+      return { siblingIds, patch };
+    } catch (err) {
+      console.warn('[syncLinkedCardFields] falha:', err);
+      return none;
+    }
+  },
+
   async updateCardField(params: {
     clientId: string;
     masterId: string;
@@ -765,6 +988,7 @@ export const contractService = {
     looseLead: { id: string; name: string; phone: string };
     contractId: string;
     kinship: string;
+    disassociateFromContractor?: boolean;
   }): Promise<{ success: boolean; message?: string; clientId?: string; conversationLeadId?: string | null }> {
     if (!isSupabaseConfigured || !params.masterId || !isUuid(params.contractId)) return { success: false, message: 'Parâmetros inválidos.' };
     try {
@@ -772,25 +996,98 @@ export const contractService = {
         .select('id, contact_id, client_id, venue_id').eq('id', params.contractId).eq('master_id', params.masterId).maybeSingle();
       if (!c || !c.contact_id) return { success: false, message: 'Contrato sem contratante cadastrado.' };
 
-      const linked = await contactService.linkFamilyMember({
-        masterId: params.masterId,
-        parentContactId: c.contact_id,
-        name: params.looseLead.name,
-        phone: params.looseLead.phone,
-        kinship: params.kinship,
-        venueId: c.venue_id,
-      });
-      if (!linked) return { success: false, message: 'Não foi possível vincular o contato.' };
+      let isSelf = false;
+
+      // Caso o usuário confirme a desassociação do WhatsApp do contratante titular:
+      if (params.disassociateFromContractor) {
+        const { data: contractorContact } = await supabase.from('contacts')
+          .select('id, name, notes, primary_phone')
+          .eq('id', c.contact_id)
+          .eq('master_id', params.masterId)
+          .maybeSingle();
+
+        if (contractorContact) {
+          const oldPhone = contractorContact.primary_phone || params.looseLead.phone;
+          const transferNote = `[WhatsApp ${oldPhone} desassociado e transferido para ${params.kinship} (${params.looseLead.name}) em ${new Date().toLocaleDateString('pt-BR')}]`;
+          const updatedNotes = contractorContact.notes
+            ? `${contractorContact.notes}\n${transferNote}`
+            : transferNote;
+
+          await supabase.from('contacts').update({
+            primary_phone: null,
+            primary_phone_digits: '',
+            primary_phone_key: '',
+            notes: updatedNotes,
+            updated_at: new Date().toISOString()
+          }).eq('id', contractorContact.id).eq('master_id', params.masterId);
+        }
+
+        // Cria ou atualiza o contato individual da Mãe/Familiar com este WhatsApp
+        const resMember = await contactService.findOrCreateContact({
+          masterId: params.masterId,
+          name: params.looseLead.name.trim(),
+          primaryPhone: params.looseLead.phone,
+          relationshipRole: params.kinship,
+          venueId: c.venue_id,
+        });
+
+        if (resMember.contact && resMember.contact.id !== c.contact_id) {
+          // Cria o parentesco mútuo formal na Central de Contatos
+          await supabase.from('contact_dependents').upsert([
+            { master_id: params.masterId, parent_contact_id: c.contact_id, dependent_contact_id: resMember.contact.id, kinship: params.kinship.trim() },
+            { master_id: params.masterId, parent_contact_id: resMember.contact.id, dependent_contact_id: c.contact_id, kinship: reciprocalKinship(params.kinship) },
+          ], { onConflict: 'parent_contact_id,dependent_contact_id', ignoreDuplicates: true });
+        }
+      } else {
+        // Fluxo padrão sem desassociação forçada:
+        const leadDigits = (params.looseLead.phone || '').replace(/\D/g, '');
+        const kLower = (params.kinship || '').toLowerCase();
+        if (kLower.includes('titular') || kLower.includes('contratante')) {
+          isSelf = true;
+        }
+
+        if (!isSelf && leadDigits.length >= 8) {
+          const { data: parentCt } = await supabase.from('contacts').select('id, primary_phone_digits, secondary_phone_digits')
+            .eq('id', c.contact_id).maybeSingle();
+          if (parentCt) {
+            const p1 = parentCt.primary_phone_digits || '';
+            const p2 = parentCt.secondary_phone_digits || '';
+            const last8 = leadDigits.slice(-8);
+            if ((p1 && (p1.includes(last8) || last8.includes(p1))) ||
+                (p2 && (p2.includes(last8) || last8.includes(p2)))) {
+              isSelf = true;
+            }
+          }
+        }
+
+        if (!isSelf) {
+          const linked = await contactService.linkFamilyMember({
+            masterId: params.masterId,
+            parentContactId: c.contact_id,
+            name: params.looseLead.name,
+            phone: params.looseLead.phone,
+            kinship: params.kinship,
+            venueId: c.venue_id,
+          });
+          if (!linked) return { success: false, message: 'Não foi possível vincular o contato.' };
+        }
+      }
 
       let clientId = (c.client_id as string | null) || null;
       if (!clientId) clientId = await this.createClientFromContract({ contractId: c.id, masterId: params.masterId });
       let conversationLeadId: string | null = null;
       if (clientId) {
-        const { data: cl } = await supabase.from('clients').select('contacts, commercial_lead_id').eq('id', clientId).eq('master_id', params.masterId).maybeSingle();
+        const { data: cl } = await supabase.from('clients').select('contacts, commercial_lead_id, stage, funnel_id').eq('id', clientId).eq('master_id', params.masterId).maybeSingle();
         const digits = (params.looseLead.phone || '').replace(/\D/g, '');
         const list: any[] = Array.isArray(cl?.contacts) ? [...(cl!.contacts as any[])] : [];
         if (digits && !list.some(x => (x?.phone || '').replace(/\D/g, '') === digits)) {
-          list.push({ id: generateUuid(), name: params.looseLead.name, phone: params.looseLead.phone, role: params.kinship.toLowerCase(), isPrimaryDecisionMaker: false });
+          list.push({
+            id: generateUuid(),
+            name: params.looseLead.name,
+            phone: params.looseLead.phone,
+            role: isSelf ? 'titular' : params.kinship.toLowerCase(),
+            isPrimaryDecisionMaker: isSelf
+          });
         }
         conversationLeadId = (cl?.commercial_lead_id as string | null) || null;
         // Mesma pessoa com outro contrato: o card compartilha a conversa que ja existe (um numero = uma conversa)
@@ -805,10 +1102,45 @@ export const contractService = {
           }
         }
         const upd: Record<string, any> = { contacts: list, updated_at: new Date().toISOString() };
+        // REGRA SUPREMA: NUNCA alterar etapa nem resetar card ao vincular contrato
         // Card sem lead de conversa: o proprio lead solto passa a ser a conversa do card (e deixa de aparecer como solto)
         if (!conversationLeadId) upd.commercial_lead_id = params.looseLead.id;
         else if (!cl?.commercial_lead_id) upd.commercial_lead_id = conversationLeadId;
         await supabase.from('clients').update(upd).eq('id', clientId).eq('master_id', params.masterId);
+
+        // Busca o estado atual do lead para preservar estritamente funil e etapa existentes
+        const { data: curLead } = await supabase
+          .from('leads')
+          .select('stage, funnel_id')
+          .eq('id', params.looseLead.id)
+          .eq('master_id', params.masterId)
+          .maybeSingle();
+
+        const preservedStage = curLead?.stage || cl?.stage || 'onboarding';
+        const preservedFunnelId = curLead?.funnel_id || cl?.funnel_id;
+
+        // Atualiza o lead solto para apontar para o contato titular, virar is_client e ter o papel de parentesco
+        // PRESERVANDO RIGOROSAMENTE A MESMA ETAPA E O MESMO FUNIL DO CARD
+        await supabase.from('leads').update({
+          contact_id: c.contact_id,
+          is_client: true,
+          primary_contact_role: params.kinship,
+          stage: preservedStage,
+          funnel_id: preservedFunnelId || undefined,
+          updated_at: new Date().toISOString()
+        }).eq('id', params.looseLead.id).eq('master_id', params.masterId);
+
+        // Garante a colocação no funil em contract_funnel_placements sem alterar a etapa
+        if (preservedFunnelId && isUuid(preservedFunnelId)) {
+          await supabase.from('contract_funnel_placements').upsert({
+            master_id: params.masterId,
+            contract_id: c.id,
+            funnel_id: preservedFunnelId,
+            stage_id: preservedStage,
+            status: 'in_progress',
+            updated_at: new Date().toISOString(),
+          }, { onConflict: 'contract_id,funnel_id' });
+        }
       }
       return { success: true, clientId: clientId || undefined, conversationLeadId: conversationLeadId && conversationLeadId !== params.looseLead.id ? conversationLeadId : null };
     } catch (err: any) {
@@ -834,16 +1166,140 @@ export const contractService = {
     return data ? mapRowToContract(data) : null;
   },
 
-  /** Contratos aprovados que ainda NAO tem card de cliente (candidatos a vinculo), busca no banco por contrato/titulo/nome/telefone. */
-  async searchLinkableContracts(masterId: string, search: string, venueId?: string): Promise<Contract[]> {
+  /**
+   * Busca resiliente do contrato vinculado para a ficha de inspeção (Gaveta/Inspector).
+   * Tenta sucessivamente:
+   * 1. clientId (contracts.client_id = clientId)
+   * 2. contactId (contracts.contact_id = contactId)
+   * 3. leadId (origin_lead_id / lead_id)
+   * 4. telefone do cliente/lead (client_snapshot->>phone ou contacts do telefone)
+   * Se achar o contrato e este estiver sem client_id, cria e vincula o card de cliente automaticamente.
+   */
+  async getContractForFicha(params: {
+    clientId?: string | null;
+    contactId?: string | null;
+    leadId?: string | null;
+    phone?: string | null;
+    masterId: string;
+  }): Promise<Contract | null> {
+    if (!isSupabaseConfigured || !params.masterId) return null;
+    const { clientId, contactId, leadId, phone, masterId } = params;
+
+    // 1. Busca por clientId
+    if (clientId && isUuid(clientId)) {
+      const { data } = await supabase.from('contracts')
+        .select('*, contact:contacts(*), venue:venues(id, name)')
+        .eq('client_id', clientId).eq('master_id', masterId).maybeSingle();
+      if (data) return mapRowToContract(data);
+    }
+
+    // 2. Busca por contactId
+    if (contactId && isUuid(contactId)) {
+      const { data } = await supabase.from('contracts')
+        .select('*, contact:contacts(*), venue:venues(id, name)')
+        .eq('contact_id', contactId).eq('master_id', masterId)
+        .order('event_date', { ascending: false, nullsFirst: false })
+        .order('created_at', { ascending: false }).limit(1).maybeSingle();
+      if (data) {
+        const ct = mapRowToContract(data);
+        if (!data.client_id) {
+          void this.createClientFromContract({ contractId: data.id, masterId });
+        }
+        return ct;
+      }
+    }
+
+    // 3. Busca por leadId
+    if (leadId && isUuid(leadId)) {
+      const { data } = await supabase.from('contracts')
+        .select('*, contact:contacts(*), venue:venues(id, name)')
+        .eq('master_id', masterId)
+        .or(`origin_lead_id.eq.${leadId},lead_id.eq.${leadId}`)
+        .order('event_date', { ascending: false, nullsFirst: false })
+        .order('created_at', { ascending: false }).limit(1).maybeSingle();
+      if (data) {
+        const ct = mapRowToContract(data);
+        if (!data.client_id) {
+          void this.createClientFromContract({ contractId: data.id, masterId });
+        }
+        return ct;
+      }
+    }
+
+    // 4. Busca por telefone
+    const phoneDigits = String(phone || '').replace(/\D/g, '');
+    if (phoneDigits.length >= 8) {
+      const last8 = phoneDigits.slice(-8);
+      const { data: contacts } = await supabase.from('contacts')
+        .select('id').eq('master_id', masterId)
+        .or(`primary_phone.ilike.%${last8}%,secondary_phone.ilike.%${last8}%`).limit(10);
+      
+      const cIds = (contacts || []).map((c: any) => c.id);
+      let q = supabase.from('contracts')
+        .select('*, contact:contacts(*), venue:venues(id, name)')
+        .eq('master_id', masterId);
+
+      if (cIds.length > 0) {
+        q = q.or(`client_snapshot->>phone.ilike.%${last8}%,contact_id.in.(${cIds.join(',')})`);
+      } else {
+        q = q.ilike('client_snapshot->>phone', `%${last8}%`);
+      }
+
+      const { data } = await q
+        .order('event_date', { ascending: false, nullsFirst: false })
+        .order('created_at', { ascending: false }).limit(1).maybeSingle();
+      if (data) {
+        const ct = mapRowToContract(data);
+        if (!data.client_id) {
+          void this.createClientFromContract({ contractId: data.id, masterId });
+        }
+        return ct;
+      }
+    }
+
+    return null;
+  },
+
+  /**
+   * Contratos aprovados que ainda NAO tem card de cliente (candidatos a vinculo), sempre da UNIDADE do funil.
+   * Busca livre: contratante, contrato, aniversariante, CPF, celular e data do evento.
+   * `ref` (celular/CPF do cliente) lista primeiro os contratos desse telefone ou CPF, sem digitar nada.
+   */
+  async searchLinkableContracts(masterId: string, search: string, venueId?: string, ref?: { phones?: Array<string | null | undefined>; cpf?: string | null }): Promise<Contract[]> {
     if (!isSupabaseConfigured || !masterId) return [];
     let q = supabase.from('contracts')
       .select('*, contact:contacts(*), venue:venues(id, name)')
       .eq('master_id', masterId).eq('approval_status', 'approved').is('client_id', null);
     if (venueId && isUuid(venueId)) q = q.eq('venue_id', venueId);
+
+    if (!search.trim() && ref) {
+      const parts: string[] = [];
+      const phoneKeys = (ref.phones || []).map(p => String(p || '').replace(/\D/g, '').slice(-8)).filter(k => k.length === 8);
+      const cpfDigits = String(ref.cpf || '').replace(/\D/g, '');
+      if (cpfDigits.length === 11) {
+        parts.push(`client_snapshot->>cpf.ilike.%${cpfDigits}%`);
+        parts.push(`client_snapshot->>cpf.ilike.%${cpfDigits.slice(0, 3)}.${cpfDigits.slice(3, 6)}.${cpfDigits.slice(6, 9)}-${cpfDigits.slice(9)}%`);
+      }
+      const contactIds = new Set<string>();
+      for (const k of phoneKeys) {
+        const { data: cs } = await supabase.from('contacts').select('id').eq('master_id', masterId).or(`primary_phone.ilike.%${k},secondary_phone.ilike.%${k}`).limit(50);
+        (cs || []).forEach((c: any) => contactIds.add(c.id));
+        parts.push(`client_snapshot->>phone.ilike.%${k.slice(0, 4)}%${k.slice(4)}`);
+      }
+      if (cpfDigits.length === 11) {
+        const { data: cs } = await supabase.from('contacts').select('id').eq('master_id', masterId).eq('cpf_digits', cpfDigits).limit(50);
+        (cs || []).forEach((c: any) => contactIds.add(c.id));
+      }
+      if (contactIds.size) parts.push(`contact_id.in.(${Array.from(contactIds).join(',')})`);
+      if (parts.length === 0) return [];
+      q = q.or(parts.join(','));
+      const { data } = await q.order('event_date', { ascending: true }).limit(20);
+      return (data || []).map(mapRowToContract);
+    }
+
     const filter = await buildContractSearchFilter(masterId, search);
     if (filter) q = q.or(filter);
-    const { data } = await q.order('created_at', { ascending: false }).limit(10);
+    const { data } = await q.order('created_at', { ascending: false }).limit(15);
     return (data || []).map(mapRowToContract);
   },
 
@@ -903,6 +1359,58 @@ export const contractService = {
     }
   },
 
+  /**
+   * Define SDR e/ou Closer em um ou varios contratos (marcacao em lote pelo gerente comercial).
+   * Cada papel so e alterado se vier informado (undefined = nao mexe; id null = deixa sem responsavel).
+   * O que existia fica no historico do proprio contrato (commercial_fields_snapshot.teamChanges).
+   */
+  async updateSalesTeam(params: {
+    masterId: string;
+    contractIds: string[];
+    sdr?: { id: string | null; name: string };
+    closer?: { id: string | null; name: string };
+    author: { id?: string; name?: string; role?: string };
+  }): Promise<{ success: boolean; updated: number; message?: string }> {
+    if (!isSupabaseConfigured || !params.masterId || params.contractIds.length === 0) return { success: false, updated: 0, message: 'Parâmetros inválidos.' };
+    if (!params.sdr && !params.closer) return { success: false, updated: 0, message: 'Nada para alterar.' };
+    try {
+      const ids = params.contractIds.filter(isUuid);
+      let updated = 0;
+      for (let i = 0; i < ids.length; i += 50) {
+        const chunk = ids.slice(i, i + 50);
+        const { data: rows, error } = await supabase
+          .from('contracts')
+          .select('id, sdr_id, sdr_name, closer_id, closer_name, commercial_fields_snapshot')
+          .eq('master_id', params.masterId)
+          .in('id', chunk);
+        if (error) return { success: false, updated, message: error.message };
+        const now = new Date().toISOString();
+        const results = await Promise.all((rows || []).map(async (r: any) => {
+          const snap = { ...(r.commercial_fields_snapshot || {}) } as Record<string, any>;
+          const history: any[] = Array.isArray(snap.teamChanges) ? [...snap.teamChanges] : [];
+          const patch: Record<string, any> = { updated_at: now };
+          const apply = (field: 'sdr' | 'closer', next?: { id: string | null; name: string }) => {
+            if (!next) return;
+            history.push({ at: now, by: params.author.name || 'Equipe', byRole: params.author.role || null, field, from: r[field + '_name'] || null, to: next.id ? next.name : null });
+            patch[field + '_id'] = next.id && isUuid(next.id) ? next.id : null;
+            patch[field + '_name'] = next.id ? next.name : '';
+            patch[field + '_email'] = null;
+          };
+          apply('sdr', params.sdr);
+          apply('closer', params.closer);
+          patch.commercial_fields_snapshot = { ...snap, teamChanges: history };
+          const { error: upErr } = await supabase.from('contracts').update(patch).eq('id', r.id).eq('master_id', params.masterId);
+          return !upErr;
+        }));
+        updated += results.filter(Boolean).length;
+      }
+      return { success: updated > 0, updated, message: updated === 0 ? 'Nenhum contrato foi atualizado.' : undefined };
+    } catch (err: any) {
+      return { success: false, updated: 0, message: err?.message || 'Erro ao salvar responsáveis.' };
+    }
+  },
+
+
   /** Registra no historico uma mudanca ja gravada pela tela (convidados/data): quem, quando, antes -> depois. */
   async logCardChange(params: {
     clientId: string; masterId: string; field: 'guest_count' | 'event_date';
@@ -940,6 +1448,95 @@ export const contractService = {
   },
 
   /**
+   * Requisitos para o contrato cair em "Preenchido" (fica disponivel para o financeiro).
+   * Devolve a lista do que falta; vazia = pode seguir.
+   */
+  getFillMissing(c: { contractFileUrl?: string | null; paymentFileUrl?: string | null; attachments?: any[]; totalAmount?: number; signalAmount?: number; paymentTerms?: any; eventDate?: string | null; guestCount?: number | null; clientSnapshot?: Record<string, any> | null; closerName?: string; sdrName?: string }): string[] {
+    const missing: string[] = [];
+    const hasSigned = Boolean(c.contractFileUrl) || (c.attachments || []).some((a: any) => /contrato|assinad/i.test(`${a?.type || ''} ${a?.name || ''}`));
+    if (!hasSigned) missing.push('Contrato assinado anexado');
+    if ((c.signalAmount || 0) > 0 && !c.paymentFileUrl && !(c.attachments || []).some((a: any) => /comprov|pagamento|pix/i.test(`${a?.type || ''} ${a?.name || ''}`))) missing.push('Comprovante do sinal');
+    if (!(Number(c.totalAmount) > 0)) missing.push('Valor da venda');
+    const plan = parsePlan(c.paymentTerms);
+    if (!plan || plan.items.length === 0) missing.push('Condições de pagamento (sinal, entrada e parcelas)');
+    const snap = c.clientSnapshot || {};
+    if (!(snap.name || snap.payerName) || !snap.phone) missing.push('Nome e telefone do contratante');
+    if (!c.eventDate) missing.push('Data da festa');
+    if (!(Number(c.guestCount) > 0)) missing.push('Número de convidados');
+    return missing;
+  },
+
+  /**
+   * Dados do fechamento preenchidos pelo closer (contrato assinado, comprovante, plano de pagamento).
+   * Sinal, entrada, saldo e a descricao em texto saem do plano. So enquanto o contrato nao foi aprovado.
+   */
+  async saveClosingData(params: {
+    contractId: string;
+    masterId: string;
+    contractFileUrl?: string;
+    paymentFileUrl?: string;
+    plan?: import('../utils/paymentPlan').PaymentPlan;
+  }): Promise<{ success: boolean; message?: string }> {
+    if (!isSupabaseConfigured || !params.contractId || !params.masterId) return { success: false, message: 'Parâmetros inválidos.' };
+    const { data: row } = await supabase.from('contracts').select('approval_status, total_amount').eq('id', params.contractId).eq('master_id', params.masterId).maybeSingle();
+    if (!row) return { success: false, message: 'Contrato não encontrado.' };
+    if (row.approval_status !== 'pending_approval') return { success: false, message: 'Contrato já aprovado: alterações passam pelo financeiro.' };
+    const patch: Record<string, any> = { updated_at: new Date().toISOString() };
+    if (params.contractFileUrl !== undefined) patch.contract_file_url = params.contractFileUrl;
+    if (params.paymentFileUrl !== undefined) patch.payment_file_url = params.paymentFileUrl;
+    if (params.plan) {
+      const total = Number(row.total_amount || 0);
+      const { signal, entry } = planSignalEntry(params.plan);
+      patch.payment_terms = { ...params.plan, source: 'venda' };
+      patch.signal_amount = signal;
+      patch.entry_amount = entry;
+      patch.balance_amount = Math.max(0, total - signal - entry);
+      patch.payment_summary = describePlan(params.plan, total) || null;
+    }
+    const { error } = await supabase.from('contracts').update(patch).eq('id', params.contractId).eq('master_id', params.masterId);
+    return error ? { success: false, message: error.message } : { success: true };
+  },
+
+  /** Move o contrato entre as etapas de fechamento. Ao chegar em "Preenchido" valida os requisitos e envia ao financeiro. */
+  async setFillStage(params: {
+    contractId: string;
+    masterId: string;
+    stage: 'pendente' | 'aguardando_assinatura' | 'juntando_documentos' | 'preenchido';
+    contract?: Contract;
+  }): Promise<{ success: boolean; message?: string; missing?: string[] }> {
+    if (!isSupabaseConfigured || !params.contractId || !params.masterId) return { success: false, message: 'Parâmetros inválidos.' };
+    try {
+      const { data: row, error: rErr } = await supabase
+        .from('contracts')
+        .select('*')
+        .eq('id', params.contractId)
+        .eq('master_id', params.masterId)
+        .maybeSingle();
+      if (rErr || !row) return { success: false, message: 'Contrato não encontrado.' };
+      if (row.approval_status !== 'pending_approval') return { success: false, message: 'Este contrato já foi aprovado.' };
+
+      if (params.stage === 'preenchido') {
+        const c = mapRowToContract(row);
+        const missing = this.getFillMissing(c);
+        if (missing.length > 0) return { success: false, message: 'Faltam itens para marcar como preenchido.', missing };
+      }
+      const patch: Record<string, any> = { fill_stage: params.stage, updated_at: new Date().toISOString() };
+      // Ajuste feito pelo closer: o recado do financeiro some quando ele reenvia
+      if (params.stage === 'preenchido') patch.finance_message = null;
+      const { error } = await supabase.from('contracts').update(patch).eq('id', params.contractId).eq('master_id', params.masterId);
+      if (error) return { success: false, message: error.message };
+
+      if (params.stage === 'preenchido') {
+        await financeService.submitReview({ masterId: params.masterId, contractId: params.contractId, plan: parsePlan(row.payment_terms) });
+      }
+      void setLeadClosingStatus(params.masterId, row.origin_lead_id || row.lead_id, params.stage === 'preenchido' ? 'financeiro' : 'em_fechamento');
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, message: err.message || 'Erro ao mover o contrato.' };
+    }
+  },
+
+  /**
    * Homologa o Contrato na Mesa de Aprovação:
    * - Permissão estrita: apenas gerente_comercial, gerente_geral ou master
    * - Restringe os funis de pós-venda selecionados à MESMA unidade do contrato
@@ -949,8 +1546,10 @@ export const contractService = {
     contractId: string;
     masterId: string;
     approverUser: { id: string; name: string; role: string };
-    targetPosSaleFunnelIds: string[];
+    targetPosSaleFunnelIds?: string[];
     lockEventDate?: boolean;
+    /** Aprovacao feita pelo financeiro (fluxo novo): sem checagem de alcada da gerencia e sem reenviar ao financeiro. */
+    fromFinance?: boolean;
   }): Promise<{ success: boolean; contract?: Contract; message?: string }> {
     if (!isSupabaseConfigured || !params.contractId || !params.masterId) {
       return { success: false, message: 'Parâmetros inválidos.' };
@@ -958,7 +1557,7 @@ export const contractService = {
 
     // 1. Verificação Rígida de Alçada
     const allowedRoles = ['master', 'gerente_geral', 'gerente_comercial', 'admin', 'dev'];
-    if (!allowedRoles.includes(params.approverUser.role)) {
+    if (!params.fromFinance && !allowedRoles.includes(params.approverUser.role)) {
       return {
         success: false,
         message: 'Apenas Gerente Comercial, Gerente Geral ou Master têm autorização para homologar contratos.',
@@ -978,16 +1577,24 @@ export const contractService = {
         return { success: false, message: 'Contrato não encontrado.' };
       }
 
+      // Aprovacao do financeiro: so age em contrato ainda na fila (os importados ja nascem aprovados)
+      if (params.fromFinance && contractRow.approval_status !== 'pending_approval') {
+        return { success: true, contract: mapRowToContract(contractRow) };
+      }
+
       const contractVenueId = contractRow.venue_id;
 
       // 3. Validação dos funis selecionados (devem pertencer à MESMA unidade)
       let validFunnelIds: string[] = [];
-      if (params.targetPosSaleFunnelIds && params.targetPosSaleFunnelIds.length > 0) {
+      const wantedFunnelIds = (params.targetPosSaleFunnelIds && params.targetPosSaleFunnelIds.length > 0)
+        ? params.targetPosSaleFunnelIds
+        : ((contractRow.target_pos_sale_funnel_ids as string[] | null) || []);
+      if (wantedFunnelIds.length > 0) {
         const { data: funnels } = await supabase
           .from('commercial_funnels')
           .select('id, venue_id, stages')
           .eq('master_id', params.masterId)
-          .in('id', params.targetPosSaleFunnelIds);
+          .in('id', wantedFunnelIds);
 
         // Filtra estritamente os funis da mesma unidade
         validFunnelIds = (funnels || [])
@@ -1024,6 +1631,8 @@ export const contractService = {
           approved_by: params.approverUser.id && isUuid(params.approverUser.id) ? params.approverUser.id : null,
           approved_by_name: params.approverUser.name,
           approved_by_role: params.approverUser.role,
+          fill_stage: 'preenchido',
+          finance_message: null,
           approved_at: new Date().toISOString(),
           target_pos_sale_funnel_ids: validFunnelIds,
           updated_at: new Date().toISOString(),
@@ -1082,6 +1691,8 @@ export const contractService = {
         try {
           const clientId = contractRow.client_id as string | null;
           const originLeadId = contractRow.origin_lead_id as string | null;
+          // Liga o card ao contrato (todos os cards irmaos nascem copiando este vinculo)
+          if (clientId) await supabase.from('clients').update({ migrated_to_contract_id: params.contractId }).eq('id', clientId).eq('master_id', params.masterId).is('migrated_to_contract_id', null);
           let baseClient: Record<string, any> | null = null;
           if (clientId) {
             const { data: c } = await supabase.from('clients').select('*').eq('id', clientId).eq('master_id', params.masterId).maybeSingle();
@@ -1115,6 +1726,14 @@ export const contractService = {
         }
       }
 
+      // Financeiro: o contrato homologado cai na fila de aprovacao do plano de pagamento (em paralelo ao pos-venda)
+      if (!params.fromFinance) try {
+        await financeService.submitReview({ masterId: params.masterId, contractId: params.contractId, plan: parsePlan((updated as any).payment_terms) });
+      } catch (finErr) {
+        console.warn('[approveContract] Aviso ao enviar ao financeiro:', finErr);
+      }
+
+      void setLeadClosingStatus(params.masterId, contractRow.origin_lead_id || contractRow.lead_id, 'ganho');
       return {
         success: true,
         contract: mapRowToContract(updated),
@@ -1998,8 +2617,13 @@ function mapRowToContract(row: any): Contract {
     clientSnapshot: row.client_snapshot || {},
     commercialFieldsSnapshot: row.commercial_fields_snapshot || {},
     totalAmount,
+    signalAmount: Number(row.signal_amount ?? 0),
+    closedAt: row.closed_at || undefined,
     entryAmount,
     balanceAmount,
+    paymentSummary: row.payment_summary || undefined,
+    fillStage: (row.fill_stage || 'pendente') as Contract['fillStage'],
+    financeMessage: row.finance_message || undefined,
     contractValue: totalAmount,
     paymentTerms: row.payment_terms,
     sdrId: row.sdr_id,

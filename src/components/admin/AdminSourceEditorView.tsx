@@ -11,6 +11,7 @@ import { useAdminState } from '../../context/AdminStateContext';
 import { uazapiService } from '../../services/uazapiService';
 import { AdminAddSubSourceModal } from './AdminAddSubSourceModal';
 import { AdminWhatsAppConnectModal } from './AdminWhatsAppConnectModal';
+import { isFinanceSource } from '../../utils/financeSource';
 import { AdminSourceFunnelSelectModal } from './AdminSourceFunnelSelectModal';
 import { formatPhone } from '../../utils/phoneFormatter';
 import type { Source, SourceType, FormField, WhatsAppSubSource } from '../../types/sources';
@@ -2012,7 +2013,7 @@ export const AdminSourceEditorView: React.FC<AdminSourceEditorViewProps> = ({
       }}>
         {/* Excluir Origem (Seguro, apenas na edição e não-referral) */}
         <div>
-          {currentSourceId && sourceToEdit?.type !== 'referral' && (
+          {currentSourceId && sourceToEdit?.type !== 'referral' && !isFinanceSource(sourceToEdit) && (
             <button
               type="button"
               onClick={handleDeleteSource}

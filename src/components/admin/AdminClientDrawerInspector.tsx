@@ -2,15 +2,16 @@ import { Select } from '../ui';
 import { usePresenceContext } from '../../hooks/usePresence';
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { 
-  ChevronDown, Check, 
+  ChevronDown, ChevronUp, Check, 
   Users, Sparkles, ExternalLink, 
   FileText, Copy, Plus, Trash2, Tag,
-  Shield, MessageSquare,
+  Shield, MessageSquare, Phone,
   Gift, Award, Star,
   Compass, UserPlus, CheckCircle2, Eye, X, Building2,
-  ChevronLeft, Workflow, Archive
+  ChevronLeft, Workflow, Archive, Link2, User
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { SafeAvatar } from './SafeAvatar';
 import { isPhoneMatch } from '../../services/leadService';
 import { isDependentRole, linkDependentFromFicha } from '../../utils/familyLinkSync';
 import { useAdminState } from '../../context/AdminStateContext';
@@ -22,10 +23,12 @@ import { WhatsAppBrandIcon } from './WhatsAppBrandIcon';
 import { AdminLeadReadOnlyModal } from './AdminLeadReadOnlyModal';
 import { ClientContractSection } from './ClientContractSection';
 import { AdminLinkContractModal } from './AdminLinkContractModal';
+import { AdminLinkContractorModal } from './AdminLinkContractorModal';
 import { AdminConfirmModal } from './AdminConfirmModal';
 import { isUserMaster, isUserManager } from '../../utils/accessPermissions';
 import { contractService } from '../../services/contractService';
 import { contactService } from '../../services/contactService';
+import { whatsappMediaService } from '../../services/whatsappMediaService';
 import type { Lead, ClientStage, LeadContact, ContractFunnelPlacement, Contract } from '../../types/admin';
 
 interface AdminClientDrawerInspectorProps {
@@ -34,6 +37,7 @@ interface AdminClientDrawerInspectorProps {
   onToggleCollapse?: () => void;
   onOpenDebutanteApp?: (slug: string) => void;
   onOpenFullInspector?: (clientId: string) => void;
+  onLeadMerged?: (targetLeadId: string) => void;
   readOnly?: boolean;
 }
 
@@ -90,9 +94,14 @@ const POST_SALE_STAGES: { id: ClientStage; label: string; color: string; bg: str
 
 // Funis de pos-venda realmente vinculados ao contrato (contract_funnel_placements), somente leitura.
 // Cada funil e um setor independente: a etapa so muda no Kanban do proprio funil.
-const LinkedFunnelsProgress: React.FC<{ clientId?: string }> = ({ clientId }) => {
+const LinkedFunnelsProgress: React.FC<{ clientId?: string; contractId?: string; venueId?: string }> = ({ clientId, contractId, venueId }) => {
   const { funnels, clients, currentUser } = useAdminState();
   const masterId = currentUser?.masterId || currentUser?.id || '';
+  const [isAdding, setIsAdding] = useState(false);
+  const [selectedFunnelId, setSelectedFunnelId] = useState('');
+  const [addingLoading, setAddingLoading] = useState(false);
+  const canAdd = Boolean(contractId && (isUserMaster(currentUser) || isUserManager(currentUser)));
+
   // Clicar leva ao funil (se o usuario tem acesso); a etapa so muda no quadro do proprio funil
   const openFunnel = (funnelId: string) => {
     if (!funnels.some(f => f.id === funnelId)) { toast.error('Você não tem acesso a este funil.'); return; }
@@ -127,17 +136,135 @@ const LinkedFunnelsProgress: React.FC<{ clientId?: string }> = ({ clientId }) =>
   });
   const average = rows.length > 0 ? Math.round(rows.reduce((s, r) => s + r.percent, 0) / rows.length) : 0;
 
+  // Funis de pós-venda da mesma unidade física que ainda não estão vinculados
+  const availableFunnels = (funnels || []).filter(f => {
+    const isPostSale = (f as any).type === 'pos_venda' || (f as any).isPostSale;
+    if (!isPostSale) return false;
+    if (venueId && f.venueId && f.venueId !== venueId) return false;
+    if (rows.some(r => r.p.funnelId === f.id)) return false;
+    return true;
+  });
+
+  const handleLinkNewFunnel = async () => {
+    if (!selectedFunnelId || !contractId || !masterId) return;
+    setAddingLoading(true);
+    try {
+      const ok = await contractService.addContractPlacement({
+        contractId,
+        funnelId: selectedFunnelId,
+        masterId,
+      });
+      if (ok) {
+        toast.success('Contrato vinculado ao funil com sucesso!');
+        setIsAdding(false);
+        setSelectedFunnelId('');
+        load();
+      } else {
+        toast.error('Não foi possível vincular ao funil.');
+      }
+    } catch {
+      toast.error('Erro ao vincular ao funil.');
+    } finally {
+      setAddingLoading(false);
+    }
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '10px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.72rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
           <Workflow size={12} color="#8B5CF6" />
-          <span>Funis do Contrato</span>
+          <span>Funis Relacionados</span>
+          {canAdd && availableFunnels.length > 0 && !isAdding && (
+            <button
+              type="button"
+              onClick={() => setIsAdding(true)}
+              title="Vincular a outro funil de pós-venda da unidade"
+              style={{
+                width: '18px',
+                height: '18px',
+                borderRadius: '50%',
+                background: 'rgba(139, 92, 246, 0.15)',
+                color: '#8B5CF6',
+                border: '1px solid rgba(139, 92, 246, 0.35)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                padding: 0,
+                marginLeft: '4px',
+              }}
+            >
+              <Plus size={10} strokeWidth={2.5} />
+            </button>
+          )}
         </div>
         {rows.length > 0 && (
           <span style={{ fontSize: '0.64rem', fontWeight: 800, color: '#8B5CF6' }}>Progressão média {average}%</span>
         )}
       </div>
+
+      {isAdding && (
+        <div style={{
+          padding: '8px',
+          borderRadius: '8px',
+          background: 'var(--adm-bg-input)',
+          border: '1px solid var(--adm-border)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '6px',
+        }}>
+          <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--adm-text-title)' }}>
+            Selecione o Funil de Pós-Venda:
+          </span>
+          <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+            <Select
+              value={selectedFunnelId}
+              onChange={(e) => setSelectedFunnelId(e.target.value)}
+              style={{ flex: 1, height: '28px', fontSize: '0.72rem' }}
+            >
+              <option value="">Selecione um funil...</option>
+              {availableFunnels.map(f => (
+                <option key={f.id} value={f.id}>{f.name}</option>
+              ))}
+            </Select>
+            <button
+              type="button"
+              disabled={!selectedFunnelId || addingLoading}
+              onClick={handleLinkNewFunnel}
+              style={{
+                padding: '4px 10px',
+                borderRadius: '6px',
+                border: 'none',
+                background: '#8B5CF6',
+                color: '#FFF',
+                fontSize: '0.68rem',
+                fontWeight: 800,
+                cursor: selectedFunnelId && !addingLoading ? 'pointer' : 'default',
+                opacity: selectedFunnelId && !addingLoading ? 1 : 0.5,
+              }}
+            >
+              {addingLoading ? '...' : 'Vincular'}
+            </button>
+            <button
+              type="button"
+              onClick={() => { setIsAdding(false); setSelectedFunnelId(''); }}
+              style={{
+                padding: '4px 8px',
+                borderRadius: '6px',
+                border: '1px solid var(--adm-border)',
+                background: 'transparent',
+                color: 'var(--adm-text-muted)',
+                fontSize: '0.68rem',
+                cursor: 'pointer',
+              }}
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+
       {placements === null ? (
         <span style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)' }}>Carregando...</span>
       ) : rows.length === 0 ? (
@@ -171,6 +298,7 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
   onStageChange,
   onToggleCollapse,
   onOpenDebutanteApp,
+  onLeadMerged,
   readOnly = false,
 }) => {
   const { 
@@ -187,8 +315,31 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
     linkClientDebutante,
     addDebutanteAccount,
     currentUser,
+    sources = [],
   } = useAdminState();
   usePresenceContext(lead ? { type: 'client', id: lead.id, label: lead.debutanteName } : null);
+
+  // Sincronização automática de fotos com a Central de Contatos (TTL de 7 dias)
+  useEffect(() => {
+    if (!lead || !sources || sources.length === 0) return;
+    const activeSrc = sources.find(s => s.status === 'active' && ((s as any).token || s.configuration?.token));
+    const token = (activeSrc as any)?.token || activeSrc?.configuration?.token;
+    const mid = currentUser?.masterId || currentUser?.id;
+    if (!token || !mid) return;
+
+    const phonesToCheck = new Set<string>();
+    if (lead.phone) phonesToCheck.add(lead.phone.replace(/\D/g, ''));
+    if ((lead as any).payerPhone) phonesToCheck.add((lead as any).payerPhone.replace(/\D/g, ''));
+    ((lead as any).contacts || []).forEach((c: any) => {
+      if (c?.phone) phonesToCheck.add(c.phone.replace(/\D/g, ''));
+    });
+
+    phonesToCheck.forEach(ph => {
+      if (ph.length >= 8) {
+        whatsappMediaService.syncContactAvatar({ phone: ph }, token, mid).catch(() => {});
+      }
+    });
+  }, [lead?.id]);
 
   const [activeTab, setActiveTab] = useState<'ficha' | 'debutante' | 'comercial'>('ficha');
   const [copiedLink, setCopiedLink] = useState(false);
@@ -206,6 +357,27 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
   const [newContactPhone, setNewContactPhone] = useState('');
   const [newContactRole, setNewContactRole] = useState<'copayer' | 'mother' | 'father' | 'guardian' | 'dependent' | 'self' | 'other'>('copayer');
   const [newContactEmail, setNewContactEmail] = useState('');
+  const [isContractorExpanded, setIsContractorExpanded] = useState(false);
+  const [expandedContactIds, setExpandedContactIds] = useState<Record<string, boolean>>({});
+
+  const resolveAvatarForPhone = (phone?: string): string | undefined => {
+    if (!phone) return undefined;
+    const digits = phone.replace(/\D/g, '');
+    if (!digits || digits.length < 8) return undefined;
+    const last8 = digits.slice(-8);
+    if (leads && leads.length > 0) {
+      const l = leads.find(ld => {
+        const p = (ld.phone || '').replace(/\D/g, '');
+        return p.endsWith(last8) || (ld.contacts || []).some((c: any) => (c.phone || '').replace(/\D/g, '').endsWith(last8));
+      });
+      if (l) {
+        if (l.avatarUrl) return l.avatarUrl;
+        const cf = l.customFieldValues || (l as any).custom_field_values;
+        if (cf?.avatarUrl) return cf.avatarUrl;
+      }
+    }
+    return undefined;
+  };
   const [newContactCpf, setNewContactCpf] = useState('');
   const [newContactIsDecisor, setNewContactIsDecisor] = useState(false);
 
@@ -293,9 +465,16 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
   // Gestor de Sucesso responsável
   const successManagerCollab = useMemo(() => {
     const sId = client?.assignedSuccessManagerId || client?.assignedToId || lead.sdrId;
-    if (sId) return collaborators.find(c => c.id === sId);
+    if (sId) {
+      const found = collaborators.find(c => c.id === sId);
+      if (found) return found;
+    }
     const sName = client?.assignedSuccessManagerName || client?.assignedTo || lead.assignedTo;
-    if (sName) return collaborators.find(c => c.name === sName);
+    if (sName) {
+      const found = collaborators.find(c => c.name === sName);
+      if (found) return found;
+      return { id: sId || 'assigned-sm', name: sName, email: '', role: 'pos_venda' } as any;
+    }
     return undefined;
   }, [collaborators, client, lead]);
 
@@ -305,7 +484,71 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
   const fichaMasterId = (client as any)?.masterId || currentUser?.masterId || currentUser?.id || '';
   const [linkedContract, setLinkedContract] = useState<Contract | null>(null);
   const [contractLoading, setContractLoading] = useState(true);
+
+  // Se encontrou linkedContract mas o client ainda não está no state pelo lead.id, tenta achar pelo linkedContract.clientId
+  const matchedClient = useMemo(() => {
+    if (client) return client;
+    if (linkedContract?.clientId) {
+      return clients.find(c => c.id === linkedContract.clientId) || null;
+    }
+    return null;
+  }, [client, linkedContract?.clientId, clients]);
+
+  // Cliente derivado / sintetizado caso o card do pós-venda ainda esteja sincronizando com o contrato
+  const effectiveClient = useMemo(() => {
+    if (matchedClient) return matchedClient;
+    if (!linkedContract) return null;
+    const snap = (linkedContract.clientSnapshot || {}) as any;
+    const venueName = (linkedContract as any).venue?.name || venues?.find((v: any) => v.id === linkedContract.venueId)?.name || '';
+    return {
+      id: linkedContract.clientId || lead.id,
+      code: linkedContract.contractCode || lead.code || 'CLI-000000',
+      name: snap.birthdayPersonName || linkedContract.contractTitle || linkedContract.title || lead.name,
+      contractTitle: linkedContract.contractTitle || linkedContract.title,
+      payerName: snap.payerName || linkedContract.contact?.name || snap.name || lead.name,
+      payerPhone: snap.phone || linkedContract.contact?.primaryPhone || lead.phone,
+      payerEmail: snap.email || linkedContract.contact?.email || lead.email,
+      payerCpf: snap.cpf || linkedContract.contact?.cpf || (lead as any).cpf,
+      birthdayPersonName: snap.birthdayPersonName || '',
+      eventType: linkedContract.eventType || '15 Anos',
+      eventDate: linkedContract.eventDate || null,
+      eventTime: linkedContract.eventTime || null,
+      guestCount: linkedContract.guestCount || 0,
+      venueId: linkedContract.venueId || lead.venueId,
+      venueName,
+      packageSold: linkedContract.packageName || '',
+      dealValue: linkedContract.totalAmount || 0,
+      stage: 'onboarding',
+      contacts: [],
+      notes: linkedContract.notes || '',
+      documents: [],
+      activities: [],
+      createdAt: linkedContract.createdAt || new Date().toISOString(),
+      updatedAt: linkedContract.updatedAt || new Date().toISOString(),
+      contractStatus: 'aprovado',
+      contractId: linkedContract.id,
+      masterId: fichaMasterId,
+    } as any;
+  }, [matchedClient, linkedContract, lead, fichaMasterId, venues]);
+
+  // Colaboradores de Pós-Venda filtrados pela unidade do contrato
+  const postSaleCollabs = useMemo(() => {
+    const venueId = effectiveClient?.venueId || linkedContract?.venueId || lead.venueId;
+    return collaborators.filter(c => {
+      if (venueId && c.venueIds && c.venueIds.length > 0 && !c.venueIds.includes(venueId)) {
+        return false;
+      }
+      if (venueId && c.venueId && c.venueId !== venueId && (!c.venueIds || c.venueIds.length === 0)) {
+        return false;
+      }
+      const r = (c.role || '').toLowerCase();
+      const sectors = Array.isArray((c as any).sectors) ? (c as any).sectors : [];
+      const isPostSale = r.includes('pos') || r.includes('pós') || r.includes('sucesso') || r.includes('gerente') || r.includes('master') || r.includes('admin') || sectors.some((s: string) => String(s).toLowerCase().includes('pos') || String(s).toLowerCase().includes('sucesso'));
+      return isPostSale || !r;
+    });
+  }, [collaborators, effectiveClient?.venueId, linkedContract?.venueId, lead.venueId]);
   const [isLinkContractOpen, setIsLinkContractOpen] = useState(false);
+  const [isLinkContractorOpen, setIsLinkContractorOpen] = useState(false);
   const [isDeleteClientOpen, setIsDeleteClientOpen] = useState(false);
   const canRemoveClient = isUserMaster(currentUser) || isUserManager(currentUser);
 
@@ -327,10 +570,17 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
   };
 
   const loadLinkedContract = useCallback(async () => {
-    if (!client?.id || !fichaMasterId) { setLinkedContract(null); setContractLoading(false); return; }
-    setLinkedContract(await contractService.getContractByClientId(client.id, fichaMasterId));
+    if (!fichaMasterId) { setLinkedContract(null); setContractLoading(false); return; }
+    const ct = await contractService.getContractForFicha({
+      clientId: client?.id,
+      contactId: (lead as any).contactId || (lead as any).contact_id || (client as any)?.contactId,
+      leadId: lead.id || client?.commercialLeadId,
+      phone: cardPhone || lead.phone || client?.payerPhone,
+      masterId: fichaMasterId,
+    });
+    setLinkedContract(ct);
     setContractLoading(false);
-  }, [client?.id, fichaMasterId]);
+  }, [client?.id, (lead as any).contactId, (lead as any).contact_id, (client as any)?.contactId, lead.id, client?.commercialLeadId, cardPhone, lead.phone, client?.payerPhone, fichaMasterId]);
   useEffect(() => { setContractLoading(true); void loadLinkedContract(); }, [loadLinkedContract]);
   useEffect(() => {
     const onChanged = () => { void loadLinkedContract(); };
@@ -658,6 +908,51 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
           }}>
             <Shield size={10} /> {currentStage === 'completed' ? 'Festa Realizada' : (linkedContract ? 'Contrato vinculado' : 'Sem contrato')}
           </span>
+
+          {/* Badge Rápida da Unidade Vinculada */}
+          {(() => {
+            const vName = effectiveClient?.venueName || (linkedContract as any)?.venue?.name || venues?.find((v: any) => v.id === (effectiveClient?.venueId || linkedContract?.venueId || lead.venueId))?.name || (lead as any).venueName;
+            if (!vName) return null;
+            return (
+              <span style={{
+                fontSize: '0.62rem', fontWeight: 700, padding: '2px 7px', borderRadius: '6px',
+                background: 'rgba(59, 130, 246, 0.12)',
+                color: '#60A5FA',
+                border: '1px solid rgba(59, 130, 246, 0.35)',
+                display: 'inline-flex', alignItems: 'center', gap: '4px',
+              }}>
+                <Building2 size={10} /> {vName}
+              </span>
+            );
+          })()}
+
+          {!linkedContract && !readOnly && (
+            <button
+              type="button"
+              onClick={() => setIsLinkContractorOpen(true)}
+              title="Vincular este cliente a um contrato existente (este contato entra como participante/dependente)"
+              style={{
+                fontSize: '0.64rem',
+                fontWeight: 800,
+                padding: '2.5px 8px',
+                borderRadius: '6px',
+                background: '#0284C7',
+                color: '#FFFFFF',
+                border: 'none',
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
+                boxShadow: '0 1px 3px rgba(2, 132, 199, 0.35)',
+                transition: 'all 0.15s ease',
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = '#0369A1'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = '#0284C7'; }}
+            >
+              <Link2 size={11} />
+              <span>Vincular a Contrato</span>
+            </button>
+          )}
         </div>
 
         {/* ── ETAPA DO FUNIL DE PÓS-VENDA (DROPDOWN + PROGRESS BAR) ── */}
@@ -1097,7 +1392,7 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
                       background: isSuccessManagerDropdownOpen ? 'var(--adm-bg-hover)' : 'transparent',
                     }}
                   >
-                    {successManagerCollab ? (
+                    {successManagerCollab?.name || client?.assignedSuccessManagerName || client?.assignedTo || lead.assignedTo ? (
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
                         <div style={{
                           width: '20px',
@@ -1114,14 +1409,14 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
                           flexShrink: 0,
                           overflow: 'hidden',
                         }}>
-                          {successManagerCollab.avatarUrl ? (
+                          {successManagerCollab?.avatarUrl ? (
                             <img src={successManagerCollab.avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                           ) : (
-                            successManagerCollab.name.charAt(0).toUpperCase()
+                            (successManagerCollab?.name || client?.assignedSuccessManagerName || client?.assignedTo || lead.assignedTo || 'G').charAt(0).toUpperCase()
                           )}
                         </div>
                         <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--adm-text-title)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {successManagerCollab.name}
+                          {successManagerCollab?.name || client?.assignedSuccessManagerName || client?.assignedTo || lead.assignedTo}
                         </span>
                       </div>
                     ) : (
@@ -1166,7 +1461,7 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
                       >
                         Nenhum (Desatribuir)
                       </div>
-                      {collaborators.map(collab => (
+                      {(postSaleCollabs.length > 0 ? postSaleCollabs : collaborators).map(collab => (
                         <div
                           key={collab.id}
                           onClick={() => {
@@ -1223,161 +1518,268 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
               </div>
             </div>
 
-            {/* 1. Card do Contratante / Pagante */}
-            <div style={cardStyle}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
-                <span style={{ fontSize: '0.70rem', fontWeight: 800, color: 'var(--adm-accent, #06B6D4)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                  <Shield size={11} /> Contratante / Pagante
-                </span>
-                <span style={{ fontSize: '0.58rem', fontWeight: 700, padding: '1px 5px', borderRadius: '4px', background: 'rgba(6, 182, 212, 0.12)', color: '#06B6D4' }}>
-                  Decisor Principal
-                </span>
-              </div>
+            {/* 1. Card do Contratante / Pagante OU Cliente */}
+            {(() => {
+              const currentPayerName = client?.payerName || (lead as any).payerName || (!linkedContract ? (client?.name || lead.name) : '') || '';
+              const currentPayerPhone = client?.payerPhone || lead.phone || '';
+              const isFilled = Boolean(currentPayerName.trim());
 
-              <div style={cardRowStyle}>
-                <span style={cardLabelStyle}>Nome</span>
-                <div style={cardValueStyle}>
-                  <input
-                    type="text"
-                    disabled={readOnly}
-                    value={client?.payerName || (lead as any).payerName || ''}
-                    placeholder="Nome do contratante..."
-                    onChange={(e) => client && updateClient(client.id, { payerName: e.target.value })}
-                    style={seamlessInputStyle}
-                    onFocus={(e) => { e.currentTarget.style.borderBottomColor = 'var(--adm-accent)'; }}
-                    onBlur={(e) => { e.currentTarget.style.borderBottomColor = 'transparent'; }}
-                  />
-                </div>
-              </div>
-
-              <div style={cardRowStyle}>
-                <span style={cardLabelStyle}>Relação</span>
-                <div style={cardValueStyle}>
-                  <Select
-                    disabled={readOnly || !client}
-                    value={(() => {
-                      const r = String(client?.payerRelationship || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
-                      if (r === 'mother' || r.includes('mae')) return 'mother';
-                      if (r === 'father' || r.includes('pai')) return 'father';
-                      if (r === 'guardian' || r.includes('responsavel')) return 'guardian';
-                      if (r === 'self' || r.includes('proprio') || r.includes('debutante') || r.includes('aniversariante')) return 'self';
-                      if (r === 'other' || r.includes('outro')) return 'other';
-                      return '';
-                    })()}
-                    onChange={(e) => client && updateClient(client.id, { payerRelationship: (e.target.value || undefined) as any })}
-                    style={{ width: '100%', height: '30px', fontSize: '0.76rem', fontWeight: 700, borderRadius: '8px', padding: '0 8px', background: 'rgba(59, 130, 246, 0.10)', color: '#3B82F6', border: '1px solid rgba(59, 130, 246, 0.35)' }}
+              if (!isContractorExpanded && isFilled) {
+                return (
+                  <div
+                    onClick={() => setIsContractorExpanded(true)}
+                    style={{
+                      ...cardStyle,
+                      cursor: 'pointer',
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '8px 12px',
+                      transition: 'all 0.15s ease',
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--adm-accent)'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--adm-border)'; }}
                   >
-                    <option value="">Não informado</option>
-                    <option value="mother">Mãe</option>
-                    <option value="father">Pai</option>
-                    <option value="guardian">Responsável legal</option>
-                    <option value="self">Debutante / Aniversariante</option>
-                    <option value="other">Outro</option>
-                  </Select>
-                </div>
-              </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, flex: 1 }}>
+                      <SafeAvatar
+                        name={currentPayerName}
+                        src={resolveAvatarForPhone(currentPayerPhone)}
+                        size={34}
+                      />
+                      <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, gap: '2px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--adm-text-title)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {currentPayerName}
+                          </span>
+                          <span style={{ fontSize: '0.58rem', fontWeight: 700, padding: '1px 5px', borderRadius: '4px', background: 'rgba(6, 182, 212, 0.12)', color: '#06B6D4' }}>
+                            {linkedContract ? 'Contratante / Pagante' : 'Cliente'}
+                          </span>
+                          {linkedContract && (
+                            <span style={{ fontSize: '0.58rem', fontWeight: 700, padding: '1px 5px', borderRadius: '4px', background: 'rgba(16, 185, 129, 0.12)', color: '#10B981' }}>
+                              Decisor Principal
+                            </span>
+                          )}
+                        </div>
+                        {currentPayerPhone && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.68rem', color: 'var(--adm-text-muted)', fontWeight: 600 }}>
+                            <Phone size={10} />
+                            <span>{formatPhone(currentPayerPhone)}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      title="Expandir informações"
+                      onClick={(e) => { e.stopPropagation(); setIsContractorExpanded(true); }}
+                      style={{ background: 'transparent', border: 'none', color: 'var(--adm-text-muted)', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center' }}
+                    >
+                      <ChevronDown size={14} />
+                    </button>
+                  </div>
+                );
+              }
 
-              <div style={cardRowStyle}>
-                <span style={cardLabelStyle}>WhatsApp</span>
-                <div style={cardValueStyle}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', width: '100%' }}>
-                    <input
-                      type="text"
-                      disabled={readOnly}
-                      value={maskPhoneInput(client?.payerPhone || lead.phone || '')}
-                      placeholder="(00) 00000-0000"
-                      onChange={(e) => client && updateClient(client.id, { payerPhone: e.target.value })}
-                      style={seamlessInputStyle}
-                      onFocus={(e) => { e.currentTarget.style.borderBottomColor = 'var(--adm-accent)'; }}
-                      onBlur={(e) => { e.currentTarget.style.borderBottomColor = 'transparent'; }}
-                    />
-                    {(client?.payerPhone || lead.phone) && (
-                      <button
-                        type="button"
-                        onClick={() => handleDirectWhatsApp(client?.payerPhone || lead.phone)}
-                        title="Conversar no WhatsApp"
-                        style={{
-                          background: 'rgba(16, 185, 129, 0.15)',
-                          border: '1px solid rgba(16, 185, 129, 0.4)',
-                          borderRadius: '4px',
-                          color: '#10B981',
-                          padding: '2px 5px',
-                          cursor: 'pointer',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '2px',
-                          fontSize: '0.62rem',
-                          fontWeight: 700,
-                          flexShrink: 0,
+              return (
+                <div style={cardStyle}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+                    <span style={{ fontSize: '0.70rem', fontWeight: 800, color: 'var(--adm-accent, #06B6D4)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                      {linkedContract ? <Shield size={11} /> : <User size={11} />} {linkedContract ? 'Contratante / Pagante' : 'Cliente'}
+                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      {linkedContract && (
+                        <span style={{ fontSize: '0.58rem', fontWeight: 700, padding: '1px 5px', borderRadius: '4px', background: 'rgba(6, 182, 212, 0.12)', color: '#06B6D4' }}>
+                          Decisor Principal
+                        </span>
+                      )}
+                      {isFilled && (
+                        <button
+                          type="button"
+                          onClick={() => setIsContractorExpanded(false)}
+                          title="Recolher informações"
+                          style={{ background: 'transparent', border: 'none', color: 'var(--adm-text-muted)', cursor: 'pointer', padding: '2px', display: 'flex', alignItems: 'center' }}
+                        >
+                          <ChevronUp size={13} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div style={cardRowStyle}>
+                    <span style={cardLabelStyle}>Nome</span>
+                    <div style={cardValueStyle}>
+                      <input
+                        type="text"
+                        disabled={readOnly}
+                        value={currentPayerName}
+                        placeholder={linkedContract ? 'Nome do contratante...' : 'Nome do cliente...'}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          if (client) {
+                            if (!linkedContract) {
+                              updateClient(client.id, { payerName: v, name: v });
+                            } else {
+                              updateClient(client.id, { payerName: v });
+                            }
+                          } else {
+                            updateLeadData(lead.id, { payerName: v, name: !linkedContract ? v : lead.name } as any);
+                          }
                         }}
+                        style={seamlessInputStyle}
+                        onFocus={(e) => { e.currentTarget.style.borderBottomColor = 'var(--adm-accent)'; }}
+                        onBlur={(e) => { e.currentTarget.style.borderBottomColor = 'transparent'; }}
+                      />
+                    </div>
+                  </div>
+
+                  <div style={cardRowStyle}>
+                    <span style={cardLabelStyle}>Relação</span>
+                    <div style={cardValueStyle}>
+                      <Select
+                        disabled={Boolean(readOnly)}
+                        value={(() => {
+                          const r = String(
+                            client?.payerRelationship ||
+                            (lead as any)?.payerRelationship ||
+                            lead?.customFieldValues?.payerRelationship ||
+                            (lead as any)?.custom_field_values?.payerRelationship ||
+                            lead?.customFieldValues?.role ||
+                            lead?.primaryContactRole ||
+                            ''
+                          ).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+                          if (r === 'client' || r === 'cliente' || r.includes('titular') || r.includes('contratante')) return 'client';
+                          if (r === 'mother' || r.includes('mae')) return 'mother';
+                          if (r === 'father' || r.includes('pai')) return 'father';
+                          if (r === 'guardian' || r.includes('responsavel') || r.includes('financeiro')) return 'guardian';
+                          if (r === 'self' || r.includes('proprio') || r.includes('debutante') || r.includes('aniversariante')) return 'self';
+                          if (r === 'spouse' || r.includes('conjuge') || r.includes('noiv')) return 'spouse';
+                          if (r.includes('avo') || r.includes('avó') || r.includes('grandparent')) return 'grandparent';
+                          if (r.includes('tia') || r.includes('tio') || r.includes('aunt_uncle')) return 'aunt_uncle';
+                          if (r.includes('madrinha') || r.includes('padrinho') || r.includes('godparent')) return 'godparent';
+                          if (r === 'other' || r.includes('outro')) return 'other';
+                          return '';
+                        })()}
+                        onChange={(e) => {
+                          const val = e.target.value || undefined;
+                          if (client) {
+                            updateClient(client.id, { payerRelationship: val as any });
+                          }
+                          if (lead) {
+                            const cfv = { ...((lead as any).custom_field_values || lead.customFieldValues || {}), payerRelationship: val };
+                            updateLeadData(lead.id, {
+                              payerRelationship: val,
+                              primary_contact_role: val,
+                              custom_field_values: cfv,
+                              customFieldValues: cfv,
+                            } as any);
+                          }
+                        }}
+                        style={{ width: '100%', height: '30px', fontSize: '0.76rem', fontWeight: 700, borderRadius: '8px', padding: '0 8px', background: 'rgba(59, 130, 246, 0.10)', color: '#3B82F6', border: '1px solid rgba(59, 130, 246, 0.35)', cursor: 'pointer' }}
                       >
-                        <MessageSquare size={9} />
-                        <span>Zap</span>
-                      </button>
-                    )}
+                        <option value="">Não informado</option>
+                        {!linkedContract && <option value="client">Titular / Contratante</option>}
+                        <option value="mother">Mãe</option>
+                        <option value="father">Pai</option>
+                        <option value="guardian">Responsável legal / Financeiro</option>
+                        <option value="self">Debutante / Aniversariante</option>
+                        <option value="spouse">Cônjuge / Noivo(a)</option>
+                        <option value="grandparent">Avó / Avô</option>
+                        <option value="aunt_uncle">Tia / Tio</option>
+                        <option value="godparent">Madrinha / Padrinho</option>
+                        <option value="other">Outro</option>
+                      </Select>
+                    </div>
+                  </div>
+
+                  <div style={cardRowStyle}>
+                    <span style={cardLabelStyle}>WhatsApp</span>
+                    <div style={cardValueStyle}>
+                      <input
+                        type="text"
+                        disabled={readOnly}
+                        value={maskPhoneInput(currentPayerPhone)}
+                        placeholder="(00) 00000-0000"
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          if (client) updateClient(client.id, { payerPhone: v });
+                          else updateLeadData(lead.id, { phone: v.replace(/\D/g, '') } as any);
+                        }}
+                        style={seamlessInputStyle}
+                        onFocus={(e) => { e.currentTarget.style.borderBottomColor = 'var(--adm-accent)'; }}
+                        onBlur={(e) => { e.currentTarget.style.borderBottomColor = 'transparent'; }}
+                      />
+                    </div>
+                  </div>
+
+                  <div style={cardRowStyle}>
+                    <span style={cardLabelStyle}>E-mail</span>
+                    <div style={cardValueStyle}>
+                      <input
+                        type="email"
+                        disabled={readOnly}
+                        value={client?.payerEmail || lead.email || ''}
+                        placeholder="email@exemplo.com"
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          if (client) updateClient(client.id, { payerEmail: v });
+                          else updateLeadData(lead.id, { email: v } as any);
+                        }}
+                        style={seamlessInputStyle}
+                        onFocus={(e) => { e.currentTarget.style.borderBottomColor = 'var(--adm-accent)'; }}
+                        onBlur={(e) => { e.currentTarget.style.borderBottomColor = 'transparent'; }}
+                      />
+                    </div>
+                  </div>
+
+                  <div style={cardRowStyle}>
+                    <span style={cardLabelStyle}>CPF</span>
+                    <div style={cardValueStyle}>
+                      <input
+                        type="text"
+                        disabled={readOnly}
+                        value={client?.payerCpf || (lead as any)?.cpf || (lead as any)?.payerCpf || ''}
+                        placeholder="000.000.000-00"
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          if (client) updateClient(client.id, { payerCpf: v });
+                          else updateLeadData(lead.id, { cpf: v, payerCpf: v } as any);
+                        }}
+                        style={seamlessInputStyle}
+                        onFocus={(e) => { e.currentTarget.style.borderBottomColor = 'var(--adm-accent)'; }}
+                        onBlur={(e) => { e.currentTarget.style.borderBottomColor = 'transparent'; }}
+                      />
+                    </div>
+                  </div>
+
+                  <div style={cardRowStyle}>
+                    <span style={cardLabelStyle}>Cartão de crédito</span>
+                    <div style={{ ...cardValueStyle, gap: '4px' }}>
+                      {[{ v: true, l: 'Sim' }, { v: false, l: 'Não' }].map(opt => (
+                        <button
+                          key={opt.l}
+                          type="button"
+                          disabled={readOnly}
+                          onClick={() => saveCreditCard(opt.v)}
+                          style={{
+                            padding: '2px 10px',
+                            borderRadius: '6px',
+                            border: '1px solid var(--adm-border)',
+                            background: creditCard === opt.v ? (opt.v ? 'rgba(16, 185, 129, 0.15)' : 'rgba(100, 116, 139, 0.15)') : 'var(--adm-bg-input)',
+                            color: creditCard === opt.v ? (opt.v ? '#059669' : 'var(--adm-text-title)') : 'var(--adm-text-muted)',
+                            fontSize: '0.68rem',
+                            fontWeight: creditCard === opt.v ? 800 : 500,
+                            cursor: readOnly ? 'default' : 'pointer',
+                          }}
+                        >
+                          {opt.l}
+                        </button>
+                      ))}
+                      {creditCard === null && <span style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)' }}>Não informado</span>}
+                    </div>
                   </div>
                 </div>
-              </div>
-
-              <div style={cardRowStyle}>
-                <span style={cardLabelStyle}>E-mail</span>
-                <div style={cardValueStyle}>
-                  <input
-                    type="email"
-                    disabled={readOnly}
-                    value={client?.payerEmail || lead.email || ''}
-                    placeholder="email@exemplo.com"
-                    onChange={(e) => client && updateClient(client.id, { payerEmail: e.target.value })}
-                    style={seamlessInputStyle}
-                    onFocus={(e) => { e.currentTarget.style.borderBottomColor = 'var(--adm-accent)'; }}
-                    onBlur={(e) => { e.currentTarget.style.borderBottomColor = 'transparent'; }}
-                  />
-                </div>
-              </div>
-
-              <div style={cardRowStyle}>
-                <span style={cardLabelStyle}>CPF</span>
-                <div style={cardValueStyle}>
-                  <input
-                    type="text"
-                    disabled={readOnly}
-                    value={client?.payerCpf || ''}
-                    placeholder="000.000.000-00"
-                    onChange={(e) => client && updateClient(client.id, { payerCpf: e.target.value })}
-                    style={seamlessInputStyle}
-                    onFocus={(e) => { e.currentTarget.style.borderBottomColor = 'var(--adm-accent)'; }}
-                    onBlur={(e) => { e.currentTarget.style.borderBottomColor = 'transparent'; }}
-                  />
-                </div>
-              </div>
-
-              <div style={cardRowStyle}>
-                <span style={cardLabelStyle}>Cartão de crédito</span>
-                <div style={{ ...cardValueStyle, gap: '4px' }}>
-                  {[{ v: true, l: 'Sim' }, { v: false, l: 'Não' }].map(opt => (
-                    <button
-                      key={opt.l}
-                      type="button"
-                      disabled={readOnly}
-                      onClick={() => saveCreditCard(opt.v)}
-                      style={{
-                        padding: '2px 10px',
-                        borderRadius: '6px',
-                        border: '1px solid var(--adm-border)',
-                        background: creditCard === opt.v ? (opt.v ? 'rgba(16, 185, 129, 0.15)' : 'rgba(100, 116, 139, 0.15)') : 'var(--adm-bg-input)',
-                        color: creditCard === opt.v ? (opt.v ? '#059669' : 'var(--adm-text-title)') : 'var(--adm-text-muted)',
-                        fontSize: '0.68rem',
-                        fontWeight: creditCard === opt.v ? 800 : 500,
-                        cursor: readOnly ? 'default' : 'pointer',
-                      }}
-                    >
-                      {opt.l}
-                    </button>
-                  ))}
-                  {creditCard === null && <span style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)' }}>Não informado</span>}
-                </div>
-              </div>
-            </div>
+              );
+            })()}
 
             {/* Form Inline Adicionar Contato / Dependente */}
             {isAddingContact && !readOnly && (
@@ -1478,84 +1880,194 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
             )}
 
             {/* 3. Lista de Copagantes e Contatos Adicionais */}
-            {((client?.contacts || lead.contacts || [])).filter(c => c.name !== client?.payerName).map((cnt, idx) => {
-              const isCopayer = cnt.role === 'copayer' || cnt.isPrimaryDecisionMaker;
+            {((client?.contacts || lead.contacts || [])).filter(c => {
+              if (client?.payerName && c.name?.trim().toLowerCase() === client.payerName.trim().toLowerCase()) return false;
+              if ((client?.name || lead.name) && c.name?.trim().toLowerCase() === (client?.name || lead.name).trim().toLowerCase()) return false;
+              const cleanCPhone = (c.phone || '').replace(/\D/g, '');
+              const cleanLeadPhone = (lead.phone || client?.payerPhone || '').replace(/\D/g, '');
+              if (cleanCPhone && cleanLeadPhone && (cleanCPhone === cleanLeadPhone || cleanCPhone.endsWith(cleanLeadPhone.slice(-8)) || cleanLeadPhone.endsWith(cleanCPhone.slice(-8)))) {
+                return false;
+              }
+              return true;
+            }).map((cnt, idx) => {
+              const contactKey = cnt.id || `contact-${idx}`;
+              const isExpanded = Boolean(expandedContactIds[contactKey]);
+              const isCopayer = Boolean(linkedContract && (cnt.role === 'copayer' || cnt.isPrimaryDecisionMaker));
               const isDependent = cnt.role === 'dependent';
-              const roleLabel = isCopayer ? 'Copagante / Decisor' : (isDependent ? 'Dependente Familiar' : relationshipLabel(cnt.role, 'Contato'));
+              const roleLabel = isCopayer ? 'Copagante / Decisor' : (isDependent ? 'Dependente Familiar' : relationshipLabel(cnt.role, 'Contato Adicional'));
+
+              if (!isExpanded) {
+                return (
+                  <div
+                    key={contactKey}
+                    onClick={() => setExpandedContactIds(prev => ({ ...prev, [contactKey]: true }))}
+                    style={{
+                      padding: '8px 12px',
+                      borderRadius: '8px',
+                      border: '1px solid var(--adm-border)',
+                      background: 'var(--adm-bg-card)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: '10px',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease',
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--adm-accent)'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--adm-border)'; }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, flex: 1 }}>
+                      <SafeAvatar
+                        name={cnt.name}
+                        src={resolveAvatarForPhone(cnt.phone)}
+                        size={34}
+                      />
+                      <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, gap: '2px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--adm-text-title)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {cnt.name}
+                          </span>
+                          <span style={{
+                            fontSize: '0.58rem',
+                            fontWeight: 700,
+                            padding: '1px 5px',
+                            borderRadius: '4px',
+                            background: isCopayer ? 'rgba(16, 185, 129, 0.15)' : (isDependent ? 'rgba(59, 130, 246, 0.12)' : 'rgba(6, 182, 212, 0.12)'),
+                            color: isCopayer ? '#10B981' : (isDependent ? '#3B82F6' : '#06B6D4'),
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '3px',
+                          }}>
+                            {isCopayer ? <Star size={10} color="#10B981" fill="#10B981" /> : null}
+                            {roleLabel}
+                          </span>
+                        </div>
+                        {cnt.phone && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.68rem', color: 'var(--adm-text-muted)', fontWeight: 600 }}>
+                            <Phone size={10} />
+                            <span>{formatPhone(cnt.phone)}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); setExpandedContactIds(prev => ({ ...prev, [contactKey]: true })); }}
+                        title="Expandir informações"
+                        style={{ background: 'transparent', border: 'none', color: 'var(--adm-text-muted)', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center' }}
+                      >
+                        <ChevronDown size={14} />
+                      </button>
+                      {!readOnly && cnt.id && (
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); handleRemoveSubContact(cnt.id); }}
+                          title="Excluir Contato"
+                          style={{ background: 'transparent', border: 'none', color: '#EF4444', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center' }}
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              }
 
               return (
                 <div
-                  key={cnt.id || idx}
+                  key={contactKey}
                   style={{
-                    padding: '6px 10px',
-                    borderRadius: '8px',
-                    border: '1px solid var(--adm-border)',
+                    ...cardStyle,
                     background: 'var(--adm-bg-card)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    gap: '8px',
+                    border: '1px solid var(--adm-accent)',
                   }}
                 >
-                  <div style={{ minWidth: 0, flex: 1 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <span style={{ fontSize: '0.76rem', fontWeight: 700, color: 'var(--adm-text-title)' }}>
-                        {cnt.name}
-                      </span>
-                      <span style={{
-                        fontSize: '0.58rem',
-                        fontWeight: 700,
-                        padding: '1px 5px',
-                        borderRadius: '4px',
-                        background: isCopayer ? 'rgba(16, 185, 129, 0.15)' : (isDependent ? 'rgba(59, 130, 246, 0.12)' : 'rgba(6, 182, 212, 0.12)'),
-                        color: isCopayer ? '#10B981' : (isDependent ? '#3B82F6' : '#06B6D4'),
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '3px',
-                      }}>
-                        {isCopayer ? <Star size={10} color="#10B981" fill="#10B981" /> : null}
-                        {roleLabel}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <SafeAvatar name={cnt.name} src={resolveAvatarForPhone(cnt.phone)} size={26} />
+                      <span style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--adm-accent)' }}>
+                        Editar Contato
                       </span>
                     </div>
-                    <div style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)' }}>
-                      {formatPhone(cnt.phone)}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      {!readOnly && cnt.id && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveSubContact(cnt.id)}
+                          title="Excluir Contato"
+                          style={{ background: 'transparent', border: 'none', color: '#EF4444', cursor: 'pointer', padding: '2px' }}
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setExpandedContactIds(prev => ({ ...prev, [contactKey]: false }))}
+                        title="Recolher"
+                        style={{ background: 'transparent', border: 'none', color: 'var(--adm-text-muted)', cursor: 'pointer', padding: '2px' }}
+                      >
+                        <ChevronUp size={13} />
+                      </button>
                     </div>
                   </div>
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
-                    {cnt.phone && (
-                      <button
-                        type="button"
-                        onClick={() => handleDirectWhatsApp(cnt.phone)}
-                        title="Zap"
-                        style={{
-                          padding: '2px 5px',
-                          borderRadius: '4px',
-                          border: '1px solid rgba(16, 185, 129, 0.4)',
-                          background: 'rgba(16, 185, 129, 0.15)',
-                          color: '#10B981',
-                          fontSize: '0.62rem',
-                          fontWeight: 700,
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '2px',
+                  <div style={cardRowStyle}>
+                    <span style={cardLabelStyle}>Nome</span>
+                    <div style={cardValueStyle}>
+                      <input
+                        type="text"
+                        disabled={readOnly}
+                        value={cnt.name || ''}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          const updated = (client?.contacts || []).map((c: any) => c.id === cnt.id ? { ...c, name: v } : c);
+                          if (client) updateClient(client.id, { contacts: updated });
                         }}
+                        style={seamlessInputStyle}
+                      />
+                    </div>
+                  </div>
+
+                  <div style={cardRowStyle}>
+                    <span style={cardLabelStyle}>Relação</span>
+                    <div style={cardValueStyle}>
+                      <Select
+                        disabled={readOnly}
+                        value={cnt.role || 'other'}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          const updated = (client?.contacts || []).map((c: any) => c.id === cnt.id ? { ...c, role: v } : c);
+                          if (client) updateClient(client.id, { contacts: updated });
+                        }}
+                        style={{ width: '100%', height: '28px', fontSize: '0.72rem' }}
                       >
-                        <MessageSquare size={9} />
-                        <span>Zap</span>
-                      </button>
-                    )}
-                    {!readOnly && cnt.id && (
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveSubContact(cnt.id)}
-                        title="Excluir Contato"
-                        style={{ background: 'transparent', border: 'none', color: '#EF4444', cursor: 'pointer', padding: '2px' }}
-                      >
-                        <Trash2 size={11} />
-                      </button>
-                    )}
+                        <option value="copayer">Copagante</option>
+                        <option value="mother">Mãe</option>
+                        <option value="father">Pai</option>
+                        <option value="guardian">Responsável Legal</option>
+                        <option value="dependent">Dependente Familiar</option>
+                        <option value="other">Outro Contato</option>
+                      </Select>
+                    </div>
+                  </div>
+
+                  <div style={cardRowStyle}>
+                    <span style={cardLabelStyle}>WhatsApp</span>
+                    <div style={cardValueStyle}>
+                      <input
+                        type="text"
+                        disabled={readOnly}
+                        value={maskPhoneInput(cnt.phone || '')}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          const updated = (client?.contacts || []).map((c: any) => c.id === cnt.id ? { ...c, phone: v.replace(/\D/g, '') } : c);
+                          if (client) updateClient(client.id, { contacts: updated });
+                        }}
+                        style={seamlessInputStyle}
+                      />
+                    </div>
                   </div>
                 </div>
               );
@@ -1606,10 +2118,63 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
               </div>
             )}
 
+            {/* ── CONTRATO: se não tem contrato vinculado, convite claro e rápido para vincular ── */}
+            {!linkedContract && !readOnly && (
+              <div style={{
+                padding: '12px 14px',
+                borderRadius: '10px',
+                background: 'rgba(2, 132, 199, 0.08)',
+                border: '1px dashed rgba(2, 132, 199, 0.45)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '8px',
+                marginTop: '10px',
+                marginBottom: '6px',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem', fontWeight: 800, color: '#0284C7' }}>
+                    <Link2 size={14} />
+                    <span>Vincular a um Contrato Existente</span>
+                  </div>
+                  <span style={{ fontSize: '0.62rem', fontWeight: 700, padding: '2px 6px', borderRadius: '4px', background: 'rgba(2, 132, 199, 0.18)', color: '#0369A1' }}>
+                    Sem Contrato
+                  </span>
+                </div>
+                <div style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)', lineHeight: 1.45 }}>
+                  Este cliente ainda não tem contrato vinculado. Vincule-o a um contrato do sistema para reuni-lo ao titular/responsável (mãe, pai, etc.) com histórico e mensagens unificadas.
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsLinkContractorOpen(true)}
+                  style={{
+                    alignSelf: 'flex-start',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '7px 14px',
+                    borderRadius: '8px',
+                    border: 'none',
+                    background: '#0284C7',
+                    color: '#FFFFFF',
+                    fontWeight: 800,
+                    fontSize: '0.74rem',
+                    cursor: 'pointer',
+                    boxShadow: '0 1px 3px rgba(2, 132, 199, 0.25)',
+                    transition: 'all 0.15s ease',
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = '#0369A1'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = '#0284C7'; }}
+                >
+                  <Link2 size={13} />
+                  <span>Vincular a Contrato Existente</span>
+                </button>
+              </div>
+            )}
+
             {/* ── CONTRATO: vincular / dados do evento / pessoas / valores (so com contrato) ── */}
-            {client && (
+            {(client || effectiveClient) && (
               <ClientContractSection
-                client={client}
+                client={(client || effectiveClient)!}
                 contract={linkedContract}
                 loading={contractLoading}
                 masterId={fichaMasterId}
@@ -1618,19 +2183,42 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
               />
             )}
 
-            {/* ── FUNIS RELACIONADOS (somente leitura; clicar abre o funil se houver acesso) ── */}
-            <LinkedFunnelsProgress clientId={client?.id} />
+            {/* ── FUNIS RELACIONADOS (clicar abre o funil; master/gerente pode vincular outros funis de pós-venda) ── */}
+            <LinkedFunnelsProgress
+              clientId={(client || effectiveClient)?.id}
+              contractId={linkedContract?.id}
+              venueId={effectiveClient?.venueId || linkedContract?.venueId || lead.venueId}
+            />
 
-            {client && (
+            {(client || effectiveClient) && (
               <AdminLinkContractModal
                 isOpen={isLinkContractOpen}
-                clientId={client.id}
+                clientId={(client || effectiveClient)!.id}
                 masterId={fichaMasterId}
-                venueId={client.venueId || lead.venueId}
+                venueId={funnels?.find((f: any) => f.id === (client || effectiveClient)?.funnelId)?.venueId || (client || effectiveClient)?.venueId || lead.venueId}
+                venueName={venues?.find((v: any) => v.id === (funnels?.find((f: any) => f.id === (client || effectiveClient)?.funnelId)?.venueId || (client || effectiveClient)?.venueId || lead.venueId))?.name}
+                phones={[(client || effectiveClient)?.payerPhone, (client as any)?.birthdayPersonPhone, lead.phone]}
+                cpf={(client as any)?.payerCpf || (lead as any)?.cpf}
                 onClose={() => setIsLinkContractOpen(false)}
-                onLinked={(patch) => { updateClient(client.id, patch as any); void loadLinkedContract(); }}
+                onLinked={(patch) => { updateClient((client || effectiveClient)!.id, patch as any); void loadLinkedContract(); }}
               />
             )}
+
+            <AdminLinkContractorModal
+              leadId={isLinkContractorOpen ? lead.id : null}
+              venueId={lead.venueId || (lead as any).venue_id || client?.venueId}
+              onClose={() => {
+                setIsLinkContractorOpen(false);
+                void loadLinkedContract();
+              }}
+              onLinked={(_ct, conversationLeadId) => {
+                setIsLinkContractorOpen(false);
+                void loadLinkedContract();
+                if (conversationLeadId && onLeadMerged) {
+                  onLeadMerged(conversationLeadId);
+                }
+              }}
+            />
 
             <AdminConfirmModal
               isOpen={isDeleteClientOpen}

@@ -354,6 +354,30 @@ export const sourceService = {
    * - Se houver exatamente 1 funil comercial na conta: vincula automaticamente.
    * - Se houver mais de 1 funil comercial: funnelId fica vazio/pendente para o gestor definir.
    */
+  /** Garante a conexao de WhatsApp FIXA do Financeiro em toda casa (sem funil; e o unico numero usado dentro do Financeiro). */
+  async ensureFinanceSources(venues: Venue[]): Promise<void> {
+    if (!isSupabaseConfigured || venues.length === 0) return;
+    try {
+      const existing = await this.getAll();
+      for (const venue of venues) {
+        if (!isUuid(venue.id)) continue;
+        const has = existing.some(s => s.venueId === venue.id && ((s.configuration as any)?.role === 'financeiro' || (s.name || '').startsWith('Financeiro • ')));
+        if (has) continue;
+        await this.upsert({
+          id: generateUuid(),
+          venueId: venue.id,
+          name: `Financeiro • ${venue.name}`,
+          type: 'whatsapp_api',
+          funnelId: '',
+          status: 'active',
+          configuration: { role: 'financeiro', fixed: true },
+        } as any);
+      }
+    } catch (err) {
+      console.warn('Falha em sourceService.ensureFinanceSources:', err);
+    }
+  },
+
   async ensureDefaultReferralSources(venues: Venue[], funnels: CommercialFunnel[]): Promise<void> {
     if (!isSupabaseConfigured || venues.length === 0) return;
     try {

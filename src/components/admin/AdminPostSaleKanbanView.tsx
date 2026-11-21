@@ -2,13 +2,13 @@ import { Select } from '../ui';
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { HeaderActions } from './HeaderActions';
 import { 
-  Plus, Search, Kanban, Inbox, List, LayoutGrid,
+  Plus, Search, Kanban, List, LayoutGrid,
   Settings, CheckCircle2,
   ChevronDown, Clock,
   Trash2,
   Check, X, Calendar, CheckSquare,
   Copy, Building2, Layers, Users, DollarSign, ArrowRight, Pin, ShieldCheck,
-  Smartphone, ArrowRightLeft, MoreHorizontal
+  Smartphone, ArrowRightLeft, MoreHorizontal, MessageSquare
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { formatPhone } from '../../utils/phoneFormatter';
@@ -19,8 +19,10 @@ import { AdminLeadInspector } from './AdminLeadInspector';
 import { AdminCreatePostSaleFunnelModal } from './AdminCreatePostSaleFunnelModal';
 import { renderFunnelOrStageIcon } from '../../utils/funnelIconLibrary';
 import { getDefaultPostSaleFunnelId, filterExtraPostSaleLeads, matchesFunnelStrict as matchesFunnelStrictHelper } from '../../utils/funnelUtils';
+import { getClientFamilyLatestMessageTime } from '../../utils/leadSorting';
 import { AdminContractKanbanCard } from './AdminContractKanbanCard';
 import { ClientPersonKanbanCard } from './ClientPersonKanbanCard';
+import { SafeAvatar } from './SafeAvatar';
 import { contractService } from '../../services/contractService';
 import { AdminLinkContractorModal } from './AdminLinkContractorModal';
 import { toast } from 'sonner';
@@ -399,12 +401,12 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
     period: 'all' | '7d' | '30d' | '90d' | 'this_year';
     venueId: string;
     collaboratorId: string;
-    sortBy: 'recent' | 'party_date' | 'highest_value' | 'alphabetical';
+    sortBy: 'message_recent' | 'recent' | 'party_date' | 'highest_value' | 'alphabetical';
   }>({
     period: 'all',
     venueId: 'all',
     collaboratorId: 'all',
-    sortBy: 'recent',
+    sortBy: 'message_recent',
   });
 
   // Modo de Seleção Múltipla
@@ -822,7 +824,8 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
   ];
 
   const sortOptions = [
-    { id: 'recent', label: 'Mais Recentes' },
+    { id: 'message_recent', label: 'Mensagem Mais Recente' },
+    { id: 'recent', label: 'Mais Recentes (Entrada no Funil)' },
     { id: 'party_date', label: 'Data da Festa (Próxima)' },
     { id: 'highest_value', label: 'Maior Rentabilidade' },
     { id: 'alphabetical', label: 'Nome (A-Z)' },
@@ -855,6 +858,7 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
         id: l.id,
         code: l.code || `CLI-${l.id.slice(0, 5).toUpperCase()}`,
         name: l.name,
+        avatarUrl: l.avatarUrl || (l as any).photoUrl || (l as any).profilePicUrl || (l as any).custom_field_values?.avatarUrl || (l as any).customFieldValues?.avatarUrl,
         payerName: (l as any).payerName || l.name,
         payerPhone: l.phone,
         stage: (l.stage || 'onboarding') as any,
@@ -870,7 +874,7 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
         contacts: l.contacts || [],
         createdAt: l.createdAt || new Date().toISOString(),
         updatedAt: l.updatedAt || new Date().toISOString(),
-      } as Client));
+      } as unknown as Client));
 
     return [...clients, ...extraClientsFromLeads];
   }, [clients, leads, currentFunnel, postSaleFunnels, defaultPostSaleId, venues]);
@@ -879,6 +883,27 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
   const filteredClients = useMemo(() => {
     let list = allClients.filter(client => {
       if ((client as any).isRemovedFromFunnel || client.stage === 'archived') return false;
+
+      // Se for um card solto sem contrato (avulso):
+      // Se este contato já foi vinculado a um contrato oficial (como titular ou membro/contato da família),
+      // ele NÃO deve aparecer como um card solto no Kanban, pois já está representado dentro do card do contrato!
+      const isCardLoose = !(clients || []).some(c => c.id === client.id);
+      if (isCardLoose) {
+        const rawPhone = client.payerPhone || (client as any).phone || (client as any).payer_phone || '';
+        const cPhoneDigits = rawPhone.replace(/\D/g, '').slice(-8);
+        if (cPhoneDigits.length >= 8) {
+          const isPartOfContract = (clients || []).some(c => {
+            const pDigits = (c.payerPhone || (c as any).payer_phone || (c as any).phone || '').replace(/\D/g, '').slice(-8);
+            if (pDigits === cPhoneDigits) return true;
+            const contactsList = c.contacts || (c as any).contacts;
+            if (Array.isArray(contactsList) && contactsList.some((ct: any) => (ct?.phone || '').replace(/\D/g, '').slice(-8) === cPhoneDigits)) {
+              return true;
+            }
+            return false;
+          });
+          if (isPartOfContract) return false;
+        }
+      }
 
       // 0. Funil Vinculado e Unidades (Isolamento Estrito de Funis de Pós-Venda)
       if (currentFunnel) {
@@ -952,6 +977,12 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
 
     // Ordenação
     list = [...list].sort((a, b) => {
+      // 1. Mensagem mais recente trocada com QUALQUER membro da família do contrato
+      if (filterState.sortBy === 'message_recent') {
+        const timeA = getClientFamilyLatestMessageTime(a, leads || []);
+        const timeB = getClientFamilyLatestMessageTime(b, leads || []);
+        return timeB - timeA;
+      }
       if (filterState.sortBy === 'party_date') {
         const timeA = a.partyDate || a.eventDate ? new Date(a.partyDate || a.eventDate).getTime() : 9999999999999;
         const timeB = b.partyDate || b.eventDate ? new Date(b.partyDate || b.eventDate).getTime() : 9999999999999;
@@ -967,14 +998,14 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
         const nameB = (b.birthdayPersonName || b.name || '').toLowerCase();
         return nameA.localeCompare(nameB);
       }
-      // Padrão: mais recentes
+      // Padrão: mais recentes (entrada no funil)
       const timeA = new Date(a.funnelEnteredAt || a.createdAt || 0).getTime();
       const timeB = new Date(b.funnelEnteredAt || b.createdAt || 0).getTime();
       return timeB - timeA;
     });
 
     return list;
-  }, [allClients, currentFunnel, defaultPostSaleId, activeVenueId, filterState, clientOwnershipFilter, search, currentUser, venues]);
+  }, [allClients, currentFunnel, defaultPostSaleId, activeVenueId, filterState, clientOwnershipFilter, search, currentUser, venues, leads]);
 
   // Handlers para Drag-to-Scroll horizontal do Kanban (arraste livre com a mãozinha)
   const handleBoardMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -1855,7 +1886,11 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
       overflow: 'hidden',
       fontFamily: "'Plus Jakarta Sans', sans-serif",
     }}>
-      <AdminLinkContractorModal leadId={linkLeadId} onClose={() => setLinkLeadId(null)} />
+      <AdminLinkContractorModal
+        leadId={linkLeadId}
+        venueId={(currentFunnel?.venueId && currentFunnel.venueId !== 'all') ? currentFunnel.venueId : (activeVenueId !== 'all' ? activeVenueId : undefined)}
+        onClose={() => setLinkLeadId(null)}
+      />
       {/* ── 1. TOOLBAR COMPACTA PADRÃO COMERCIAL CRM ── */}
       <div style={{
         padding: '8px 16px',
@@ -2027,6 +2062,16 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
             )}
           </div>
 
+          {/* Seletor Rápido de Ordenação do Kanban */}
+          <div style={{ position: 'relative', flexShrink: 0 }}>
+            <AdminFilterDropdown
+              value={filterState.sortBy || 'message_recent'}
+              options={sortOptions}
+              onChange={(val) => setFilterState(prev => ({ ...prev, sortBy: val as any }))}
+              maxWidth="195px"
+            />
+          </div>
+
           {/* Toggle Rápido: Todos vs Em Aberto vs Meus Clientes */}
           <div style={{
             display: 'inline-flex',
@@ -2126,8 +2171,11 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
 
             <button
               type="button"
-              onClick={() => setViewMode('inbox')}
-              title="Caixa de Entrada / Chat"
+              onClick={() => {
+                setSelectedClientId(null);
+                setViewMode('inbox');
+              }}
+              title="Mensagens / Caixa de Entrada"
               style={{
                 background: viewMode === 'inbox' ? 'var(--adm-accent-bg)' : 'transparent',
                 color: viewMode === 'inbox' ? 'var(--adm-accent)' : 'var(--adm-text-muted)',
@@ -2141,7 +2189,7 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
                 transition: 'all 0.15s ease',
               }}
             >
-              <Inbox size={14} />
+              <MessageSquare size={14} />
             </button>
 
             <button
@@ -2370,7 +2418,7 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
       <div style={{ flex: 1, overflow: 'hidden', padding: viewMode === 'inbox' ? 0 : '8px 16px 20px', display: 'flex', flexDirection: 'column' }}>
         {viewMode === 'inbox' ? (
           <AdminWhatsAppWorkspaceView 
-            initialLeadId={selectedClientId || filteredClients[0]?.id || undefined}
+            initialLeadId={selectedClientId || undefined}
             activeFunnelId={currentFunnel?.id || 'post_sale_default'}
             isPostSale={true}
             isEmbeddedInFunnel={true}
@@ -2816,12 +2864,21 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
                       </td>
 
                       <td style={{ padding: '14px 16px' }}>
-                        <strong style={{ color: 'var(--adm-text-title)', display: 'block' }}>
-                          {client.birthdayPersonName || client.name}
-                        </strong>
-                        <span style={{ fontSize: '11px', color: 'var(--adm-text-muted)' }}>
-                          {client.birthdayPersonAge ? `${client.birthdayPersonAge} Anos` : ((client as any).eventType || 'Sem marcação')}
-                        </span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '9px' }}>
+                          <SafeAvatar
+                            src={client.avatarUrl || (client as any).photoUrl || (client as any).profilePicUrl || (client as any).custom_field_values?.avatarUrl}
+                            name={client.birthdayPersonName || client.name}
+                            size={30}
+                          />
+                          <div>
+                            <strong style={{ color: 'var(--adm-text-title)', display: 'block' }}>
+                              {client.birthdayPersonName || client.name}
+                            </strong>
+                            <span style={{ fontSize: '11px', color: 'var(--adm-text-muted)' }}>
+                              {client.birthdayPersonAge ? `${client.birthdayPersonAge} Anos` : ((client as any).eventType || 'Sem marcação')}
+                            </span>
+                          </div>
+                        </div>
                       </td>
 
                       <td style={{ padding: '14px 16px' }}>

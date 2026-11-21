@@ -29,6 +29,7 @@ import { useAdminState } from '../../context/AdminStateContext';
 import { taskService } from '../../services/taskService';
 import { AdminConfirmModal } from './AdminConfirmModal';
 import { getLeadStageLabel } from '../../utils/leadUtils';
+import { getUserTaskSectors, taskTypesForUser } from '../../utils/taskSector';
 import { TASK_PRIORITY_OPTIONS, getTaskPriorityConfig } from '../../utils/taskColors';
 
 export const renderTaskTypeLucideIcon = (typeName: string, size = 14) => {
@@ -284,61 +285,9 @@ export const AdminTaskDetailModal: React.FC<AdminTaskDetailModalProps> = ({
       };
     }
 
-    // Central de Tarefas Geral (default_collabs / Workspace)
+    // Central de Tarefas Geral: os tipos vem dos setores do usuario (comercial so ve os do comercial, etc.)
     const isCommercial = ['sdr', 'closer', 'crm'].includes(userRole);
-    let generalTypes: string[] = [];
-
-    if (isManagerOrAdmin) {
-      generalTypes = [
-        'Acompanhar',
-        'Geral',
-        'Administrativo',
-        'Financeiro',
-        'Operação / Montagem',
-        'Follow-up WhatsApp',
-        'Follow-up Ligação',
-        'Envio de Proposta',
-        'Reunião Comercial',
-        'Visita',
-        'Degustação',
-        'Visita Técnica',
-        'Maquiagem',
-        'Decoração',
-        'Reunião Geral',
-        'Ensaio',
-        'Alinhamento com Cerimonial',
-      ];
-    } else if (isPostSaleRole) {
-      generalTypes = [
-        'Visita',
-        'Degustação',
-        'Visita Técnica',
-        'Maquiagem',
-        'Decoração',
-        'Reunião Geral',
-        'Ensaio',
-        'Alinhamento com Cerimonial',
-        'Acompanhar',
-        'Geral',
-      ];
-    } else if (isCommercial) {
-      generalTypes = [
-        'Follow-up WhatsApp',
-        'Follow-up Ligação',
-        'Envio de Proposta',
-        'Reunião Comercial',
-        'Negociação',
-        'Acompanhar',
-        'Geral',
-      ];
-    } else {
-      generalTypes = [
-        'Acompanhar',
-        'Geral',
-        'Administrativo',
-        'Operação / Montagem',
-      ];
-    }
+    const generalTypes = taskTypesForUser(currentUser);
 
     return {
       key: 'general',
@@ -349,7 +298,7 @@ export const AdminTaskDetailModal: React.FC<AdminTaskDetailModalProps> = ({
       allowCustom: true,
       saveButtonLabel: 'Salvar Tarefa',
     };
-  }, [task?.databaseId, databaseId, initialDatabaseId, workspaceContext, initialCustomType, isManagerOrAdmin, isPostSaleRole, userRole]);
+  }, [task?.databaseId, databaseId, initialDatabaseId, workspaceContext, initialCustomType, isPostSaleRole, userRole, currentUser]);
 
   // Load custom statuses and properties
   useEffect(() => {
@@ -849,6 +798,8 @@ export const AdminTaskDetailModal: React.FC<AdminTaskDetailModalProps> = ({
       venueId: currentUser?.venueIds?.[0] || lead?.venueId || client?.venueId || undefined,
       customProperties: {
         ...(customProperties || {}),
+        // Setor da tarefa: quem pertence a um unico setor cria tarefa daquele setor (gerencia cria sem setor)
+        ...(!(customProperties || {}).sector && getUserTaskSectors(currentUser).length === 1 ? { sector: getUserTaskSectors(currentUser)[0] } : {}),
         observations: effectiveObservations || undefined,
         resolution: resolution.trim() || undefined,
         customType: customType.trim() || contextInfo.defaultType,

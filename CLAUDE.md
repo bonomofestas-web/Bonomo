@@ -101,6 +101,7 @@ Modelo de dados em evolução (ver [docs/PLANO_ACAO_CENTRAL_CONTATOS_E_CONTRATOS
 **Edição**
 - Altere **apenas os arquivos estritamente necessários**. Sem refatorações oportunistas, sem renomear, sem reformatar, sem "melhorar" código vizinho. O working tree já tem muitas modificações pendentes de outras frentes: não as toque nem as reverta.
 - Não crie arquivos novos (docs, testes, helpers) sem pedido ou necessidade clara.
+- **UI compartilhada**: dropdown, data e período no portal usam `src/components/ui` (`Select`, `DateField`, `DateRangeField`). Proibido `<select>` e `<input type="date">` nativos nas telas do portal. Antes de criar um componente, procure em `src/components/ui/` e em [docs/UI_KIT.md](docs/UI_KIT.md); se criar, registre lá.
 - Não edite `src/data/changelogData.ts`; acumule notas em `docs/CHANGELOG_STAGING.md` apenas quando solicitado.
 - Migrações: novo arquivo em `supabase/migrations/` com timestamp, idempotente (`IF NOT EXISTS`), com `master_id`. Nunca editar migração já aplicada.
 - Supabase free tier: selecionar só as colunas necessárias (evitar `select('*')` em listas grandes), filtrar canais Realtime, usar cache local, zero Base64 no banco.

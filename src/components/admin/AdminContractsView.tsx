@@ -1,19 +1,28 @@
 import { Select } from '../ui';
+import { useScreenSearch, screenQueryTerm } from '../../utils/screenSearch';
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
-  FileText, CheckCircle2, Search, Building2,
+  FileText, CheckCircle2, Building2,
   Clock, ShieldCheck, Calendar,
-  AlertTriangle, Eye, RefreshCw, X, ArrowLeft,
+  AlertTriangle, RefreshCw, X, ArrowLeft,
   User, Users, Kanban, Receipt, ArrowRightLeft,
-  Check, Send, History
+  Check, Send, History, CheckSquare
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { toast } from 'sonner';
 import { contractService } from '../../services/contractService';
+import { getExtraContractDocuments } from '../../utils/contractDocuments';
+import { ContractTeamAssignModal } from './ContractTeamAssignModal';
+import { canEditContractTeam, canSeeApprovedContracts, canViewContractDocument } from '../../utils/accessPermissions';
+import { ContractClosingWorkspace } from './contracts/ContractClosingWorkspace';
+import { paymentTextLines } from '../../utils/paymentPlan';
+import { PaymentTextList } from './contracts/PaymentTextList';
+import { ContractBoard, type BoardCard } from './contracts/ContractBoard';
 import { leadService } from '../../services/leadService';
 import { formatPhone } from '../../utils/phoneFormatter';
 import { SafeAvatar } from './SafeAvatar';
 import type { Contract, AdminTabType, ContractFunnelPlacement } from '../../types/admin';
+
 
 // Cache em memoria por (master|aba|unidade|busca): evita lista vazia ao voltar para a tela
 const contractsListCache = new Map<string, Contract[]>();
@@ -40,7 +49,13 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
     funnels,
     theme,
     collaborators,
+    getFeatureStatus,
   } = useAdminState();
+  // Com o Financeiro ligado, a aprovacao e dele; desligado (producao inicial), a gerencia homologa como antes
+  const financeEnabled = getFeatureStatus('finance') === 'active';
+  const canSeeApproved = canSeeApprovedContracts(currentUser);
+  const canViewDocs = canViewContractDocument(currentUser);
+  const canEditClosing = (currentUser?.role || '').toLowerCase() !== 'financeiro';
 
   const isLight = theme === 'light';
 
@@ -52,8 +67,13 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
   };
 
   const [activeTab, setActiveTab] = useState<'pending' | 'approved'>('pending');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedVenueFilter, setSelectedVenueFilter] = useState<string>('all');
+  // Contrato aberto na aba Em fechamento (null = quadro)
+  const [closingId, setClosingId] = useState<string | null>(null);
+  // A busca vem da barra do topo (filtra ao vivo); nao ha barra propria aqui
+  const screenSearch = useScreenSearch();
+  const searchQuery = screenQueryTerm(screenSearch);
+  const [venueFilterLocal, setSelectedVenueFilter] = useState<string>('all');
+  const selectedVenueFilter = venueFilterLocal !== 'all' ? venueFilterLocal : screenSearch.venueId;
   const cacheKey = `${currentUser?.masterId || currentUser?.id || ''}|${activeTab}|${selectedVenueFilter}|${searchQuery.trim()}`;
   // Lista inicial vem do cache (stale-while-revalidate): trocar de aba e voltar nao zera a tela
   const [contracts, setContracts] = useState<Contract[]>(() => contractsListCache.get(cacheKey) || []);
@@ -65,6 +85,13 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
   // Drawer de Detalhes do Contrato
   const [selectedContract, setSelectedContract] = useState<Contract | null>(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  // Marcacao de SDR/Closer em lote: a selecao fica guardada mesmo quando a busca muda e a linha sai da tela
+  const [pickedIds, setPickedIds] = useState<Set<string>>(new Set());
+  const [teamModalIds, setTeamModalIds] = useState<string[] | null>(null);
+  // Modo de selecao: desligado por padrao; ligado, clicar em qualquer ponto da linha marca/desmarca
+  const [selectMode, setSelectMode] = useState(false);
+  const canEditTeam = canEditContractTeam(currentUser);
+  const togglePicked = (id: string) => setPickedIds(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
 
   // Modal de Homologação (Seleção de Funis de Pós-Venda)
   const [isApproveModalOpen, setIsApproveModalOpen] = useState(false);
@@ -248,7 +275,9 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
       if (!ctr) {
         toast.info('Contrato não encontrado.');
       } else {
-        setActiveTab(ctr.approvalStatus === 'pending_approval' ? 'pending' : 'approved');
+        // Quem nao ve os aprovados (comercial) abre so os detalhes, sem trocar de aba nem ver o documento
+        if (ctr.approvalStatus === 'pending_approval') { setActiveTab('pending'); setClosingId(ctr.id); }
+        else if (canSeeApproved) setActiveTab('approved');
         handleOpenContract(ctr);
       }
       onInitialContractOpened?.();
@@ -439,7 +468,7 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
               }}
             >
               <Clock size={13} />
-              <span>Pendentes de Aprovação</span>
+              <span>Em fechamento</span>
               <span style={{
                 fontSize: '0.68rem',
                 padding: '1px 5px',
@@ -452,7 +481,7 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
               </span>
             </button>
 
-            <button
+            {canSeeApproved && <button
               onClick={() => setActiveTab('approved')}
               style={{
                 padding: '6px 14px',
@@ -481,7 +510,7 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
               }}>
                 {tabTotals.approved ?? '•'}
               </span>
-            </button>
+            </button>}
           </div>
 
           {/* Filtro de Unidades */}
@@ -541,41 +570,7 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
         justifyContent: 'space-between',
         gap: '16px',
       }}>
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '8px',
-          padding: '6px 12px',
-          borderRadius: '6px',
-          backgroundColor: colors.bgCard,
-          border: `1px solid ${colors.border}`,
-          maxWidth: '380px',
-          width: '100%',
-        }}>
-          <Search size={14} color={colors.textMuted} />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            placeholder="Buscar por CTR, cliente, CPF ou vendedor..."
-            style={{
-              background: 'transparent',
-              border: 'none',
-              outline: 'none',
-              color: colors.textTitle,
-              fontSize: '0.80rem',
-              width: '100%',
-            }}
-          />
-          {searchQuery && (
-            <button
-              onClick={() => setSearchQuery('')}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: colors.textMuted }}
-            >
-              <X size={13} />
-            </button>
-          )}
-        </div>
+        <div />
 
         {!canApproveContract && (
           <div style={{
@@ -620,190 +615,51 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
           }}>
             <FileText size={36} color={colors.textMuted} style={{ marginBottom: '12px' }} />
             <h3 style={{ margin: '0 0 6px 0', fontSize: '0.96rem', fontWeight: 700, color: colors.textTitle }}>
-              Nenhum contrato {activeTab === 'pending' ? 'aguardando aprovação' : 'aprovado'}
+              {activeTab === 'pending' ? 'Nenhuma venda em fechamento' : 'Nenhum contrato aprovado'}
             </h3>
             <p style={{ margin: 0, fontSize: '0.78rem', color: colors.textMuted, maxWidth: '420px' }}>
               {activeTab === 'pending'
-                ? 'Quando um Closer fechar uma proposta comercial no funil, ela aparecerá aqui para homologação e congelamento perpétuo.'
+                ? 'Quando um lead for arrastado para a venda, o contrato aparece aqui para o closer completar documentos e condições de pagamento.'
                 : 'Os contratos aprovados e ativos no pós-venda serão listados aqui com auditoria perpétua.'}
             </p>
           </div>
         ) : activeTab === 'pending' ? (
-          /* ======================================================== */
-          /* ABA 1: CARDS EXECUTIVOS DE VENDAS PENDENTES DE APROVAÇÃO */
-          /* ======================================================== */
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-            <div style={{ fontSize: '0.78rem', color: colors.textMuted, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span>Clique no card ou no botão para abrir a tela completa do contrato:</span>
-              <span style={{ color: colors.warning, fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                <Clock size={13} />
-                {tabTotals.pending ?? contracts.length} {(tabTotals.pending ?? contracts.length) === 1 ? 'venda aguardando decisão' : 'vendas aguardando decisão'}
-              </span>
-            </div>
-
-            {contracts.map(ctr => {
-              const clientName = ctr.clientSnapshot?.name || ctr.contact?.name || 'Cliente';
-              const clientPhone = ctr.clientSnapshot?.phone || ctr.contact?.primaryPhone || '';
-              const birthdayPerson = ctr.clientSnapshot?.birthdayPersonName || (ctr.eventTitle || '').replace(/^15 Anos\s*/i, '');
-              const totalAmount = ctr.totalAmount || ctr.contractValue || 0;
-
-              return (
-                <div
-                  key={ctr.id}
-                  onClick={() => handleOpenContract(ctr)}
-                  style={{
-                    backgroundColor: colors.bgCard,
-                    border: `1px solid ${colors.border}`,
-                    borderRadius: '10px',
-                    padding: '18px 20px',
-                    cursor: 'pointer',
-                    transition: 'border-color 0.15s ease',
-                  }}
-                  onMouseEnter={e => (e.currentTarget.style.borderColor = colors.primary)}
-                  onMouseLeave={e => (e.currentTarget.style.borderColor = colors.border)}
-                >
-                  <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px' }}>
-                    
-                    {/* Lado Esquerdo: Identificação e Dados */}
-                    <div style={{ flex: 1, minWidth: '280px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                        <span style={{
-                          fontFamily: 'monospace',
-                          fontSize: '0.76rem',
-                          fontWeight: 800,
-                          padding: '2px 7px',
-                          borderRadius: '4px',
-                          backgroundColor: isLight ? '#FEF3C7' : 'rgba(245, 158, 11, 0.15)',
-                          color: isLight ? '#B45309' : '#FBBF24',
-                          border: `1px solid ${isLight ? '#FDE68A' : 'rgba(245, 158, 11, 0.3)'}`,
-                        }}>
-                          {ctr.contractCode}
-                        </span>
-
-                        <span style={{
-                          fontSize: '0.72rem',
-                          fontWeight: 600,
-                          padding: '2px 7px',
-                          borderRadius: '4px',
-                          backgroundColor: isLight ? '#E0F2FE' : 'rgba(2, 132, 199, 0.15)',
-                          color: colors.primary,
-                        }}>
-                          {ctr.eventType === '15_anos' ? 'Festa de 15 Anos' : (ctr.eventType || 'Evento')}
-                        </span>
-
-                        <span style={{ fontSize: '0.72rem', color: colors.textMuted, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                          <Clock size={12} />
-                          Enviado em {new Date(ctr.submittedAt || ctr.createdAt).toLocaleDateString('pt-BR')}
-                        </span>
-
-                        <span style={{ fontSize: '0.72rem', color: colors.success, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                          <ShieldCheck size={12} />
-                          Contrato Assinado
-                        </span>
-                      </div>
-
-                      <div>
-                        <h3 style={{ margin: 0, fontSize: '0.98rem', fontWeight: 800, color: colors.textTitle }}>
-                          {ctr.contractTitle || ctr.title || clientName}
-                          {(!ctr.contractTitle && !ctr.title) && birthdayPerson && birthdayPerson !== clientName && (
-                            <span style={{ fontSize: '0.78rem', fontWeight: 500, color: colors.textMuted, marginLeft: '6px' }}>
-                              (Homenageada: {birthdayPerson})
-                            </span>
-                          )}
-                        </h3>
-
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginTop: '4px', fontSize: '0.76rem', color: colors.textMuted, flexWrap: 'wrap' }}>
-                          {(ctr.contractTitle || ctr.title) && (
-                            <span>Contratante: <strong style={{ color: colors.textTitle }}>{clientName}</strong></span>
-                          )}
-                          {clientPhone && (
-                            <span>{formatPhone(clientPhone)}</span>
-                          )}
-                          <span>
-                            Data: <strong style={{ color: colors.textTitle }}>{ctr.eventDate ? new Date(ctr.eventDate + 'T12:00:00').toLocaleDateString('pt-BR') : 'A definir'}</strong>
-                          </span>
-                          <span>Unidade: <strong style={{ color: colors.textTitle }}>{ctr.venueName}</strong></span>
-                        </div>
-                      </div>
-
-                      {/* Equipe Comercial */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', paddingTop: '2px' }}>
-                        {ctr.sdrName && (
-                          <div style={{ fontSize: '0.72rem', padding: '2px 8px 2px 4px', borderRadius: '4px', backgroundColor: colors.bgCardSub, border: `1px solid ${colors.borderSub}`, display: 'flex', alignItems: 'center', gap: '5px' }}>
-                            <SafeAvatar src={collabAvatar(ctr.sdrId, ctr.sdrName)} name={ctr.sdrName} size={20} />
-                            <span style={{ color: colors.textMuted, textTransform: 'uppercase', fontSize: '0.66rem', fontWeight: 700 }}>SDR:</span>
-                            <span style={{ fontWeight: 600, color: colors.textTitle }}>{ctr.sdrName}</span>
-                          </div>
-                        )}
-                        {ctr.closerName && (
-                          <div style={{ fontSize: '0.72rem', padding: '2px 8px 2px 4px', borderRadius: '4px', backgroundColor: colors.bgCardSub, border: `1px solid ${colors.borderSub}`, display: 'flex', alignItems: 'center', gap: '5px' }}>
-                            <SafeAvatar src={collabAvatar(ctr.closerId, ctr.closerName)} name={ctr.closerName} size={20} />
-                            <span style={{ color: colors.textMuted, textTransform: 'uppercase', fontSize: '0.66rem', fontWeight: 700 }}>Closer:</span>
-                            <span style={{ fontWeight: 700, color: colors.primary }}>{ctr.closerName}</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Meio: Valores Financeiros */}
-                    <div style={{
-                      minWidth: '180px',
-                      paddingLeft: '16px',
-                      borderLeft: `1px solid ${colors.borderSub}`,
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '2px',
-                    }}>
-                      <span style={{ fontSize: '0.70rem', color: colors.textMuted, textTransform: 'uppercase', fontWeight: 700 }}>Valor do Contrato</span>
-                      <div style={{ fontSize: '1.25rem', fontWeight: 900, color: colors.textTitle }}>
-                        R$ {totalAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                      </div>
-                      <span style={{ fontSize: '0.72rem', color: colors.success, fontWeight: 600 }}>
-                        Entrada Confirmada
-                      </span>
-                    </div>
-
-                    {/* Lado Direito: Ações */}
-                    <div style={{
-                      minWidth: '160px',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '6px',
-                    }}>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleOpenContract(ctr);
-                        }}
-                        style={{
-                          backgroundColor: colors.primary,
-                          color: '#FFFFFF',
-                          border: 'none',
-                          borderRadius: '6px',
-                          padding: '8px 14px',
-                          fontSize: '0.76rem',
-                          fontWeight: 700,
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          gap: '6px',
-                          boxShadow: '0 1px 2px rgba(0,0,0,0.08)',
-                        }}
-                      >
-                        <Eye size={14} />
-                        <span>Abrir Contrato</span>
-                      </button>
-
-                      <span style={{ fontSize: '0.68rem', textAlign: 'center', color: colors.textMuted }}>
-                        Clique para auditar e aprovar
-                      </span>
-                    </div>
-
-                  </div>
-                </div>
-              );
-            })}
+          /* ABA 1: FECHAMENTO. Quadro por etapa; clicar abre a ficha (mesma estrutura da aprovacao do financeiro) */
+          <div style={closingId && contracts.some(c => c.id === closingId) ? { margin: '-20px -24px', height: 'calc(100% + 40px)' } : undefined}>
+            {closingId && contracts.some(c => c.id === closingId) ? (
+              <ContractClosingWorkspace
+                contracts={contracts}
+                masterId={scopedMasterId}
+                canEdit={canEditClosing}
+                canViewDocs={canViewDocs}
+                selectedId={closingId}
+                onSelect={setClosingId}
+                onBack={() => setClosingId(null)}
+                height="100%"
+                onChanged={() => loadContracts()}
+              />
+            ) : (
+              <div>
+                <ContractBoard height="calc(100vh - 235px)"
+                  cards={contracts.map<BoardCard>(c => ({
+                    id: c.id,
+                    stage: (c.fillStage || 'pendente'),
+                    title: c.contractTitle || c.title || c.clientSnapshot?.name || c.contractCode,
+                    payer: c.clientSnapshot?.payerName || c.clientSnapshot?.name,
+                    venueId: c.venueId,
+                    total: c.totalAmount || 0,
+                    eventDate: c.eventDate,
+                    signal: c.signalAmount,
+                    entry: c.entryAmount,
+                    closer: c.closerName,
+                    message: c.financeMessage ? `Financeiro: ${c.financeMessage}` : undefined,
+                    missing: contractService.getFillMissing(c).length,
+                  }))}
+                  onOpen={setClosingId}
+                  emptyText="Nenhuma venda"
+                />
+              </div>
+            )}
           </div>
         ) : (
           /* ======================================================== */
@@ -815,6 +671,29 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
             borderRadius: '10px',
             overflow: 'hidden',
           }}>
+            {canEditTeam && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '8px 16px', borderBottom: `1px solid ${colors.border}`, backgroundColor: selectMode ? (isLight ? '#E0F2FE' : 'rgba(2,132,199,0.15)') : colors.bgCardSub, fontSize: '0.76rem', color: colors.textTitle }}>
+                {!selectMode ? (
+                  <button type="button" onClick={() => setSelectMode(true)} style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 8, border: `1px solid ${colors.border}`, backgroundColor: 'transparent', color: colors.textTitle, fontWeight: 700, cursor: 'pointer', fontSize: '0.74rem' }}>
+                    <CheckSquare size={13} /> Selecionar
+                  </button>
+                ) : (
+                  <>
+                    <strong>{pickedIds.size} selecionado(s)</strong>
+                    <span style={{ color: colors.textMuted }}>Clique em qualquer ponto da linha para marcar.</span>
+                    <button type="button" onClick={() => setPickedIds(prev => { const n = new Set(prev); contracts.forEach(c => n.add(c.id)); return n; })} style={{ background: 'none', border: 'none', cursor: 'pointer', color: colors.primary, fontWeight: 700, fontSize: '0.74rem' }}>Todos os listados ({contracts.length})</button>
+                    <button type="button" onClick={() => setPickedIds(prev => { const n = new Set(prev); contracts.filter(c => !c.sdrName && !c.closerName).forEach(c => n.add(c.id)); return n; })} style={{ background: 'none', border: 'none', cursor: 'pointer', color: colors.primary, fontWeight: 700, fontSize: '0.74rem' }}>Só os sem responsável</button>
+                    {pickedIds.size > 0 && (
+                      <button type="button" onClick={() => setPickedIds(new Set())} style={{ background: 'none', border: 'none', cursor: 'pointer', color: colors.textMuted, fontWeight: 700, fontSize: '0.74rem' }}>Limpar</button>
+                    )}
+                    <span style={{ marginLeft: 'auto', display: 'inline-flex', gap: 8 }}>
+                      <button type="button" onClick={() => { setSelectMode(false); setPickedIds(new Set()); }} style={{ padding: '6px 12px', borderRadius: 8, border: `1px solid ${colors.border}`, backgroundColor: 'transparent', color: colors.textTitle, fontWeight: 700, cursor: 'pointer', fontSize: '0.74rem' }}>Cancelar</button>
+                      <button type="button" disabled={pickedIds.size === 0} onClick={() => setTeamModalIds(Array.from(pickedIds))} style={{ padding: '6px 14px', borderRadius: 8, border: 'none', backgroundColor: colors.primary, color: '#fff', fontWeight: 800, cursor: 'pointer', fontSize: '0.76rem', opacity: pickedIds.size === 0 ? 0.5 : 1 }}>Definir SDR / Closer</button>
+                    </span>
+                  </>
+                )}
+              </div>
+            )}
             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.80rem' }}>
               <thead>
                 <tr style={{
@@ -826,6 +705,7 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
                   letterSpacing: '0.5px',
                   fontWeight: 700,
                 }}>
+                  {canEditTeam && selectMode && <th style={{ padding: '12px 8px 12px 16px', width: 28 }} />}
                   <th style={{ padding: '12px 16px' }}>Contrato</th>
                   <th style={{ padding: '12px 16px' }}>Cliente / Contato</th>
                   <th style={{ padding: '12px 16px' }}>Data do Evento</th>
@@ -845,15 +725,21 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
                   return (
                     <tr
                       key={ctr.id}
-                      onClick={() => handleOpenContract(ctr)}
+                      onClick={() => (selectMode ? togglePicked(ctr.id) : handleOpenContract(ctr))}
                       style={{
                         borderBottom: `1px solid ${colors.borderSub}`,
                         cursor: 'pointer',
+                        backgroundColor: selectMode && pickedIds.has(ctr.id) ? (isLight ? '#E0F2FE' : 'rgba(2,132,199,0.15)') : undefined,
                         transition: 'background-color 0.1s ease',
                       }}
                       onMouseEnter={e => (e.currentTarget.style.backgroundColor = colors.bgCardSub)}
-                      onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}
+                      onMouseLeave={e => (e.currentTarget.style.backgroundColor = selectMode && pickedIds.has(ctr.id) ? (isLight ? '#E0F2FE' : 'rgba(2,132,199,0.15)') : 'transparent')}
                     >
+                      {canEditTeam && selectMode && (
+                        <td style={{ padding: '12px 8px 12px 16px' }}>
+                          <input type="checkbox" readOnly checked={pickedIds.has(ctr.id)} style={{ accentColor: colors.primary, cursor: 'pointer', pointerEvents: 'none' }} />
+                        </td>
+                      )}
                       <td style={{ padding: '12px 16px' }}>
                         <span style={{
                           fontFamily: 'monospace',
@@ -883,10 +769,14 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
 
                       <td style={{ padding: '12px 16px' }}>
                         <div style={{ fontSize: '0.74rem', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <SafeAvatar src={collabAvatar(ctr.closerId, ctr.closerName)} name={ctr.closerName} size={20} />
-                            <span>Closer: <strong style={{ color: colors.textTitle }}>{ctr.closerName}</strong></span>
-                          </div>
+                          {ctr.closerName ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <SafeAvatar src={collabAvatar(ctr.closerId, ctr.closerName)} name={ctr.closerName} size={20} />
+                              <span>Closer: <strong style={{ color: colors.textTitle }}>{ctr.closerName}</strong></span>
+                            </div>
+                          ) : !ctr.sdrName && (
+                            <span style={{ color: colors.textMuted, fontStyle: 'italic' }}>Sem responsável definido</span>
+                          )}
                           {ctr.sdrName && (
                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: colors.textMuted }}>
                               <SafeAvatar src={collabAvatar(ctr.sdrId, ctr.sdrName)} name={ctr.sdrName} size={20} />
@@ -1090,6 +980,54 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
               flexDirection: 'column',
               gap: '16px',
             }}>
+              {/* Resumo explicativo do contrato */}
+              {(() => {
+                const c = selectedContract;
+                const money = (v?: number) => `R$ ${(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+                const saldo = c.balanceAmount ?? Math.max(0, (c.totalAmount || 0) - (c.entryAmount || 0) - (c.signalAmount || 0));
+                const fmt = (d?: string | null) => (d ? new Date(`${String(d).split('T')[0]}T12:00:00`).toLocaleDateString('pt-BR') : 'a definir');
+                const tipo = c.eventType === '15_anos' ? 'Festa de 15 anos' : (c.eventType || 'Evento');
+                const lines = paymentTextLines(c.paymentSummary);
+                const facts: Array<[string, string]> = [
+                  ['Tipo do evento', tipo], ['Data da festa', fmt(c.eventDate)], ['Convidados', String(c.guestCount || 0)],
+                  ['Pacote', c.packageName || '—'], ['Unidade', c.venueName || '—'], ['Contrato fechado em', fmt(c.closedAt || c.createdAt)],
+                  ['SDR', c.sdrName || '—'], ['Closer', c.closerName || '—'],
+                  ['Aprovado por', c.approvedByName ? `${c.approvedByName}${c.approvedAt ? ` em ${fmt(c.approvedAt)}` : ''}` : '—'],
+                ];
+                return (
+                  <div style={{ backgroundColor: colors.bgCard, border: `1px solid ${colors.border}`, borderRadius: '8px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.76rem', fontWeight: 700, color: colors.primary, textTransform: 'uppercase' }}>
+                      <FileText size={14} /><span>Resumo do contrato</span>
+                    </div>
+                    <p style={{ margin: 0, fontSize: '0.84rem', lineHeight: 1.5, color: colors.textBody }}>
+                      {tipo} para <strong>{c.guestCount || 0} convidados</strong> em <strong>{fmt(c.eventDate)}</strong>, na unidade <strong>{c.venueName || '—'}</strong>, no valor total de <strong>{money(c.totalAmount)}</strong>.
+                      {(c.signalAmount || 0) > 0 || (c.entryAmount || 0) > 0 ? <> O cliente pagou ou combinou {(c.signalAmount || 0) > 0 ? <>sinal de <strong>{money(c.signalAmount)}</strong></> : null}{(c.signalAmount || 0) > 0 && (c.entryAmount || 0) > 0 ? ' e ' : ''}{(c.entryAmount || 0) > 0 ? <>entrada de <strong>{money(c.entryAmount)}</strong></> : null}; o restante é de <strong>{money(saldo)}</strong>.</> : <> O restante a pagar é de <strong>{money(saldo)}</strong>.</>}
+                    </p>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '10px' }}>
+                      {([['Valor total', c.totalAmount, colors.textTitle], ['Sinal', c.signalAmount, colors.success], ['Entrada', c.entryAmount, colors.success], ['Saldo restante', saldo, colors.warning]] as Array<[string, number | undefined, string]>).map(([l, v, col]) => (
+                        <div key={l} style={{ padding: '10px 12px', borderRadius: '8px', backgroundColor: colors.bgCardSub, border: `1px solid ${colors.borderSub}` }}>
+                          <div style={{ fontSize: '0.66rem', fontWeight: 700, textTransform: 'uppercase', color: colors.textMuted }}>{l}</div>
+                          <div style={{ fontSize: '1.02rem', fontWeight: 900, color: col }}>{money(v)}</div>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', columnGap: '24px' }}>
+                      {facts.map(([l, v]) => (
+                        <div key={l} style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', padding: '6px 0', borderBottom: `1px dashed ${colors.borderSub}`, fontSize: '0.78rem' }}>
+                          <span style={{ color: colors.textMuted }}>{l}</span><strong style={{ color: colors.textTitle, textAlign: 'right' }}>{v}</strong>
+                        </div>
+                      ))}
+                    </div>
+                    {lines.length > 0 && (
+                      <div>
+                        <div style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', color: colors.textMuted, marginBottom: '6px' }}>Como o cliente vai pagar (conforme o contrato)</div>
+                        <PaymentTextList lines={lines} />
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
               {/* Grid: Dados do Cliente & Pessoas Relacionadas */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '14px' }}>
                 
@@ -1247,7 +1185,9 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
                         Contrato_{selectedContract.contractCode}.pdf
                       </strong>
                       <span style={{ fontSize: '0.70rem', color: colors.textMuted }}>Documento formal assinado</span>
-                      {selectedContract.contractFileUrl ? (
+                      {selectedContract.contractFileUrl && !canViewDocs ? (
+                        <span style={{ fontSize: '0.70rem', color: colors.textMuted, display: 'block', marginTop: '2px' }}>Anexado. O documento abre no Pós-venda e no Financeiro.</span>
+                      ) : selectedContract.contractFileUrl ? (
                         <a href={selectedContract.contractFileUrl} target="_blank" rel="noreferrer" style={{ fontSize: '0.72rem', color: colors.primary, fontWeight: 700, display: 'block', marginTop: '2px' }}>
                           Abrir / baixar contrato
                         </a>
@@ -1266,12 +1206,14 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
                         Entrada / Sinal (Comprovante)
                       </strong>
                       <span style={{ fontSize: '0.70rem', color: colors.textMuted }}>
-                        Valor acordado na entrada comercial:
+                        Valores combinados:
                       </span>
                       <span style={{ fontSize: '0.82rem', color: colors.success, fontWeight: 800, display: 'block', marginTop: '2px' }}>
-                        R$ {(selectedContract.entryAmount || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                        Sinal R$ {(selectedContract.signalAmount || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })} · Entrada R$ {(selectedContract.entryAmount || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                       </span>
-                      {selectedContract.paymentFileUrl ? (
+                      {selectedContract.paymentFileUrl && !canViewDocs ? (
+                        <span style={{ fontSize: '0.70rem', color: colors.textMuted, display: 'block', marginTop: '2px' }}>Anexado. O documento abre no Pós-venda e no Financeiro.</span>
+                      ) : selectedContract.paymentFileUrl ? (
                         <a href={selectedContract.paymentFileUrl} target="_blank" rel="noreferrer" style={{ fontSize: '0.72rem', color: colors.success, fontWeight: 700, display: 'block', marginTop: '3px' }}>
                           Abrir / baixar comprovante
                         </a>
@@ -1283,22 +1225,19 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
                     </div>
                   </div>
 
-                  <div style={{ padding: '10px 12px', borderRadius: '6px', backgroundColor: colors.bgCardSub, border: `1px solid ${colors.borderSub}` }}>
-                    <span style={{ fontSize: '0.70rem', color: colors.textMuted, textTransform: 'uppercase', fontWeight: 700, display: 'block' }}>
-                      Valor Total & Saldo Restante:
-                    </span>
-                    <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginTop: '2px' }}>
-                      <strong style={{ fontSize: '1.05rem', color: colors.textTitle }}>
-                        R$ {(selectedContract.totalAmount || selectedContract.contractValue || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                      </strong>
-                      <span style={{ fontSize: '0.74rem', color: colors.textMuted }}>
-                        (Saldo: R$ {(selectedContract.balanceAmount ?? Math.max(0, (selectedContract.totalAmount || 0) - (selectedContract.entryAmount || 0))).toLocaleString('pt-BR', { minimumFractionDigits: 2 })})
-                      </span>
+                  {canViewDocs && getExtraContractDocuments(selectedContract).map((doc, i) => (
+                    <div key={`${doc.url}-${i}`} style={{ padding: '10px 12px', borderRadius: '6px', backgroundColor: colors.bgCardSub, border: `1px solid ${colors.borderSub}`, display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <FileText size={24} color={colors.textMuted} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <strong style={{ color: colors.textTitle, display: 'block', fontSize: '0.80rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={doc.name}>{doc.name}</strong>
+                        <span style={{ fontSize: '0.70rem', color: colors.textMuted, textTransform: 'capitalize' }}>{doc.kind}</span>
+                        <a href={doc.url} target="_blank" rel="noreferrer" style={{ fontSize: '0.72rem', color: colors.primary, fontWeight: 700, display: 'block', marginTop: '2px' }}>
+                          Abrir / baixar
+                        </a>
+                      </div>
                     </div>
-                    <span style={{ fontSize: '0.72rem', color: colors.textMuted, display: 'block', marginTop: '2px', whiteSpace: 'pre-wrap' }}>
-                      Acordo de pagamento: {(typeof selectedContract.paymentTerms === 'string' ? selectedContract.paymentTerms : selectedContract.paymentMethod) || 'Conforme proposta comercial'}
-                    </span>
-                  </div>
+                  ))}
+
                 </div>
               </div>
 
@@ -1317,8 +1256,11 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
                     <ArrowRightLeft size={14} />
                     <span>Passagem de Bastão (Briefing Comercial para o Pós-Venda)</span>
                   </div>
-                  <span style={{ fontSize: '0.72rem', color: colors.textMuted }}>
-                    Preenchido pelo Closer: {selectedContract.closerName}
+                  <span style={{ fontSize: '0.72rem', color: colors.textMuted, display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                    {canEditTeam && (
+                      <button type="button" onClick={() => setTeamModalIds([selectedContract.id])} style={{ padding: '3px 10px', borderRadius: 6, border: `1px solid ${colors.primary}`, background: 'transparent', color: colors.primary, fontWeight: 800, cursor: 'pointer', fontSize: '0.70rem' }}>Editar SDR / Closer</button>
+                    )}
+                    {selectedContract.closerName ? 'Preenchido pelo Closer: ' + selectedContract.closerName : 'Closer ainda não definido'}
                   </span>
                 </div>
 
@@ -1425,14 +1367,14 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
 
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 10px', borderRadius: '6px', backgroundColor: colors.bgCardSub, border: `1px solid ${colors.borderSub}` }}>
                     <div>
-                      <strong>2. Atendimento & Qualificação:</strong> Contato conduzido pelo SDR {selectedContract.sdrName || 'Equipe'}
+                      <strong>2. Atendimento & Qualificação:</strong> {selectedContract.sdrName ? 'Contato conduzido pelo SDR ' + selectedContract.sdrName : 'SDR ainda não definido'}
                     </div>
                     <span style={{ color: colors.textMuted, fontSize: '0.70rem' }}>SDR Atribuído</span>
                   </div>
 
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 10px', borderRadius: '6px', backgroundColor: colors.bgCardSub, border: `1px solid ${colors.borderSub}` }}>
                     <div>
-                      <strong>3. Visita / Degustação Presencial:</strong> Conduzida pelo Closer {selectedContract.closerName}
+                      <strong>3. Visita / Degustação Presencial:</strong> {selectedContract.closerName ? 'Conduzida pelo Closer ' + selectedContract.closerName : 'Closer ainda não definido'}
                     </div>
                     <span style={{ color: colors.textMuted, fontSize: '0.70rem' }}>Concluída</span>
                   </div>
@@ -1534,7 +1476,7 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
                 </button>
               )}
 
-              {selectedContract.approvalStatus === 'pending_approval' && canApproveContract && (
+              {selectedContract.approvalStatus === 'pending_approval' && !financeEnabled && canApproveContract && (selectedContract.fillStage || 'pendente') === 'preenchido' && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                   {/* Botão Solicitar Ajuste / Devolver */}
                   <button
@@ -1934,6 +1876,17 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
         </div>
       )}
 
+      {teamModalIds && (
+        <ContractTeamAssignModal
+          contractIds={teamModalIds}
+          masterId={scopedMasterId || ''}
+          collaborators={collaborators}
+          author={{ id: currentUser?.id, name: currentUser?.name, role: currentUser?.role }}
+          titles={Object.fromEntries(contracts.map(c => [c.id, c.contractTitle || c.title || c.contractCode]))}
+          onClose={() => setTeamModalIds(null)}
+          onDone={() => { setTeamModalIds(null); setPickedIds(new Set()); setSelectMode(false); setSelectedContract(null); setIsDrawerOpen(false); contractsListCache.clear(); void loadContracts(); }}
+        />
+      )}
     </div>
   );
 };

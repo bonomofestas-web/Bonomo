@@ -1,7 +1,9 @@
 import React from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { MonthYearSwitcher } from '../../ui';
 import type { AdminTask } from '../../../types/admin';
 import { getTaskTypeTheme, renderTaskTypeIcon } from '../../../utils/taskColors';
+import { toLocalDateStr, getTodayLocalStr } from '../../../utils/dateUtils';
 
 interface AdminCalendarMonthViewProps {
   tasks: AdminTask[];
@@ -10,18 +12,27 @@ interface AdminCalendarMonthViewProps {
   onOpenTask?: (task: AdminTask) => void;
   onNewTaskForDate?: (dateStr: string) => void;
   onSelectDay?: (date: Date) => void;
+  /** Mostra TODOS os itens do dia: a linha do calendario cresce em vez de rolar/esconder (estilo Notion) */
+  expandCells?: boolean;
+  /** Clicar no item abre o item (em vez de abrir o dia) */
+  openOnItemClick?: boolean;
+  /** Cor e rotulo proprios por item (ex.: uma cor por unidade); sem isso usa o tema do tipo da tarefa */
+  getTaskAccent?: (task: AdminTask) => { color: string; label: string } | null;
 }
 
 export const AdminCalendarMonthView: React.FC<AdminCalendarMonthViewProps> = ({
   tasks,
   currentDate,
   onDateChange,
-  onOpenTask: _onOpenTask,
+  onOpenTask,
   onNewTaskForDate: _onNewTaskForDate,
   onSelectDay,
+  expandCells = false,
+  openOnItemClick = false,
+  getTaskAccent,
 }) => {
   const todayStr = React.useMemo(() => {
-    return new Date().toISOString().split('T')[0];
+    return getTodayLocalStr();
   }, []);
 
   const currentYear = currentDate.getFullYear();
@@ -46,7 +57,7 @@ export const AdminCalendarMonthView: React.FC<AdminCalendarMonthViewProps> = ({
   const formattedMonthHeader = React.useMemo(() => {
     const month = currentDate.toLocaleDateString('pt-BR', { month: 'long' });
     const capitalizedMonth = month.charAt(0).toUpperCase() + month.slice(1);
-    return `${capitalizedMonth} de ${currentYear}`;
+    return `${capitalizedMonth} ${currentYear}`;
   }, [currentDate, currentYear]);
 
   // Compute month calendar cells (starting on Monday)
@@ -72,7 +83,7 @@ export const AdminCalendarMonthView: React.FC<AdminCalendarMonthViewProps> = ({
     for (let i = firstDayIndex - 1; i >= 0; i--) {
       const dayNum = prevMonthLastDay - i;
       const d = new Date(currentYear, currentMonth - 1, dayNum);
-      const dateStr = d.toISOString().split('T')[0];
+      const dateStr = toLocalDateStr(d);
       days.push({
         date: d,
         dateStr,
@@ -85,7 +96,7 @@ export const AdminCalendarMonthView: React.FC<AdminCalendarMonthViewProps> = ({
     // Current month days
     for (let i = 1; i <= lastDayOfMonth.getDate(); i++) {
       const d = new Date(currentYear, currentMonth, i);
-      const dateStr = d.toISOString().split('T')[0];
+      const dateStr = toLocalDateStr(d);
       let monthLabel: string | undefined = undefined;
       if (i === 1) {
         const mShort = d.toLocaleDateString('pt-BR', { month: 'short' }).replace('.', '');
@@ -102,10 +113,10 @@ export const AdminCalendarMonthView: React.FC<AdminCalendarMonthViewProps> = ({
     }
 
     // Next month padding to complete 35 or 42 grid cells
-    const remaining = (7 - (days.length % 7)) % 7;
+    const remaining = 42 - days.length; // sempre 6 semanas
     for (let i = 1; i <= remaining; i++) {
       const d = new Date(currentYear, currentMonth + 1, i);
-      const dateStr = d.toISOString().split('T')[0];
+      const dateStr = toLocalDateStr(d);
       let monthLabel: string | undefined = undefined;
       if (i === 1) {
         const mShort = d.toLocaleDateString('pt-BR', { month: 'short' }).replace('.', '');
@@ -176,9 +187,9 @@ export const AdminCalendarMonthView: React.FC<AdminCalendarMonthViewProps> = ({
             <ChevronLeft size={16} />
           </button>
 
-          <span style={{ fontSize: '0.86rem', fontWeight: 800, color: 'var(--adm-text-title, #0F172A)', letterSpacing: '-0.2px' }}>
-            {formattedMonthHeader}
-          </span>
+          <MonthYearSwitcher year={currentDate.getFullYear()} month={currentDate.getMonth()} label={formattedMonthHeader}
+            onChange={(y, m) => onDateChange(new Date(y, m, Math.min(currentDate.getDate(), new Date(y, m + 1, 0).getDate())))}
+            style={{ fontSize: '0.86rem', color: 'var(--adm-text-title, #0F172A)', letterSpacing: '-0.2px' }} />
 
           <button
             type="button"
@@ -247,7 +258,7 @@ export const AdminCalendarMonthView: React.FC<AdminCalendarMonthViewProps> = ({
         overflowY: 'auto',
         display: 'grid',
         gridTemplateColumns: 'repeat(7, 1fr)',
-        gridAutoRows: 'minmax(110px, 1fr)',
+        gridAutoRows: expandCells ? 'minmax(110px, auto)' : 'minmax(110px, 1fr)',
         background: 'var(--adm-bg-card, #FFFFFF)',
       }}>
         {calendarDays.map((cell, index) => {
@@ -311,7 +322,7 @@ export const AdminCalendarMonthView: React.FC<AdminCalendarMonthViewProps> = ({
                 display: 'flex',
                 flexDirection: 'column',
                 gap: '4px',
-                overflowY: 'auto',
+                overflowY: expandCells ? 'visible' : 'auto',
                 paddingRight: '2px',
               }}>
                 {dayTasks.map(task => {
@@ -319,21 +330,29 @@ export const AdminCalendarMonthView: React.FC<AdminCalendarMonthViewProps> = ({
                   const isCompleted = task.status === 'completed';
                   const theme = getTaskTypeTheme(task);
                   const timeDisplay = task.dueTime ? (task.endTime ? `${task.dueTime} - ${task.endTime}` : task.dueTime) : '';
+                  const accent = getTaskAccent ? getTaskAccent(task) : null;
 
                   return (
                     <div
                       key={task.id}
+                      onClick={openOnItemClick && onOpenTask ? (e) => { e.stopPropagation(); onOpenTask(task); } : undefined}
                       style={{
+                        cursor: openOnItemClick ? 'pointer' : undefined,
                         padding: '5px 8px',
                         borderRadius: '6px',
                         fontSize: '0.70rem',
                         transition: 'all 0.15s ease',
-                        border: isOverdue 
+                        border: accent
+                          ? `1px solid ${accent.color}55`
+                          : isOverdue 
                           ? '1px solid #FCA5A5' 
                           : isCompleted 
                             ? '1px solid var(--adm-border, #E2E8F0)' 
                             : `1px solid ${theme.badgeBorder}`,
-                        background: isOverdue 
+                        borderLeft: accent ? `4px solid ${accent.color}` : undefined,
+                        background: accent
+                          ? `${accent.color}18`
+                          : isOverdue 
                           ? '#FEF2F2' 
                           : isCompleted 
                             ? 'var(--adm-bg-surface, #F8FAFC)' 
@@ -346,7 +365,12 @@ export const AdminCalendarMonthView: React.FC<AdminCalendarMonthViewProps> = ({
                         boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
                       }}
                     >
-                      <div style={{ fontWeight: 800, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: isOverdue ? '#991B1B' : 'var(--adm-text-title, #0F172A)' }}>
+                      {accent && (
+                        <div style={{ fontSize: '0.62rem', fontWeight: 800, color: accent.color, textTransform: 'uppercase', letterSpacing: '0.3px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {accent.label}
+                        </div>
+                      )}
+                      <div style={{ fontWeight: 800, whiteSpace: expandCells ? 'normal' : 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: isOverdue ? '#991B1B' : 'var(--adm-text-title, #0F172A)' }}>
                         {task.title}
                       </div>
                       <div style={{ 

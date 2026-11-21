@@ -8,3 +8,4 @@ export { CalendarGrid, toDateStr, fromDateStr, formatDateBR } from './CalendarGr
 export { PopoverPanel } from './Popover';
 export { DropdownMenu } from './DropdownMenu';
 export type { DropdownMenuItem } from './DropdownMenu';
+export { MonthYearSwitcher, MonthYearPanel, MONTH_NAMES, formatMonthYear } from './MonthYearSwitcher';

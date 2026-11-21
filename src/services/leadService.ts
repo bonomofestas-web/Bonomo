@@ -972,8 +972,9 @@ export const leadService = {
       };
 
       // ── DEDUPLICAÇÃO E IDEMPOTÊNCIA DE ATIVIDADES NO SUPABASE ──────────────
-      // Checa estritamente por messageId (wamid do WhatsApp) para evitar re-inserção da exata mesma mensagem.
-      // Se forem mensagens sequenciais iguais com IDs distintos (ex: dois "oi" ou dois "e"), ambas são salvas normalmente.
+      // REGRA MESTRA: O messageId é o REI absoluto!
+      // Se a mensagem possui messageId (wamid do WhatsApp), a validação de duplicidade é EXCLUSIVAMENTE por ele.
+      // Mensagens intencionais sequenciais (ex: testes de "oi, oi, oi" rápidos) possuem messageIds distintos e entram normalmente.
       const targetMsgId = meta.messageId || (activity as any).messageId;
       if (targetMsgId) {
         const { data: existingMsg } = await supabase
@@ -986,6 +987,35 @@ export const leadService = {
         if (existingMsg && existingMsg.length > 0) {
           console.log(`[leadService.addActivity] Mensagem com messageId ${targetMsgId} já existente no lead ${finalLeadId}. Idempotente.`);
           return true;
+        }
+      } else {
+        // Se a mensagem veio SEM messageId:
+        // Compara o texto estritamente com a ÚLTIMA mensagem gravada deste lead para descartar disparos duplos de webhooks
+        if (storedText && storedText.trim().length > 0) {
+          const { data: lastMsg } = await supabase
+            .from('lead_activities')
+            .select('id, text, title, timestamp')
+            .eq('lead_id', finalLeadId)
+            .order('timestamp', { ascending: false })
+            .limit(1);
+
+          if (lastMsg && lastMsg.length > 0) {
+            const prev = lastMsg[0];
+            const prevText = (prev.text || prev.title || '').trim();
+            const currText = storedText.trim();
+
+            if (prevText === currText) {
+              const prevTime = new Date(prev.timestamp).getTime();
+              const currTime = new Date(activity.timestamp || new Date()).getTime();
+              const diffSec = Math.abs(currTime - prevTime) / 1000;
+
+              // Se a última mensagem tinha o mesmo texto e ocorreu há <= 3 segundos (duplo disparo de rede/webhook)
+              if (diffSec <= 3) {
+                console.log(`[leadService.addActivity] Mensagem sem messageId idêntica à última gravada (${diffSec}s). Descartando duplicata de disparo.`);
+                return true;
+              }
+            }
+          }
         }
       }
 
@@ -1056,9 +1086,19 @@ export const leadService = {
       return row;
     });
 
+    // Deduplica internamente no lote antes de persistir para evitar duplicatas acidentais
+    const seenBatchKeys = new Set<string>();
+    const uniqueRows = rows.filter(r => {
+      const msgId = r.metadata?.messageId;
+      const key = msgId ? `msg:${msgId}` : `text:${r.timestamp}:${(r.text || '').trim()}`;
+      if (seenBatchKeys.has(key)) return false;
+      seenBatchKeys.add(key);
+      return true;
+    });
+
     let saved = 0;
-    for (let i = 0; i < rows.length; i += 100) {
-      const chunk = rows.slice(i, i + 100);
+    for (let i = 0; i < uniqueRows.length; i += 100) {
+      const chunk = uniqueRows.slice(i, i + 100);
       const { error } = await supabase.from('lead_activities').insert(chunk);
       if (error) {
         console.error('Erro ao gravar lote de atividades:', error.message);
