@@ -250,16 +250,67 @@ serve(async (req) => {
         const mediaType = msg.mediaType || (msg.message?.imageMessage ? "image" : msg.message?.audioMessage ? "audio" : msg.message?.videoMessage ? "video" : msg.message?.documentMessage ? "document" : "text");
         const mediaUrl = msg.mediaUrl || msg.fileURL || msg.url || undefined;
 
-        // Procura lead correspondente pelo telefone no CRM
-        const { data: existingLeads } = await supabase
-          .from("leads")
-          .select("id, name, phone, unread_count")
-          .ilike("phone", `%${phone.slice(-8)}%`)
+        // Identifica a origem vinculada a esta instância
+        const { data: matchedSources } = await supabase
+          .from("sources")
+          .select("id, name, funnel_id, venue_id, master_id, configuration")
+          .or(`whatsapp_instance_id.eq.${instanceToken},configuration->>token.eq.${instanceToken}`)
           .limit(1);
+        const sourceRow = matchedSources?.[0];
+        const targetFunnelId = sourceRow?.funnel_id;
 
-        const targetLead = existingLeads?.[0];
+        // Procura lead correspondente pelo telefone ESTRITAMENTE NO FUNIL DA ORIGEM
+        let leadQuery = supabase
+          .from("leads")
+          .select("id, name, phone, unread_count, funnel_id, venue_id, master_id")
+          .ilike("phone", `%${phone.slice(-8)}%`);
 
-        // Se lead existir, registra atividade e incrementa contador de não lidas se recebida
+        if (targetFunnelId) {
+          leadQuery = leadQuery.eq("funnel_id", targetFunnelId);
+        }
+
+        const { data: existingLeads } = await leadQuery.limit(1);
+        let targetLead = existingLeads?.[0];
+
+        // Se não existir lead no funil da origem, cria um novo lead específico para este funil
+        if (!targetLead && targetFunnelId) {
+          const leadId = crypto.randomUUID();
+          const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+          let randomPart = "";
+          for (let i = 0; i < 6; i++) {
+            randomPart += alphabet[Math.floor(Math.random() * alphabet.length)];
+          }
+          const leadCode = `LEAD-${randomPart}`;
+
+          const { data: createdLead, error: createErr } = await supabase
+            .from("leads")
+            .insert({
+              id: leadId,
+              code: leadCode,
+              name: senderName || leadCode,
+              phone,
+              funnel_id: targetFunnelId,
+              venue_id: sourceRow?.venue_id,
+              master_id: sourceRow?.master_id,
+              source_id: sourceRow?.id,
+              source_name: sourceRow?.name || "WhatsApp Oficial",
+              stage: "new_lead",
+              group: "WhatsApp",
+              unread_count: isFromMe ? 0 : 1,
+              last_interaction_at: new Date().toISOString(),
+              last_message_direction: isFromMe ? "outgoing" : "incoming",
+              last_message_text: text || `[${mediaType}]`,
+              last_message_at: new Date().toISOString(),
+            })
+            .select("id, name, phone, unread_count, funnel_id, venue_id, master_id")
+            .single();
+
+          if (!createErr && createdLead) {
+            targetLead = createdLead;
+          }
+        }
+
+        // Se lead existir (ou acabou de ser criado), registra atividade e incrementa contador de não lidas se recebida
         if (targetLead) {
           const newUnread = isFromMe ? 0 : (targetLead.unread_count || 0) + 1;
           await supabase

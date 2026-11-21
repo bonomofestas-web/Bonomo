@@ -659,15 +659,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             .eq('type', 'whatsapp_api')
             .order('created_at', { ascending: true });
           matchedSource = (srcs || []).find((s: any) => 
-            s.name?.toLowerCase().includes(candidateInstanceName.toLowerCase()) ||
-            s.whatsapp_instance_id?.includes(candidateInstanceName) ||
-            (s.configuration?.connectedPhone || '').includes(candidateInstanceName)
+            s.whatsapp_instance_id === candidateInstanceName ||
+            (s.configuration?.instanceName && String(s.configuration.instanceName).toLowerCase().trim() === candidateInstanceName.toLowerCase().trim()) ||
+            (s.name && String(s.name).toLowerCase().trim() === candidateInstanceName.toLowerCase().trim()) ||
+            (s.whatsapp_instance_id && s.whatsapp_instance_id.toLowerCase().trim() === candidateInstanceName.toLowerCase().trim()) ||
+            (candidateOwner && (s.configuration?.connectedPhone || '').replace(/\D/g, '') === candidateOwner)
           );
         }
 
         // Instância sem origem cadastrada: ignora. Nunca busca nem cria lead "no sistema inteiro" (isolamento por Master).
         if (!matchedSource) {
-          console.warn(`[Webhook] Mensagem de instância sem origem cadastrada (token ${candidateToken ? '***' + candidateToken.slice(-4) : 'ausente'}). Ignorada.`);
+          console.warn(`[Webhook] Mensagem de instância sem origem cadastrada (token ${candidateToken ? '***' + candidateToken.slice(-4) : 'ausente'}, instanceName "${candidateInstanceName}"). Ignorada.`);
           continue;
         }
 
@@ -690,13 +692,40 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           }
         }
 
-        // 2. Busca se já existe um Lead com esse telefone ou LID no sistema (Escopo do Tenant / Rede)
-        const isLid = isLidIdentifier(cleanPhone) || cleanPhone.length >= 14 || remoteJid.includes('@lid');
-        let existingLead: any = null;
-        let resolvedPhone = (!isLid && cleanPhone.length <= 13) ? cleanPhone : '';
-        const targetVenueId = matchedSource?.venue_id;
+        // 2. Identificação do Funil Alvo da Origem (targetFunnelId)
+        let targetFunnelId = matchedSource?.funnel_id;
+        if (!targetFunnelId && matchedSource?.id) {
+          const { data: psFunnels } = await supabase
+            .from('commercial_funnels')
+            .select('id, post_sale_channels')
+            .eq('is_post_sale', true);
+          const foundF = (psFunnels || []).find((f: any) =>
+            Array.isArray(f.post_sale_channels) && f.post_sale_channels.some((ch: any) => ch.instanceId === matchedSource.id)
+          );
+          if (foundF) targetFunnelId = foundF.id;
+        }
 
-        // Identifica o tenant (master_id e todas as unidades da rede) para busca abrangente
+        if (!targetFunnelId) {
+          console.warn(`[Webhook] Origem ${matchedSource.name || matchedSource.id} não possui funil associado. Ignorando.`);
+          continue;
+        }
+
+        const { data: targetFunnelRow } = await supabase
+          .from('commercial_funnels')
+          .select('id, name, is_post_sale, category, stages, is_entry_stage_active, venue_id, master_id')
+          .eq('id', targetFunnelId)
+          .maybeSingle();
+
+        const isPostSaleTarget = Boolean(
+          targetFunnelRow?.is_post_sale || 
+          targetFunnelRow?.category === 'Pós-Venda' || 
+          targetFunnelRow?.category === 'pos_venda' || 
+          targetFunnelRow?.name?.toLowerCase().includes('pós-venda')
+        );
+
+        const targetVenueId = matchedSource?.venue_id || targetFunnelRow?.venue_id;
+
+        // Identifica o tenant (master_id e todas as unidades da rede)
         let tenantMasterId: string | null = null;
         let tenantVenueIds: string[] = targetVenueId ? [targetVenueId] : [];
         if (targetVenueId) {
@@ -709,206 +738,114 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             }
           }
         }
-
-        if (!tenantMasterId && !targetVenueId) {
-          console.warn(`[Webhook] Origem ${matchedSource.id} sem casa/Master definidos. Mensagem ignorada para não misturar tenants.`);
-          continue;
+        if (!tenantMasterId && targetFunnelRow?.master_id) {
+          tenantMasterId = targetFunnelRow.master_id;
         }
 
-        // REGRA DOS NUMEROS: uma origem pertence a UM funil. A mensagem so entra em lead (a) do funil da origem ou
-        // (b) de funil SEM origem (ex.: follow-up) que carrega esta instancia (origem do lead ou mensagens por ela).
-        // Qualquer outro caso cria lead novo (nunca anexa ao lead que foi movido para outro funil com origem).
-        const pickLeadForSource = async (list: any[] | null | undefined) => {
-          if (!list || list.length === 0) return null;
-          if (matchedSource?.funnel_id) {
-            const inFunnel = list.find((l: any) => l.funnel_id === matchedSource.funnel_id);
-            if (inFunnel) return inFunnel;
-          }
-          const otherFunnelIds = Array.from(new Set(list.map((l: any) => l.funnel_id).filter(Boolean)));
-          if (otherFunnelIds.length === 0 || !matchedSource?.id) return null;
-          const { data: srcRows } = await supabase.from('sources').select('funnel_id').in('funnel_id', otherFunnelIds);
-          const withOrigin = new Set((srcRows || []).map((r: any) => r.funnel_id));
-          for (const l of list) {
-            if (!l.funnel_id || withOrigin.has(l.funnel_id)) continue;
-            if (l.source_id === matchedSource.id) return l;
-            const { data: carried } = await supabase
-              .from('lead_activities').select('id')
-              .eq('lead_id', l.id).eq('metadata->>senderSourceId', matchedSource.id).limit(1);
-            if (carried && carried.length > 0) return l;
-          }
-          return null;
-        };
+        // 3. Extração do identificador de telefone / LID
+        const isLid = isLidIdentifier(cleanPhone) || cleanPhone.length >= 14 || remoteJid.includes('@lid');
+        let existingLead: any = null;
+        let resolvedPhone = (!isLid && cleanPhone.length <= 13) ? cleanPhone : '';
 
-        // 2a. Se for LID, procura primeiro por correspondência de whatsappLid salva em custom_field_values
+        // Se for LID, tenta extrair o telefone real dos campos do payload ou UAZAPI
         if (isLid) {
-          let lidQuery = supabase
-            .from('leads')
-            .select('id, name, phone, unread_count, venue_id, funnel_id, custom_field_values, master_id, is_client, source_id')
-            .or(`custom_field_values->>whatsappLid.eq.${cleanPhone},custom_field_values->>whatsapp_lid.eq.${cleanPhone}`);
-          
-          if (tenantMasterId) {
-            lidQuery = lidQuery.or(`master_id.eq.${tenantMasterId},venue_id.in.(${tenantVenueIds.join(',')})`);
-          } else if (targetVenueId) {
-            lidQuery = lidQuery.eq('venue_id', targetVenueId);
+          if (remoteJid && remoteJid.includes('@s.whatsapp.net')) {
+            const p = remoteJid.replace(/:\d+@/, '@').replace(/@.*$/, '').replace(/\D/g, '');
+            if (p && p.length >= 10 && p.length <= 13 && !isLidIdentifier(p)) {
+              resolvedPhone = p;
+            }
           }
 
-          const { data: lidMatches } = await lidQuery.order('last_interaction_at', { ascending: false, nullsFirst: false });
-
-          if (lidMatches && lidMatches.length > 0) {
-            // Prioriza o lead no funil da origem se houver, caso contrário pega o mais recente no sistema
-            // REGRA: duplicado = mesmo contato 2x no MESMO funil. Em outro funil é um lead distinto.
-            existingLead = await pickLeadForSource(lidMatches);
+          if (!resolvedPhone) {
+            const rawExtracted = extractRealWhatsAppPhone(msg, payload);
+            if (rawExtracted && !isLidIdentifier(rawExtracted) && rawExtracted.length >= 10 && rawExtracted.length <= 13) {
+              resolvedPhone = rawExtracted;
+            }
           }
 
-          // Se não encontrou por LID gravado, tenta extrair o telefone real dos campos do payload ou UAZAPI
-          if (!existingLead) {
-            if (remoteJid && remoteJid.includes('@s.whatsapp.net')) {
-              const p = remoteJid.replace(/:\d+@/, '@').replace(/@.*$/, '').replace(/\D/g, '');
-              if (p && p.length >= 10 && p.length <= 13 && !isLidIdentifier(p)) {
-                resolvedPhone = p;
-              }
-            }
-
-            if (!resolvedPhone) {
-              const rawExtracted = extractRealWhatsAppPhone(msg, payload);
-              if (rawExtracted && !isLidIdentifier(rawExtracted) && rawExtracted.length >= 10 && rawExtracted.length <= 13) {
-                resolvedPhone = rawExtracted;
-              }
-            }
-
-            // Se ainda não tiver telefone real, consulta /chat/details na UAZAPI
-            if (!resolvedPhone) {
-              const uazapiUrl = payload.BaseUrl || 'https://f5system.uazapi.com';
-              const effectiveToken = candidateToken || matchedSource?.whatsapp_instance_id || (matchedSource?.configuration as any)?.token;
-              if (effectiveToken) {
-                try {
-                  const detailsRes = await fetch(`${uazapiUrl}/chat/details`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', token: effectiveToken },
-                    body: JSON.stringify({ number: cleanPhone }),
-                  });
-                  if (detailsRes.ok) {
-                    const dData = await detailsRes.json();
-                    const p = dData?.phone || dData?.wa_phone || dData?.number;
-                    if (p && !isLidIdentifier(p)) {
-                      const cleanP = String(p).replace(/\D/g, '');
-                      if (cleanP.length >= 10 && cleanP.length <= 13) {
-                        resolvedPhone = cleanP;
-                      }
+          if (!resolvedPhone) {
+            const uazapiUrl = payload.BaseUrl || 'https://f5system.uazapi.com';
+            const effectiveToken = candidateToken || matchedSource?.whatsapp_instance_id || (matchedSource?.configuration as any)?.token;
+            if (effectiveToken) {
+              try {
+                const detailsRes = await fetch(`${uazapiUrl}/chat/details`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json', token: effectiveToken },
+                  body: JSON.stringify({ number: cleanPhone }),
+                });
+                if (detailsRes.ok) {
+                  const dData = await detailsRes.json();
+                  const p = dData?.phone || dData?.wa_phone || dData?.number;
+                  if (p && !isLidIdentifier(p)) {
+                    const cleanP = String(p).replace(/\D/g, '');
+                    if (cleanP.length >= 10 && cleanP.length <= 13) {
+                      resolvedPhone = cleanP;
                     }
                   }
-                } catch (uazErr) {
-                  console.warn('Erro ao consultar /chat/details na UAZAPI:', uazErr);
                 }
+              } catch (uazErr) {
+                console.warn('Erro ao consultar /chat/details na UAZAPI:', uazErr);
               }
             }
           }
         }
 
-        // 2b. Busca primeiro na tabela 'clients' (Pós-Venda) se o telefone pertencer a um cliente
-        if (!existingLead && targetSearchPhone && targetSearchPhone.length >= 8) {
-          const digitsOnly = targetSearchPhone.replace(/\D/g, '');
-          const last8 = digitsOnly.slice(-8);
-          const part1 = last8.slice(0, 4);
-          const part2 = last8.slice(4);
+        const targetSearchPhone = resolvedPhone || cleanPhone;
+        const searchDigits = targetSearchPhone.replace(/\D/g, '');
+        const last8 = searchDigits.length >= 8 ? searchDigits.slice(-8) : '';
+        const part1 = last8 ? last8.slice(0, 4) : '';
+        const part2 = last8 ? last8.slice(4) : '';
 
-          let clientQuery = supabase
+        // REGRA DE OURO DO CRM: A existência do contato é verificada ESTRITAMENTE DENTRO DO FUNIL DA ORIGEM!
+        // Não busca em outros funis, não reaproveita cards de esteiras diferentes.
+        // Se o número não existir NESTE funil, cria-se um lead novo neste funil.
+
+        // 3a. Se for Funil de Pós-Venda, busca primeiro se o cliente já existe NESTE FUNIL
+        if (isPostSaleTarget && last8) {
+          const { data: matchedClients } = await supabase
             .from('clients')
             .select('id, name, payer_name, payer_phone, stage, venue_id, funnel_id, master_id')
-            .or(`payer_phone.ilike.%${last8}%,payer_phone.ilike.%${part1}%${part2}%`);
+            .eq('funnel_id', targetFunnelId)
+            .or(`payer_phone.ilike.%${last8}%,payer_phone.ilike.%${part1}%${part2}%`)
+            .limit(1);
 
-          if (tenantMasterId) {
-            clientQuery = clientQuery.or(`master_id.eq.${tenantMasterId},venue_id.in.(${tenantVenueIds.join(',')})`);
-          } else if (targetVenueId) {
-            clientQuery = clientQuery.eq('venue_id', targetVenueId);
-          }
-
-          const { data: clientRows } = await clientQuery;
-          if (clientRows && clientRows.length > 0) {
-            // Prioriza estritamente o cliente cujo funil casa com o da origem (direto ou via canais de pós-venda)!
-            let effectiveFunnelId = matchedSource?.funnel_id;
-            if (!effectiveFunnelId && matchedSource?.id) {
-              const { data: psFunnels } = await supabase
-                .from('commercial_funnels')
-                .select('id, post_sale_channels')
-                .eq('is_post_sale', true);
-              const foundF = (psFunnels || []).find((f: any) =>
-                Array.isArray(f.post_sale_channels) && f.post_sale_channels.some((ch: any) => ch.instanceId === matchedSource.id)
-              );
-              if (foundF) effectiveFunnelId = foundF.id;
-            }
-
-            let matchedClientRow = effectiveFunnelId
-              ? clientRows.find((c: any) => c.funnel_id === effectiveFunnelId)
-              : null;
-
-            // Só aceita o primeiro se a origem realmente for global/sem funil
-            if (!matchedClientRow && !effectiveFunnelId) {
-              matchedClientRow = clientRows[0];
-            }
-
-            if (matchedClientRow) {
-              existingLead = {
-                id: matchedClientRow.id,
-                name: matchedClientRow.payer_name || matchedClientRow.name || 'Cliente',
-                phone: matchedClientRow.payer_phone,
-                venue_id: matchedClientRow.venue_id,
-                funnel_id: matchedClientRow.funnel_id,
-                master_id: matchedClientRow.master_id,
-                is_client: true,
-              };
-            }
+          if (matchedClients && matchedClients.length > 0) {
+            existingLead = {
+              id: matchedClients[0].id,
+              name: matchedClients[0].payer_name || matchedClients[0].name || 'Cliente',
+              phone: matchedClients[0].payer_phone,
+              venue_id: matchedClients[0].venue_id,
+              funnel_id: matchedClients[0].funnel_id,
+              master_id: matchedClients[0].master_id,
+              is_client: true,
+            };
           }
         }
 
-        // 2c. Busca por telefone real na tabela 'leads' se ainda não encontrou cliente
-        if (!existingLead && targetSearchPhone && targetSearchPhone.length >= 8) {
-          const digitsOnly = targetSearchPhone.replace(/\D/g, '');
-          const last8 = digitsOnly.slice(-8);
-          const part1 = last8.slice(0, 4);
-          const part2 = last8.slice(4);
+        // 3b. Busca na tabela 'leads' ESTRITAMENTE DENTRO DO FUNIL DA ORIGEM
+        if (!existingLead && (last8 || isLid)) {
           const leadSelect = 'id, name, phone, unread_count, venue_id, funnel_id, custom_field_values, master_id, is_client, last_message_at, source_id';
-          // Busca no telefone principal E nos contatos do lead (2º/3º número, mãe, pai...) via função do banco; sem ela, cai na busca antiga
-          let phoneLeads: any[] | null = null;
-          if (tenantMasterId) {
-            const { data: idRows, error: rpcErr } = await supabase.rpc('f5_find_lead_ids_by_phone', {
-              p_master: tenantMasterId,
-              p_venues: tenantVenueIds,
-              p_tail: last8,
-            });
-            if (!rpcErr && Array.isArray(idRows)) {
-              const ids = idRows.map((r: any) => (typeof r === 'string' ? r : (r?.f5_find_lead_ids_by_phone ?? r?.id))).filter(Boolean);
-              if (ids.length > 0) {
-                const { data: rows } = await supabase.from('leads').select(leadSelect).in('id', ids).order('last_interaction_at', { ascending: false, nullsFirst: false });
-                phoneLeads = rows || [];
-              } else {
-                phoneLeads = [];
-              }
-            }
-          }
-          if (phoneLeads === null) {
-            let phoneQuery = supabase
-              .from('leads')
-              .select(leadSelect)
-              .or(`phone.ilike.%${last8}%,phone.ilike.%${part1}%${part2}%`);
+          let query = supabase
+            .from('leads')
+            .select(leadSelect)
+            .eq('funnel_id', targetFunnelId);
 
-            if (tenantMasterId) {
-              phoneQuery = phoneQuery.or(`master_id.eq.${tenantMasterId},venue_id.in.(${tenantVenueIds.join(',')})`);
-            } else if (targetVenueId) {
-              phoneQuery = phoneQuery.eq('venue_id', targetVenueId);
-            }
-
-            const { data: legacyLeads } = await phoneQuery.order('last_interaction_at', { ascending: false, nullsFirst: false });
-            phoneLeads = legacyLeads || [];
+          if (last8 && isLid) {
+            query = query.or(`phone.ilike.%${last8}%,phone.ilike.%${part1}%${part2}%,custom_field_values->>whatsappLid.eq.${cleanPhone},custom_field_values->>whatsapp_lid.eq.${cleanPhone}`);
+          } else if (last8) {
+            query = query.or(`phone.ilike.%${last8}%,phone.ilike.%${part1}%${part2}%`);
+          } else if (isLid) {
+            query = query.or(`custom_field_values->>whatsappLid.eq.${cleanPhone},custom_field_values->>whatsapp_lid.eq.${cleanPhone}`);
           }
 
-          if (phoneLeads && phoneLeads.length > 0) {
-            // REGRA: Se houver lead já alocado no funil desta origem, prioriza ele;
-            // Caso contrário, aproveita o lead existente no sistema para NÃO gerar duplicidade!
-            // REGRA: só reaproveita lead do MESMO funil da origem; em outro funil cria lead novo naquele funil.
-            existingLead = await pickLeadForSource(phoneLeads);
+          const { data: matchedLeads } = await query
+            .order('last_interaction_at', { ascending: false, nullsFirst: false })
+            .limit(1);
 
-            // Vincula o LID ao lead encontrado para que as próximas mensagens batam de primeira!
+          if (matchedLeads && matchedLeads.length > 0) {
+            existingLead = matchedLeads[0];
+
+            // Vincula o LID ao lead encontrado para que as próximas mensagens batam de primeira
             if (isLid && existingLead) {
               const updatedCustom = {
                 ...(existingLead.custom_field_values || {}),
@@ -1097,7 +1034,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               .select('id, name, phone, unread_count, venue_id, funnel_id, master_id')
               .or(`phone.ilike.%${last8}%,custom_field_values->>whatsappLid.eq.${searchDigits}`);
             // Concorrência só conta se for no MESMO funil da origem
-            if (matchedSource?.funnel_id) doubleCheckQuery = doubleCheckQuery.eq('funnel_id', matchedSource.funnel_id);
+            if (targetFunnelId) doubleCheckQuery = doubleCheckQuery.eq('funnel_id', targetFunnelId);
             const { data: doubleCheck } = await doubleCheckQuery
               .order('created_at', { ascending: false })
               .limit(1);
@@ -1179,25 +1116,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           }
           const leadCode = `LEAD-${randomPart}`;
           const cleanLeadName = (senderName && senderName !== 'Cliente (WhatsApp)' && senderName !== 'WhatsApp App / Web') ? senderName.trim() : leadCode;
-          let venueId = matchedSource?.venue_id;
-          let funnelId = matchedSource?.funnel_id;
-
-          // Se a origem não tiver funil associado ou for 'comercial', busca o funil comercial real da unidade
-          if (!funnelId || funnelId === 'comercial') {
-            let fQuery = supabase.from('commercial_funnels').select('id, venue_id, master_id');
-            if (venueId) {
-              fQuery = fQuery.eq('venue_id', venueId);
-            } else if (tenantMasterId) {
-              fQuery = fQuery.eq('master_id', tenantMasterId);
-            }
-            const { data: fallbackFunnels } = await fQuery.order('created_at', { ascending: true }).limit(1);
-            if (fallbackFunnels && fallbackFunnels[0]) {
-              funnelId = fallbackFunnels[0].id;
-              if (!venueId) venueId = fallbackFunnels[0].venue_id;
-            }
-          }
-          if (!venueId) venueId = 'v1';
-          if (!funnelId) funnelId = 'comercial';
+          let venueId = targetVenueId || 'v1';
+          let funnelId = targetFunnelId;
 
           // Localiza o masterId da casa para garantir isolamento por tenant no banco
           let venueMasterId: string | null = tenantMasterId;

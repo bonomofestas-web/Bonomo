@@ -42,6 +42,13 @@ Grande reestruturação de governança, experiência do usuário, banco de dados
 
 ### Recursos e Melhorias em Staging
 
+- **Roteamento Estrito de Mensagens por Instância e Funil de Origem:**
+  * **Match Estrito de Origem no Webhook:** Erradicado o match frouxo por substring (`.includes()`) em `api/whatsapp-webhook.ts` que casava incorretamente com origens sem funil (como o seed do Financeiro). O vínculo com a origem agora exige correspondência exata de token, ID da instância ou telefone conectado.
+  * **Escopo 100% Amarrado ao Funil Alvo da Instância:** A verificação se o número já existe no sistema é avaliada **estritamente dentro do funil ao qual a instância receptora pertence**. Se o número não existir naquele funil específico, um novo lead/cliente é criado imediatamente na primeira etapa configurada daquela esteira — mesmo que o contato já possua histórico em outros funis da empresa.
+  * **Blindagem no Frontend e Edge Functions:** Ajustada a resolução de mensagens em tempo real em `AdminStateContext.tsx` e `supabase/functions/uazapi-webhook/index.ts` para respeitar o isolamento por funil, impedindo o reaproveitamento acidental de leads de outras unidades ou funis.
+  * **Reconciliação e Limpeza de Testes de Produção:** As mensagens de teste enviadas via `REALIZAR_SAMSUNG_NOVO` e `REALIZAR_KOMMO` foram devidamente alocadas em novos leads nos funis comerciais `RLZ PIRES` (`LEAD-WJ5ZRC`) e `RLZ KOMMO` (`LEAD-HTDUPC`), expurgando os registros espúrios do funil de pós-venda.
+  * **Bump de Caches (IndexedDB v5 e LocalStorage v11):** Atualização dos identificadores de cache local para carregamento instantâneo das esteiras normalizadas.
+
 - **Saneamento de Acentos (Encoding UTF-8) e Herança Automática de Contratos via Central de Contatos:**
   * **Saneamento Global de Acentos (218 Contratos, 218 Clientes, 237 Contatos):** Cruzamento e restauração com base no arquivo mestre original UTF-8 (`import_set.json`), corrigindo caracteres corrompidos (`??`, `Ã³`, `Ã§`) em títulos de eventos, nomes de debutantes, contratantes, observações e papéis familiares tanto no banco de Produção (Nuvem) quanto Local (Docker).
   * **Ocultação de Cards Redundantes de Familiares no Kanban de Pós-Venda:** Cards de contatos e familiares (com código de cliente `CLI-` ou lead) que já fazem parte de um contrato oficial presente no Kanban são automaticamente consolidados no card oficial do evento (`AdminContractKanbanCard`), eliminando a exibição duplicada com badge `SEM CONTRATO` na esteira.

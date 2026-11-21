@@ -105,7 +105,7 @@ const STORAGE_KEY_DEBUTANTES = 'bonomo_admin_debutantes_v7';
 const STORAGE_KEY_CLIENTS = 'bonomo_admin_clients_v8';
 const STORAGE_KEY_AGENDA_CONFIGS = 'bonomo_admin_agenda_configs_v1';
 const STORAGE_KEY_APPOINTMENTS = 'bonomo_admin_appointments_v1';
-const STORAGE_KEY_LEADS = 'f5_admin_leads_v10';
+const STORAGE_KEY_LEADS = 'f5_admin_leads_v11';
 
 /**
  * Recargas "leves" de leads trazem só as últimas ~5 atividades por lead. Para não apagar o
@@ -6934,19 +6934,24 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       return false;
     });
 
-    let existing = candidateLeads.find(l => incomingFunnelId && l.funnelId === incomingFunnelId)
-      || candidateLeads.find(l => incomingVenueId && l.venueId === incomingVenueId);
+    // REGRA SUPREMA DO CRM: Se incomingFunnelId foi informado, a existência é ESTRITAMENTE DENTRO DO FUNIL!
+    // Não mescla com leads de outros funis da mesma casa, para que cada esteira tenha seu próprio lead/card.
+    let existing = incomingFunnelId
+      ? candidateLeads.find(l => l.funnelId === incomingFunnelId)
+      : candidateLeads.find(l => incomingVenueId && l.venueId === incomingVenueId);
 
     // ── BLINDAGEM DE CONCORRÊNCIA SUPREMA (WEBHOOK + SSE) ──────────
     // Se não encontrou no cache local em memória (leadsRef), consulta diretamente o Supabase
-    // para verificar se outro processo (ex: webhook em background ou outra aba) acabou de criar o lead.
+    // para verificar se outro processo (ex: webhook em background ou outra aba) acabou de criar o lead NO MESMO FUNIL.
     if (!existing && isSupabaseConfigured && cleanPhoneDigits && cleanPhoneDigits.length >= 8) {
       const last8 = cleanPhoneDigits.slice(-8);
       try {
-        const { data: dbMatches } = await supabase
+        let dbQuery = supabase
           .from('leads')
           .select('*')
-          .or(`phone.ilike.%${last8}%,custom_field_values->>whatsappLid.eq.${cleanPhoneDigits}`)
+          .or(`phone.ilike.%${last8}%,custom_field_values->>whatsappLid.eq.${cleanPhoneDigits}`);
+        if (incomingFunnelId) dbQuery = dbQuery.eq('funnel_id', incomingFunnelId);
+        const { data: dbMatches } = await dbQuery
           .order('created_at', { ascending: false })
           .limit(5);
 
@@ -6954,8 +6959,9 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           const mappedMatches = dbMatches.map(row => formatLeadFromDb(row));
           const tenantMatches = mappedMatches.filter(l => !scopedMasterId || !l.masterId || l.masterId === scopedMasterId);
           if (tenantMatches.length > 0) {
-            const found = tenantMatches.find(l => incomingFunnelId && l.funnelId === incomingFunnelId)
-              || tenantMatches.find(l => incomingVenueId && l.venueId === incomingVenueId);
+            const found = incomingFunnelId
+              ? tenantMatches.find(l => l.funnelId === incomingFunnelId)
+              : tenantMatches.find(l => incomingVenueId && l.venueId === incomingVenueId);
             if (found) {
               existing = found;
               // Sincroniza imediatamente o estado e ref para evitar que mensagens seguintes criem novos leads
@@ -7464,16 +7470,10 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             return Boolean((c.contacts || []).some((ct: any) => ct?.phone && isPhoneMatch(ct.phone, cleanPhone)));
           });
 
-          // REGRA DE OURO: Casa estritamente com o cliente do funil da origem/instância!
-          let matchedClient = targetSourceFunnelId
-            ? candidateClients.find(c => c.funnelId === targetSourceFunnelId)
+          // REGRA DE OURO: Casa ESTRITAMENTE com o cliente do funil da origem/instância!
+          const matchedClient = targetSourceFunnelId
+            ? candidateClients.find(c => c.funnelId === targetSourceFunnelId) || null
             : null;
-          if (!matchedClient && matchedSource?.id) {
-            matchedClient = candidateClients.find(c => (c as any).sourceId === matchedSource.id);
-          }
-          if (!matchedClient && sourceVenue?.id) {
-            matchedClient = candidateClients.find(c => c.venueId === sourceVenue.id) || null;
-          }
 
           if (matchedClient) {
             const isAudioMsg = incoming.mediaType === 'audio' || incoming.text?.includes('🎵') || incoming.text?.toLowerCase().includes('voz');
@@ -7546,14 +7546,9 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           if (matchInFunnel.matchedLead) {
             matchedLead = matchInFunnel.matchedLead;
           }
-        }
-
-        // 2ª Prioridade (Áudio 1): Se não encontrou no funil da origem, mas o contato já existe no sistema do mesmo tipo (comercial ou pós-venda),
-        // NÃO PODE DUPLICAR! Reutiliza o lead existente e envia a correspondência para sua ficha devida.
-        // REGRA DOS NUMEROS: fora do funil da origem so anexa a lead de funil SEM origem que carrega esta instancia;
-        // senao nasce lead novo (nunca anexa ao lead que foi movido para outro funil com origem).
-        if (!matchedLead) {
-          const globalMatch = findMatchingLead(originlessCarrierLeads(eligibleTypeLeads, currentSources, matchedSource?.id), {
+        } else if (matchedSource?.id) {
+          // Apenas para origens legadas/avulsas sem funil vinculado
+          const globalMatch = findMatchingLead(originlessCarrierLeads(eligibleTypeLeads, currentSources, matchedSource.id), {
             phone: cleanPhone,
             jid: rawJid,
             lid: rawLid,
