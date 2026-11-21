@@ -1881,53 +1881,7 @@ INSERT INTO public."fin_contract_reviews" ("id", "master_id", "contract_id", "pl
   ('fdd3f05e-495e-4daf-ac00-ebd09816d22d', 'a0000000-0000-0000-0000-000000000001', '18333662-0564-47f7-95db-75eece3dd264', '2', '{"note":"Rascunho lido do contrato (datas s??o sugest??o). Conferir o PDF e ajustar antes de aprovar.","items":[{"date":"2026-03-20","type":"entrada","amount":21965,"method":"pix"},{"type":"parcelas","count":3,"amount":20000,"method":"pix","first_due_date":"2027-01-15"}],"source":"importacao","version":1}'::jsonb, 'pendente', NULL, NULL, NULL, '2026-11-19T18:01:59.996275+00:00', NULL, '2026-11-19T18:01:59.996275+00:00')
 ON CONFLICT ("id") DO UPDATE SET "master_id" = EXCLUDED."master_id", "contract_id" = EXCLUDED."contract_id", "plan_hash" = EXCLUDED."plan_hash", "plan_snapshot" = EXCLUDED."plan_snapshot", "status" = EXCLUDED."status", "reviewer_id" = EXCLUDED."reviewer_id", "reviewer_name" = EXCLUDED."reviewer_name", "reason" = EXCLUDED."reason", "submitted_at" = EXCLUDED."submitted_at", "reviewed_at" = EXCLUDED."reviewed_at";
 
--- 7. UPSERT DO WORKSPACE DE TAREFAS (DATABASES, STATUSES, TYPES)
-INSERT INTO public."task_databases" ("id", "name", "description", "is_default", "created_at", "property_order") VALUES
-  ('default_collabs', 'Tarefas de Colaboradores', 'Base de dados principal de tarefas da equipe e colaboradores', TRUE, '2026-09-18T08:39:06.454117+00:00', '["status","due_date","assignees","priority","custom_type","lead_id"]'::jsonb)
-ON CONFLICT ("id") DO UPDATE SET "name" = EXCLUDED."name", "description" = EXCLUDED."description", "is_default" = EXCLUDED."is_default", "property_order" = EXCLUDED."property_order";
-
-INSERT INTO public."task_custom_statuses" ("id", "database_id", "name", "group_key", "color", "bg_color", "order_index", "is_default", "created_at") VALUES
-  ('st_doing', 'default_collabs', 'Fazendo', 'in_progress', '#3B82F6', 'rgba(59, 130, 246, 0.14)', 1, FALSE, '2026-09-18T08:39:06.454117+00:00'),
-  ('st_done', 'default_collabs', 'Finalizado', 'completed', '#10B981', 'rgba(16, 185, 129, 0.14)', 2, FALSE, '2026-09-18T08:39:06.454117+00:00'),
-  ('st_todo', 'default_collabs', 'NÃƒÂ£o iniciado', 'todo', '#94A3B8', 'rgba(148, 163, 184, 0.14)', 0, TRUE, '2026-09-18T08:39:06.454117+00:00')
-ON CONFLICT ("id") DO UPDATE SET "database_id" = EXCLUDED."database_id", "name" = EXCLUDED."name", "group_key" = EXCLUDED."group_key", "color" = EXCLUDED."color", "bg_color" = EXCLUDED."bg_color", "order_index" = EXCLUDED."order_index", "is_default" = EXCLUDED."is_default";
-
-INSERT INTO public."task_custom_types" ("id", "name", "icon", "color", "created_at", "sector", "order_index") VALUES
-  ('adm_contracts', 'ElaboraÃƒÂ§ÃƒÂ£o & GestÃƒÂ£o de Contratos', 'FileText', '#64748B', '2026-09-18T08:39:06.488408+00:00', 'Administrativo', 0),
-  ('adm_documents', 'GestÃƒÂ£o de Documentos', 'Paperclip', '#64748B', '2026-09-18T08:39:06.488408+00:00', 'Administrativo', 0),
-  ('adm_hr', 'RH, Escalas & Colaboradores', 'UserCheck', '#10B981', '2026-09-18T08:39:06.488408+00:00', 'Administrativo', 0),
-  ('adm_internal_meeting', 'ReuniÃƒÂ£o Interna de Equipe', 'Users', '#3B82F6', '2026-09-18T08:39:06.488408+00:00', 'Administrativo', 0),
-  ('call', 'LigaÃƒÂ§ÃƒÂ£o de Alinhamento', 'Phone', '#60A5FA', '2026-09-18T08:39:06.454117+00:00', 'Geral', 0),
-  ('com_closing', 'Fechamento de Contrato', 'CheckCircle2', '#10B981', '2026-09-18T08:39:06.488408+00:00', 'Comercial', 0),
-  ('com_contact', 'Contato Inicial', 'Phone', '#3B82F6', '2026-09-18T08:39:06.488408+00:00', 'Comercial', 0),
-  ('com_followup', 'Follow-up Comercial', 'MessageSquare', '#10B981', '2026-09-18T08:39:06.488408+00:00', 'Comercial', 0),
-  ('com_meeting', 'ReuniÃƒÂ£o / ApresentaÃƒÂ§ÃƒÂ£o', 'Users', '#8B5CF6', '2026-09-18T08:39:06.488408+00:00', 'Comercial', 0),
-  ('com_proposal', 'Envio de Proposta / NegociaÃƒÂ§ÃƒÂ£o', 'FileText', '#F59E0B', '2026-09-18T08:39:06.488408+00:00', 'Comercial', 0),
-  ('document', 'Envio de Proposta / Contrato', 'FileText', '#EC4899', '2026-09-18T08:39:06.454117+00:00', 'Geral', 0),
-  ('fin_collection', 'CobranÃƒÂ§a de Parcela', 'AlertCircle', '#EF4444', '2026-09-18T08:39:06.488408+00:00', 'Financeiro', 0),
-  ('fin_entry', 'LanÃƒÂ§amento Financeiro', 'DollarSign', '#10B981', '2026-09-18T08:39:06.488408+00:00', 'Financeiro', 0),
-  ('fin_receipt', 'EmissÃƒÂ£o de Recibo / NF', 'FileText', '#10B981', '2026-09-18T08:39:06.488408+00:00', 'Financeiro', 0),
-  ('fin_reconciliation', 'ConciliaÃƒÂ§ÃƒÂ£o BancÃƒÂ¡ria', 'CheckSquare', '#3B82F6', '2026-09-18T08:39:06.488408+00:00', 'Financeiro', 0),
-  ('followup', 'Follow-up Comercial', 'MessageSquare', '#10B981', '2026-09-18T08:39:06.454117+00:00', 'Geral', 0),
-  ('gen_operational', 'Geral / Operacional', 'Briefcase', '#94A3B8', '2026-09-18T08:39:06.488408+00:00', 'Geral', 0),
-  ('general', 'Geral / Operacional', 'Briefcase', '#94A3B8', '2026-09-18T08:39:06.454117+00:00', 'Geral', 0),
-  ('meeting', 'ReuniÃƒÂ£o / Visita', 'Users', '#A78BFA', '2026-09-18T08:39:06.454117+00:00', 'Geral', 0),
-  ('mkt_campaign', 'Campanhas & AnÃƒÂºncios', 'Megaphone', '#EC4899', '2026-09-18T08:39:06.488408+00:00', 'Marketing', 0),
-  ('mkt_content', 'ProduÃƒÂ§ÃƒÂ£o de ConteÃƒÂºdo', 'Camera', '#EC4899', '2026-09-18T08:39:06.488408+00:00', 'Marketing', 0),
-  ('mkt_partnerships', 'Parcerias & Influencers', 'Users', '#8B5CF6', '2026-09-18T08:39:06.488408+00:00', 'Marketing', 0),
-  ('mkt_social', 'GestÃƒÂ£o de Redes Sociais', 'Globe', '#3B82F6', '2026-09-18T08:39:06.488408+00:00', 'Marketing', 0),
-  ('ops_inspection', 'Vistoria PrÃƒÂ©-Evento', 'CheckCircle2', '#F59E0B', '2026-09-18T08:39:06.488408+00:00', 'Operacional / Eventos', 0),
-  ('ops_inventory', 'Controle de Materiais / Estoque', 'Package', '#8B5CF6', '2026-09-18T08:39:06.488408+00:00', 'Operacional / Eventos', 0),
-  ('ops_maintenance', 'ManutenÃƒÂ§ÃƒÂ£o Preventiva', 'Wrench', '#EF4444', '2026-09-18T08:39:06.488408+00:00', 'Operacional / Eventos', 0),
-  ('ops_venue_check', 'Checagem de EspaÃƒÂ§o & Casa', 'Building2', '#3B82F6', '2026-09-18T08:39:06.488408+00:00', 'Operacional / Eventos', 0),
-  ('pos_alignment', 'ReuniÃƒÂ£o de Alinhamento', 'Calendar', '#A78BFA', '2026-09-18T08:39:06.488408+00:00', 'PÃƒÂ³s-Venda / Atendimento', 0),
-  ('pos_menu_decor', 'ConfirmaÃƒÂ§ÃƒÂ£o CardÃƒÂ¡pio / DecoraÃƒÂ§ÃƒÂ£o', 'Sparkles', '#EC4899', '2026-09-18T08:39:06.488408+00:00', 'PÃƒÂ³s-Venda / Atendimento', 0),
-  ('pos_survey', 'Pesquisa de SatisfaÃƒÂ§ÃƒÂ£o', 'Star', '#F59E0B', '2026-09-18T08:39:06.488408+00:00', 'PÃƒÂ³s-Venda / Atendimento', 0),
-  ('pos_tasting', 'DegustaÃƒÂ§ÃƒÂ£o da Casa', 'Utensils', '#F59E0B', '2026-09-18T08:39:06.488408+00:00', 'PÃƒÂ³s-Venda / Atendimento', 0),
-  ('tasting', 'DegustaÃƒÂ§ÃƒÂ£o', 'Utensils', '#F59E0B', '2026-09-18T08:39:06.454117+00:00', 'Geral', 0)
-ON CONFLICT ("id") DO UPDATE SET "name" = EXCLUDED."name", "icon" = EXCLUDED."icon", "color" = EXCLUDED."color", "sector" = EXCLUDED."sector", "order_index" = EXCLUDED."order_index";
-
--- 8. UPSERT DAS 59 TAREFAS OPERACIONAIS DOS CONTRATOS
+-- 7. UPSERT DAS 59 TAREFAS OPERACIONAIS DOS CONTRATOS
 INSERT INTO public."admin_tasks" ("id", "lead_id", "debutante_id", "venue_id", "title", "description", "due_date", "due_time", "status", "priority", "type", "created_by_id", "created_by_name", "assigned_to_ids", "created_at", "completed_at", "database_id", "content", "custom_properties", "custom_status_id", "custom_type", "mandatory_feedback", "master_id") VALUES
   ('0203c2d6-a570-4506-b8f6-8a6464906e02', NULL, NULL, 'b2222222-2222-2222-2222-222222222222', 'Ajustar cadastro importado: Luiza Oliveira Ã¢â‚¬Â¢ Aniversario', '- CPF nÃƒÂ£o encontrado no contrato. Preencher no contato.', NULL, NULL, 'todo', 'medium', 'general', NULL, 'ImportaÃƒÂ§ÃƒÂ£o de contratos', '{}'::uuid[], '2026-11-19T16:14:41.34824+00:00', NULL, 'default_collabs', '', '{"origem":"importacao_contratos","sector":"pos_venda","clientId":"13124a74-f154-4553-8ce5-9cf62ba39ffb","leadName":"Luiza Oliveira Ã¢â‚¬Â¢ Aniversario","masterId":"a0000000-0000-0000-0000-000000000001","contactId":"dd619bbf-e355-4846-a4bc-cf9f5dd0b7c1","clientName":"Luiza Oliveira Ã¢â‚¬Â¢ Aniversario","contractId":"0ae291d2-9656-4320-941e-88e2e52e33f3","semResponsavel":true}'::jsonb, 'st_todo', 'Geral / Operacional', NULL, 'a0000000-0000-0000-0000-000000000001'),
   ('02af680b-93bf-449e-99ed-da1f5417e1a7', NULL, NULL, 'b2222222-2222-2222-2222-222222222222', 'Ajustar cadastro importado: Cristiane Domingos Ã¢â‚¬Â¢ Nycolle 15 anos', '- CPF com erro no contrato (092.687.2007-9). Confirmar o CPF correto e ajustar no contato.', NULL, NULL, 'todo', 'medium', 'general', NULL, 'ImportaÃƒÂ§ÃƒÂ£o de contratos', '{}'::uuid[], '2026-11-19T16:14:50.48342+00:00', NULL, 'default_collabs', '', '{"origem":"importacao_contratos","sector":"pos_venda","clientId":"955f4ec8-af33-426c-af46-33a0f0b520b6","leadName":"Cristiane Domingos Ã¢â‚¬Â¢ Nycolle 15 anos","masterId":"a0000000-0000-0000-0000-000000000001","contactId":"6a483c9f-52e8-4fa9-bd8f-0defadd59c12","clientName":"Cristiane Domingos Ã¢â‚¬Â¢ Nycolle 15 anos","contractId":"b8149a8b-d4e5-465e-8bd1-6f3e2eebff16","semResponsavel":true}'::jsonb, 'st_todo', 'Geral / Operacional', NULL, 'a0000000-0000-0000-0000-000000000001'),
@@ -2017,44 +1971,6 @@ INSERT INTO public."admin_tasks" ("id", "lead_id", "debutante_id", "venue_id", "
   ('fcdf62e0-d872-409a-a940-46d676eeaf03', NULL, NULL, 'c3333333-3333-3333-3333-333333333333', 'Ajustar cadastro importado: Eduardo Almeida Ã¢â‚¬Â¢ Evento', '- Convidados no contrato (140) diferentes do nome da pasta (155). Confirmar o nÃƒÂºmero correto.', NULL, NULL, 'todo', 'medium', 'general', NULL, 'ImportaÃƒÂ§ÃƒÂ£o de contratos', '{}'::uuid[], '2026-11-19T16:14:44.607371+00:00', NULL, 'default_collabs', '', '{"origem":"importacao_contratos","sector":"pos_venda","clientId":"748c9d5c-cad5-41f2-b2b5-09c5d2dac485","leadName":"Eduardo Almeida Ã¢â‚¬Â¢ Evento","masterId":"a0000000-0000-0000-0000-000000000001","contactId":"64f5f894-2d12-430f-87fb-53e37b3d4f23","clientName":"Eduardo Almeida Ã¢â‚¬Â¢ Evento","contractId":"523648c1-d8e3-4def-b2d3-8312cc302bb3","semResponsavel":true}'::jsonb, 'st_todo', 'Geral / Operacional', NULL, 'a0000000-0000-0000-0000-000000000001')
 ON CONFLICT ("id") DO UPDATE SET "lead_id" = EXCLUDED."lead_id", "debutante_id" = EXCLUDED."debutante_id", "venue_id" = EXCLUDED."venue_id", "title" = EXCLUDED."title", "description" = EXCLUDED."description", "due_date" = EXCLUDED."due_date", "due_time" = EXCLUDED."due_time", "status" = EXCLUDED."status", "priority" = EXCLUDED."priority", "type" = EXCLUDED."type", "created_by_id" = EXCLUDED."created_by_id", "created_by_name" = EXCLUDED."created_by_name", "assigned_to_ids" = EXCLUDED."assigned_to_ids", "completed_at" = EXCLUDED."completed_at", "database_id" = EXCLUDED."database_id", "content" = EXCLUDED."content", "custom_properties" = EXCLUDED."custom_properties", "custom_status_id" = EXCLUDED."custom_status_id", "custom_type" = EXCLUDED."custom_type", "mandatory_feedback" = EXCLUDED."mandatory_feedback", "master_id" = EXCLUDED."master_id";
 
--- 9. UPSERT DOS SETORES E CARGOS DINÂMICOS (DIRETORIA, COMERCIAL, ETC)
-INSERT INTO public."job_sectors" ("id", "master_id", "sector_id", "name", "color", "position", "created_at", "updated_at") VALUES
-  ('3f881630-3cdd-4f03-b51b-fa7135de4dd9', 'd0000000-0000-0000-0000-000000000001', 'comercial', 'Comercial', '#10B981', 1, '2026-11-21T09:11:46.546916+00:00', '2026-11-21T09:11:46.546916+00:00'),
-  ('53343df2-ca44-41a6-a9f4-283fc0908f27', 'd0000000-0000-0000-0000-000000000001', 'financeiro', 'Financeiro', '#F59E0B', 3, '2026-11-21T09:11:46.546916+00:00', '2026-11-21T09:11:46.546916+00:00'),
-  ('779c6b2a-6686-414e-b732-7606c0ca854c', 'a0000000-0000-0000-0000-000000000001', 'financeiro', 'Financeiro', '#F59E0B', 3, '2026-11-21T09:11:46.546916+00:00', '2026-11-21T09:11:46.546916+00:00'),
-  ('7dcd14af-54db-4126-98a2-f456a6be1860', 'd0000000-0000-0000-0000-000000000001', 'pos_venda', 'PÃƒÂ³s-Venda', '#06B6D4', 2, '2026-11-21T09:11:46.546916+00:00', '2026-11-21T09:11:46.546916+00:00'),
-  ('932f9226-0f0b-4d54-aaa1-abe625e615ed', 'a0000000-0000-0000-0000-000000000001', 'diretoria', 'Diretoria', '#D4AF37', 0, '2026-11-21T09:11:46.546916+00:00', '2026-11-21T09:11:46.546916+00:00'),
-  ('9a1cd027-968e-4280-accf-ad9642c5875a', 'a0000000-0000-0000-0000-000000000001', 'pos_venda', 'PÃƒÂ³s-Venda', '#06B6D4', 2, '2026-11-21T09:11:46.546916+00:00', '2026-11-21T09:11:46.546916+00:00'),
-  ('a96c6c11-3fc3-41b2-98d6-726952ba7de5', 'a0000000-0000-0000-0000-000000000001', 'comercial', 'Comercial', '#10B981', 1, '2026-11-21T09:11:46.546916+00:00', '2026-11-21T09:11:46.546916+00:00'),
-  ('b444211e-48af-4195-be21-66cf0f36369d', 'd0000000-0000-0000-0000-000000000001', 'diretoria', 'Diretoria', '#D4AF37', 0, '2026-11-21T09:11:46.546916+00:00', '2026-11-21T09:11:46.546916+00:00'),
-  ('dae1ade9-c213-49fd-b3d5-4127d849ec83', 'd0000000-0000-0000-0000-000000000001', 'marketing_tecnologia', 'Marketing e Tecnologia', '#EC4899', 4, '2026-11-21T09:11:46.546916+00:00', '2026-11-21T09:11:46.546916+00:00'),
-  ('e824943b-b79f-4a98-8aa9-615b1a39f943', 'a0000000-0000-0000-0000-000000000001', 'marketing_tecnologia', 'Marketing e Tecnologia', '#EC4899', 4, '2026-11-21T09:11:46.546916+00:00', '2026-11-21T09:11:46.546916+00:00')
-ON CONFLICT ("id") DO UPDATE SET "master_id" = EXCLUDED."master_id", "sector_id" = EXCLUDED."sector_id", "name" = EXCLUDED."name", "color" = EXCLUDED."color", "position" = EXCLUDED."position", "updated_at" = EXCLUDED."updated_at";
-
-INSERT INTO public."job_roles" ("id", "master_id", "sector", "name", "slug", "created_by_id", "created_by_name", "created_at") VALUES
-  ('420e8049-1a30-44b4-887b-cd668a80218b', 'a0000000-0000-0000-0000-000000000001', 'diretoria', 'Diretor Executivo', 'diretor_executivo', NULL, NULL, '2026-11-21T16:55:39.74565+00:00')
-ON CONFLICT ("id") DO UPDATE SET "master_id" = EXCLUDED."master_id", "sector" = EXCLUDED."sector", "name" = EXCLUDED."name", "slug" = EXCLUDED."slug", "created_by_id" = EXCLUDED."created_by_id", "created_by_name" = EXCLUDED."created_by_name";
-
-INSERT INTO public."job_role_labels" ("id", "master_id", "role_id", "display_name", "updated_at") VALUES
-  ('356b84c7-9a1c-42f0-aede-621f44a14386', 'a0000000-0000-0000-0000-000000000001', 'diretoria:master', 'Diretor Master', '2026-11-21T16:55:39.724449+00:00')
-ON CONFLICT ("id") DO UPDATE SET "master_id" = EXCLUDED."master_id", "role_id" = EXCLUDED."role_id", "display_name" = EXCLUDED."display_name", "updated_at" = EXCLUDED."updated_at";
-
--- (Nenhum registro para job_role_order)
-
--- 10. UPSERT DAS CONFIGURAÇÕES DE AGENDA E METAS DAS CASAS
-INSERT INTO public."venue_agenda_configs" ("id", "venue_id", "visits_rule", "tastings_rule", "blackout_dates", "created_at", "updated_at") VALUES
-  ('a1111111-1111-1111-1111-111111111111', 'a1111111-1111-1111-1111-111111111111', '{"timeSlots":["10:00","11:00","14:00","15:00","16:00","17:00","18:00"],"enabledDays":[1,2,3,4,5,6],"maxPaxPerSlot":15,"durationMinutes":45,"maxConcurrentPerSlot":3}'::jsonb, '{"timeSlots":["14:00"],"enabledDays":[1,2,3,4,5,6],"maxPaxPerSlot":15,"durationMinutes":90,"maxConcurrentPerSlot":3}'::jsonb, '[]'::jsonb, '2026-09-23T14:30:32.321086+00:00', '2026-09-23T14:30:32.28+00:00'),
-  ('c3333333-3333-3333-3333-333333333333', 'c3333333-3333-3333-3333-333333333333', '{"enabled":false,"closerIds":[],"timeSlots":["09:00","10:00","11:00","14:00","15:00","16:00","17:00"],"blockRules":[],"isFreeMode":true,"enabledDays":[1,2,3,4,5,6],"daySchedules":{"0":{"enabled":false,"endTime":"16:00","dayOfWeek":0,"startTime":"10:00","slotDurationMinutes":60},"1":{"enabled":true,"endTime":"18:00","dayOfWeek":1,"startTime":"09:00","slotDurationMinutes":60},"2":{"enabled":true,"endTime":"18:00","dayOfWeek":2,"startTime":"09:00","slotDurationMinutes":60},"3":{"enabled":true,"endTime":"18:00","dayOfWeek":3,"startTime":"09:00","slotDurationMinutes":60},"4":{"enabled":true,"endTime":"18:00","dayOfWeek":4,"startTime":"09:00","slotDurationMinutes":60},"5":{"enabled":true,"endTime":"18:00","dayOfWeek":5,"startTime":"09:00","slotDurationMinutes":60},"6":{"enabled":true,"endTime":"16:00","dayOfWeek":6,"startTime":"10:00","slotDurationMinutes":60}},"maxPaxPerSlot":15,"closerNextIndex":0,"durationMinutes":60,"closerAutoNotify":true,"maxConcurrentPerSlot":3,"closerDistributionMode":"round_robin"}'::jsonb, '{"enabled":true,"timeSlots":["19:00","20:30"],"isFreeMode":false,"enabledDays":[3,4],"daySchedules":{"0":{"enabled":false,"endTime":"22:00","dayOfWeek":0,"startTime":"19:00","slotDurationMinutes":90},"1":{"enabled":false,"endTime":"22:00","dayOfWeek":1,"startTime":"19:00","slotDurationMinutes":90},"2":{"enabled":false,"endTime":"22:00","dayOfWeek":2,"startTime":"19:00","slotDurationMinutes":90},"3":{"enabled":true,"endTime":"22:00","dayOfWeek":3,"startTime":"19:00","slotDurationMinutes":90},"4":{"enabled":true,"endTime":"22:00","dayOfWeek":4,"startTime":"19:00","slotDurationMinutes":90},"5":{"enabled":false,"endTime":"22:00","dayOfWeek":5,"startTime":"19:00","slotDurationMinutes":90},"6":{"enabled":false,"endTime":"22:00","dayOfWeek":6,"startTime":"19:00","slotDurationMinutes":90}},"maxPaxPerSlot":20,"durationMinutes":90,"maxConcurrentPerSlot":4}'::jsonb, '[]'::jsonb, '2026-11-16T04:24:30.137619+00:00', '2026-11-16T04:24:29.856+00:00')
-ON CONFLICT ("id") DO UPDATE SET "venue_id" = EXCLUDED."venue_id", "visits_rule" = EXCLUDED."visits_rule", "tastings_rule" = EXCLUDED."tastings_rule", "blackout_dates" = EXCLUDED."blackout_dates", "updated_at" = EXCLUDED."updated_at";
-
-INSERT INTO public."venue_goals" ("id", "master_id", "venue_id", "revenue_target", "sales_target", "leads_target", "response_time_target_minutes", "period", "month", "year", "created_at", "updated_at", "appointments_target") VALUES
-  ('201e6487-a0bc-4dc7-aa64-f104906b826d', 'a0000000-0000-0000-0000-000000000001', 'd4577a14-d09a-46c4-af64-5e6655b0e626', 150000, 12, 60, 15, 'monthly', 11, 2026, '2026-11-17T02:57:26.854343+00:00', '2026-11-17T02:57:26.854343+00:00', 0),
-  ('3cc08584-2dbd-412d-89d9-d62396be441a', 'd0000000-0000-0000-0000-000000000001', 'a1111111-1111-1111-1111-111111111111', 150000, 12, 60, 15, 'monthly', 11, 2026, '2026-11-17T02:57:26.854343+00:00', '2026-11-17T02:57:26.854343+00:00', 0),
-  ('4bc4449c-b061-4614-a86d-a242517e844f', 'a0000000-0000-0000-0000-000000000001', 'b2222222-2222-2222-2222-222222222222', 150000, 12, 60, 15, 'monthly', 11, 2026, '2026-11-17T02:57:26.854343+00:00', '2026-11-17T02:57:26.854343+00:00', 0),
-  ('9ff393b2-dfd9-446e-b0a8-4b71478b2d1a', 'a0000000-0000-0000-0000-000000000001', 'c3333333-3333-3333-3333-333333333333', 150000, 12, 60, 15, 'monthly', 11, 2026, '2026-11-17T02:57:26.854343+00:00', '2026-11-17T02:57:26.854343+00:00', 0),
-  ('b8e6efd8-48cb-47a2-915b-f86d35a9b906', 'd0000000-0000-0000-0000-000000000001', '4194834f-feb7-4369-bc3e-4500d5714b9c', 150000, 12, 60, 15, 'monthly', 11, 2026, '2026-11-17T02:57:26.854343+00:00', '2026-11-17T02:57:26.854343+00:00', 0)
-ON CONFLICT ("id") DO UPDATE SET "master_id" = EXCLUDED."master_id", "venue_id" = EXCLUDED."venue_id", "revenue_target" = EXCLUDED."revenue_target", "sales_target" = EXCLUDED."sales_target", "leads_target" = EXCLUDED."leads_target", "response_time_target_minutes" = EXCLUDED."response_time_target_minutes", "period" = EXCLUDED."period", "month" = EXCLUDED."month", "year" = EXCLUDED."year", "updated_at" = EXCLUDED."updated_at", "appointments_target" = EXCLUDED."appointments_target";
-
 SET session_replication_role = 'origin';
 
 -- VERIFICAÇÃO FINAL:
@@ -2063,5 +1979,4 @@ SELECT
   (SELECT count(*) FROM public.contracts) as total_contratos_reais,
   (SELECT count(*) FROM public.clients) as total_clientes_posvenda,
   (SELECT count(*) FROM public.venue_events) as total_eventos_agenda,
-  (SELECT count(*) FROM public.admin_tasks) as total_tarefas_admin,
-  (SELECT count(*) FROM public.job_sectors) as total_setores;
+  (SELECT count(*) FROM public.admin_tasks) as total_tarefas_admin;

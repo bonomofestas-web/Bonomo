@@ -215,10 +215,10 @@ async function main() {
     ``
   ].join('\n');
 
-  // PARTE 1 (05A): ESTRUTURA, CONTATOS, DEPENDENTES E CARGOS/SETORES
+  // PARTE 1 (05A): ESTRUTURA, CONTATOS E DEPENDENTES
   const sqlPartA = [
     `-- ==============================================================================`,
-    `-- F5 SYSTEM • MIGRATION 05A: ESTRUTURA, CONTATOS E CARGOS DINÂMICOS`,
+    `-- F5 SYSTEM • MIGRATION 05A: ESTRUTURA E CONTATOS (SEM CONFLITO DE CARGOS)`,
     `-- Execução 1 de 3 no SQL Editor do Supabase`,
     `-- ==============================================================================`,
     sqlHeader,
@@ -228,22 +228,11 @@ async function main() {
     ``,
     buildBatchUpsert('contact_dependents', contactDependents, 50),
     ``,
-    `-- 2. UPSERT DOS SETORES E CARGOS DINÂMICOS (DIRETORIA, COMERCIAL, ETC)`,
-    buildBatchUpsert('job_sectors', jobSectors, 50),
-    ``,
-    buildBatchUpsert('job_roles', jobRoles, 50),
-    ``,
-    buildBatchUpsert('job_role_labels', jobRoleLabels, 50),
-    ``,
-    buildBatchUpsert('job_role_order', jobRoleOrder, 50),
-    ``,
     `SET session_replication_role = 'origin';`,
     ``,
     `SELECT `,
     `  (SELECT count(*) FROM public.contacts) as total_contatos,`,
-    `  (SELECT count(*) FROM public.contact_dependents) as total_dependentes,`,
-    `  (SELECT count(*) FROM public.job_sectors) as total_setores,`,
-    `  (SELECT count(*) FROM public.job_roles) as total_cargos;`
+    `  (SELECT count(*) FROM public.contact_dependents) as total_dependentes;`
   ].join('\n');
 
   // PARTE 2 (05B): LIMPEZA E UPSERT DOS 218 CONTRATOS REAIS
@@ -301,11 +290,11 @@ async function main() {
     `  (SELECT count(*) FROM public.fin_contract_reviews) as total_reviews_financeiros;`
   ].join('\n');
 
-  // PARTE 4 (05D): AGENDA DE EVENTOS, TAREFAS OPERACIONAIS E METAS DAS CASAS
+  // PARTE 4 (05D): AGENDA DE EVENTOS E TAREFAS OPERACIONAIS
   const sqlPartD = [
     `-- ==============================================================================`,
-    `-- F5 SYSTEM • MIGRATION 05D: AGENDA DE EVENTOS, TAREFAS OPERACIONAIS E METAS`,
-    `-- Execução 4 de 4 no SQL Editor do Supabase`,
+    `-- F5 SYSTEM • MIGRATION 05D: AGENDA DE EVENTOS E TAREFAS OPERACIONAIS`,
+    `-- Execução 3 de 3 no SQL Editor do Supabase`,
     `-- ==============================================================================`,
     `SET session_replication_role = 'replica';`,
     ``,
@@ -330,26 +319,11 @@ async function main() {
     `DROP POLICY IF EXISTS "admin_tasks_full_access" ON public.admin_tasks;`,
     `CREATE POLICY "admin_tasks_full_access" ON public.admin_tasks FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);`,
     ``,
-    `ALTER TABLE public.venue_goals ADD COLUMN IF NOT EXISTS master_id UUID;`,
-    `ALTER TABLE public.venue_goals ADD COLUMN IF NOT EXISTS appointments_target INT;`,
-    ``,
     `-- 1. UPSERT DOS 217 EVENTOS NA AGENDA DE EVENTOS`,
     buildBatchUpsert('venue_events', events, 50),
     ``,
-    `-- 2. UPSERT DO WORKSPACE DE TAREFAS (DATABASES, STATUSES, TYPES)`,
-    buildBatchUpsert('task_databases', taskDatabases, 50),
-    ``,
-    buildBatchUpsert('task_custom_statuses', taskStatuses, 50),
-    ``,
-    buildBatchUpsert('task_custom_types', taskTypes, 50),
-    ``,
-    `-- 3. UPSERT DAS 59 TAREFAS OPERACIONAIS DOS CONTRATOS`,
+    `-- 2. UPSERT DAS 59 TAREFAS OPERACIONAIS DOS CONTRATOS`,
     buildBatchUpsert('admin_tasks', adminTasks, 50),
-    ``,
-    `-- 4. UPSERT DAS CONFIGURAÇÕES DE AGENDA E METAS DAS CASAS`,
-    buildBatchUpsert('venue_agenda_configs', venueAgendaConfigs, 50),
-    ``,
-    buildBatchUpsert('venue_goals', venueGoals, 50),
     ``,
     `SET session_replication_role = 'origin';`,
     ``,
@@ -359,8 +333,7 @@ async function main() {
     `  (SELECT count(*) FROM public.contracts) as total_contratos_reais,`,
     `  (SELECT count(*) FROM public.clients) as total_clientes_posvenda,`,
     `  (SELECT count(*) FROM public.venue_events) as total_eventos_agenda,`,
-    `  (SELECT count(*) FROM public.admin_tasks) as total_tarefas_admin,`,
-    `  (SELECT count(*) FROM public.job_sectors) as total_setores;`
+    `  (SELECT count(*) FROM public.admin_tasks) as total_tarefas_admin;`
   ].join('\n');
 
   // ARQUIVO UNIFICADO (para quem roda via psql CLI)
@@ -389,29 +362,8 @@ async function main() {
     `-- 6. UPSERT DOS REVIEWS FINANCEIROS`,
     buildBatchUpsert('fin_contract_reviews', contractReviews, 50),
     ``,
-    `-- 7. UPSERT DO WORKSPACE DE TAREFAS (DATABASES, STATUSES, TYPES)`,
-    buildBatchUpsert('task_databases', taskDatabases, 50),
-    ``,
-    buildBatchUpsert('task_custom_statuses', taskStatuses, 50),
-    ``,
-    buildBatchUpsert('task_custom_types', taskTypes, 50),
-    ``,
-    `-- 8. UPSERT DAS 59 TAREFAS OPERACIONAIS DOS CONTRATOS`,
+    `-- 7. UPSERT DAS 59 TAREFAS OPERACIONAIS DOS CONTRATOS`,
     buildBatchUpsert('admin_tasks', adminTasks, 50),
-    ``,
-    `-- 9. UPSERT DOS SETORES E CARGOS DINÂMICOS (DIRETORIA, COMERCIAL, ETC)`,
-    buildBatchUpsert('job_sectors', jobSectors, 50),
-    ``,
-    buildBatchUpsert('job_roles', jobRoles, 50),
-    ``,
-    buildBatchUpsert('job_role_labels', jobRoleLabels, 50),
-    ``,
-    buildBatchUpsert('job_role_order', jobRoleOrder, 50),
-    ``,
-    `-- 10. UPSERT DAS CONFIGURAÇÕES DE AGENDA E METAS DAS CASAS`,
-    buildBatchUpsert('venue_agenda_configs', venueAgendaConfigs, 50),
-    ``,
-    buildBatchUpsert('venue_goals', venueGoals, 50),
     ``,
     `SET session_replication_role = 'origin';`,
     ``,
@@ -421,8 +373,7 @@ async function main() {
     `  (SELECT count(*) FROM public.contracts) as total_contratos_reais,`,
     `  (SELECT count(*) FROM public.clients) as total_clientes_posvenda,`,
     `  (SELECT count(*) FROM public.venue_events) as total_eventos_agenda,`,
-    `  (SELECT count(*) FROM public.admin_tasks) as total_tarefas_admin,`,
-    `  (SELECT count(*) FROM public.job_sectors) as total_setores;`
+    `  (SELECT count(*) FROM public.admin_tasks) as total_tarefas_admin;`
   ].join('\n');
 
   const outPathA = 'supabase/migrations/05A_SINCRONIZAR_ESTRUTURA_E_CONTATOS.sql';
