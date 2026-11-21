@@ -1286,8 +1286,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const getFeatureStatus = (featureId: FeatureFlagId): FeatureFlagStatus => {
     // Usuários com isDev = true possuem acesso a todas as features
     if (currentUser?.isDev) return 'active';
-    // Financeiro entra desligado: sem registro na chave, fica oculto (so dev ve)
-    return featureFlags[featureId] || (featureId === 'finance' ? 'disabled' : 'active');
+    // Financeiro ativo em modo leitura/desenvolvimento
+    return featureFlags[featureId] || 'active';
   };
 
   const [activeVenueId, setActiveVenueIdState] = useState<string | null>(() => {

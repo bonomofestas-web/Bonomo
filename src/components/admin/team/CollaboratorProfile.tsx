@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  ArrowLeft, ArrowRightLeft, Building2, CalendarClock, Copy, Mail, MessageCircle, Pencil, Phone, Power, Send, Target, Trash2, TrendingUp, Users,
+  ArrowLeft, ArrowRightLeft, Building2, CalendarClock, Copy, Eye, Mail, MessageCircle, Pencil, Phone, Power, Send, Target, Trash2, TrendingUp, Users,
 } from 'lucide-react';
 import type { Appointment } from '../../../types';
 import type { AdminTask, Client, Collaborator, CommercialFunnel, Lead, Venue } from '../../../types/admin';
@@ -257,6 +257,17 @@ export const CollaboratorProfile: React.FC<Props> = ({
           </span>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center', marginTop: 4 }}>
+          {!perms.isSelf && actions.onImpersonate && (
+            <button
+              type="button"
+              className="adm-btn adm-btn-secondary"
+              onClick={() => actions.onImpersonate?.(c)}
+              title={`Ver o sistema com os olhos de ${c.name}`}
+              style={{ color: '#14A9D7', borderColor: 'rgba(20, 169, 215, 0.4)' }}
+            >
+              <Eye size={14} /> Ver com os olhos de
+            </button>
+          )}
           {perms.isSelf
             ? <button type="button" className="adm-btn adm-btn-secondary" onClick={() => (perms.isMaster ? actions.onOpenMasterProfile() : actions.onEdit(c))}><Pencil size={14} /> Editar meu perfil</button>
             : <button type="button" className="adm-btn adm-btn-secondary" disabled={!perms.canEdit} onClick={() => actions.onEdit(c)}><Pencil size={14} /> Editar</button>}

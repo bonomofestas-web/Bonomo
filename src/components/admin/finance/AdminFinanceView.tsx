@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Wallet, Search, ShieldAlert, XCircle, CheckCircle2, LayoutGrid, List } from 'lucide-react';
+import { Wallet, Search, ShieldAlert, XCircle, CheckCircle2, LayoutGrid, List, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import { Select } from '../../ui';
 import { useAdminState } from '../../../context/AdminStateContext';
@@ -37,7 +37,7 @@ export const AdminFinanceView: React.FC<{ section?: 'aprovacao' | 'geral' | 'soo
   const [view, setView] = useState<'cards' | 'list'>('cards');
   const [openRow, setOpenRow] = useState<Row | null>(null);
   const [openSummary, setOpenSummary] = useState<FinContractSummary | null>(null);
-  const [busyId, setBusyId] = useState<string | null>(null);
+  const busyId = null;
   const [listCollapsed, setListCollapsed] = useState(false);
   const [early, setEarly] = useState<Contract[]>([]);
   const [openEarlyId, setOpenEarlyId] = useState<string | null>(null);
@@ -66,15 +66,31 @@ export const AdminFinanceView: React.FC<{ section?: 'aprovacao' | 'geral' | 'soo
     });
   }, [pending, search, venueFilter]);
 
-  const quickApprove = async (r: Row) => {
-    setBusyId(r.id);
-    const res = await financeService.approveReview({ masterId, reviewId: r.id, contractId: r.contractId, plan: parsePlan(r.plan) || { version: 1, items: [] }, reviewer: { id: currentUser?.id, name: currentUser?.name } });
-    setBusyId(null);
-    if (!res.success) { toast.error(res.message || 'Abra a ficha para completar o plano.'); return; }
-    await contractService.approveContract({ contractId: r.contractId, masterId, approverUser: { id: currentUser?.id || '', name: currentUser?.name || 'Financeiro', role: 'financeiro' }, fromFinance: true });
-    toast.success(`Aprovado: ${res.receivables} parcelas criadas.`);
-    void load();
+  const quickApprove = (_r: Row) => {
+    toast.warning('Esta área está em desenvolvimento e nenhuma ação pode ser feita no momento.', { duration: 4000 });
   };
+
+  const devBanner = (
+    <div style={{
+      padding: '10px 14px',
+      borderRadius: 10,
+      background: 'rgba(245, 158, 11, 0.12)',
+      border: '1px solid rgba(245, 158, 11, 0.35)',
+      display: 'flex',
+      alignItems: 'center',
+      gap: 12,
+    }}>
+      <AlertTriangle size={18} color="#F59E0B" style={{ flexShrink: 0 }} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: '0.78rem', fontWeight: 800, color: '#F59E0B' }}>
+          Módulo Financeiro em Desenvolvimento
+        </div>
+        <div style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted, #94A3B8)', marginTop: 2 }}>
+          Esta área está disponível para conferência de cálculos e relatórios. Todas as ações de edição, aprovação de contratos e baixa de parcelas estão temporariamente bloqueadas.
+        </div>
+      </div>
+    </div>
+  );
 
   if (section === 'soon') {
     return (
@@ -140,6 +156,7 @@ export const AdminFinanceView: React.FC<{ section?: 'aprovacao' | 'geral' | 'soo
     const inFunnel = summaries.filter(s => !['aguardando_aprovacao', 'reprovado', 'sem_plano'].includes(s.stageKey)).length;
     return (
       <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 16, width: '100%', boxSizing: 'border-box' }}>
+        {devBanner}
         {header('Funil financeiro', loading ? 'Carregando...' : `${inFunnel} contratos no funil: acompanhe quem está em dia, inadimplente, em negociação, quitado ou cancelado`)}
         <FinanceFunnelBoard summaries={summaries} onOpen={setOpenSummary} />
       </div>
@@ -174,6 +191,7 @@ export const AdminFinanceView: React.FC<{ section?: 'aprovacao' | 'geral' | 'soo
 
   return (
     <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 16, width: '100%', boxSizing: 'border-box' }}>
+      {devBanner}
       {header(`Aprovação do plano de pagamento (${pending.length})`, loading ? 'Carregando...' : 'Confira o contrato, ajuste o plano de pagamento e aprove. Ao aprovar, as parcelas nascem e o contrato entra no funil financeiro.')}
 
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>

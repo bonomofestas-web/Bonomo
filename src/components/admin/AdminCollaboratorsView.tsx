@@ -72,6 +72,7 @@ export const AdminCollaboratorsView: React.FC<AdminCollaboratorsViewProps> = ({ 
     updateLeadData,
     showSystemAlert,
     featureFlags,
+    setViewingAsCollaborator,
   } = useAdminState();
 
   const isCurrentUserManager = currentUser?.role === 'admin' || currentUser?.role === 'gerencia';
@@ -686,6 +687,11 @@ export const AdminCollaboratorsView: React.FC<AdminCollaboratorsViewProps> = ({ 
     onInviteLink: c => setCollabForInviteModal(c),
     onInviteEmail: c => { void handleSendInviteEmail(c); },
     onOpenMasterProfile: () => handleOpenMasterProfile(),
+    onImpersonate: c => {
+      setViewingAsCollaborator(c);
+      showSystemAlert(`Visualizando o sistema com os olhos de ${c.name}.`, 'Modo de Visualização Ativo');
+      onNavigateTab?.('crm');
+    },
   };
 
   if (isFormOpen) {

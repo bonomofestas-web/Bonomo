@@ -8,8 +8,8 @@ import {
   ChevronRight, ChevronLeft,
   ChevronDown, Globe,
   Sparkles, Radio, Compass,
-  ShieldCheck, Star, X, AlertTriangle, Sliders, Headset,
-  Eye, RotateCcw, Gift, Calendar, CalendarCheck2, GripVertical, UserCheck, Zap,
+  ShieldCheck, Star, X, AlertTriangle, Sliders, Headset, Settings,
+  Gift, Calendar, CalendarCheck2, GripVertical, UserCheck, Zap,
   Contact as ContactIcon, FileCheck2, LogOut, MessageSquare, Wallet, ArrowDownCircle, TrendingUp, BarChart3,
   CalendarDays,
 } from 'lucide-react';
@@ -76,18 +76,6 @@ interface AdminSidebarProps {
   isCollapsed?: boolean;
   onToggleCollapse?: () => void;
 }
-
-const ROLE_LABELS: Record<string, string> = {
-  dev: 'Desenvolvedor',
-  master: 'Master',
-  admin: 'Gerência',
-  gerencia: 'Gerência',
-  pos_venda: 'Pós-Venda',
-  comercial: 'Comercial',
-  crm: 'Comercial',
-  sdr: 'Comercial',
-  closer: 'Comercial',
-};
 
 export const AdminSidebar: React.FC<AdminSidebarProps> = ({
   activeTab,
@@ -165,22 +153,6 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
   const venueDropdownRef = useRef<HTMLDivElement>(null);
   const [draggedFunnelId, setDraggedFunnelId] = useState<string | null>(null);
   const [dragOverFunnelId, setDragOverFunnelId] = useState<string | null>(null);
-
-  // Seletor Olhos do Colaborador na Gerência
-  const [isEyeDropdownOpen, setIsEyeDropdownOpen] = useState(false);
-  const eyeDropdownRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (eyeDropdownRef.current && !eyeDropdownRef.current.contains(e.target as Node)) {
-        setIsEyeDropdownOpen(false);
-      }
-    };
-    if (isEyeDropdownOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
-    }
-  }, [isEyeDropdownOpen]);
 
   // Popover / Flyout flutuante para setores quando o menu está recuado (isCollapsed)
   const [collapsedSectorFlyout, setCollapsedSectorFlyout] = useState<'comercial' | 'pos_venda' | 'gerencia' | null>(null);
@@ -1457,154 +1429,85 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
         )}
       </div>
 
-      {/* Viewing As Collaborator Alert Banner (Redesenhado: Elegante, Espaçoso e Moderno) */}
-      {viewingAsCollaborator && (
-        <div style={{
-          background: 'linear-gradient(135deg, rgba(20, 169, 215, 0.16) 0%, rgba(20, 169, 215, 0.05) 100%)',
-          border: '1px solid rgba(20, 169, 215, 0.40)',
-          borderRadius: '12px',
-          padding: isCollapsed ? '8px 4px' : '10px 12px',
-          marginBottom: '12px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: isCollapsed ? '6px' : '8px',
-          boxShadow: '0 4px 16px rgba(20, 169, 215, 0.12)',
-        }}>
-          {isCollapsed ? (
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
-              <button
-                type="button"
-                onClick={() => setViewingAsCollaborator(null)}
-                title={`Modo de Visualização: ${viewingAsCollaborator.name}. Clique para sair.`}
-                style={{
-                  background: '#14A9D7',
-                  color: '#080C14',
-                  border: 'none',
-                  borderRadius: '8px',
-                  width: '32px',
-                  height: '32px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  cursor: 'pointer',
-                  transition: 'all 0.15s ease',
-                }}
-              >
-                <RotateCcw size={14} />
-              </button>
-            </div>
-          ) : (
-            <>
-              {/* Top row: Label badge and Sair button */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
-                <div style={{
-                  fontSize: '0.62rem',
-                  fontWeight: 800,
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.5px',
-                  color: '#14A9D7',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '5px',
-                }}>
-                  <Eye size={12} />
-                  <span>Modo de Visualização</span>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => setViewingAsCollaborator(null)}
-                  title="Sair do Modo de Visualização e voltar à sua visão nativa"
-                  style={{
-                    background: 'rgba(20, 169, 215, 0.18)',
-                    color: '#38BDF8',
-                    border: '1px solid rgba(20, 169, 215, 0.35)',
-                    borderRadius: '6px',
-                    padding: '3px 8px',
-                    fontSize: '0.68rem',
-                    fontWeight: 800,
-                    cursor: 'pointer',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '4px',
-                    flexShrink: 0,
-                    transition: 'all 0.15s ease',
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = '#14A9D7';
-                    e.currentTarget.style.color = '#080C14';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = 'rgba(20, 169, 215, 0.18)';
-                    e.currentTarget.style.color = '#38BDF8';
-                  }}
-                >
-                  <RotateCcw size={11} />
-                  <span>Sair</span>
-                </button>
-              </div>
-
-              {/* Collab Info: Name and Role */}
-              <div style={{ minWidth: 0 }}>
-                <div style={{
-                  fontSize: '0.80rem',
-                  fontWeight: 800,
-                  color: '#FFFFFF',
-                  lineHeight: 1.25,
-                  wordBreak: 'break-word',
-                }}>
-                  {viewingAsCollaborator.name}
-                </div>
-                <div style={{
-                  fontSize: '0.68rem',
-                  fontWeight: 600,
-                  color: '#94A3B8',
-                  marginTop: '2px',
-                }}>
-                  {ROLE_LABELS[viewingAsCollaborator.role] || viewingAsCollaborator.role}
-                </div>
-              </div>
-            </>
-          )}
-        </div>
-      )}
-
       {/* Luxury Custom Venue Switcher Popover with Logos & Globo */}
       {!currentUser?.isFirstAccess && allowedVenues.length > 0 && (
         <div ref={venueDropdownRef} style={{ position: 'relative', marginBottom: '10px' }}>
           {/* Se o colaborador possui apenas 1 casa, exibe a logo e nome da unidade com orgulho, SEM dropdown e sem seta */}
-          {(userRole !== 'master' && allowedVenues.length === 1) ? (
-            <div
-              title={`Sua Unidade Oficial: ${allowedVenues[0].name}`}
-              style={{
-                width: '100%',
-                background: '#141118',
-                border: '1px solid rgba(212, 175, 55, 0.25)',
-                borderRadius: '10px',
-                padding: '6px 8px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                textAlign: 'left',
-              }}
-            >
-              {renderVenueIconBadge(allowedVenues[0], 26)}
-              {!isCollapsed && (
-                <div style={{ minWidth: 0, flex: 1 }}>
-                  <div style={{ fontSize: '0.52rem', textTransform: 'uppercase', color: '#D4AF37', fontWeight: 800, letterSpacing: '0.5px' }}>
-                    Sua Unidade
+          {((userRole as string) !== 'master' && allowedVenues.length === 1) ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', width: '100%' }}>
+              <div
+                title={`Sua Unidade Oficial: ${allowedVenues[0].name}`}
+                style={{
+                  flex: 1,
+                  minWidth: 0,
+                  background: '#141118',
+                  border: '1px solid rgba(212, 175, 55, 0.25)',
+                  borderRadius: '10px',
+                  padding: '6px 8px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  textAlign: 'left',
+                }}
+              >
+                {renderVenueIconBadge(allowedVenues[0], 26)}
+                {!isCollapsed && (
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ fontSize: '0.52rem', textTransform: 'uppercase', color: '#D4AF37', fontWeight: 800, letterSpacing: '0.5px' }}>
+                      Sua Unidade
+                    </div>
+                    <div style={{
+                      fontSize: '0.74rem',
+                      fontWeight: 800,
+                      color: '#FFFFFF',
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                    }}>
+                      {allowedVenues[0].name}
+                    </div>
                   </div>
-                  <div style={{
-                    fontSize: '0.74rem',
-                    fontWeight: 800,
-                    color: '#FFFFFF',
-                    whiteSpace: 'nowrap',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                  }}>
-                    {allowedVenues[0].name}
-                  </div>
-                </div>
+                )}
+              </div>
+              {!isCollapsed && (userRole === 'master' || userRole === 'admin' || userRole === 'gerencia' || isDevUser) && (
+                <button
+                  type="button"
+                  onClick={() => onSelectTab('system-settings')}
+                  title="Central de Unidades e Colaboradores"
+                  style={{
+                    width: '32px',
+                    height: '32px',
+                    borderRadius: '10px',
+                    background: (activeTab === 'system-settings' || activeTab === 'venues' || activeTab === 'collaborators')
+                      ? 'rgba(20, 169, 215, 0.18)'
+                      : '#141118',
+                    border: (activeTab === 'system-settings' || activeTab === 'venues' || activeTab === 'collaborators')
+                      ? '1px solid #14A9D7'
+                      : '1px solid rgba(255, 255, 255, 0.12)',
+                    color: (activeTab === 'system-settings' || activeTab === 'venues' || activeTab === 'collaborators')
+                      ? '#14A9D7'
+                      : 'var(--adm-text-muted, #94A3B8)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                    flexShrink: 0,
+                    transition: 'all 0.15s ease',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.color = '#FFFFFF';
+                    e.currentTarget.style.borderColor = 'rgba(20, 169, 215, 0.5)';
+                    e.currentTarget.style.background = 'rgba(20, 169, 215, 0.15)';
+                  }}
+                  onMouseLeave={(e) => {
+                    const isActive = activeTab === 'system-settings' || activeTab === 'venues' || activeTab === 'collaborators';
+                    e.currentTarget.style.color = isActive ? '#14A9D7' : 'var(--adm-text-muted, #94A3B8)';
+                    e.currentTarget.style.borderColor = isActive ? '#14A9D7' : 'rgba(255, 255, 255, 0.12)';
+                    e.currentTarget.style.background = isActive ? 'rgba(20, 169, 215, 0.18)' : '#141118';
+                  }}
+                >
+                  <Settings size={15} />
+                </button>
               )}
             </div>
           ) : isCollapsed && !isMobileOverlay ? (
@@ -1644,52 +1547,97 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
               {activeVenue ? renderVenueIconBadge(activeVenue, 28) : <Globe size={18} color="#D4AF37" />}
             </button>
           ) : (
-            <button
-              type="button"
-              onClick={() => setIsVenueDropdownOpen(v => !v)}
-              style={{
-                width: '100%',
-                background: isVenueDropdownOpen ? 'rgba(212, 175, 55, 0.14)' : '#141118',
-                border: `1px solid ${isVenueDropdownOpen ? '#D4AF37' : 'rgba(212, 175, 55, 0.25)'}`,
-                borderRadius: '10px',
-                padding: '6px 8px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: '6px',
-                cursor: 'pointer',
-                textAlign: 'left',
-                transition: 'all 0.2s ease',
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, flex: 1 }}>
-                {renderVenueIconBadge(activeVenue, 24)}
-                <div style={{ minWidth: 0, flex: 1 }}>
-                  <div style={{ fontSize: '0.52rem', textTransform: 'uppercase', color: '#D4AF37', fontWeight: 800, letterSpacing: '0.5px' }}>
-                    Unidade
-                  </div>
-                  <div style={{
-                    fontSize: '0.72rem',
-                    fontWeight: 700,
-                    color: '#FFFFFF',
-                    whiteSpace: 'nowrap',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                  }}>
-                    {activeVenue?.name || (userRole === 'master' ? 'Todas' : `Todas (${allowedVenues.length})`)}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', width: '100%' }}>
+              <button
+                type="button"
+                onClick={() => setIsVenueDropdownOpen(v => !v)}
+                style={{
+                  flex: 1,
+                  minWidth: 0,
+                  background: isVenueDropdownOpen ? 'rgba(212, 175, 55, 0.14)' : '#141118',
+                  border: `1px solid ${isVenueDropdownOpen ? '#D4AF37' : 'rgba(212, 175, 55, 0.25)'}`,
+                  borderRadius: '10px',
+                  padding: '6px 8px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '6px',
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  transition: 'all 0.2s ease',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, flex: 1 }}>
+                  {renderVenueIconBadge(activeVenue, 24)}
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ fontSize: '0.52rem', textTransform: 'uppercase', color: '#D4AF37', fontWeight: 800, letterSpacing: '0.5px' }}>
+                      Unidade
+                    </div>
+                    <div style={{
+                      fontSize: '0.72rem',
+                      fontWeight: 700,
+                      color: '#FFFFFF',
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                    }}>
+                      {activeVenue?.name || (userRole === 'master' ? 'Todas' : `Todas (${allowedVenues.length})`)}
+                    </div>
                   </div>
                 </div>
-              </div>
-              <ChevronDown
-                size={14}
-                style={{
-                  color: isVenueDropdownOpen ? '#D4AF37' : 'rgba(255, 255, 255, 0.45)',
-                  transform: isVenueDropdownOpen ? 'rotate(180deg)' : 'none',
-                  transition: 'transform 0.2s ease, color 0.15s ease',
-                  flexShrink: 0,
-                }}
-              />
-            </button>
+                <ChevronDown
+                  size={14}
+                  style={{
+                    color: isVenueDropdownOpen ? '#D4AF37' : 'rgba(255, 255, 255, 0.45)',
+                    transform: isVenueDropdownOpen ? 'rotate(180deg)' : 'none',
+                    transition: 'transform 0.2s ease, color 0.15s ease',
+                    flexShrink: 0,
+                  }}
+                />
+              </button>
+
+              {/* Engrenagem simples com clique para acessar a central de unidades e colaboradores */}
+              {(userRole === 'master' || userRole === 'admin' || userRole === 'gerencia' || isDevUser) && (
+                <button
+                  type="button"
+                  onClick={() => onSelectTab('system-settings')}
+                  title="Central de Unidades e Colaboradores"
+                  style={{
+                    width: '32px',
+                    height: '32px',
+                    borderRadius: '10px',
+                    background: (activeTab === 'system-settings' || activeTab === 'venues' || activeTab === 'collaborators')
+                      ? 'rgba(20, 169, 215, 0.18)'
+                      : '#141118',
+                    border: (activeTab === 'system-settings' || activeTab === 'venues' || activeTab === 'collaborators')
+                      ? '1px solid #14A9D7'
+                      : '1px solid rgba(255, 255, 255, 0.12)',
+                    color: (activeTab === 'system-settings' || activeTab === 'venues' || activeTab === 'collaborators')
+                      ? '#14A9D7'
+                      : 'var(--adm-text-muted, #94A3B8)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                    flexShrink: 0,
+                    transition: 'all 0.15s ease',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.color = '#FFFFFF';
+                    e.currentTarget.style.borderColor = 'rgba(20, 169, 215, 0.5)';
+                    e.currentTarget.style.background = 'rgba(20, 169, 215, 0.15)';
+                  }}
+                  onMouseLeave={(e) => {
+                    const isActive = activeTab === 'system-settings' || activeTab === 'venues' || activeTab === 'collaborators';
+                    e.currentTarget.style.color = isActive ? '#14A9D7' : 'var(--adm-text-muted, #94A3B8)';
+                    e.currentTarget.style.borderColor = isActive ? '#14A9D7' : 'rgba(255, 255, 255, 0.12)';
+                    e.currentTarget.style.background = isActive ? 'rgba(20, 169, 215, 0.18)' : '#141118';
+                  }}
+                >
+                  <Settings size={15} />
+                </button>
+              )}
+            </div>
           )}
 
           {/* Venue Switcher Popover Menu */}
@@ -1776,6 +1724,114 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
                 );
               })}
             </div>
+          )}
+        </div>
+      )}
+
+      {/* Vendo com os Olhos de (Abaixo do dropdown de unidades) */}
+      {viewingAsCollaborator && (
+        <div
+          style={{
+            marginBottom: '10px',
+            background: 'linear-gradient(135deg, rgba(20, 169, 215, 0.14) 0%, rgba(20, 169, 215, 0.04) 100%)',
+            border: '1px solid rgba(20, 169, 215, 0.35)',
+            borderRadius: '10px',
+            padding: isCollapsed ? '6px 4px' : '7px 9px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '8px',
+            boxShadow: '0 4px 14px rgba(20, 169, 215, 0.10)',
+          }}
+        >
+          {isCollapsed ? (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', width: '100%' }}>
+              <div title={`Vendo com os olhos de ${viewingAsCollaborator.name}`}>
+                <SafeAvatar src={viewingAsCollaborator.avatarUrl} name={viewingAsCollaborator.name} size={28} />
+              </div>
+              <button
+                type="button"
+                onClick={() => setViewingAsCollaborator(null)}
+                title="Sair do modo de visualização"
+                style={{
+                  background: 'rgba(239, 68, 68, 0.2)',
+                  border: '1px solid rgba(239, 68, 68, 0.4)',
+                  color: '#EF4444',
+                  borderRadius: '6px',
+                  width: '24px',
+                  height: '24px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  padding: 0,
+                }}
+              >
+                <X size={12} />
+              </button>
+            </div>
+          ) : (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
+                <SafeAvatar src={viewingAsCollaborator.avatarUrl} name={viewingAsCollaborator.name} size={28} />
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{
+                    fontSize: '0.54rem',
+                    fontWeight: 800,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.5px',
+                    color: '#14A9D7',
+                    lineHeight: 1.1,
+                  }}>
+                    Vendo com os olhos
+                  </div>
+                  <div style={{
+                    fontSize: '0.74rem',
+                    fontWeight: 700,
+                    color: '#FFFFFF',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    lineHeight: 1.25,
+                  }}>
+                    {viewingAsCollaborator.name}
+                  </div>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setViewingAsCollaborator(null)}
+                title="Sair e voltar à sua visão nativa"
+                style={{
+                  background: 'rgba(255, 255, 255, 0.06)',
+                  border: '1px solid rgba(255, 255, 255, 0.15)',
+                  color: '#94A3B8',
+                  borderRadius: '6px',
+                  width: '24px',
+                  height: '24px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  flexShrink: 0,
+                  transition: 'all 0.15s ease',
+                  padding: 0,
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'rgba(239, 68, 68, 0.2)';
+                  e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.5)';
+                  e.currentTarget.style.color = '#EF4444';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)';
+                  e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.15)';
+                  e.currentTarget.style.color = '#94A3B8';
+                }}
+              >
+                <X size={13} />
+              </button>
+            </>
           )}
         </div>
       )}
@@ -2056,191 +2112,33 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
 
           {isCollapsed && effectiveSectors.includes('pos_venda') && <div style={{ height: '1px', background: 'rgba(255, 255, 255, 0.08)', margin: '3px 4px' }} />}
 
-          {/* 4. Gerência: Tarefas, Qualificação, Origens, Metas, Dashboard Gerência, Colaboradores, Casas de Festa */}
-          {(isDevUser || userRole === 'master' || effectiveSectors.includes('gerencia')) && (
-            isCollapsed && !isMobileOverlay ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', width: '100%' }}>
-                {renderCollapsedSectorButton('gerencia')}
-              </div>
-            ) : (
-              <div>
-                {renderSectionHeader('Gerência', 'gerencia')}
-                {!collapsedSections['gerencia'] && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                    {masterItems.map(item => renderNavButton(item))}
-
-                    {/* Botão Olhos do Colaborador (Gerência) */}
-                    {(userRole === 'master' || userRole === 'admin' || userRole === 'gerencia' || isDevUser) && (
-                      <div ref={eyeDropdownRef} style={{ position: 'relative', marginTop: '4px' }}>
-                        <button
-                          type="button"
-                          onClick={() => setIsEyeDropdownOpen(!isEyeDropdownOpen)}
-                          style={{
-                            width: '100%',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            padding: '6px 10px',
-                            borderRadius: '8px',
-                            background: viewingAsCollaborator ? 'rgba(20, 169, 215, 0.18)' : 'rgba(255, 255, 255, 0.04)',
-                            border: `1px solid ${viewingAsCollaborator ? '#14A9D7' : 'rgba(255, 255, 255, 0.08)'}`,
-                            color: viewingAsCollaborator ? '#14A9D7' : 'var(--adm-text-muted, #94A3B8)',
-                            fontSize: '0.74rem',
-                            fontWeight: 700,
-                            cursor: 'pointer',
-                            transition: 'all 0.15s ease',
-                          }}
-                          onMouseEnter={(e) => {
-                            if (!viewingAsCollaborator) {
-                              e.currentTarget.style.background = 'rgba(20, 169, 215, 0.1)';
-                              e.currentTarget.style.color = '#FFFFFF';
-                            }
-                          }}
-                          onMouseLeave={(e) => {
-                            if (!viewingAsCollaborator) {
-                              e.currentTarget.style.background = 'rgba(255, 255, 255, 0.04)';
-                              e.currentTarget.style.color = 'var(--adm-text-muted, #94A3B8)';
-                            }
-                          }}
-                        >
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
-                            <Eye size={15} color="#14A9D7" />
-                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                              {viewingAsCollaborator ? `Visão: ${viewingAsCollaborator.name.split(' ')[0]}` : 'Olhos do Colaborador'}
-                            </span>
-                          </div>
-                          <ChevronDown size={12} style={{ transform: isEyeDropdownOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s ease' }} />
-                        </button>
-
-                        {/* Dropdown de Colaboradores */}
-                        {isEyeDropdownOpen && (
-                          <div
-                            style={{
-                              position: 'absolute',
-                              top: 'calc(100% + 4px)',
-                              left: 0,
-                              right: 0,
-                              background: '#141118',
-                              border: '1px solid rgba(20, 169, 215, 0.35)',
-                              borderRadius: '10px',
-                              boxShadow: '0 10px 25px rgba(0,0,0,0.75)',
-                              padding: '6px',
-                              zIndex: 9999,
-                              display: 'flex',
-                              flexDirection: 'column',
-                              gap: '3px',
-                            }}
-                          >
-                            <div style={{ padding: '4px 6px', fontSize: '0.64rem', fontWeight: 800, color: '#14A9D7', textTransform: 'uppercase' }}>
-                              Simular visão de:
-                            </div>
-                            <div style={{ maxHeight: '180px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                              {viewingAsCollaborator && (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setViewingAsCollaborator(null);
-                                    setIsEyeDropdownOpen(false);
-                                  }}
-                                  style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '6px',
-                                    padding: '6px 8px',
-                                    borderRadius: '6px',
-                                    background: 'rgba(239, 68, 68, 0.15)',
-                                    border: '1px solid rgba(239, 68, 68, 0.3)',
-                                    color: '#EF4444',
-                                    fontSize: '0.72rem',
-                                    fontWeight: 700,
-                                    cursor: 'pointer',
-                                    width: '100%',
-                                    marginBottom: '4px',
-                                  }}
-                                >
-                                  <X size={12} />
-                                  <span>Sair do Modo de Visão</span>
-                                </button>
-                              )}
-                              {(collaborators || []).map(c => {
-                                const isCurrent = viewingAsCollaborator?.id === c.id;
-                                return (
-                                  <button
-                                    key={c.id}
-                                    type="button"
-                                    onClick={() => {
-                                      setViewingAsCollaborator(c);
-                                      setIsEyeDropdownOpen(false);
-                                      onSelectTab('crm');
-                                    }}
-                                    style={{
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      gap: '8px',
-                                      padding: '6px 8px',
-                                      borderRadius: '6px',
-                                      background: isCurrent ? 'rgba(20, 169, 215, 0.2)' : 'transparent',
-                                      border: 'none',
-                                      color: isCurrent ? '#14A9D7' : '#FFFFFF',
-                                      fontSize: '0.72rem',
-                                      fontWeight: isCurrent ? 800 : 500,
-                                      cursor: 'pointer',
-                                      textAlign: 'left',
-                                      width: '100%',
-                                    }}
-                                    onMouseEnter={(e) => {
-                                      if (!isCurrent) e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)';
-                                    }}
-                                    onMouseLeave={(e) => {
-                                      if (!isCurrent) e.currentTarget.style.background = 'transparent';
-                                    }}
-                                  >
-                                    <SafeAvatar src={c.avatarUrl} name={c.name} size={20} borderRadius="50%" />
-                                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
-                                      {c.name}
-                                    </span>
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            )
-          )}
-
-          {/* 5. Setor Marketing: Preparado (modulo proprio ainda nao desenvolvido) */}
-          {!isCollapsed && effectiveSectors.includes('marketing') && (
-            <div>
-              <div style={{
-                fontSize: '0.56rem',
-                fontWeight: 800,
-                textTransform: 'uppercase',
-                color: '#8096A8',
-                letterSpacing: '0.6px',
-                padding: '4px 6px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-              }}>
-                <span>Marketing</span>
-                <span style={{ fontSize: '0.48rem', background: 'rgba(148, 163, 184, 0.12)', color: 'var(--adm-text-muted)', padding: '1px 4px', borderRadius: '3px' }}>
-                  Em Breve
-                </span>
-              </div>
-            </div>
-          )}
-
-          {/* 6. Setor Financeiro (master, gerencia e setor financeiro) */}
-          {canAccessFinance(currentUser) && getFeatureStatus('finance') === 'active' && (
+          {/* 4. Setor Financeiro (Em Desenvolvimento: leitura, conferência e cálculos) */}
+          {(canAccessFinance(currentUser) || userRole === 'master' || userRole === 'admin' || userRole === 'gerencia' || effectiveSectors.includes('financeiro') || isDevUser) && (
             <div>
               {!isCollapsed && (
-                <div style={{ fontSize: '0.56rem', fontWeight: 800, textTransform: 'uppercase', color: '#8096A8', letterSpacing: '0.6px', padding: '4px 6px' }}>
-                  Financeiro
+                <div style={{
+                  fontSize: '0.56rem',
+                  fontWeight: 800,
+                  textTransform: 'uppercase',
+                  color: '#8096A8',
+                  letterSpacing: '0.6px',
+                  padding: '4px 6px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                }}>
+                  <span>Financeiro</span>
+                  <span style={{
+                    fontSize: '0.48rem',
+                    fontWeight: 700,
+                    background: 'rgba(245, 158, 11, 0.15)',
+                    color: '#F59E0B',
+                    border: '1px solid rgba(245, 158, 11, 0.3)',
+                    padding: '1px 5px',
+                    borderRadius: '4px',
+                  }}>
+                    Em Desenvolvimento
+                  </span>
                 </div>
               )}
               {([
@@ -2260,6 +2158,69 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
                   </button>
                 ))
                 : renderNavButton(it)))}
+            </div>
+          )}
+
+          {isCollapsed && (effectiveSectors.includes('gerencia') || userRole === 'master') && <div style={{ height: '1px', background: 'rgba(255, 255, 255, 0.08)', margin: '3px 4px' }} />}
+
+          {/* 5. Gerência (Em Breve) */}
+          {(isDevUser || userRole === 'master' || effectiveSectors.includes('gerencia')) && (
+            isCollapsed && !isMobileOverlay ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', width: '100%' }}>
+                {renderCollapsedSectorButton('gerencia')}
+              </div>
+            ) : (
+              <div>
+                <div style={{
+                  fontSize: '0.56rem',
+                  fontWeight: 800,
+                  textTransform: 'uppercase',
+                  color: '#8096A8',
+                  letterSpacing: '0.6px',
+                  padding: '4px 6px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  cursor: 'pointer',
+                }}
+                  onClick={() => toggleSection('gerencia')}
+                >
+                  <span>Gerência</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ fontSize: '0.48rem', background: 'rgba(148, 163, 184, 0.12)', color: 'var(--adm-text-muted)', padding: '1px 4px', borderRadius: '3px' }}>
+                      Em Breve
+                    </span>
+                    <ChevronDown size={11} style={{ transform: collapsedSections['gerencia'] ? 'rotate(-90deg)' : 'none', transition: 'transform 0.15s ease' }} />
+                  </div>
+                </div>
+                {!collapsedSections['gerencia'] && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                    {masterItems.map(item => renderNavButton(item))}
+                  </div>
+                )}
+              </div>
+            )
+          )}
+
+          {/* 6. Setor Marketing (Em Breve) */}
+          {!isCollapsed && effectiveSectors.includes('marketing') && (
+            <div>
+              <div style={{
+                fontSize: '0.56rem',
+                fontWeight: 800,
+                textTransform: 'uppercase',
+                color: '#8096A8',
+                letterSpacing: '0.6px',
+                padding: '4px 6px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+              }}>
+                <span>Marketing</span>
+                <span style={{ fontSize: '0.48rem', background: 'rgba(148, 163, 184, 0.12)', color: 'var(--adm-text-muted)', padding: '1px 4px', borderRadius: '3px' }}>
+                  Em Breve
+                </span>
+              </div>
             </div>
           )}
 

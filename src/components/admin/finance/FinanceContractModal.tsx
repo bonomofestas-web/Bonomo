@@ -1,10 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { X, CheckCircle2, XCircle, Save, FileText, MessageSquare, ShieldAlert, Calendar, Users, Building2, Wallet } from 'lucide-react';
+import { X, CheckCircle2, XCircle, Save, FileText, MessageSquare, ShieldAlert, Calendar, Users, Building2, Wallet, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAdminState } from '../../../context/AdminStateContext';
 import { supabase } from '../../../lib/supabase';
 import { financeService, isImportedContract } from '../../../services/financeService';
-import { contractService } from '../../../services/contractService';
 import { getContractDocuments } from '../../../utils/contractDocuments';
 import { EMPTY_PLAN, expandPlan, parsePlan, validatePlan, type PaymentPlan, type PlanValidation } from '../../../utils/paymentPlan';
 import { PaymentPlanEditor, type CardTerminalOption } from './PaymentPlanEditor';
@@ -36,7 +35,7 @@ const Row: React.FC<{ label: string; value: React.ReactNode }> = ({ label, value
  * Ficha financeira do contrato (aprovacao do financeiro). Esquerda: dados e plano de pagamento editavel.
  * Direita: documentos abertos AQUI DENTRO (sem nova aba) e conversa de WhatsApp com o cliente.
  */
-export const FinanceContractModal: React.FC<Props> = ({ review, onClose, onChanged, embedded }) => {
+export const FinanceContractModal: React.FC<Props> = ({ review, onClose, onChanged: _onChanged, embedded }) => {
   const { currentUser, venues, sources } = useAdminState();
   const masterId = currentUser?.masterId || currentUser?.id || '';
   const c = review.contract;
@@ -51,7 +50,7 @@ export const FinanceContractModal: React.FC<Props> = ({ review, onClose, onChang
   const [tab, setTab] = useState<'docs' | 'whatsapp'>('docs');
   const [rejecting, setRejecting] = useState(false);
   const [reason, setReason] = useState('');
-  const [busy, setBusy] = useState(false);
+  const busy = false;
   const [clientFunnelId, setClientFunnelId] = useState<string | null>(null);
   const [receivables, setReceivables] = useState<FinReceivable[]>([]);
 
@@ -68,34 +67,17 @@ export const FinanceContractModal: React.FC<Props> = ({ review, onClose, onChang
 
   const preview = useMemo(() => expandPlan(plan, { eventDate: c.event_date }), [plan, c.event_date]);
   const valid = validatePlan(plan, Number(c.total_amount || 0), { requireDates: true, hasEventDate: Boolean(c.event_date) });
-  const reviewer = { id: currentUser?.id, name: currentUser?.name };
 
   const saveDraft = async () => {
-    setBusy(true);
-    const ok = await financeService.saveDraftPlan({ masterId, reviewId: review.id, plan: { ...plan, source: plan.source || 'financeiro' } });
-    setBusy(false);
-    if (ok) toast.success('Rascunho do plano salvo.'); else toast.error('Não foi possível salvar o rascunho.');
+    toast.warning('Esta área está em desenvolvimento e nenhuma ação pode ser feita no momento.', { duration: 4000 });
   };
 
   const approve = async () => {
-    setBusy(true);
-    const res = await financeService.approveReview({ masterId, reviewId: review.id, contractId: c.id, plan, reviewer });
-    setBusy(false);
-    if (!res.success) { toast.error(res.message || 'Não foi possível aprovar.'); return; }
-    await contractService.approveContract({ contractId: c.id, masterId, approverUser: { id: reviewer.id || '', name: reviewer.name || 'Financeiro', role: 'financeiro' }, fromFinance: true });
-    toast.success(`Contrato aprovado: ${res.receivables} parcelas criadas.`);
-    onChanged();
-    onClose();
+    toast.warning('Esta área está em desenvolvimento e nenhuma ação pode ser feita no momento.', { duration: 4000 });
   };
 
   const reject = async () => {
-    setBusy(true);
-    const res = await financeService.rejectReview({ masterId, reviewId: review.id, contractId: c.id, reason, reviewer });
-    setBusy(false);
-    if (!res.success) { toast.error(res.message || 'Não foi possível reprovar.'); return; }
-    toast.success('Plano reprovado. O Closer recebeu a tarefa com o motivo.');
-    onChanged();
-    onClose();
+    toast.warning('Esta área está em desenvolvimento e nenhuma ação pode ser feita no momento.', { duration: 4000 });
   };
 
   return (
@@ -110,6 +92,14 @@ export const FinanceContractModal: React.FC<Props> = ({ review, onClose, onChang
           </div>
           <span style={{ fontSize: '0.7rem', fontWeight: 800, padding: '3px 10px', borderRadius: 999, background: 'rgba(245,158,11,0.15)', color: '#B45309' }}>Aguardando aprovação</span>
           <button type="button" onClick={onClose} aria-label="Fechar" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--adm-text-muted)' }}><X size={20} /></button>
+        </div>
+
+        {/* Banner de desenvolvimento */}
+        <div style={{ padding: '8px 20px', background: 'rgba(245, 158, 11, 0.12)', borderBottom: '1px solid rgba(245, 158, 11, 0.3)', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+          <AlertTriangle size={15} color="#F59E0B" />
+          <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#F59E0B' }}>
+            Modo de Visualização (Em Desenvolvimento): Edição, salvamento e aprovação de planos estão temporariamente travados.
+          </span>
         </div>
 
         <div style={{ flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: 'minmax(520px, 1.15fr) minmax(420px, 1fr)' }}>

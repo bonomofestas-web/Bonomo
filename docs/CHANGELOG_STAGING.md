@@ -390,8 +390,21 @@ Grande reestruturação de governança, experiência do usuário, banco de dados
   - **Foto de Perfil na Visão em Lista do Pós-Venda (`AdminPostSaleKanbanView.tsx`):**
     * Inclusão do `SafeAvatar` de 30px na coluna de nome da protagonista/cliente da tabela da visão em lista, mantendo consistência visual completa.
 
-- **Reorganização do Squad & Liderança de Frontend** (`improved`):
-  - **Descontinuação de Protótipos HTML:** Encerramento definitivo de etapas intermediárias de prototipagem estática em HTML e retirada da Victoria da operação.
-  - **Promoção de Lily Aldrin:** Designada como Designer-Chefe & Frontend Lead, centralizando a criação e refino de interface diretamente no ecossistema React do F5 System, orientada pelo Design System nativo, Tremor Raw e Apache ECharts.
-  - **Implementação Oficial do Pós-Venda:** Lily assume a execução oficial da esteira de Pós-Venda como espelho funcional e visual do `AdminCrmWorkspaceView.tsx`.
-  - **Frentes de Engenharia e Dados:** Ranjit dedicado à migração e integridade da base legada de clientes; Barney focado em serviços de agendamento e consolidação de métricas analíticas.
+- **Reorganização do Menu Lateral, Seletor de Unidades e Modo "Ver com os Olhos de"** (`improved` / `ui`):
+  - **Engrenagem na Mudança de Unidade (`AdminSidebar.tsx`):**
+    * Adicionado botão de engrenagem simples (`Settings` de `lucide-react`) integrado ao seletor de unidades para acesso imediato com 1 clique à Central de Unidades e Colaboradores.
+  - **Novo Fluxo de Visualização "Ver com os Olhos de" (Impersonation):**
+    * Removido o botão antigo do menu lateral ("Olhos do Colaborador").
+    * Adicionada a ação "Ver com os olhos de" diretamente no menu de 3 pontinhos (`...`) de cada colaborador na aba Colaboradores (`TeamDirectory.tsx`) e no perfil (`CollaboratorProfile.tsx`).
+    * Card de status posicionado logo abaixo do dropdown de unidades no sidebar: exibe avatar oficial do colaborador (`SafeAvatar`), nome completo, label "Vendo com os olhos" e botão `X` para cancelar e retornar à visão nativa a qualquer momento.
+  - **Reordenação das Seções do Menu Lateral:**
+    * **Financeiro** posicionado logo após Pós-Venda com badge destacada "Em Desenvolvimento".
+    * **Gerência** reordenada com badge "Em Breve".
+    * **Marketing** posicionado no final do menu com badge "Em Breve".
+
+- **Subida Segura do Financeiro em Modo Leitura e Blindagem de Edição** (`finance` / `security`):
+  - **Banner Persistente de Desenvolvimento:** Exibido no topo do funil financeiro, aprovação de pagamentos e modais de recebíveis com aviso explícito de que o módulo está ativo para conferência de métricas, parcelas e cálculos.
+  - **Bloqueio de Edição e Ações Interceptadas:** Botões de aprovação de contratos, reprovação, salvamento de rascunho de plano, baixa de parcelas, renegociação e cancelamento travados; ao clicar, o sistema exibe toast informativo orientando que a área está em desenvolvimento e nenhuma alteração pode ser realizada no momento.
+  - **Carga de Dados de Contratos, Clientes e Contatos para Produção:**
+    * Gerado script de dados `supabase/migrations/DADOS_CONTRATOS_CLIENTES_R2_PRODUCAO.sql` contendo 257 contatos, 218 clientes, 218 contratos com preços, faturamento e URLs permanentes no Cloudflare R2, 218 colocações em funis de pós-venda e 218 registros de revisão financeira.
+

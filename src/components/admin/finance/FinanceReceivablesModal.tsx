@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { X, Wallet, CheckCircle2, FileText, MessageSquare, FolderOpen, Handshake, Ban, Undo2, Calendar, Users, Building2 } from 'lucide-react';
+import { X, Wallet, CheckCircle2, FileText, MessageSquare, FolderOpen, Handshake, Ban, Undo2, Calendar, Users, Building2, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import { DateField, Select } from '../../ui';
 import { useAdminState } from '../../../context/AdminStateContext';
@@ -35,18 +35,17 @@ interface Props { summary: FinContractSummary; onClose: () => void; onChanged: (
  * pago e o que falta); a direita, a conversa de WhatsApp (so a conversa) ou os documentos abertos aqui dentro.
  * Renegociacao e cancelamento sao definidos AQUI, nao arrastando cards.
  */
-export const FinanceReceivablesModal: React.FC<Props> = ({ summary, onClose, onChanged, embedded }) => {
+export const FinanceReceivablesModal: React.FC<Props> = ({ summary, onClose, onChanged: _onChanged, embedded }) => {
   const { currentUser, venues, sources } = useAdminState();
   const financeSource = getFinanceSource(sources, summary.venueId);
   const masterId = currentUser?.masterId || currentUser?.id || '';
-  const by = { id: currentUser?.id, name: currentUser?.name };
   const [c, setC] = useState<any>(null);
   const [rows, setRows] = useState<FinReceivable[]>([]);
   const [tab, setTab] = useState<'contrato' | 'whatsapp' | 'docs'>('contrato');
   const [filter, setFilter] = useState<'all' | 'open' | 'paid'>('all');
   const [clientFunnelId, setClientFunnelId] = useState<string | null>(null);
-  const [stage, setStage] = useState(summary.stageKey);
-  const [manual, setManual] = useState(summary.manualStage || null);
+  const [stage] = useState(summary.stageKey);
+  const [manual] = useState(summary.manualStage || null);
   const [note, setNote] = useState('');
   const [mode, setMode] = useState<null | 'renegociacao' | 'cancelamento'>(null);
   // baixa
@@ -58,7 +57,7 @@ export const FinanceReceivablesModal: React.FC<Props> = ({ summary, onClose, onC
   const [feePct, setFeePct] = useState('');
   const [terminals, setTerminals] = useState<Array<{ id: string; name: string; feeTable: Record<string, number> }>>([]);
   const [terminalId, setTerminalId] = useState('');
-  const [busy, setBusy] = useState(false);
+  const busy = false;
 
   const load = useCallback(async () => setRows(await financeService.getReceivables(masterId, summary.contractId)), [masterId, summary.contractId]);
   useEffect(() => {
@@ -92,31 +91,11 @@ export const FinanceReceivablesModal: React.FC<Props> = ({ summary, onClose, onC
   const card = isCard ? cardBreakdown(parsed, Number(feePct.replace(',', '.')) || 0) : null;
 
   const submitPay = async () => {
-    if (!payId) return;
-    setBusy(true);
-    const res = await financeService.registerPayment({
-      masterId, receivableId: payId, amount: parsed, date, method, installments: isCard ? installments : undefined,
-      feePct: isCard ? Number(feePct.replace(',', '.')) || 0 : undefined, terminalId: terminalId || undefined, by,
-    });
-    setBusy(false);
-    if (!res.success) { toast.error(res.message || 'Não foi possível registrar o pagamento.'); return; }
-    toast.success('Pagamento registrado.');
-    setPayId(null);
-    await load();
-    onChanged();
+    toast.warning('Esta área está em desenvolvimento e nenhuma ação pode ser feita no momento.', { duration: 4000 });
   };
 
-  const setStageManual = async (target: 'renegociacao' | 'cancelamento' | null) => {
-    setBusy(true);
-    const res = await financeService.setManualStage({ masterId, contractId: summary.contractId, stage: target, note, by });
-    setBusy(false);
-    if (!res.success) { toast.error(res.message || 'Não foi possível alterar a etapa.'); return; }
-    toast.success(target === 'renegociacao' ? 'Contrato em renegociação.' : target === 'cancelamento' ? 'Contrato enviado para Cancelamento.' : 'Contrato voltou à etapa calculada pelas parcelas.');
-    setManual(target);
-    setStage(target ?? (pendingTotal <= 0 ? 'quitado' : summary.overdueAmount > 0 ? 'inadimplente' : 'em_dia'));
-    setMode(null);
-    setNote('');
-    onChanged();
+  const setStageManual = async (_target: 'renegociacao' | 'cancelamento' | null) => {
+    toast.warning('Esta área está em desenvolvimento e nenhuma ação pode ser feita no momento.', { duration: 4000 });
   };
 
   const stageColor = STAGE_COLOR[stage] || '#64748B';
@@ -133,6 +112,14 @@ export const FinanceReceivablesModal: React.FC<Props> = ({ summary, onClose, onC
           </div>
           <span style={{ fontSize: '0.7rem', fontWeight: 800, padding: '3px 10px', borderRadius: 999, background: `${stageColor}22`, color: stageColor }}>{FIN_STAGE_LABEL[stage]}</span>
           <button type="button" onClick={onClose} aria-label="Fechar" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--adm-text-muted)' }}><X size={20} /></button>
+        </div>
+
+        {/* Banner de desenvolvimento */}
+        <div style={{ padding: '8px 20px', background: 'rgba(245, 158, 11, 0.12)', borderBottom: '1px solid rgba(245, 158, 11, 0.3)', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+          <AlertTriangle size={15} color="#F59E0B" />
+          <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#F59E0B' }}>
+            Modo de Visualização (Em Desenvolvimento): Baixa de parcelas, renegociação e cancelamentos estão temporariamente travados.
+          </span>
         </div>
 
         <div style={{ flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: 'minmax(480px, 1fr) minmax(480px, 1.1fr)' }}>

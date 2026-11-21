@@ -36,6 +36,7 @@ export interface TeamActions {
   onInviteLink: (c: Collaborator) => void;
   onInviteEmail: (c: Collaborator) => void;
   onOpenMasterProfile: () => void;
+  onImpersonate?: (c: Collaborator) => void;
 }
 
 export interface TeamDataBundle {

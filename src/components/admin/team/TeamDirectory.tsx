@@ -91,6 +91,13 @@ export const TeamDirectory: React.FC<Props> = ({ collaborators, data, actions, p
     const isCommercial = ['sdr', 'closer', 'sdr_closer'].includes(kindOf(c));
     return [
       { id: 'view', label: 'Ver perfil', icon: <Eye size={14} />, onSelect: () => actions.onOpen(c) },
+      {
+        id: 'impersonate',
+        label: 'Ver com os olhos de',
+        icon: <Eye size={14} />,
+        onSelect: () => actions.onImpersonate?.(c),
+        hidden: p.isSelf,
+      },
       p.isMaster && p.isSelf
         ? { id: 'master', label: 'Editar meu perfil', icon: <Pencil size={14} />, onSelect: actions.onOpenMasterProfile }
         : { id: 'edit', label: 'Editar', icon: <Pencil size={14} />, onSelect: () => actions.onEdit(c), disabled: !p.canEdit, disabledReason: 'Sem permissão para editar esta pessoa' },
