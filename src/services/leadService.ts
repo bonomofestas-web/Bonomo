@@ -482,13 +482,13 @@ export const leadService = {
           const [chatRes, auditRes] = await Promise.all([
             supabase
               .from('lead_activities')
-              .select('id, lead_id, type, title, text, timestamp, status, error_message')
+              .select('id, lead_id, type, title, text, timestamp, status, error_message, metadata')
               .in('type', ['contact', 'whatsapp'])
               .order('timestamp', { ascending: false })
               .limit(600),
             supabase
               .from('lead_activities')
-              .select('id, lead_id, type, title, text, timestamp, status, error_message')
+              .select('id, lead_id, type, title, text, timestamp, status, error_message, metadata')
               .in('type', ['creation', 'note', 'stage_change', 'status_change'])
               .order('timestamp', { ascending: false })
               .limit(300)

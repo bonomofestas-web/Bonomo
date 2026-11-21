@@ -7342,6 +7342,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                           const hasDup = (sourceLeads || []).some(l => {
                             if (l.id === selectedLead.id) return false;
                             if (l.masterId && selectedLead.masterId && l.masterId !== selectedLead.masterId) return false;
+                            if (l.funnelId !== selectedLead.funnelId) return false;
                             const isLClient = Boolean(l.isClient || l.group === 'Pós-Venda');
                             if (isTargetClient !== isLClient) return false;
                             return isPhoneMatch(l.phone, selectedLead.phone);

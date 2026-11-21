@@ -6928,9 +6928,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       return false;
     });
 
-    let existing = candidateLeads.find(l => incomingVenueId && l.venueId === incomingVenueId)
-      || candidateLeads.find(l => incomingFunnelId && l.funnelId === incomingFunnelId)
-      || candidateLeads[0];
+    let existing = candidateLeads.find(l => incomingFunnelId && l.funnelId === incomingFunnelId)
+      || candidateLeads.find(l => incomingVenueId && l.venueId === incomingVenueId);
 
     // ── BLINDAGEM DE CONCORRÊNCIA SUPREMA (WEBHOOK + SSE) ──────────
     // Se não encontrou no cache local em memória (leadsRef), consulta diretamente o Supabase
@@ -6949,9 +6948,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           const mappedMatches = dbMatches.map(row => formatLeadFromDb(row));
           const tenantMatches = mappedMatches.filter(l => !scopedMasterId || !l.masterId || l.masterId === scopedMasterId);
           if (tenantMatches.length > 0) {
-            const found = tenantMatches.find(l => incomingVenueId && l.venueId === incomingVenueId)
-              || tenantMatches.find(l => incomingFunnelId && l.funnelId === incomingFunnelId)
-              || tenantMatches[0];
+            const found = tenantMatches.find(l => incomingFunnelId && l.funnelId === incomingFunnelId)
+              || tenantMatches.find(l => incomingVenueId && l.venueId === incomingVenueId);
             if (found) {
               existing = found;
               // Sincroniza imediatamente o estado e ref para evitar que mensagens seguintes criem novos leads
@@ -7012,6 +7010,12 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           authorName: data.fromMe ? 'WhatsApp' : (existing.name || 'Cliente'),
           authorId: data.fromMe ? 'whatsapp_mobile' : 'lead',
           status: data.fromMe ? 'sent' : 'delivered',
+          metadata: {
+            sourceId: waSource?.id,
+            senderSourceId: waSource?.id,
+            senderSourceName: waSource?.name,
+            senderPhone: (waSource?.configuration as any)?.connectedPhone || (waSource?.configuration as any)?.whatsappNumber,
+          },
         };
         const updatedActivities = mergeAndSortActivities(existing.activities || [], [newAct], existing.id);
         const updates: Partial<Lead> = {
@@ -7435,8 +7439,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           if (!matchedClient && matchedSource?.id) {
             matchedClient = candidateClients.find(c => (c as any).sourceId === matchedSource.id);
           }
-          if (!matchedClient && candidateClients.length > 0) {
-            matchedClient = candidateClients[0];
+          if (!matchedClient && sourceVenue?.id) {
+            matchedClient = candidateClients.find(c => c.venueId === sourceVenue.id) || null;
           }
 
           if (matchedClient) {

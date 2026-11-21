@@ -2214,6 +2214,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
               const hasDuplicate = leads.some(l => {
                 if (l.id === lead.id) return false;
                 if (l.masterId && lead.masterId && l.masterId !== lead.masterId) return false;
+                if (l.funnelId !== lead.funnelId) return false;
                 const isLClient = Boolean(l.isClient || l.group === 'Pós-Venda');
                 if (isTargetClient !== isLClient) return false;
                 return isPhoneMatch(l.phone, lead.phone);
