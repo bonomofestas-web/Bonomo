@@ -254,6 +254,30 @@ export const AdminContractKanbanCard: React.FC<AdminContractKanbanCardProps> = (
   const responsibleAvatar = managerCollab?.avatarUrl || (managerCollab as any)?.photoUrl;
   const guestCount = client.guestCount || (client as any).estimatedGuests || 0;
 
+  const matchingLead = React.useMemo(() => {
+    const rawPhone = client.payerPhone || (client as any).phone || '';
+    const digits = rawPhone.replace(/\D/g, '').slice(-8);
+    return (leads || []).find(l => {
+      if (l.id === client.id || (client as any).commercialLeadId === l.id) return true;
+      if (digits.length >= 8) {
+        const lDigits = (l.phone || '').replace(/\D/g, '').slice(-8);
+        return lDigits === digits;
+      }
+      return false;
+    });
+  }, [leads, client.id, (client as any).commercialLeadId, client.payerPhone, (client as any).phone]);
+
+  const unreadMessagesCount = React.useMemo(() => {
+    return Number(
+      (client as any).unreadMessagesCount ?? 
+      (client as any).unreadCount ?? 
+      (client as any).pendingMessagesCount ?? 
+      (matchingLead as any)?.unreadMessagesCount ?? 
+      matchingLead?.unreadCount ?? 
+      0
+    );
+  }, [client, matchingLead]);
+
   const clientAvatar = React.useMemo(() => {
     // 1. Imagem direta no objeto client
     const directAvatar = client.avatarUrl || (client as any).photoUrl || (client as any).profilePicUrl || (client as any).custom_field_values?.avatarUrl || (client as any).customFieldValues?.avatarUrl;
@@ -872,6 +896,59 @@ export const AdminContractKanbanCard: React.FC<AdminContractKanbanCardProps> = (
           </div>
         </div>
 
+        {/* Botão de WhatsApp / Notificação de Mensagens Não Lidas */}
+        <div
+          title={unreadMessagesCount > 0 ? `${unreadMessagesCount} mensagem(ns) não lida(s) no WhatsApp` : 'Abrir conversa no WhatsApp'}
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpenWhatsApp && onOpenWhatsApp(client.id);
+          }}
+          style={{
+            width: '26px',
+            height: '26px',
+            borderRadius: '7px',
+            background: unreadMessagesCount > 0 ? 'rgba(37, 211, 102, 0.16)' : 'var(--adm-bg-surface, #F1F5F9)',
+            border: unreadMessagesCount > 0 ? '1px solid rgba(37, 211, 102, 0.5)' : '1px solid var(--adm-border, #E2E8F0)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            position: 'relative',
+            transition: 'all 0.15s ease',
+            flexShrink: 0,
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.transform = 'scale(1.08)';
+            e.currentTarget.style.borderColor = '#25D366';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = 'scale(1)';
+            e.currentTarget.style.borderColor = unreadMessagesCount > 0 ? 'rgba(37, 211, 102, 0.5)' : 'var(--adm-border, #E2E8F0)';
+          }}
+        >
+          <MessageSquare size={13} color={unreadMessagesCount > 0 ? '#10B981' : 'var(--adm-text-muted, #64748B)'} />
+          {unreadMessagesCount > 0 && (
+            <span style={{
+              position: 'absolute',
+              top: '-4px',
+              right: '-4px',
+              background: '#EF4444',
+              color: '#ffffff',
+              fontSize: '0.50rem',
+              fontWeight: 800,
+              borderRadius: '999px',
+              minWidth: '13px',
+              height: '13px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '0 2px',
+              boxShadow: '0 1px 3px rgba(239, 68, 68, 0.5)',
+            }}>
+              {unreadMessagesCount}
+            </span>
+          )}
+        </div>
       </div>
     </div>
   );

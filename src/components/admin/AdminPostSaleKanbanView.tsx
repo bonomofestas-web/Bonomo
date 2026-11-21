@@ -289,6 +289,7 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
 }) => {
   const { 
     clients, 
+    allClients: masterClients,
     leads,
     venues, 
     collaborators, 
@@ -625,7 +626,8 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
     const linked = getLinkedVenuesForFunnel(funnel);
     const linkedVenueIds = linked.map(v => v.id);
 
-    const extraClientsFromLeads = filterExtraPostSaleLeads(leads || [], clients || []).filter(l => {
+    const baseClientsList = masterClients && masterClients.length > 0 ? masterClients : (clients || []);
+    const extraClientsFromLeads = filterExtraPostSaleLeads(leads || [], baseClientsList).filter(l => {
       const explicitlyInFunnel = Boolean(
         l.funnelId && (
           l.funnelId === funnel.id ||
@@ -639,7 +641,7 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
       return false;
     });
 
-    const combined = [...clients, ...extraClientsFromLeads];
+    const combined = [...baseClientsList, ...extraClientsFromLeads];
     const funnelClients = combined.filter(c => {
       if ((c as any).isRemovedFromFunnel) return false;
       if (!matchesFunnelStrict((c as any).funnelId, funnel, true)) return false;
@@ -833,9 +835,10 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
 
   // Clientes unificados (combina tabela clients com leads marcados como pós-venda sem duplicar registros)
   const allClients = useMemo<Client[]>(() => {
+    const baseClientsList = masterClients && masterClients.length > 0 ? masterClients : (clients || []);
     const linkedVenueIds = currentFunnel ? getLinkedVenuesForFunnel(currentFunnel).map(v => v.id) : [];
 
-    const extraClientsFromLeads: Client[] = filterExtraPostSaleLeads(leads || [], clients || [])
+    const extraClientsFromLeads: Client[] = filterExtraPostSaleLeads(leads || [], baseClientsList)
       .filter(l => {
         // Se o cliente possui funnelId explícito pertencente ao funil atual (ou a qualquer funil pós-venda),
         // ele deve ser exibido no Kanban igual ao Modo WhatsApp
@@ -876,23 +879,24 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
         updatedAt: l.updatedAt || new Date().toISOString(),
       } as unknown as Client));
 
-    return [...clients, ...extraClientsFromLeads];
-  }, [clients, leads, currentFunnel, postSaleFunnels, defaultPostSaleId, venues]);
+    return [...baseClientsList, ...extraClientsFromLeads];
+  }, [clients, masterClients, leads, currentFunnel, postSaleFunnels, defaultPostSaleId, venues]);
 
   // Filtragem completa e ordenação dos clientes
   const filteredClients = useMemo(() => {
+    const baseClientsList = masterClients && masterClients.length > 0 ? masterClients : (clients || []);
     let list = allClients.filter(client => {
       if ((client as any).isRemovedFromFunnel || client.stage === 'archived') return false;
 
       // Se for um card solto sem contrato (avulso):
       // Se este contato já foi vinculado a um contrato oficial (como titular ou membro/contato da família),
       // ele NÃO deve aparecer como um card solto no Kanban, pois já está representado dentro do card do contrato!
-      const isCardLoose = !(clients || []).some(c => c.id === client.id);
+      const isCardLoose = !baseClientsList.some(c => c.id === client.id);
       if (isCardLoose) {
         const rawPhone = client.payerPhone || (client as any).phone || (client as any).payer_phone || '';
         const cPhoneDigits = rawPhone.replace(/\D/g, '').slice(-8);
         if (cPhoneDigits.length >= 8) {
-          const isPartOfContract = (clients || []).some(c => {
+          const isPartOfContract = baseClientsList.some(c => {
             const pDigits = (c.payerPhone || (c as any).payer_phone || (c as any).phone || '').replace(/\D/g, '').slice(-8);
             if (pDigits === cPhoneDigits) return true;
             const contactsList = c.contacts || (c as any).contacts;
@@ -916,12 +920,13 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
             return false;
           }
         }
+      } else if (activeVenueId && activeVenueId !== 'all') {
+        if (client.venueId !== activeVenueId) return false;
       }
 
-      // 1. Casa de Festas (Filtro dropdown adicional)
-      const effectiveVenue = filterState.venueId !== 'all' ? filterState.venueId : activeVenueId;
-      if (effectiveVenue && effectiveVenue !== 'all' && client.venueId !== effectiveVenue) {
-        return false;
+      // 1. Casa de Festas (Filtro dropdown adicional quando o usuário seleciona no topo)
+      if (filterState.venueId !== 'all') {
+        if (client.venueId !== filterState.venueId) return false;
       }
 
       // 2. Colaborador / Gestor de Sucesso

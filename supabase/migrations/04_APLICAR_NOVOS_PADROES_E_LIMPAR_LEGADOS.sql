@@ -232,6 +232,13 @@ UPDATE public.contracts SET contract_code = 'CTR-ER20300412', contract_title = '
 UPDATE public.contracts SET contract_code = 'CTR-ER20300615', contract_title = 'Anny Beatriz 15 anos', title = 'Anny Beatriz 15 anos' WHERE id = '9cf44c50-19df-42e9-81ce-2b2718b34d3c';
 UPDATE public.contracts SET contract_code = 'CTR-ER20310621', contract_title = 'Vitoria Souza 15 anos', title = 'Vitoria Souza 15 anos' WHERE id = 'b3288db5-f817-41a7-8590-2990881d3a12';
 
+-- 3. SINCRONIZAÇÃO DOS NOVOS TÍTULOS E CÓDIGOS PARA OS CARDS DE CLIENTES NO PÓS-VENDA
+UPDATE public.clients cli
+SET contract_title = c.contract_title,
+    code = c.contract_code
+FROM public.contracts c
+WHERE c.client_id = cli.id;
+
 SET session_replication_role = 'origin';
 
 -- VERIFICAÇÃO FINAL:

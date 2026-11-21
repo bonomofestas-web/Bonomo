@@ -69,6 +69,30 @@ export const ClientPersonKanbanCard: React.FC<ClientPersonKanbanCardProps> = ({
     return undefined;
   }, [client, leads, phone]);
 
+  const matchingLead = React.useMemo(() => {
+    const rawPhone = phone || (client as any).phone || '';
+    const digits = rawPhone.replace(/\D/g, '').slice(-8);
+    return (leads || []).find(l => {
+      if (l.id === client.id) return true;
+      if (digits.length >= 8) {
+        const lDigits = (l.phone || '').replace(/\D/g, '').slice(-8);
+        return lDigits === digits;
+      }
+      return false;
+    });
+  }, [client.id, leads, phone, (client as any).phone]);
+
+  const unreadCount = React.useMemo(() => {
+    return Number(
+      (client as any).unreadMessagesCount ?? 
+      (client as any).unreadCount ?? 
+      (client as any).pendingMessagesCount ?? 
+      (matchingLead as any)?.unreadMessagesCount ?? 
+      matchingLead?.unreadCount ?? 
+      0
+    );
+  }, [client, matchingLead]);
+
   const copyCode = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!code) return;
@@ -181,17 +205,71 @@ export const ClientPersonKanbanCard: React.FC<ClientPersonKanbanCardProps> = ({
         )}
       </div>
 
-      {(venueName || responsible) && (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, fontSize: '0.7rem', color: 'var(--adm-text-muted)', borderTop: '1px dashed #CBD5E1', paddingTop: 6 }}>
-          {venueName ? (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, fontSize: '0.7rem', color: 'var(--adm-text-muted)', borderTop: '1px dashed #CBD5E1', paddingTop: 6 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, overflow: 'hidden' }}>
+          {venueName && (
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, minWidth: 0, overflow: 'hidden' }} title={`Unidade: ${venueName}`}>
               <Building2 size={12} style={{ flexShrink: 0 }} />
               <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{venueName}</span>
             </span>
-          ) : <span />}
-          {responsible && <span style={{ fontWeight: 700, color: 'var(--adm-text-title)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 120 }} title={`Responsável: ${responsible}`}>{responsible}</span>}
+          )}
+          {responsible && <span style={{ fontWeight: 700, color: 'var(--adm-text-title)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 110 }} title={`Responsável: ${responsible}`}>{responsible}</span>}
         </div>
-      )}
+
+        {/* Notificação / Botão de WhatsApp */}
+        <div
+          title={unreadCount > 0 ? `${unreadCount} mensagem(ns) não lida(s) no WhatsApp` : 'Abrir atendimento no WhatsApp'}
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpenWhatsApp && onOpenWhatsApp(client.id);
+          }}
+          style={{
+            width: '24px',
+            height: '24px',
+            borderRadius: '6px',
+            background: unreadCount > 0 ? 'rgba(37, 211, 102, 0.16)' : 'var(--adm-bg-surface, #F1F5F9)',
+            border: unreadCount > 0 ? '1px solid rgba(37, 211, 102, 0.5)' : '1px solid var(--adm-border, #CBD5E1)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            position: 'relative',
+            flexShrink: 0,
+            transition: 'all 0.15s ease',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.transform = 'scale(1.08)';
+            e.currentTarget.style.borderColor = '#25D366';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = 'scale(1)';
+            e.currentTarget.style.borderColor = unreadCount > 0 ? 'rgba(37, 211, 102, 0.5)' : 'var(--adm-border, #CBD5E1)';
+          }}
+        >
+          <MessageSquare size={12} color={unreadCount > 0 ? '#10B981' : 'var(--adm-text-muted, #64748B)'} />
+          {unreadCount > 0 && (
+            <span style={{
+              position: 'absolute',
+              top: '-4px',
+              right: '-4px',
+              background: '#EF4444',
+              color: '#ffffff',
+              fontSize: '0.50rem',
+              fontWeight: 800,
+              borderRadius: '999px',
+              minWidth: '13px',
+              height: '13px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '0 2px',
+              boxShadow: '0 1px 3px rgba(239, 68, 68, 0.5)',
+            }}>
+              {unreadCount}
+            </span>
+          )}
+        </div>
+      </div>
 
       {/* Acao: lead solto vincula a contratante; cliente sem contrato abre a ficha para vincular o contrato */}
       {isLooseLead && onLinkContractor ? (

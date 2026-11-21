@@ -253,6 +253,17 @@ const getLeadMatchedColumnId = (
   return '';
 };
 
+/** Exibe no máximo as duas primeiras palavras do nome no card comercial para manter o visual limpo */
+const formatCardLeadName = (name: string): string => {
+  if (!name) return '';
+  const trimmed = name.trim();
+  const parts = trimmed.split(/\s+/);
+  if (parts.length > 2) {
+    return `${parts[0]} ${parts[1]}`;
+  }
+  return trimmed;
+};
+
 /** Cards por etapa carregados de inicio e a cada rolagem (como a caixa de entrada do WhatsApp). */
 const KANBAN_COLUMN_INITIAL = 20;
 const KANBAN_COLUMN_STEP = 20;
@@ -3446,31 +3457,31 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                 border: isSelectedInMulti 
                                   ? '1.5px solid var(--adm-accent, #6366F1)' 
                                   : (hasSlaAlert ? `1.5px solid ${sla.cardBorder}` : '1px solid var(--adm-border, #E2E8F0)'),
-                                borderRadius: '8px',
-                                padding: '8px 10px',
+                                borderRadius: '12px',
+                                padding: '12px 14px',
                                 cursor: 'pointer',
                                 display: 'flex',
                                 flexDirection: 'column',
-                                gap: '6px',
+                                gap: '9px',
                                 transition: 'transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease',
                                 position: 'relative',
                                 boxShadow: isSelectedInMulti 
                                   ? '0 2px 8px rgba(99, 102, 241, 0.15)' 
-                                  : (hasSlaAlert ? `0 0 0 1px ${sla.cardBorder}33, 0 2px 6px rgba(0,0,0,0.04)` : '0 1px 3px rgba(0,0,0,0.03)'),
+                                  : (hasSlaAlert ? `0 0 0 1px ${sla.cardBorder}33, 0 2px 6px rgba(0,0,0,0.04)` : '0 1px 3px rgba(0,0,0,0.04)'),
                                 zIndex: (activeLeadMenuId === lead.id || addTagLead?.id === lead.id || activeValueLeadId === lead.id) ? 100 : 1,
                               }}
                               onMouseEnter={(e) => {
                                 if (!isSelectedInMulti) {
                                   e.currentTarget.style.borderColor = isPostSaleView ? '#06B6D4' : (hasSlaAlert ? sla.color : 'var(--adm-accent, #6366F1)');
-                                  e.currentTarget.style.transform = 'translateY(-1px)';
-                                  e.currentTarget.style.boxShadow = '0 3px 8px rgba(0,0,0,0.06)';
+                                  e.currentTarget.style.transform = 'translateY(-2px)';
+                                  e.currentTarget.style.boxShadow = '0 6px 18px rgba(0,0,0,0.07)';
                                 }
                               }}
                               onMouseLeave={(e) => {
                                 if (!isSelectedInMulti) {
                                   e.currentTarget.style.borderColor = hasSlaAlert ? sla.cardBorder : 'var(--adm-border, #E2E8F0)';
                                   e.currentTarget.style.transform = 'translateY(0)';
-                                  e.currentTarget.style.boxShadow = hasSlaAlert ? `0 0 0 1px ${sla.cardBorder}33, 0 2px 6px rgba(0,0,0,0.04)` : '0 1px 3px rgba(0,0,0,0.03)';
+                                  e.currentTarget.style.boxShadow = hasSlaAlert ? `0 0 0 1px ${sla.cardBorder}33, 0 2px 6px rgba(0,0,0,0.04)` : '0 1px 3px rgba(0,0,0,0.04)';
                                 }
                               }}
                             >
@@ -3730,22 +3741,25 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                   <SafeAvatar
                                     src={(lead as any).avatarUrl || (lead as any).photoUrl}
                                     name={lead.name}
-                                    size={24}
+                                    size={30}
                                   />
 
                                   {/* Nome do Lead e Telefone abaixo */}
                                   <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1, gap: '0px' }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '3px', minWidth: 0 }}>
-                                      <span style={{
-                                        fontSize: '0.75rem',
-                                        fontWeight: 800,
-                                        color: 'var(--adm-text-title, #0F172A)',
-                                        whiteSpace: 'nowrap',
-                                        overflow: 'hidden',
-                                        textOverflow: 'ellipsis',
-                                        lineHeight: 1.15,
-                                      }}>
-                                        {lead.name}
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', minWidth: 0 }}>
+                                      <span 
+                                        title={lead.name}
+                                        style={{
+                                          fontSize: '0.82rem',
+                                          fontWeight: 800,
+                                          color: 'var(--adm-text-title, #0F172A)',
+                                          whiteSpace: 'nowrap',
+                                          overflow: 'hidden',
+                                          textOverflow: 'ellipsis',
+                                          lineHeight: 1.2,
+                                        }}
+                                      >
+                                        {formatCardLeadName(lead.name)}
                                       </span>
                                       {isLeadSpectator(lead) && (
                                         <span title="Modo Espectador: somente leitura" style={{ fontSize: '0.45rem', color: 'var(--adm-text-muted)', background: 'var(--adm-bg-card)', border: '1px solid var(--adm-border)', borderRadius: '3px', padding: '0 2px', display: 'inline-flex', alignItems: 'center', gap: '2px', flexShrink: 0 }}>
@@ -3755,7 +3769,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                     </div>
                                     {lead.phone && (
                                       <span style={{
-                                        fontSize: '0.62rem',
+                                        fontSize: '0.66rem',
                                         fontWeight: 500,
                                         color: 'var(--adm-text-muted, #64748B)',
                                         whiteSpace: 'nowrap',
@@ -4659,9 +4673,9 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                             handleOpenLeadWorkspace(lead, 'tasks');
                                           }}
                                           style={{
-                                            width: '21px',
-                                            height: '21px',
-                                            borderRadius: '5px',
+                                            width: '23px',
+                                            height: '23px',
+                                            borderRadius: '6px',
                                             background: bg,
                                             border: `1px solid ${border}`,
                                             color: color,
@@ -4710,9 +4724,9 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                             handleOpenLeadWorkspace(lead, 'whatsapp');
                                           }}
                                           style={{
-                                            width: '21px',
-                                            height: '21px',
-                                            borderRadius: '5px',
+                                            width: '23px',
+                                            height: '23px',
+                                            borderRadius: '6px',
                                             background: hasUnread ? 'rgba(37, 211, 102, 0.15)' : 'var(--adm-bg-input, #F8FAFC)',
                                             border: hasUnread ? '1px solid rgba(37, 211, 102, 0.4)' : '1px solid var(--adm-border, #E2E8F0)',
                                             display: 'flex',
@@ -4780,9 +4794,9 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                             handleOpenLeadWorkspace(lead, 'tasks');
                                           }}
                                           style={{
-                                            width: '21px',
-                                            height: '21px',
-                                            borderRadius: '5px',
+                                            width: '23px',
+                                            height: '23px',
+                                            borderRadius: '6px',
                                             background: visitBg,
                                             border: `1px solid ${visitBorder}`,
                                             color: visitColor,
@@ -4831,9 +4845,9 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                             handleOpenLeadWorkspace(lead, 'tasks');
                                           }}
                                           style={{
-                                            width: '21px',
-                                            height: '21px',
-                                            borderRadius: '5px',
+                                            width: '23px',
+                                            height: '23px',
+                                            borderRadius: '6px',
                                             background: tastingBg,
                                             border: `1px solid ${tastingBorder}`,
                                             color: tastingColor,
