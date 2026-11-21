@@ -19,15 +19,15 @@ export interface AccessLevelOption {
 export const OFFICIAL_ACCESS_LEVELS: AccessLevelOption[] = [
   {
     id: 'master',
-    label: 'Diretor Master',
-    badgeLabel: 'Diretor Master',
+    label: 'Diretor(a) Master',
+    badgeLabel: 'Diretor(a) Master',
     description: 'Diretoria Geral • Acesso irrestrito a toda a rede',
   },
   {
     id: 'diretor',
-    label: 'Diretor',
-    badgeLabel: 'Diretor',
-    description: 'Diretoria Executiva • Poder de master nas unidades autorizadas',
+    label: 'Diretor(a)',
+    badgeLabel: 'Diretor(a)',
+    description: 'Diretoria • Poder de master nas unidades autorizadas',
   },
   {
     id: 'admin',
@@ -118,10 +118,10 @@ export const formatAccessRoleLabel = (role?: string): string => {
   const clean = role.toLowerCase().trim();
   switch (clean) {
     case 'master':
-      return 'Diretor Master';
+      return 'Diretor(a) Master';
     case 'diretor':
     case 'diretoria':
-      return 'Diretor';
+      return 'Diretor(a)';
     case 'dev':
       return 'Desenvolvedor';
     case 'admin':

@@ -164,7 +164,7 @@ export const AdminAppointmentModal: React.FC<AdminAppointmentModalProps> = ({
       const selectedCollab = collaborators.find(c => c.id === responsibleCollaboratorId);
       const responsibleName = selectedCollab?.name;
       const responsibleRole = selectedCollab?.role === 'master' 
-        ? 'Gerente Geral / Master' 
+        ? 'Diretor(a) Master' 
         : selectedCollab?.role === 'pos_venda' 
         ? 'Especialista Pós-Venda' 
         : 'Responsável do Evento';
@@ -587,7 +587,9 @@ export const AdminAppointmentModal: React.FC<AdminAppointmentModalProps> = ({
                   <option value="" style={{ background: 'var(--adm-bg-card)' }}>Selecione o Responsável...</option>
                   {eligibleCollaborators.map(c => {
                     const roleLabel = c.role === 'master' 
-                      ? 'Gerente Geral' 
+                      ? 'Diretor(a) Master' 
+                      : c.role === 'diretor' || c.role === 'diretoria'
+                      ? 'Diretor(a)'
                       : c.role === 'pos_venda' 
                       ? 'Pós-Venda' 
                       : c.role === 'crm' 

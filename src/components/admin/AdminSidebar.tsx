@@ -2274,16 +2274,19 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',
                 }}>
-                  {roleTitleOf({ jobRoles: collaborators.find(x => x.id === currentUser.id)?.jobRoles, customJobTitle: currentUser.customJobTitle }) || (
-                    currentUser.role === 'master' || currentUser.role === 'diretor' || currentUser.role === 'diretoria' || isUserDirector(currentUser) ? 'Diretoria Executiva' :
-                      currentUser.role === 'dev' ? 'Desenvolvedor' :
-                        currentUser.role === 'admin' || currentUser.role === 'gerencia' ? 'Gerência Geral' :
+                  {currentUser.role === 'master'
+                    ? 'Diretor(a) Master'
+                    : (currentUser.role === 'diretor' || currentUser.role === 'diretoria' || isUserDirector(currentUser))
+                      ? 'Diretor(a)'
+                      : (roleTitleOf({ jobRoles: collaborators.find(x => x.id === currentUser.id)?.jobRoles, customJobTitle: currentUser.customJobTitle }) || (
+                          currentUser.role === 'dev' ? 'Desenvolvedor' :
+                          currentUser.role === 'admin' || currentUser.role === 'gerencia' ? 'Gerência Geral' :
                           currentUser.role === 'closer' ? 'Closer • Fechamento' :
-                            currentUser.role === 'sdr' ? 'SDR • Pré-Vendas' :
-                              currentUser.role === 'crm' || currentUser.role === 'comercial' ? 'Especialista Comercial' :
-                                currentUser.role === 'pos_venda' ? 'Pós-Venda' :
-                                  currentUser.role === 'financeiro' ? 'Financeiro' : 'Colaborador'
-                  )}
+                          currentUser.role === 'sdr' ? 'SDR • Pré-Vendas' :
+                          currentUser.role === 'crm' || currentUser.role === 'comercial' ? 'Especialista Comercial' :
+                          currentUser.role === 'pos_venda' ? 'Pós-Venda' :
+                          currentUser.role === 'financeiro' ? 'Financeiro' : 'Colaborador'
+                        ))}
                 </div>
               </div>
             )}

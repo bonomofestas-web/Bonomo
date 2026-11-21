@@ -35,8 +35,8 @@ export interface JobRoleOption { id: string; label: string; description: string 
 /** Cargos fixos de cada setor. Os demais sao digitados em "+ Outro" (catalogo por setor). */
 export const JOB_ROLE_OPTIONS: Record<string, JobRoleOption[]> = {
   diretoria: [
-    { id: 'diretoria:master', label: 'Diretor Master', description: 'Diretor geral com acesso a toda a rede' },
-    { id: 'diretoria:diretor', label: 'Diretor', description: 'Mesmos poderes de um master nas unidades liberadas' },
+    { id: 'diretoria:master', label: 'Diretor(a) Master', description: 'Diretor(a) geral com acesso a toda a rede' },
+    { id: 'diretoria:diretor', label: 'Diretor(a)', description: 'Mesmos poderes de um master nas unidades liberadas' },
   ],
   comercial: [
     { id: 'comercial:gerente', label: 'Gerente comercial', description: 'Gestão do setor comercial' },

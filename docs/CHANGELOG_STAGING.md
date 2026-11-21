@@ -48,19 +48,25 @@ Grande reestruturação de governança, experiência do usuário, banco de dados
   * **Escopo Estrito de Unidades para Diretores:** `Diretor Master` tem visão total da rede; `Diretor` possui todas as ferramentas do Master porém estritamente escopado às suas unidades autorizadas (`currentUser.venueIds`).
 
 - **Central de Unidades e Colaboradores & Gestão Dinâmica de Cargos:**
+  * **Tag Oficial do Master e Diretores Padronizada:** A tag do Master foi estritamente unificada em todo o sistema como **`Diretor(a) Master`** (sidebar inferior, gaveta de edição, agendamentos, equipe e perfis). Colaboradores com perfil de diretoria de unidade recebem a tag **`Diretor(a)`**.
+  * **Setor de Diretoria Integrado no Editor de Colaboradores:** Substituído o antigo card estático de Gerência pelo novo **Setor de Diretoria** (`#D4AF37`), com concessão de acesso pleno à operação e seleção automática entre `Diretor(a) Master` e `Diretor(a)`.
+  * **Setor Financeiro e Setores Dinâmicos Ativos:** Setor Financeiro desbloqueado e ativo no drawer de colaboradores, junto ao suporte completo para listar quaisquer novos setores criados via `+ Novo Setor`.
   * **Header Superior Unificado:** Ações movidas para o topo preto da barra de navegação (`adm-header-actions`) com botões uniformes (`height: 36px`, `borderRadius: 10px`) à esquerda e o seletor `[Unidades] [Colaboradores]` à direita, eliminando barras duplicadas e liberando 100% da área de trabalho.
   * **Reordenação Dinâmica de Setores em Banco:** Setores agora salvos na tabela `job_sectors` com setas verticais para ordenação imediata e persistência por Master.
   * **Criação de Novos Setores Dinâmicos:** Botão `+ Novo Setor` com nome livre e seletor de paleta de cores.
-  * **Setor de Diretoria:** Cadastrado com cargos padrão `Diretor Master` (`diretoria:master`) e `Diretor` (`diretoria:diretor`).
   * **Limpeza e Ajuste de Setores:** Removido o setor estático de Gerência da listagem de cargos e atualizado Marketing para "Marketing e Tecnologia" (`marketing_tecnologia`).
+  * **Desbloqueio de RLS para Salvar Cargos e Setores:** Políticas de segurança em `job_roles`, `job_role_labels`, `job_sectors` e `job_role_order` ajustadas para permissão de leitura e gravação no escopo do master tanto para `anon` quanto para `authenticated`, eliminando o erro de bloqueio `42501`.
 
-- **Sincronização Total de Contratos, Pós-Venda e Agenda de Eventos:**
-  * **Agenda de Eventos com Carregamento Resiliente:** `venueEventService.getAll()` agora combina eventos físicos da tabela `venue_events` com uma camada de fallback que sintetiza e exibe todos os contratos homologados com data cadastrada (`event_date`), eliminando qualquer risco de tela vazia.
-  * **Abertura Imediata do Contrato na Agenda:** Clique em qualquer card de evento abre o modal de resumo oficial do contrato via `contractService.getContractById()` e `getContractByClientId()`.
-  * **Sincronização Automática na Homologação:** Ao aprovar um contrato em `contractService.approveContract`, o evento da data da festa é automaticamente gravado na tabela `venue_events`.
-  * **Pós-Venda com Todos os 218 Contratos:** `clientService.getAll()` agora sintetiza cards completos de clientes para quaisquer contratos que ainda não possuam registro isolado em `clients`, trazendo todos os valores (`dealValue`), datas e funis para o Kanban de Pós-Venda.
-  * **Padronização Oficial de Títulos e Códigos (Zero Corrupção UTF-8):** Sanitização estrita de quaisquer caracteres corrompidos (`???` e `?`), aplicando o padrão oficial `[Homenageados] [Evento]` e `CTR-[CASA][ANO][MES][DIA]`.
-  * **Migration Consolidada para Produção:** Criado o script `05_SINCRONIZAR_PRODUCAO_218_CONTRATOS_CLIENTES_AGENDA.sql` contendo o expurgo dos contratos legados duplicados, atualização dos 218 contratos oficiais, carga dos 218 clientes e 217 eventos na agenda.
+- **Sincronização Total de Contratos, Pós-Venda, Agenda e Tarefas:**
+  * **Migration Consolidada Completa para Produção:** Atualizado o script `05_SINCRONIZAR_PRODUCAO_218_CONTRATOS_CLIENTES_AGENDA.sql` contendo:
+    - 218 contratos oficiais higienizados;
+    - 218 clientes estruturados no pós-venda;
+    - 217 eventos físicos com data na Agenda de Eventos;
+    - 59 tarefas operacionais vinculadas aos contratos (`admin_tasks`);
+    - Estrutura completa do workspace de tarefas (`task_databases`, `task_custom_statuses`, `task_custom_types`);
+    - 10 setores operacionais e de diretoria (`job_sectors`) e cargos correspondentes;
+    - Metas mensais das casas (`venue_goals`) e regras de agendamento de visitas/degustações (`venue_agenda_configs`);
+    - DDL e desbloqueio de políticas de RLS para todas essas tabelas.
 
 - **Refino Visual dos Cards Comerciais e Pós-Venda:**
   * **Cards Mais Gordinhos e Acolhedores:** Ajuste de padding (`12px 14px`), border-radius (`12px`), avatares (`30px`) e botões de ação estruturados no Kanban Comercial.

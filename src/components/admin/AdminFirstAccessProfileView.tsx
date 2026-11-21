@@ -200,7 +200,9 @@ export const AdminFirstAccessProfileView: React.FC = () => {
       case 'closer': return 'Closer • Fechamento';
       case 'admin': return 'Gerência de Unidade';
       case 'crm': return 'Gestão Comercial / CRM';
-      case 'master': return 'Diretoria Executiva';
+      case 'master': return 'Diretor(a) Master';
+      case 'diretor':
+      case 'diretoria': return 'Diretor(a)';
       default: return 'Equipe Comercial';
     }
   };

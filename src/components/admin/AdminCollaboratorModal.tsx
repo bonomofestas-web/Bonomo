@@ -322,11 +322,11 @@ export const AdminCollaboratorModal: React.FC<AdminCollaboratorModalProps> = ({
                 }}
               >
                 <option value="">Geral / Sem setor específico</option>
-                <option value="diretoria">Diretoria Executiva</option>
-                <option value="gerencia">Gerência de Unidade</option>
+                <option value="diretoria">Diretoria</option>
                 <option value="comercial">Comercial & Vendas</option>
                 <option value="pos_venda">Pós-Venda & Sucesso</option>
                 <option value="financeiro">Financeiro & Contratos</option>
+                <option value="marketing_tecnologia">Marketing e Tecnologia</option>
               </Select>
             </div>
           </div>
@@ -345,10 +345,11 @@ export const AdminCollaboratorModal: React.FC<AdminCollaboratorModalProps> = ({
               }}
             >
               <option value="">Padrão (Automático de acordo com a função)</option>
+              <option value="diretoria">Diretoria</option>
               <option value="comercial">Comercial (Funis de Vendas)</option>
               <option value="pos_venda">Pós-Venda (Sucesso do Cliente)</option>
-              <option value="gerencia">Gestão / Gerência</option>
               <option value="financeiro">Financeiro</option>
+              <option value="marketing_tecnologia">Marketing e Tecnologia</option>
             </Select>
             <div style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)', marginTop: '4px' }}>
               Determina se o colaborador acessa prioritariamente o Comercial ou Sucesso do Cliente (Pós-Venda) no WhatsApp.
@@ -378,8 +379,8 @@ export const AdminCollaboratorModal: React.FC<AdminCollaboratorModalProps> = ({
             </label>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '8px' }}>
               {[
-                { id: 'master', label: 'Master', desc: 'Diretoria Geral • Acesso a todas as casas' },
-                { id: 'admin', label: 'Gerência', desc: 'Gestão da unidade, metas, funis e equipe' },
+                { id: 'master', label: 'Diretor(a) Master', desc: 'Diretoria Geral • Acesso a todas as casas' },
+                { id: 'diretor', label: 'Diretor(a)', desc: 'Diretoria • Poder de master nas unidades autorizadas' },
                 { id: 'pos_venda', label: 'Pós-Venda', desc: 'Sucesso do cliente, aniversariantes e anfitriãs' },
                 { id: 'comercial', label: 'Comercial', desc: 'Atendimento comercial, WhatsApp e vendas' },
               ].map(opt => (

@@ -52,6 +52,37 @@ const describePresence = (r: PresenceRow): PresenceView => {
   return { online: Date.now() - r.lastSeenAt < presenceService.ONLINE_WINDOW_MS, activity, entityType: r.entityType, entityId: r.entityId || undefined };
 };
 
+const SECTOR_META: Record<string, { desc: string; badge?: string; badgeColor?: string }> = {
+  diretoria: {
+    desc: 'Acesso pleno a todos os setores e módulos do sistema. Diretor(a) Master acessa toda a rede; Diretores(as) atuam com mesmo poder nas unidades liberadas.',
+    badge: 'Acesso Pleno',
+    badgeColor: '#D4AF37',
+  },
+  comercial: {
+    desc: 'Acesso aos Funis de Vendas, Leads, WhatsApp Comercial, Oportunidades e Follow-up.',
+  },
+  pos_venda: {
+    desc: 'Acesso completo aos Clientes, Aniversariantes & App, Jornada VIP, Compromissos, mais consulta (leitura) ao setor comercial.',
+    badge: '+ Comercial (Leitura)',
+    badgeColor: '#06B6D4',
+  },
+  financeiro: {
+    desc: 'Acesso ao painel financeiro, fluxo de caixa, conciliação e parcelas a receber dos contratos.',
+    badge: 'Financeiro',
+    badgeColor: '#F59E0B',
+  },
+  marketing_tecnologia: {
+    desc: 'Campanhas, tráfego pago, tecnologia e metas de marketing, com consulta ao setor comercial.',
+    badge: '+ Comercial (Leitura)',
+    badgeColor: '#EC4899',
+  },
+  marketing: {
+    desc: 'Campanhas, tráfego pago, tecnologia e metas de marketing, com consulta ao setor comercial.',
+    badge: '+ Comercial (Leitura)',
+    badgeColor: '#EC4899',
+  },
+};
+
 interface AdminCollaboratorsViewProps {
   onNavigateTab?: (tab: AdminTabType) => void;
   headerSwitcher?: React.ReactNode;
@@ -368,10 +399,10 @@ export const AdminCollaboratorsView: React.FC<AdminCollaboratorsViewProps> = ({ 
   };
 
   const handleOpenEdit = (collab: Collaborator) => {
-    const isTargetManagerOrAbove = collab.role === 'admin' || collab.role === 'master' || collab.role === 'gerencia';
+    const isTargetManagerOrAbove = collab.role === 'admin' || collab.role === 'master' || collab.role === 'diretor' || collab.role === 'diretoria';
     const isSelf = collab.id === currentUser?.id || (currentUser?.email && collab.email.toLowerCase() === currentUser.email.toLowerCase());
     if (isCurrentUserManager && (isSelf || isTargetManagerOrAbove)) {
-      showSystemAlert('Acesso restrito: gerentes não podem editar o próprio perfil nem colaboradores com função de gerência ou superior.', 'Acesso Negado');
+      showSystemAlert('Acesso restrito: gerentes não podem editar o próprio perfil nem colaboradores com função de diretoria ou superior.', 'Acesso Negado');
       return;
     }
 
@@ -380,12 +411,31 @@ export const AdminCollaboratorsView: React.FC<AdminCollaboratorsViewProps> = ({ 
     setFormEmail(collab.email || '');
     setFormPhone(collab.phone ? formatPhone(collab.phone) : '');
     setFormCustomJobTitle(collab.customJobTitle || '');
-    setFormJobRoles(collab.jobRoles || []);
-    const existingSectors: string[] = collab.sectors && collab.sectors.length > 0
-      ? (collab.sectors as string[])
-      : collab.role === 'pos_venda' ? ['pos_venda', 'comercial']
-      : collab.role === 'admin' || collab.role === 'master' || collab.role === 'gerencia' ? ['gerencia', 'comercial', 'pos_venda']
-      : ['comercial'];
+
+    const isMaster = collab.role === 'master';
+    const isDirector = collab.role === 'diretor' || collab.role === 'diretoria' || (collab.jobRoles || []).some(r => r.startsWith('diretoria:'));
+
+    let existingSectors: string[] = collab.sectors && collab.sectors.length > 0
+      ? (collab.sectors as string[]).filter(s => s !== 'gerencia')
+      : [];
+
+    if (isMaster || isDirector) {
+      if (!existingSectors.includes('diretoria')) existingSectors.unshift('diretoria');
+    }
+    if (existingSectors.length === 0) {
+      if (collab.role === 'pos_venda') existingSectors = ['pos_venda', 'comercial'];
+      else if (collab.role === 'financeiro') existingSectors = ['financeiro'];
+      else existingSectors = ['comercial'];
+    }
+
+    let currentJobRoles = [...(collab.jobRoles || [])];
+    if (isMaster && !currentJobRoles.includes('diretoria:master')) {
+      currentJobRoles.push('diretoria:master');
+    } else if (isDirector && !currentJobRoles.includes('diretoria:diretor') && !isMaster) {
+      currentJobRoles.push('diretoria:diretor');
+    }
+
+    setFormJobRoles(currentJobRoles);
     setFormSectors(existingSectors);
     const vIds = collab.venueIds && collab.venueIds.length > 0 ? collab.venueIds : (collab.venueId && collab.venueId !== 'all' ? [collab.venueId] : venues.map(v => v.id));
     setFormSelectedVenueIds(vIds);
@@ -401,9 +451,9 @@ export const AdminCollaboratorsView: React.FC<AdminCollaboratorsViewProps> = ({ 
       return;
     }
 
-    const isTargetManagerOrAbove = collaboratorToEdit?.role === 'admin' || collaboratorToEdit?.role === 'master' || collaboratorToEdit?.role === 'gerencia';
-    if (isCurrentUserManager && (formSectors.includes('gerencia') || isTargetManagerOrAbove)) {
-      showSystemAlert('Acesso restrito: gerentes não possuem permissão para criar ou atribuir funções de gerência nem alterar perfis superiores.', 'Acesso Negado');
+    const isTargetManagerOrAbove = collaboratorToEdit?.role === 'admin' || collaboratorToEdit?.role === 'master' || collaboratorToEdit?.role === 'diretor' || collaboratorToEdit?.role === 'diretoria';
+    if (isCurrentUserManager && (formSectors.includes('diretoria') || isTargetManagerOrAbove)) {
+      showSystemAlert('Acesso restrito: gerentes não possuem permissão para criar ou atribuir funções de diretoria nem alterar perfis superiores.', 'Acesso Negado');
       return;
     }
 
@@ -414,13 +464,21 @@ export const AdminCollaboratorsView: React.FC<AdminCollaboratorsViewProps> = ({ 
 
     // Computa a role base para compatibilidade
     let computedRole: AdminRole = 'crm';
-    if (formSectors.includes('gerencia')) {
-      computedRole = collaboratorToEdit?.role === 'master' ? 'master' : 'admin';
+    if (formSectors.includes('diretoria') || formJobRoles.some(r => r.startsWith('diretoria:'))) {
+      if (collaboratorToEdit?.role === 'master' || formJobRoles.includes('diretoria:master')) {
+        computedRole = 'master';
+      } else {
+        computedRole = 'diretor';
+      }
     } else if (formSectors.includes('pos_venda') && !formSectors.includes('comercial')) {
       computedRole = 'pos_venda';
     } else if (formSectors.includes('comercial')) {
       computedRole = collaboratorToEdit?.role === 'closer' ? 'closer' : collaboratorToEdit?.role === 'sdr' ? 'sdr' : 'crm';
+    } else if (formSectors.includes('financeiro')) {
+      computedRole = 'financeiro';
     }
+
+    const isMasterRole = computedRole === 'master';
 
     const payload = {
       name: formName.trim(),
@@ -432,8 +490,8 @@ export const AdminCollaboratorsView: React.FC<AdminCollaboratorsViewProps> = ({ 
       sectors: formSectors,
       role: computedRole,
       department: formSectors[0] || 'comercial',
-      venueId: computedRole === 'master' ? 'all' : primaryVenueId,
-      venueIds: computedRole === 'master' ? venues.map(v => v.id) : formSelectedVenueIds,
+      venueId: isMasterRole ? 'all' : primaryVenueId,
+      venueIds: isMasterRole ? venues.map(v => v.id) : formSelectedVenueIds,
       avatarUrl: formAvatarUrl.trim() || undefined,
       active: formActive,
     };
@@ -506,15 +564,16 @@ export const AdminCollaboratorsView: React.FC<AdminCollaboratorsViewProps> = ({ 
 
 
   const getCollabRoleTitle = (collab: Collaborator) => {
+    if (collab.role === 'master' || (collab.jobRoles || []).includes('diretoria:master')) return 'Diretor(a) Master';
+    if (collab.role === 'diretor' || collab.role === 'diretoria' || (collab.jobRoles || []).includes('diretoria:diretor')) return 'Diretor(a)';
     const shownTitle = roleTitleOf(collab);
     if (shownTitle) return shownTitle;
-    if (collab.role === 'master') return 'Diretoria Geral';
     if (collab.isDev || collab.role === 'dev') return 'Desenvolvedor';
     if (collab.role === 'admin') return 'Administrador';
-    if (collab.role === 'gerencia') return 'Gerência Geral';
     if (collab.role === 'closer') return 'Especialista (Fechamento)';
     if (collab.role === 'sdr') return 'SDR (Pré-Vendas)';
     if (collab.role === 'pos_venda') return 'Pós-Venda (Sucesso do Cliente)';
+    if (collab.role === 'financeiro') return 'Financeiro';
     return '';
   };
 
@@ -957,235 +1016,94 @@ export const AdminCollaboratorsView: React.FC<AdminCollaboratorsViewProps> = ({ 
                     2. Nível de Acesso por Setores
                   </h2>
                   <span style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)' }}>
-                    Defina os setores do colaborador. Gerentes têm acesso total com Pós-Venda e Comercial automáticos.
+                    Defina os setores do colaborador. A Diretoria possui acesso total e unificado a toda a operação.
                   </span>
                 </div>
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                {/* 1. Setor Comercial */}
-                <div
-                  onClick={() => {
-                    const isSelected = formSectors.includes('comercial');
-                    // Se for gerente, não desmarca comercial
-                    if (formSectors.includes('gerencia')) return;
-                    setFormSectors(isSelected ? formSectors.filter(s => s !== 'comercial') : [...formSectors, 'comercial']);
-                  }}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'flex-start',
-                    gap: '12px',
-                    padding: '12px 14px',
-                    borderRadius: '12px',
-                    border: formSectors.includes('comercial') ? '1.5px solid #10B981' : '1px solid var(--adm-border)',
-                    background: formSectors.includes('comercial') ? 'rgba(16, 185, 129, 0.08)' : 'var(--adm-bg-input)',
-                    cursor: formSectors.includes('gerencia') ? 'default' : 'pointer',
-                    transition: 'all 0.15s ease',
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={formSectors.includes('comercial')}
-                    disabled={formSectors.includes('gerencia')}
-                    onChange={() => {}}
-                    style={{ marginTop: '3px', cursor: formSectors.includes('gerencia') ? 'default' : 'pointer', accentColor: '#10B981' }}
-                  />
-                  <div style={{ flex: 1 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <span style={{ fontSize: '0.86rem', fontWeight: 800, color: formSectors.includes('comercial') ? '#10B981' : 'var(--adm-text-title)' }}>
-                        Setor Comercial
-                      </span>
-                      {formSectors.includes('gerencia') && (
-                        <span style={{ fontSize: '0.62rem', fontWeight: 700, background: 'rgba(59, 130, 246, 0.15)', color: '#3B82F6', padding: '1px 6px', borderRadius: '4px' }}>
-                          Incluso na Gerência
-                        </span>
-                      )}
-                    </div>
-                    <p style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)', margin: '3px 0 0 0', lineHeight: 1.35 }}>
-                      Acesso aos Funis de Vendas, Leads, WhatsApp Comercial, Oportunidades e Follow-up.
-                    </p>
-                  </div>
-                </div>
+                {sectors.map((sec) => {
+                  const isSelected = formSectors.includes(sec.id);
+                  const isDiretoriaSelected = formSectors.includes('diretoria');
+                  const isLockedByDiretoria = isDiretoriaSelected && sec.id !== 'diretoria';
+                  const meta = SECTOR_META[sec.id] || { desc: `Acesso operacional às funcionalidades do setor de ${sec.label}.` };
 
-                {/* 2. Setor de Pós-Venda */}
-                <div
-                  onClick={() => {
-                    // Se for gerente, não desmarca pós-venda
-                    if (formSectors.includes('gerencia')) return;
-                    const isSelected = formSectors.includes('pos_venda');
-                    if (isSelected) {
-                      setFormSectors(formSectors.filter(s => s !== 'pos_venda'));
+                  const toggleSector = () => {
+                    if (sec.id === 'diretoria') {
+                      if (isSelected) {
+                        setFormSectors(formSectors.filter(s => s !== 'diretoria'));
+                      } else {
+                        // Diretoria inclui todos os setores operacionais
+                        const allSectorIds = Array.from(new Set(['diretoria', ...sectors.map(s => s.id), 'comercial', 'pos_venda', 'financeiro', 'marketing_tecnologia']));
+                        setFormSectors(allSectorIds);
+                        // Se não tem cargo de diretoria, adiciona o apropriado
+                        setFormJobRoles(prev => {
+                          if (prev.some(r => r.startsWith('diretoria:'))) return prev;
+                          return [...prev, collaboratorToEdit?.role === 'master' ? 'diretoria:master' : 'diretoria:diretor'];
+                        });
+                      }
                     } else {
-                      // Ao marcar Pós-Venda, garante que o Comercial em leitura também está disponível
-                      setFormSectors(prev => {
-                        const next: string[] = [...prev];
-                        if (!next.includes('pos_venda')) next.push('pos_venda');
-                        if (!next.includes('comercial')) next.push('comercial');
-                        return next;
-                      });
+                      if (isLockedByDiretoria) return;
+                      if (isSelected) {
+                        setFormSectors(formSectors.filter(s => s !== sec.id));
+                      } else {
+                        setFormSectors(prev => {
+                          const next = [...prev, sec.id];
+                          if (sec.id === 'pos_venda' || sec.id === 'marketing_tecnologia' || sec.id === 'marketing') {
+                            if (!next.includes('comercial')) next.push('comercial');
+                          }
+                          return next;
+                        });
+                      }
                     }
-                  }}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'flex-start',
-                    gap: '12px',
-                    padding: '12px 14px',
-                    borderRadius: '12px',
-                    border: formSectors.includes('pos_venda') ? '1.5px solid #06B6D4' : '1px solid var(--adm-border)',
-                    background: formSectors.includes('pos_venda') ? 'rgba(6, 182, 212, 0.08)' : 'var(--adm-bg-input)',
-                    cursor: formSectors.includes('gerencia') ? 'default' : 'pointer',
-                    transition: 'all 0.15s ease',
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={formSectors.includes('pos_venda')}
-                    disabled={formSectors.includes('gerencia')}
-                    onChange={() => {}}
-                    style={{ marginTop: '3px', cursor: formSectors.includes('gerencia') ? 'default' : 'pointer', accentColor: '#06B6D4' }}
-                  />
-                  <div style={{ flex: 1 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <span style={{ fontSize: '0.86rem', fontWeight: 800, color: formSectors.includes('pos_venda') ? '#06B6D4' : 'var(--adm-text-title)' }}>
-                        Setor de Pós-Venda
-                      </span>
-                      <span style={{ fontSize: '0.62rem', fontWeight: 700, background: 'rgba(6, 182, 212, 0.18)', color: '#06B6D4', padding: '1px 6px', borderRadius: '4px' }}>
-                        + Comercial (Leitura)
-                      </span>
-                    </div>
-                    <p style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)', margin: '3px 0 0 0', lineHeight: 1.35 }}>
-                      Acesso completo aos Clientes, Aniversariantes & App, Jornada VIP, Compromissos, mais consulta (leitura) ao setor comercial.
-                    </p>
-                  </div>
-                </div>
+                  };
 
-                {/* 3. Setor de Gerência */}
-                <div
-                  onClick={() => {
-                    if (isCurrentUserManager) return;
-                    const isSelected = formSectors.includes('gerencia');
-                    if (isSelected) {
-                      setFormSectors(formSectors.filter(s => s !== 'gerencia'));
-                    } else {
-                      // Regra do F5 System: Gerência marca AUTOMATICAMENTE Pós-Venda e Comercial!
-                      setFormSectors(prev => {
-                        const next: string[] = [...prev];
-                        if (!next.includes('gerencia')) next.push('gerencia');
-                        if (!next.includes('comercial')) next.push('comercial');
-                        if (!next.includes('pos_venda')) next.push('pos_venda');
-                        return next;
-                      });
-                    }
-                  }}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'flex-start',
-                    gap: '12px',
-                    padding: '12px 14px',
-                    borderRadius: '12px',
-                    border: isCurrentUserManager 
-                      ? '1px dashed var(--adm-border)'
-                      : formSectors.includes('gerencia') ? '1.5px solid #3B82F6' : '1px solid var(--adm-border)',
-                    background: isCurrentUserManager
-                      ? 'var(--adm-bg-card)'
-                      : formSectors.includes('gerencia') ? 'rgba(59, 130, 246, 0.08)' : 'var(--adm-bg-input)',
-                    cursor: isCurrentUserManager ? 'not-allowed' : 'pointer',
-                    opacity: isCurrentUserManager ? 0.6 : 1,
-                    transition: 'all 0.15s ease',
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={!isCurrentUserManager && formSectors.includes('gerencia')}
-                    disabled={isCurrentUserManager}
-                    onChange={() => {}}
-                    style={{ marginTop: '3px', cursor: isCurrentUserManager ? 'not-allowed' : 'pointer', accentColor: '#3B82F6' }}
-                  />
-                  <div style={{ flex: 1 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span style={{ fontSize: '0.86rem', fontWeight: 800, color: formSectors.includes('gerencia') && !isCurrentUserManager ? '#3B82F6' : 'var(--adm-text-title)' }}>
-                        Setor de Gerência
-                      </span>
-                      <span style={{ fontSize: '0.62rem', fontWeight: 700, background: 'rgba(59, 130, 246, 0.18)', color: '#3B82F6', padding: '1px 6px', borderRadius: '4px' }}>
-                        Inclui Comercial & Pós-Venda
-                      </span>
-                      {isCurrentUserManager && (
-                        <span style={{ fontSize: '0.62rem', fontWeight: 800, background: 'rgba(239, 68, 68, 0.12)', color: '#EF4444', padding: '1px 6px', borderRadius: '4px', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
-                          <Lock size={10} /> Apenas Master
-                        </span>
-                      )}
+                  return (
+                    <div
+                      key={sec.id}
+                      onClick={toggleSector}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'flex-start',
+                        gap: '12px',
+                        padding: '12px 14px',
+                        borderRadius: '12px',
+                        border: isSelected ? `1.5px solid ${sec.color}` : '1px solid var(--adm-border)',
+                        background: isSelected ? `${sec.color}14` : 'var(--adm-bg-input)',
+                        cursor: isLockedByDiretoria ? 'default' : 'pointer',
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        disabled={isLockedByDiretoria}
+                        onChange={() => {}}
+                        style={{ marginTop: '3px', cursor: isLockedByDiretoria ? 'default' : 'pointer', accentColor: sec.color }}
+                      />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: '0.86rem', fontWeight: 800, color: isSelected ? sec.color : 'var(--adm-text-title)' }}>
+                            Setor de {sec.label}
+                          </span>
+                          {meta.badge && (
+                            <span style={{ fontSize: '0.62rem', fontWeight: 700, background: `${meta.badgeColor || sec.color}22`, color: meta.badgeColor || sec.color, padding: '1px 6px', borderRadius: '4px' }}>
+                              {meta.badge}
+                            </span>
+                          )}
+                          {isLockedByDiretoria && (
+                            <span style={{ fontSize: '0.62rem', fontWeight: 700, background: 'rgba(212, 175, 55, 0.18)', color: '#D4AF37', padding: '1px 6px', borderRadius: '4px' }}>
+                              Incluso na Diretoria
+                            </span>
+                          )}
+                        </div>
+                        <p style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)', margin: '3px 0 0 0', lineHeight: 1.35 }}>
+                          {meta.desc}
+                        </p>
+                      </div>
                     </div>
-                    <p style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)', margin: '3px 0 0 0', lineHeight: 1.35 }}>
-                      Acesso ao Dashboard Gerencial, Metas das unidades, Qualificação ICP, Origens de Tráfego, Gestão de Colaboradores e Configurações das Casas.
-                    </p>
-                  </div>
-                </div>
-
-                {/* Setor de Marketing */}
-                <div
-                  onClick={() => {
-                    const isSelected = formSectors.includes('marketing');
-                    if (isSelected) {
-                      setFormSectors(formSectors.filter(s => s !== 'marketing'));
-                    } else {
-                      // Marketing enxerga o Comercial (consulta); o modulo proprio de marketing ainda sera desenvolvido
-                      setFormSectors(prev => {
-                        const next: string[] = [...prev];
-                        if (!next.includes('marketing')) next.push('marketing');
-                        if (!next.includes('comercial')) next.push('comercial');
-                        return next;
-                      });
-                    }
-                  }}
-                  style={{
-                    display: 'flex', alignItems: 'flex-start', gap: '12px', padding: '12px 14px', borderRadius: '12px', cursor: 'pointer',
-                    border: formSectors.includes('marketing') ? '1.5px solid #EC4899' : '1px solid var(--adm-border)',
-                    background: formSectors.includes('marketing') ? 'rgba(236, 72, 153, 0.08)' : 'var(--adm-bg-input)',
-                    transition: 'all 0.15s ease',
-                  }}
-                >
-                  <input type="checkbox" checked={formSectors.includes('marketing')} onChange={() => {}} style={{ marginTop: '3px', cursor: 'pointer', accentColor: '#EC4899' }} />
-                  <div style={{ flex: 1 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                      <span style={{ fontSize: '0.86rem', fontWeight: 800, color: formSectors.includes('marketing') ? '#EC4899' : 'var(--adm-text-title)' }}>Setor de Marketing</span>
-                      <span style={{ fontSize: '0.62rem', fontWeight: 700, background: 'rgba(236, 72, 153, 0.18)', color: '#EC4899', padding: '1px 6px', borderRadius: '4px' }}>+ Comercial (Leitura)</span>
-                      <span style={{ fontSize: '0.6rem', fontWeight: 800, background: 'rgba(255, 255, 255, 0.08)', color: 'var(--adm-text-muted)', padding: '1px 5px', borderRadius: '4px' }}>Módulo em breve</span>
-                    </div>
-                    <p style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)', margin: '3px 0 0 0', lineHeight: 1.35 }}>
-                      Campanhas, gestão de tráfego e metas de marketing (em desenvolvimento), com consulta ao setor comercial.
-                    </p>
-                  </div>
-                </div>
-
-                {/* 4. Setor Financeiro (Em Breve) */}
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'flex-start',
-                    gap: '12px',
-                    padding: '12px 14px',
-                    borderRadius: '12px',
-                    border: '1px dashed var(--adm-border)',
-                    background: 'var(--adm-bg-card)',
-                    opacity: 0.6,
-                    cursor: 'not-allowed',
-                  }}
-                >
-                  <input type="checkbox" disabled checked={false} style={{ marginTop: '3px' }} />
-                  <div style={{ flex: 1 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <span style={{ fontSize: '0.86rem', fontWeight: 700, color: 'var(--adm-text-muted)' }}>
-                        Setor Financeiro
-                      </span>
-                      <span style={{ fontSize: '0.60rem', fontWeight: 800, background: 'rgba(255, 255, 255, 0.08)', color: 'var(--adm-text-muted)', padding: '1px 5px', borderRadius: '4px' }}>
-                        Em Breve
-                      </span>
-                    </div>
-                    <p style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)', margin: '3px 0 0 0', lineHeight: 1.35 }}>
-                      Módulo de conciliação bancária, fluxo de caixa, comissões de fechamento e emissão de cobranças.
-                    </p>
-                  </div>
-                </div>
+                  );
+                })}
               </div>
             </div>
 
@@ -1255,7 +1173,16 @@ export const AdminCollaboratorsView: React.FC<AdminCollaboratorsViewProps> = ({ 
                               type="button"
                               aria-pressed={active}
                               title={opt.description}
-                              onClick={() => setFormJobRoles(active ? formJobRoles.filter(r => r !== opt.id) : [...formJobRoles, opt.id])}
+                              onClick={() => {
+                                if (active) {
+                                  setFormJobRoles(formJobRoles.filter(r => r !== opt.id));
+                                } else {
+                                  let next = [...formJobRoles, opt.id];
+                                  if (opt.id === 'diretoria:master') next = next.filter(r => r !== 'diretoria:diretor');
+                                  if (opt.id === 'diretoria:diretor') next = next.filter(r => r !== 'diretoria:master');
+                                  setFormJobRoles(next);
+                                }
+                              }}
                               style={{
                                 padding: removable ? '8px 10px 8px 14px' : '8px 14px', fontSize: '0.78rem', fontWeight: 800, cursor: 'pointer',
                                 borderRadius: removable ? '999px 0 0 999px' : '999px',
