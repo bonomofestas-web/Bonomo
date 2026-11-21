@@ -1,6 +1,7 @@
 import { toast } from 'sonner';
 import { planSignalEntry } from '../utils/paymentPlan';
 import { canSeeTask } from '../utils/taskSector';
+import { buildContractTitle } from '../utils/contractTitle';
 import { ShieldAlert } from 'lucide-react';
 import React, { createContext, useContext, useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import type { 
@@ -9065,8 +9066,12 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         : '15 Anos (Debutante)';
       const formattedPartyDate = currentLead.partyDate || currentLead.eventDate || cDate;
 
-      // Regra Oficial Ted Mosby: Título do contrato persistido com fallback [Contratante] – [Protagonista] [Tipo de Evento]
-      const defaultContractTitle = `${payer} – ${birthdayName} ${eventTypeLabel}`.trim();
+      // Novo Padrão Oficial: [Homenageados] [Evento] (Casamento: Noivo e Noiva / 15 anos: Nome Sobrenome 15 anos)
+      const defaultContractTitle = buildContractTitle({
+        contractors: [payer],
+        protagonists: birthdayName ? [birthdayName] : [],
+        eventType: currentLead.eventType,
+      });
       const finalContractTitle = extraOptions?.contractTitle?.trim() || defaultContractTitle;
 
       const finalContractFileUrl = extraOptions?.contractFileUrl || extraOptions?.contractSignedFileUrl;
