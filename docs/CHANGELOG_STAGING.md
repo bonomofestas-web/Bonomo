@@ -42,6 +42,12 @@ Grande reestruturação de governança, experiência do usuário, banco de dados
 
 ### Recursos e Melhorias em Staging
 
+- **Auditoria de Instâncias WhatsApp, Roteamento Estrito e Purga de Cache Local:**
+  * **Isolamento de Conversas por Instância:** Removidos fallbacks indevidos que associavam mensagens de WhatsApp ao primeiro lead/cliente encontrado caso a instância não batesse perfeitamente. Mensagens agora só são associadas ao lead/cliente que pertença rigorosamente à instância (`source_id`) que recebeu o evento.
+  * **Saneamento no Banco de Produção:** Mensagens históricas desalinhadas foram purgadas e redirecionadas para os leads correspondentes com metadados completos de instância (`sourceId`, `senderSourceId`, `senderSourceName`, `senderPhone`).
+  * **Invalidação e Atualização de Caches do Cliente (IndexedDB v2 e LocalStorage v8):** Bumps em `f5-chat-cache-v2-` e `f5_admin_leads_v8` com limpeza automática de bases legadas (`v1` e `v7`), garantindo que o navegador carregue imediatamente o histórico limpo e auditado do Supabase.
+  * **Ajuste Fino de Duplicados no Pós-Venda:** O badge "Cliente Duplicado" agora só é exibido se houver outro card com o mesmo telefone estritamente dentro do mesmo funil.
+
 - **Eliminação do Erro 428C9 na Migração de Contatos (Colunas Geradas):**
   * O gerador `scripts/generate_prod_sync_all.mjs` agora filtra automaticamente colunas do tipo `GENERATED ALWAYS AS (...) STORED` (`primary_phone_digits`, `secondary_phone_digits`, `cpf_digits`, `primary_phone_key`). O PostgreSQL de produção calcula esses valores nativamente no INSERT sem conflito de permissão.
 
