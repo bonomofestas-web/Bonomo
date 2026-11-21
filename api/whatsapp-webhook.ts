@@ -825,9 +825,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
           const { data: clientRows } = await clientQuery;
           if (clientRows && clientRows.length > 0) {
-            // Prioriza estritamente o cliente cujo funil casa com o da origem!
-            const matchedClientRow = (matchedSource?.funnel_id ? clientRows.find((c: any) => c.funnel_id === matchedSource.funnel_id) : null) || clientRows[0];
-            if (matchedClientRow && (matchedSource?.funnel_id === matchedClientRow.funnel_id || !matchedSource?.funnel_id)) {
+            // Prioriza estritamente o cliente cujo funil casa com o da origem (direto ou via canais de pós-venda)!
+            let effectiveFunnelId = matchedSource?.funnel_id;
+            if (!effectiveFunnelId && matchedSource?.id) {
+              const { data: psFunnels } = await supabase
+                .from('commercial_funnels')
+                .select('id, post_sale_channels')
+                .eq('is_post_sale', true);
+              const foundF = (psFunnels || []).find((f: any) =>
+                Array.isArray(f.post_sale_channels) && f.post_sale_channels.some((ch: any) => ch.instanceId === matchedSource.id)
+              );
+              if (foundF) effectiveFunnelId = foundF.id;
+            }
+
+            let matchedClientRow = effectiveFunnelId
+              ? clientRows.find((c: any) => c.funnel_id === effectiveFunnelId)
+              : null;
+
+            // Só aceita o primeiro se a origem realmente for global/sem funil
+            if (!matchedClientRow && !effectiveFunnelId) {
+              matchedClientRow = clientRows[0];
+            }
+
+            if (matchedClientRow) {
               existingLead = {
                 id: matchedClientRow.id,
                 name: matchedClientRow.payer_name || matchedClientRow.name || 'Cliente',

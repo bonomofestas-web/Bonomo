@@ -2410,13 +2410,15 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     }
     const contractRefId = (selectedLead as any).associated_contract_id || (selectedLead as any).contractId;
     if (contractRefId) {
-      const found = clients.find(cl => cl.id === contractRefId || (cl as any).contractNumber === contractRefId);
+      const found = clients.find(cl => (cl.id === contractRefId || (cl as any).contractNumber === contractRefId) && (!selectedLead.funnelId || !cl.funnelId || cl.funnelId === selectedLead.funnelId));
       if (found) return found;
     }
     if (selectedLead.phone) {
       const lDigits = selectedLead.phone.replace(/\D/g, '').slice(-8);
       if (lDigits.length >= 8) {
         const found = clients.find(cl => {
+          // BLINDAGEM DE FUNIL: Nunca associar cliente/contrato de outro funil!
+          if (selectedLead.funnelId && cl.funnelId && cl.funnelId !== selectedLead.funnelId) return false;
           if (cl.payerPhone && cl.payerPhone.replace(/\D/g, '').slice(-8) === lDigits) return true;
           if (Array.isArray(cl.contacts) && cl.contacts.some(ct => ct.phone && ct.phone.replace(/\D/g, '').slice(-8) === lDigits)) return true;
           return false;
@@ -4851,11 +4853,17 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     }
 
     // 3. Se houver contrato vinculado (ex: Carla associada ao contrato do Antônio), mescla atividades do contrato
+    // Blindagem de Funil: Só mescla se pertencer rigorosamente ao MESMO funil!
     if (targetContractClient && targetContractClient.id !== selectedLead?.id) {
-      const tcActs = (targetContractClient as any).activities || [];
-      tcActs.forEach((a: LeadActivity) => { if (a && a.id && !actMap.has(a.id)) actMap.set(a.id, a); });
-      const cachedTc = leadService.getActivitiesFromCache(targetContractClient.id);
-      cachedTc.forEach(a => { if (a && a.id && !actMap.has(a.id)) actMap.set(a.id, a); });
+      const tcFunnel = targetContractClient.funnelId;
+      const slFunnel = selectedLead?.funnelId;
+      const isSameFunnel = !tcFunnel || !slFunnel || tcFunnel === slFunnel;
+      if (isSameFunnel) {
+        const tcActs = (targetContractClient as any).activities || [];
+        tcActs.forEach((a: LeadActivity) => { if (a && a.id && !actMap.has(a.id)) actMap.set(a.id, a); });
+        const cachedTc = leadService.getActivitiesFromCache(targetContractClient.id);
+        cachedTc.forEach(a => { if (a && a.id && !actMap.has(a.id)) actMap.set(a.id, a); });
+      }
     }
 
     // 4. Varre sourceLeads e leads gerais para encontrar leads individuais de familiares (ex: lead da Carla quando estamos no contrato do Antônio)

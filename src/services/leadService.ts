@@ -314,7 +314,7 @@ export function formatActivityFromDb(a: any): LeadActivity {
     quotedMessage,
     channelId: a.channel_id || meta.channelId,
     channelName: a.channel_name || meta.channelName,
-    instanceId: a.instance_id || meta.instanceId,
+    instanceId: a.instance_id || meta.instanceId || meta.senderSourceId || meta.sourceId,
     metadata: meta,
   };
 }

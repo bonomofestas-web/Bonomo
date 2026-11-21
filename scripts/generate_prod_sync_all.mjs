@@ -173,6 +173,25 @@ async function main() {
     ``
   ].join('\n');
 
+  const canonicalContactPhones = contacts.map(c => c.primary_phone).filter(Boolean);
+  const canonicalContactIds = contacts.map(c => c.id).filter(Boolean);
+
+  const contactDeduplicationBlock = [
+    `-- 1. RESOLUÇÃO DE CONFLITOS EM idx_contacts_master_primary_phone (DEDUPLICAÇÃO DE PRODUÇÃO)`,
+    `-- Remove quaisquer contatos antigos em produção que possuam telefones em comum com a base canônica mas com IDs divergentes`,
+    `DELETE FROM public.contact_dependents `,
+    `WHERE parent_contact_id IN (`,
+    `  SELECT id FROM public.contacts `,
+    `  WHERE primary_phone IN (${canonicalContactPhones.map(p => `'${p}'`).join(', ')})`,
+    `    AND id NOT IN (${canonicalContactIds.map(id => `'${id}'::uuid`).join(', ')})`,
+    `);`,
+    ``,
+    `DELETE FROM public.contacts `,
+    `WHERE primary_phone IN (${canonicalContactPhones.map(p => `'${p}'`).join(', ')})`,
+    `  AND id NOT IN (${canonicalContactIds.map(id => `'${id}'::uuid`).join(', ')});`,
+    ``
+  ].join('\n');
+
   // PARTE 1 (05A): ESTRUTURA, CONTATOS, DEPENDENTES E CARGOS/SETORES
   const sqlPartA = [
     `-- ==============================================================================`,
@@ -180,7 +199,8 @@ async function main() {
     `-- Execução 1 de 3 no SQL Editor do Supabase`,
     `-- ==============================================================================`,
     sqlHeader,
-    `-- 1. UPSERT DOS CONTATOS E DEPENDENTES`,
+    contactDeduplicationBlock,
+    `-- 2. UPSERT DOS CONTATOS E DEPENDENTES`,
     buildBatchUpsert('contacts', contacts, 50),
     ``,
     buildBatchUpsert('contact_dependents', contactDependents, 50),
@@ -299,7 +319,8 @@ async function main() {
   // ARQUIVO UNIFICADO (para quem roda via psql CLI)
   const sqlFull = [
     sqlHeader,
-    `-- 1. UPSERT DOS CONTATOS E DEPENDENTES`,
+    contactDeduplicationBlock,
+    `-- 2. UPSERT DOS CONTATOS E DEPENDENTES`,
     buildBatchUpsert('contacts', contacts, 50),
     ``,
     buildBatchUpsert('contact_dependents', contactDependents, 50),
