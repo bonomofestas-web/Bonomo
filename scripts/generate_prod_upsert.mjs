@@ -46,7 +46,6 @@ function sqlValue(col, v) {
   if (typeof v === 'boolean') return v ? 'TRUE' : 'FALSE';
   if (typeof v === 'number') return String(v);
 
-  // Array column specifically for target_pos_sale_funnel_ids
   if (col === 'target_pos_sale_funnel_ids') {
     if (Array.isArray(v)) {
       if (v.length === 0) return "'{}'::uuid[]";
@@ -55,7 +54,6 @@ function sqlValue(col, v) {
     return "'{}'::uuid[]";
   }
 
-  // JSON / JSONB
   if (typeof v === 'object') {
     const jsonStr = JSON.stringify(v);
     return `'${jsonStr.replace(/'/g, "''")}'::jsonb`;
@@ -67,32 +65,18 @@ function sqlValue(col, v) {
   return `'${String(v).replace(/'/g, "''")}'`;
 }
 
-function buildUpsertStatement(table, rows) {
+function buildBatchUpsert(table, rows, batchSize = 50) {
   if (!rows || rows.length === 0) return '';
   const rawCols = Object.keys(rows[0]);
   const cols = rawCols.filter(c => !GENERATED_COLS.has(c));
   const updateCols = cols.filter(c => c !== 'id' && c !== 'created_at');
+  const updateClauses = updateCols.map(c => `"${c}" = EXCLUDED."${c}"`).join(', ');
 
   const statements = [];
-  for (const row of rows) {
-    const vals = cols.map(c => sqlValue(c, row[c])).join(', ');
-    const updateClauses = updateCols.map(c => `"${c}" = EXCLUDED."${c}"`).join(', ');
-    const sql = `INSERT INTO public."${table}" ("${cols.join('", "')}") VALUES (${vals}) ON CONFLICT ("id") DO UPDATE SET ${updateClauses};`;
-    statements.push(sql);
-  }
-  return statements.join('\n');
-}
-
-function buildBatchInsert(table, rows, batchSize = 100) {
-  if (!rows || rows.length === 0) return '';
-  const rawCols = Object.keys(rows[0]);
-  const cols = rawCols.filter(c => !GENERATED_COLS.has(c));
-  const statements = [];
-
   for (let i = 0; i < rows.length; i += batchSize) {
     const batch = rows.slice(i, i + batchSize);
     const valueLines = batch.map(row => `(${cols.map(c => sqlValue(c, row[c])).join(', ')})`).join(',\n  ');
-    statements.push(`INSERT INTO public."${table}" ("${cols.join('", "')}") VALUES\n  ${valueLines}\nON CONFLICT ("id") DO UPDATE SET ${cols.filter(c => c !== 'id').map(c => `"${c}" = EXCLUDED."${c}"`).join(', ')};`);
+    statements.push(`INSERT INTO public."${table}" ("${cols.join('", "')}") VALUES\n  ${valueLines}\nON CONFLICT ("id") DO UPDATE SET ${updateClauses};`);
   }
   return statements.join('\n\n');
 }
@@ -106,53 +90,80 @@ async function main() {
   const receivables = await fetchAll('fin_receivables');
   const payables = await fetchAll('fin_payables');
 
-  console.log(`Contatos: ${contacts.length}`);
-  console.log(`Clientes: ${clients.length}`);
-  console.log(`Contratos: ${contracts.length}`);
-  console.log(`Revisões Financeiras: ${reviews.length}`);
-  console.log(`Recebíveis (Finanças): ${receivables.length}`);
-  console.log(`A Pagar (Finanças): ${payables.length}`);
-
-  const sqlParts = [
+  // PARTE 1: Contatos, Clientes, Contratos e Revisões
+  const part1Header = [
     `-- ==============================================================================`,
-    `-- ATUALIZAÇÃO DEFINITIVA DE CONTRATOS E FINANCEIRO PARA PRODUÇÃO (F5 SYSTEM)`,
-    `-- Gerado em: ${new Date().toISOString()}`,
+    `-- PARTE 1: CONTRATOS, CLIENTES, CONTATOS E REVISÕES DE FINANÇAS`,
+    `-- Execute esta primeira parte no SQL Editor do Supabase`,
     `-- ==============================================================================`,
     `SET session_replication_role = 'replica';`,
     ``,
     `-- 1. UPSERT CONTATOS (${contacts.length} registros)`,
-    buildUpsertStatement('contacts', contacts),
+    buildBatchUpsert('contacts', contacts, 50),
     ``,
     `-- 2. UPSERT CLIENTES (${clients.length} registros)`,
-    buildUpsertStatement('clients', clients),
+    buildBatchUpsert('clients', clients, 50),
     ``,
     `-- 3. UPSERT CONTRATOS COM PREÇOS, LINKS R2 E STATUS (${contracts.length} registros)`,
-    buildUpsertStatement('contracts', contracts),
+    buildBatchUpsert('contracts', contracts, 50),
     ``,
     `-- 4. UPSERT REVISÕES FINANCEIRAS (${reviews.length} registros)`,
-    buildUpsertStatement('fin_contract_reviews', reviews),
-    ``,
-    `-- 5. LIMPEZA E CARGA DE RECEBÍVEIS (CALENDÁRIO E VISÃO GERAL DE FINANÇAS)`,
-    `DELETE FROM public.fin_receivables WHERE source = 'simulacao';`,
-    buildBatchInsert('fin_receivables', receivables, 100),
-    ``,
-    `-- 6. LIMPEZA E CARGA DE CONTAS A PAGAR`,
-    `DELETE FROM public.fin_payables WHERE source = 'simulacao';`,
-    buildBatchInsert('fin_payables', payables, 100),
+    buildBatchUpsert('fin_contract_reviews', reviews, 50),
     ``,
     `SET session_replication_role = 'origin';`,
     ``,
-    `-- VERIFICAÇÃO FINAL`,
+    `-- VERIFICAÇÃO PARTE 1:`,
     `SELECT `,
-    `  (SELECT count(*) FROM public.contracts WHERE total_amount > 0 AND approval_status = 'approved') as contratos_aprovados_com_preco,`,
+    `  (SELECT count(*) FROM public.contracts WHERE total_amount > 0 AND approval_status = 'approved') as contratos_com_preco_e_aprovados,`,
     `  (SELECT count(*) FROM public.contracts WHERE contract_file_url IS NOT NULL) as contratos_com_link_r2,`,
-    `  (SELECT count(*) FROM public.fin_contract_reviews) as total_revisoes_financeiras,`,
-    `  (SELECT count(*) FROM public.fin_receivables) as total_recebiveis_financeiro;`
-  ];
+    `  (SELECT count(*) FROM public.fin_contract_reviews) as total_revisoes_financeiras;`
+  ].join('\n');
 
-  const targetPath = 'supabase/migrations/ATUALIZAR_CONTRATOS_FINANCEIRO_PRODUCAO.sql';
-  writeFileSync(targetPath, sqlParts.join('\n'), 'utf-8');
-  console.log(`\nScript gerado com sucesso em: ${targetPath}`);
+  // PARTE 2: Recebíveis Lote 1 (primeiras 1400 parcelas)
+  const recPart1 = receivables.slice(0, 1400);
+  const part2Header = [
+    `-- ==============================================================================`,
+    `-- PARTE 2: RECEBÍVEIS DE FINANÇAS - LOTE 1 (Parcelas 1 a 1400)`,
+    `-- Execute no SQL Editor do Supabase`,
+    `-- ==============================================================================`,
+    `SET session_replication_role = 'replica';`,
+    `DELETE FROM public.fin_receivables WHERE source = 'simulacao';`,
+    ``,
+    buildBatchUpsert('fin_receivables', recPart1, 100),
+    ``,
+    `SET session_replication_role = 'origin';`,
+    `SELECT count(*) as total_recebiveis_lote_1 FROM public.fin_receivables;`
+  ].join('\n');
+
+  // PARTE 3: Recebíveis Lote 2 (parcelas 1401 a 2841) + Contas a Pagar
+  const recPart2 = receivables.slice(1400);
+  const part3Header = [
+    `-- ==============================================================================`,
+    `-- PARTE 3: RECEBÍVEIS DE FINANÇAS - LOTE 2 (Parcelas 1401 a 2841) + CONTAS A PAGAR`,
+    `-- Execute no SQL Editor do Supabase`,
+    `-- ==============================================================================`,
+    `SET session_replication_role = 'replica';`,
+    ``,
+    buildBatchUpsert('fin_receivables', recPart2, 100),
+    ``,
+    `DELETE FROM public.fin_payables WHERE source = 'simulacao';`,
+    buildBatchUpsert('fin_payables', payables, 100),
+    ``,
+    `SET session_replication_role = 'origin';`,
+    ``,
+    `-- VERIFICAÇÃO FINAL COMPLETA:`,
+    `SELECT `,
+    `  (SELECT count(*) FROM public.contracts WHERE total_amount > 0 AND approval_status = 'approved') as contratos_aprovados,`,
+    `  (SELECT count(*) FROM public.fin_contract_reviews) as total_revisoes,`,
+    `  (SELECT count(*) FROM public.fin_receivables) as total_recebiveis,`,
+    `  (SELECT count(*) FROM public.fin_payables) as total_a_pagar;`
+  ].join('\n');
+
+  writeFileSync('supabase/migrations/01_ATUALIZAR_CONTRATOS_E_CLIENTES.sql', part1Header, 'utf-8');
+  writeFileSync('supabase/migrations/02_ATUALIZAR_FINANCEIRO_RECEBIVEIS_PARTE_1.sql', part2Header, 'utf-8');
+  writeFileSync('supabase/migrations/03_ATUALIZAR_FINANCEIRO_RECEBIVEIS_PARTE_2.sql', part3Header, 'utf-8');
+
+  console.log('Scripts divididos gerados com sucesso!');
 }
 
 main().catch(err => {
