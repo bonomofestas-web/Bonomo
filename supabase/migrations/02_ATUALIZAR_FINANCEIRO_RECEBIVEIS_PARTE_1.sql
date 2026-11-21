@@ -1,8 +1,35 @@
 -- ==============================================================================
 -- PARTE 2: RECEBÍVEIS DE FINANÇAS - LOTE 1 (Parcelas 1 a 1400)
--- Execute no SQL Editor do Supabase
 -- ==============================================================================
 SET session_replication_role = 'replica';
+
+CREATE TABLE IF NOT EXISTS public.fin_receivables (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  master_id UUID NOT NULL,
+  venue_id UUID REFERENCES public.venues(id) ON DELETE CASCADE,
+  contract_id UUID NOT NULL REFERENCES public.contracts(id) ON DELETE CASCADE,
+  client_id UUID,
+  contact_id UUID,
+  kind TEXT NOT NULL,
+  seq INT NOT NULL DEFAULT 1,
+  total_seq INT NOT NULL DEFAULT 1,
+  due_date DATE,
+  due_rule JSONB,
+  amount NUMERIC(14,2) NOT NULL DEFAULT 0,
+  paid_amount NUMERIC(14,2) NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'pendente',
+  payment_method TEXT,
+  installments INT,
+  terminal_id UUID,
+  competence_date DATE,
+  notes TEXT,
+  source TEXT NOT NULL DEFAULT 'manual',
+  import_key TEXT,
+  created_by UUID,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 DELETE FROM public.fin_receivables WHERE source = 'simulacao';
 
 INSERT INTO public."fin_receivables" ("id", "master_id", "venue_id", "contract_id", "client_id", "contact_id", "kind", "seq", "total_seq", "due_date", "due_rule", "amount", "paid_amount", "status", "payment_method", "installments", "terminal_id", "competence_date", "notes", "source", "import_key", "created_by", "created_at", "updated_at") VALUES

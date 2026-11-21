@@ -1,8 +1,29 @@
 -- ==============================================================================
 -- PARTE 3: RECEBÍVEIS DE FINANÇAS - LOTE 2 (Parcelas 1401 a 2841) + CONTAS A PAGAR
--- Execute no SQL Editor do Supabase
 -- ==============================================================================
 SET session_replication_role = 'replica';
+
+CREATE TABLE IF NOT EXISTS public.fin_payables (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  master_id UUID NOT NULL,
+  venue_id UUID REFERENCES public.venues(id) ON DELETE CASCADE,
+  supplier_name TEXT,
+  supplier_contact_id UUID,
+  category_id UUID,
+  cost_nature TEXT,
+  description TEXT NOT NULL,
+  competence_date DATE,
+  due_date DATE NOT NULL,
+  amount NUMERIC(14,2) NOT NULL DEFAULT 0,
+  paid_amount NUMERIC(14,2) NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'pendente',
+  recurrence_id UUID,
+  source TEXT NOT NULL DEFAULT 'manual',
+  notes TEXT,
+  created_by UUID,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 
 INSERT INTO public."fin_receivables" ("id", "master_id", "venue_id", "contract_id", "client_id", "contact_id", "kind", "seq", "total_seq", "due_date", "due_rule", "amount", "paid_amount", "status", "payment_method", "installments", "terminal_id", "competence_date", "notes", "source", "import_key", "created_by", "created_at", "updated_at") VALUES
   ('80b8bac7-4409-4fc1-a852-ea6392061f33', 'a0000000-0000-0000-0000-000000000001', 'd4577a14-d09a-46c4-af64-5e6655b0e626', '0c3be8ee-b193-451f-8a41-44eb42f557a0', 'a76466fd-0df5-462e-a66d-1b67f5f80954', 'ee124f86-8dc0-4723-a124-4f69365a2627', 'parcela', 17, 42, '2027-06-10', NULL, 400, 0, 'pendente', 'pix', NULL, NULL, '2029-08-17', NULL, 'simulacao', 'sim:0c3be8ee-b193-451f-8a41-44eb42f557a0:parcela:17', NULL, '2026-11-21T08:22:51.893229+00:00', '2026-11-21T08:22:51.893229+00:00'),

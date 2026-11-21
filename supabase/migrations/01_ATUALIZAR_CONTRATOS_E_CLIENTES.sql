@@ -1,11 +1,41 @@
 -- ==============================================================================
--- PARTE 1: ATUALIZAÇÃO DOS 218 CONTRATOS (PREÇOS, R2, STATUS) E REVISÕES
--- NÃO MODIFICA A TABELA DE CONTATOS (ZERO RISCO DE CONFLITO DE TELEFONE)
--- Execute esta primeira parte no SQL Editor do Supabase
+-- PARTE 1: GARANTIA DE ESTRUTURA + ATUALIZAÇÃO DOS 218 CONTRATOS E REVISÕES
 -- ==============================================================================
 SET session_replication_role = 'replica';
 
--- 1. UPSERT CONTRATOS COM PREÇOS, LINKS R2 E STATUS (218 registros)
+-- 1. Garante que todas as colunas necessárias existam em contracts
+ALTER TABLE public.contracts ADD COLUMN IF NOT EXISTS entry_amount numeric(12,2) DEFAULT 0.00;
+ALTER TABLE public.contracts ADD COLUMN IF NOT EXISTS balance_amount numeric(12,2) DEFAULT 0.00;
+ALTER TABLE public.contracts ADD COLUMN IF NOT EXISTS lead_id uuid;
+ALTER TABLE public.contracts ADD COLUMN IF NOT EXISTS client_id uuid;
+ALTER TABLE public.contracts ADD COLUMN IF NOT EXISTS contract_title text;
+ALTER TABLE public.contracts ADD COLUMN IF NOT EXISTS title text;
+ALTER TABLE public.contracts ADD COLUMN IF NOT EXISTS payment_file_url text;
+ALTER TABLE public.contracts ADD COLUMN IF NOT EXISTS source_id text;
+ALTER TABLE public.contracts ADD COLUMN IF NOT EXISTS closed_at date;
+ALTER TABLE public.contracts ADD COLUMN IF NOT EXISTS signal_amount numeric(12,2) NOT NULL DEFAULT 0.00;
+ALTER TABLE public.contracts ADD COLUMN IF NOT EXISTS payment_summary text;
+ALTER TABLE public.contracts ADD COLUMN IF NOT EXISTS fill_stage text NOT NULL DEFAULT 'pendente';
+ALTER TABLE public.contracts ADD COLUMN IF NOT EXISTS finance_message text;
+ALTER TABLE public.contracts ADD COLUMN IF NOT EXISTS finance_message_at timestamptz;
+
+-- 2. Garante que a tabela de revisões financeiras exista
+CREATE TABLE IF NOT EXISTS public.fin_contract_reviews (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  master_id UUID NOT NULL,
+  contract_id UUID NOT NULL REFERENCES public.contracts(id) ON DELETE CASCADE,
+  plan_hash TEXT,
+  plan_snapshot JSONB NOT NULL DEFAULT '{}'::jsonb,
+  status TEXT NOT NULL DEFAULT 'pendente',
+  reviewer_id UUID,
+  reviewer_name TEXT,
+  reason TEXT,
+  submitted_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  reviewed_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- 3. UPSERT DOS 218 CONTRATOS
 INSERT INTO public."contracts" ("id", "master_id", "contract_code", "contact_id", "origin_lead_id", "origin_funnel_id", "venue_id", "event_type", "event_title", "event_date", "event_time", "guest_count", "package_name", "client_snapshot", "commercial_fields_snapshot", "total_amount", "payment_terms", "sdr_id", "sdr_name", "sdr_email", "closer_id", "closer_name", "closer_email", "approval_status", "submitted_by", "submitted_at", "approved_by", "approved_by_name", "approved_by_role", "approved_at", "rejection_reason", "target_pos_sale_funnel_ids", "debutante_id", "debutante_slug", "handover_notes", "contract_file_url", "attachments", "notes", "created_at", "updated_at", "entry_amount", "balance_amount", "lead_id", "client_id", "contract_title", "title", "payment_file_url", "source_id", "closed_at", "signal_amount", "payment_summary", "fill_stage", "finance_message", "finance_message_at") VALUES
   ('025b3bc9-0629-480c-8d44-c2457e1c6202', 'a0000000-0000-0000-0000-000000000001', 'CTR-2027-G19F7I', 'b2127e63-b9e7-43a0-8c2f-23e020038f1f', NULL, NULL, 'b2222222-2222-2222-2222-222222222222', 'casamento', 'Caroline Abreu ??? Casamento', '2027-10-09', NULL, 180, NULL, '{"cpf":"143.579.757-43","name":"CAROLINE DE FATIMA ABREU","email":"carolineabreufas@gmail.com","phone":"(21) 96419-0721","address":"Rua Candido Benicio, 2935 BL E AP 301","payerName":"CAROLINE DE FATIMA ABREU","birthdayPersonName":null}'::jsonb, '{"pasta":"2027-10-09 - CASAMENTO CAROLINE E RAFAEL","origem":"importacao_contratos","valorDe":58520,"importKey":"contratos:478bd1c1378b","dataNaPasta":"2027-10-09","dataEmConflito":false,"dataNoContrato":"2027-10-09"}'::jsonb, 34990, '{}'::jsonb, NULL, '', NULL, NULL, '', NULL, 'approved', NULL, '2026-11-19T16:14:48.324333+00:00', NULL, 'Importa????o de contratos', 'sistema', '2026-11-19T16:14:48.319+00:00', NULL, ARRAY['43a08d58-0635-4ce8-bc0f-da9a1df56f82'::uuid]::uuid[], NULL, NULL, '180 convidados ?? valor R$??34.990,00
 Campanha: ixo dd9105(...) CAROLINE DE FATIMA ABREU manuscript_18 jun 2026, 20-25-21.png 5bbec722-8afb-46d6-b98e-c7dcd1a8cfd6 P??gina 2 de 2 do Log', 'https://pub-dfdef15994014f9c933c40b4ccde124b.r2.dev/contracts/c1d301bec66d8104.pdf', '[{"url":"https://pub-dfdef15994014f9c933c40b4ccde124b.r2.dev/contracts/416be4268fa94c8d.pdf","name":"2027-10-09 - CASAMENTO CAROLINE E RAFAEL.pdf","type":"outro"}]'::jsonb, '', '2026-11-19T16:14:48.324333+00:00', '2026-11-19T16:56:35.85+00:00', 14000, 19990, NULL, '5fc7a3a9-22ab-47df-83c1-be4a252b5aed', 'Caroline Abreu ??? Casamento', 'Caroline Abreu ??? Casamento', NULL, NULL, '2026-06-11', 1000, 'Sinal de R$ 1.000,00 em 11/06/2026
@@ -810,7 +840,7 @@ Saldo final de R$ 27.400,00 at?? 10/04/2027', 'preenchido', NULL, NULL),
 1 parcela de R$ 5.990,00 a partir de 16/03/2026', 'preenchido', NULL, NULL)
 ON CONFLICT ("id") DO UPDATE SET "master_id" = EXCLUDED."master_id", "contract_code" = EXCLUDED."contract_code", "contact_id" = EXCLUDED."contact_id", "origin_lead_id" = EXCLUDED."origin_lead_id", "origin_funnel_id" = EXCLUDED."origin_funnel_id", "venue_id" = EXCLUDED."venue_id", "event_type" = EXCLUDED."event_type", "event_title" = EXCLUDED."event_title", "event_date" = EXCLUDED."event_date", "event_time" = EXCLUDED."event_time", "guest_count" = EXCLUDED."guest_count", "package_name" = EXCLUDED."package_name", "client_snapshot" = EXCLUDED."client_snapshot", "commercial_fields_snapshot" = EXCLUDED."commercial_fields_snapshot", "total_amount" = EXCLUDED."total_amount", "payment_terms" = EXCLUDED."payment_terms", "sdr_id" = EXCLUDED."sdr_id", "sdr_name" = EXCLUDED."sdr_name", "sdr_email" = EXCLUDED."sdr_email", "closer_id" = EXCLUDED."closer_id", "closer_name" = EXCLUDED."closer_name", "closer_email" = EXCLUDED."closer_email", "approval_status" = EXCLUDED."approval_status", "submitted_by" = EXCLUDED."submitted_by", "submitted_at" = EXCLUDED."submitted_at", "approved_by" = EXCLUDED."approved_by", "approved_by_name" = EXCLUDED."approved_by_name", "approved_by_role" = EXCLUDED."approved_by_role", "approved_at" = EXCLUDED."approved_at", "rejection_reason" = EXCLUDED."rejection_reason", "target_pos_sale_funnel_ids" = EXCLUDED."target_pos_sale_funnel_ids", "debutante_id" = EXCLUDED."debutante_id", "debutante_slug" = EXCLUDED."debutante_slug", "handover_notes" = EXCLUDED."handover_notes", "contract_file_url" = EXCLUDED."contract_file_url", "attachments" = EXCLUDED."attachments", "notes" = EXCLUDED."notes", "updated_at" = EXCLUDED."updated_at", "entry_amount" = EXCLUDED."entry_amount", "balance_amount" = EXCLUDED."balance_amount", "lead_id" = EXCLUDED."lead_id", "client_id" = EXCLUDED."client_id", "contract_title" = EXCLUDED."contract_title", "title" = EXCLUDED."title", "payment_file_url" = EXCLUDED."payment_file_url", "source_id" = EXCLUDED."source_id", "closed_at" = EXCLUDED."closed_at", "signal_amount" = EXCLUDED."signal_amount", "payment_summary" = EXCLUDED."payment_summary", "fill_stage" = EXCLUDED."fill_stage", "finance_message" = EXCLUDED."finance_message", "finance_message_at" = EXCLUDED."finance_message_at";
 
--- 2. UPSERT REVISÕES FINANCEIRAS (218 registros)
+-- 4. UPSERT DAS 218 REVISÕES FINANCEIRAS
 INSERT INTO public."fin_contract_reviews" ("id", "master_id", "contract_id", "plan_hash", "plan_snapshot", "status", "reviewer_id", "reviewer_name", "reason", "submitted_at", "reviewed_at", "created_at") VALUES
   ('00249d7d-cb6b-4d04-bdb5-298c0982664b', 'a0000000-0000-0000-0000-000000000001', '5b4f6e00-a0f5-475c-b3f3-581a584c34c9', '1', '{"note":"Rascunho lido do contrato (datas s??o sugest??o). Conferir o PDF e ajustar antes de aprovar.","items":[{"type":"saldo","method":"pix","offset_days":-30}],"source":"importacao","version":1}'::jsonb, 'pendente', NULL, NULL, NULL, '2026-11-19T18:01:59.966883+00:00', NULL, '2026-11-19T18:01:59.966883+00:00'),
   ('00c0d8fa-66e0-4dfb-a7de-bf0693746510', 'a0000000-0000-0000-0000-000000000001', '92c60e62-8587-4a71-b66c-8854eb3f3bfe', '4', '{"note":"Rascunho lido do contrato (datas s??o sugest??o). Conferir o PDF e ajustar antes de aprovar.","items":[{"date":"2026-05-16","type":"sinal","amount":500,"method":"pix"},{"date":"2026-05-30","type":"entrada","amount":6500,"method":"pix"},{"type":"parcelas","count":14,"amount":1000,"method":"pix","first_due_date":"2026-06-10"},{"date":"2027-07-10","type":"saldo","method":"pix","offset_days":-30}],"source":"importacao","version":1}'::jsonb, 'pendente', NULL, NULL, NULL, '2026-11-19T18:01:59.996275+00:00', NULL, '2026-11-19T18:01:59.996275+00:00'),
