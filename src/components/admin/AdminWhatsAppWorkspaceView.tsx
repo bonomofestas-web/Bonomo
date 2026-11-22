@@ -1861,17 +1861,18 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   // Client adapter for Post-Sale funnels
   const clientsAsLeads = useMemo<Lead[]>(() => {
     if (!isPostSaleFunnel) return [];
-    // Mesmo cliente com 2+ contratos no MESMO funil (mesmo numero = mesma origem): a conversa e uma so.
-    // Os cards compartilham as mensagens (o que chega ou e enviado por um aparece no outro).
-    const chatKeyOf = (c: any): string => {
-      const d = (c.payerPhone || '').replace(/\D/g, '');
-      return d.length >= 8 ? `${c.funnelId || 'post_sale_default'}|${d.slice(-8)}` : '';
-    };
-    const chatGroups = new Map<string, any[]>();
-    for (const c of clients || []) {
-      const k = chatKeyOf(c);
-      if (k) chatGroups.set(k, [...(chatGroups.get(k) || []), c]);
+    const rawLeadsList = leads || [];
+
+    // Mapeia telefones de leads por funil para unificação instantânea de mensagens de familiares
+    const leadByFunnelPhone = new Map<string, Lead>();
+    for (const l of rawLeadsList) {
+      if (!l || !l.phone) continue;
+      const d = l.phone.replace(/\D/g, '');
+      if (d.length >= 8) {
+        leadByFunnelPhone.set(`${l.funnelId || 'default'}|${d.slice(-8)}`, l);
+      }
     }
+
     return (clients || []).map(c => {
       const pName = c.birthdayPersonName || c.name || 'Cliente';
       const cPayer = c.payerName || '';
@@ -1899,14 +1900,44 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
           mergedActivities.push(nAct);
         }
       }
-      const chatKey = chatKeyOf(c);
-      const siblingChat = chatKey
-        ? (chatGroups.get(chatKey) || []).filter(x => x.id !== c.id).flatMap(x => ((x as any).activities || []) as LeadActivity[]).filter(a => a.type === 'contact')
-        : [];
-      if (siblingChat.length > 0) {
-        mergedActivities.splice(0, mergedActivities.length, ...mergeAndSortActivities(mergedActivities, siblingChat, c.id));
+      // UNIFICAÇÃO DE MENSAGENS DE TODOS OS NÚMEROS REGISTRADOS NO CONTRATO (Pós-Venda):
+      // Busca mensagens no mesmo funil/instância para o telefone principal e para TODOS os contatos da família (mãe, pai, etc.)
+      const cardPhones = new Set<string>();
+      if (cPhone) {
+        const d = cPhone.replace(/\D/g, '');
+        if (d.length >= 8) cardPhones.add(d.slice(-8));
       }
+      if (Array.isArray(c.contacts)) {
+        c.contacts.forEach((ct: any) => {
+          if (ct?.phone) {
+            const cd = ct.phone.replace(/\D/g, '');
+            if (cd.length >= 8) cardPhones.add(cd.slice(-8));
+          }
+        });
+      }
+
+      // Coleta atividades de todos os leads de familiares registrados neste contrato dentro do mesmo funil
+      cardPhones.forEach(digits => {
+        const key = `${c.funnelId || 'default'}|${digits}`;
+        const fl = leadByFunnelPhone.get(key);
+        if (fl && fl.id !== c.id) {
+          const flActs = (fl.activities || []) as LeadActivity[];
+          const cachedFlActs = leadService.getActivitiesFromCache(fl.id);
+          const candidateActs = [...flActs];
+          cachedFlActs.forEach(ca => {
+            if (!candidateActs.some(a => a.id === ca.id)) candidateActs.push(ca);
+          });
+
+          if (candidateActs.length > 0) {
+            mergedActivities.splice(0, mergedActivities.length, ...mergeAndSortActivities(mergedActivities, candidateActs, c.id));
+          }
+        }
+      });
+
       mergedActivities.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
+      // Extrai última mensagem agregada da família para exibição no card da lista
+      const lastContactAct = [...mergedActivities].reverse().find(a => a.type === 'contact' || (a as any).type === 'whatsapp');
 
       return {
         id: c.id,
@@ -1951,6 +1982,9 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
         createdAt: c.createdAt || c.contractDate || new Date().toISOString(),
         updatedAt: c.updatedAt || c.contractDate || new Date().toISOString(),
         activities: mergedActivities,
+        lastMessageText: lastContactAct?.text || (c as any).lastMessageText,
+        lastMessageAt: lastContactAct?.timestamp || (c as any).lastMessageAt,
+        lastMessageDirection: (lastContactAct?.authorId === 'lead' || lastContactAct?.title?.toLowerCase().includes('recebid')) ? 'incoming' : 'outgoing',
         contacts: (c.contacts && c.contacts.length > 0) ? (c.contacts as any) : [
           {
             id: `payer_${c.id}`,
@@ -5436,7 +5470,38 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   useEffect(() => {
     if (!selectedLeadId || (composerTab !== 'whatsapp' && composerTab !== 'notes')) return;
     loadLeadConversationDays(selectedLeadId, 3);
-  }, [selectedLeadId, composerTab, loadLeadConversationDays]);
+
+    // Carrega mensagens do banco para cada número registrado na família deste contrato no mesmo funil
+    const familyDigits = new Set<string>();
+    if (availableRecipients && availableRecipients.length > 0) {
+      availableRecipients.forEach(r => {
+        if (r.phone) {
+          const d = r.phone.replace(/\D/g, '');
+          if (d.length >= 8) familyDigits.add(d.slice(-8));
+        }
+      });
+    }
+    if (selectedLead && Array.isArray(selectedLead.contacts)) {
+      selectedLead.contacts.forEach((ct: any) => {
+        if (ct?.phone) {
+          const d = ct.phone.replace(/\D/g, '');
+          if (d.length >= 8) familyDigits.add(d.slice(-8));
+        }
+      });
+    }
+
+    if (familyDigits.size > 0) {
+      const allCandidates = (leads || []).concat(sourceLeads || []);
+      allCandidates.forEach(sl => {
+        if (!sl || sl.id === selectedLeadId) return;
+        if (sl.funnelId && selectedLead?.funnelId && sl.funnelId !== selectedLead.funnelId) return;
+        const slDigits = (sl.phone || '').replace(/\D/g, '').slice(-8);
+        if (slDigits.length >= 8 && familyDigits.has(slDigits)) {
+          loadLeadConversationDays(sl.id, 3);
+        }
+      });
+    }
+  }, [selectedLeadId, composerTab, loadLeadConversationDays, availableRecipients, selectedLead, leads, sourceLeads]);
 
   // Histórico de Ações e Anotações Internas (Aba Histórico - Sem mensagens de chat do cliente e sem marcadores de caixa de mensagem)
   const historyActivities = useMemo(() => {

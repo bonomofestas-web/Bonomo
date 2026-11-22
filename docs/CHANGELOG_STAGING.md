@@ -42,6 +42,11 @@ Grande reestruturação de governança, experiência do usuário, banco de dados
 
 ### Recursos e Melhorias em Staging
 
+- **Unificação Multi-Número de Mensagens por Contrato no WhatsApp Workspace:**
+  * **Agregação Familiar de Conversas no Card do Contrato:** O card do evento em funis de pós-venda passa a agregar ativamente as mensagens de **todos os telefones registrados na família** (titular/pagante e todos os contatos como mãe, pai, debutante). Ao abrir o card de contrato, todas as mensagens enviadas ou recebidas por qualquer membro da família no funil daquela instância são unificadas na timeline com identificação de remetente (`Carla Nogueira (Mãe)`, etc.).
+  * **Busca e Carregamento Sob Demanda para Contatos Secundários:** O carregamento de mensagens (`loadLeadConversationDays` e `loadOlderLeadActivities`) agora varre e carrega o histórico do banco para cada número vinculado à família no funil da instância, garantindo zero perda de mensagens históricas durante a unificação de cards.
+  * **Prévia da Última Mensagem no Card da Lista:** A lista lateral de conversas exibe com precisão o último texto e horário considerando todas as interações da família associada ao contrato.
+
 - **Ocultação Definitiva de Cards de Familiares no Kanban de Pós-Venda:**
   * **Deduplicação de Cards por Título, Telefone e ID de Contrato:** Implementado filtro à prova de falhas em `AdminPostSaleKanbanView.tsx` que oculta automaticamente qualquer card secundário (`CLI-` ou contato familiar como mãe/pai) quando o card oficial do contrato (`CTR-`) correspondente estiver presente no quadro do evento.
   * **Mapeamento de Contrato no ClientService:** Adicionado mapeamento explícito de `migrated_to_contract_id` e `contract_id` em `clientService.ts` para que o estado do React reconheça instantaneamente o vínculo do contrato.
