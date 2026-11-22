@@ -26,7 +26,7 @@ import { WhatsAppBrandIcon } from './WhatsAppBrandIcon';
 import { SafeAvatar } from './SafeAvatar';
 import { WhatsAppAudioMessage } from './WhatsAppAudioMessage';
 import { WhatsAppDocumentMessage } from './WhatsAppDocumentMessage';
-import { WhatsAppContactMessage } from './WhatsAppContactMessage';
+import { WhatsAppContactMessage, parseContactMessageInfo } from './WhatsAppContactMessage';
 import { AdminPostSaleChannelModal } from './AdminPostSaleChannelModal';
 
 const InstagramIcon: React.FC<{ size?: number; className?: string; color?: string }> = ({ size = 16, className = '', color = 'currentColor' }) => (
@@ -4672,7 +4672,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       timestamp: finalTimestampIso,
       type: 'contact',
       title: 'Contato compartilhado via WhatsApp',
-      text: `👤 Contato: ${name} (${formattedCleanPhone})`,
+      text: `Contato: ${name} (${formattedCleanPhone})`,
       mediaType: 'vcard' as any,
       authorName: currentUser?.name || author,
       authorId: currentUser?.id,
@@ -4695,7 +4695,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       updatedAt: new Date().toISOString().split('T')[0],
       lastInteractionAt: finalTimestampIso,
       lastMessageDirection: 'outgoing',
-      lastMessageText: `👤 Contato: ${name}`,
+      lastMessageText: `Contato: ${name}`,
       lastMessageAt: finalTimestampIso,
     });
 
@@ -4742,31 +4742,149 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     }
   };
 
-  const handleCreateLeadFromContactCard = async (name: string, phone: string) => {
+  const handlePullContactToFunnel = async (name: string, phone: string) => {
     const masterId = currentUser?.masterId || currentUser?.id || '';
-    if (!activeFunnel?.id || !masterId) {
-      toast.error('Nenhum funil ativo selecionado.');
+    if (!masterId) {
+      toast.error('Conta de usuário inválida.');
       return;
     }
     const cleanPhone = phone.replace(/\D/g, '');
+    if (!cleanPhone || cleanPhone.length < 8) {
+      toast.error('Número de telefone inválido para cadastro.');
+      return;
+    }
+
+    const { supabase } = await import('../../lib/supabase');
     const venueId = selectedLead?.venueId || (venues?.[0]?.id || '');
+    const phoneSuffix = cleanPhone.slice(-8);
+
+    // Se for funil de Pós-Venda: no lugar de lead é cliente!
+    if (isPostSaleFunnel) {
+      try {
+        // 1. Verifica se já existe cliente com esse número
+        const { data: existingClients } = await supabase
+          .from('clients')
+          .select('id, name, payer_name, payer_phone, stage, funnel_id')
+          .eq('master_id', masterId)
+          .or(`payer_phone.ilike.%${phoneSuffix}%,phone.ilike.%${phoneSuffix}%`)
+          .limit(1);
+
+        if (existingClients && existingClients.length > 0) {
+          const ex = existingClients[0];
+          toast.info(`Cliente "${ex.name || ex.payer_name || name}" já está no Pós-Venda! Abrindo ficha...`);
+          setSelectedLeadId(ex.id);
+          setIsInspectorOpen(true);
+          return;
+        }
+
+        // 2. Cria novo Cliente na tabela clients
+        const clientId = generateUuid();
+        const postSaleFunnelId = (activeFunnel?.id && activeFunnel.id !== 'all_post_sale') ? activeFunnel.id : undefined;
+        const newClientRecord: any = {
+          id: clientId,
+          master_id: masterId,
+          venue_id: venueId,
+          funnel_id: postSaleFunnelId,
+          name: name || 'Novo Cliente',
+          payer_name: name || 'Novo Cliente',
+          payer_phone: cleanPhone,
+          phone: cleanPhone,
+          stage: 'entrada',
+          notes: `Cliente puxado para o funil de Pós-Venda via contato compartilhado no chat do lead ${selectedLead?.name || ''}.`,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+
+        const { error: insErr } = await supabase.from('clients').insert([newClientRecord]);
+        if (insErr) throw insErr;
+
+        // Registra atividade inicial
+        await supabase.from('lead_activities').insert([{
+          lead_id: clientId,
+          type: 'contact',
+          title: 'Cliente cadastrado no Pós-Venda',
+          text: `Cliente puxado para o funil a partir de contato recebido no chat.`,
+          author_name: currentUser?.name || 'Sistema',
+          author_id: currentUser?.id,
+          timestamp: new Date().toISOString(),
+        }]);
+
+        window.dispatchEvent(new CustomEvent('f5:clients-changed'));
+
+        toast.success(`Cliente "${name}" puxado com sucesso para o Pós-Venda! Abrindo ficha...`);
+        setSelectedLeadId(clientId);
+        setIsInspectorOpen(true);
+      } catch (err: any) {
+        console.error('Erro ao puxar cliente para o pós-venda:', err);
+        toast.error('Erro ao cadastrar cliente: ' + (err.message || 'Falha no banco'));
+      }
+      return;
+    }
+
+    // Se for funil Comercial: cria Lead
+    if (!activeFunnel?.id) {
+      toast.error('Nenhum funil ativo selecionado.');
+      return;
+    }
+
     try {
-      const { supabase } = await import('../../lib/supabase');
+      // 1. Verifica se já existe lead com esse número no funil ativo
+      const { data: existingLeads } = await supabase
+        .from('leads')
+        .select('id, name, stage, funnel_id, phone')
+        .eq('master_id', masterId)
+        .eq('funnel_id', activeFunnel.id)
+        .ilike('phone', `%${phoneSuffix}%`)
+        .limit(1);
+
+      if (existingLeads && existingLeads.length > 0) {
+        const ex = existingLeads[0];
+        toast.info(`Lead "${ex.name || name}" já está cadastrado neste funil! Abrindo ficha...`);
+        setSelectedLeadId(ex.id);
+        setIsInspectorOpen(true);
+        return;
+      }
+
+      // 2. Cria novo Lead no funil
       const leadId = generateUuid();
       const newLeadData: any = {
         id: leadId,
+        master_id: masterId,
+        venue_id: venueId,
+        funnel_id: activeFunnel.id,
         name: name || 'Novo Lead',
         phone: cleanPhone,
-        funnel_id: activeFunnel.id,
-        venue_id: venueId,
-        master_id: masterId,
-        stage: 'entrada',
-        notes: `Criado a partir de contato compartilhado no chat do lead ${selectedLead?.name || ''}.`,
+        stage: activeFunnel?.stages?.[0]?.id || 'entrada',
+        notes: `Lead puxado para o funil comercial via contato compartilhado no chat do lead ${selectedLead?.name || ''}.`,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        last_interaction_at: new Date().toISOString(),
+        last_message_direction: 'incoming',
+        last_message_text: `Contato cadastrado no funil`,
+        last_message_at: new Date().toISOString(),
       };
-      await supabase.from('leads').insert([newLeadData]);
-      toast.success(`Lead "${name}" criado com sucesso no funil!`);
+
+      const { error: insErr } = await supabase.from('leads').insert([newLeadData]);
+      if (insErr) throw insErr;
+
+      await supabase.from('lead_activities').insert([{
+        lead_id: leadId,
+        type: 'contact',
+        title: 'Lead puxado para o funil',
+        text: `Lead criado a partir do contato compartilhado no chat do lead ${selectedLead?.name || ''}.`,
+        author_name: currentUser?.name || 'Sistema',
+        author_id: currentUser?.id,
+        timestamp: new Date().toISOString(),
+      }]);
+
+      window.dispatchEvent(new CustomEvent('f5:leads-changed'));
+
+      toast.success(`Lead "${name}" puxado com sucesso para o funil! Abrindo ficha...`);
+      setSelectedLeadId(leadId);
+      setIsInspectorOpen(true);
     } catch (err: any) {
-      toast.error('Erro ao criar lead: ' + (err.message || 'Falha no banco'));
+      console.error('Erro ao puxar lead para o funil:', err);
+      toast.error('Erro ao puxar lead para o funil: ' + (err.message || 'Falha no banco'));
     }
   };
 
@@ -4774,28 +4892,38 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     const masterId = currentUser?.masterId || currentUser?.id || '';
     if (!masterId) return;
     const cleanPhone = phone.replace(/\D/g, '');
+    if (!cleanPhone || cleanPhone.length < 8) {
+      toast.error('Número de telefone inválido.');
+      return;
+    }
     try {
       const { supabase } = await import('../../lib/supabase');
       const { data: existing } = await supabase
         .from('contacts')
-        .select('id')
+        .select('id, full_name')
         .eq('master_id', masterId)
         .or(`primary_phone.ilike.%${cleanPhone.slice(-8)}%,secondary_phone.ilike.%${cleanPhone.slice(-8)}%`)
         .maybeSingle();
 
-      if (existing) {
-        toast.info('Este contato já está cadastrado na sua Central de Contatos.');
-        return;
+      if (!existing) {
+        await supabase.from('contacts').insert([{
+          master_id: masterId,
+          full_name: name || 'Novo Contato',
+          primary_phone: cleanPhone,
+          notes: `Salvo via WhatsApp a partir de contato recebido no chat do lead ${selectedLead?.name || ''}.`,
+        }]);
       }
 
-      await supabase.from('contacts').insert([{
-        master_id: masterId,
-        full_name: name,
-        primary_phone: cleanPhone,
-        notes: `Salvo via WhatsApp a partir de contato recebido.`,
-      }]);
-      toast.success(`Contato "${name}" salvo na Central de Contatos!`);
+      window.dispatchEvent(new CustomEvent('f5:contacts-changed'));
+      toast.success(`Contato "${name}" salvo! Redirecionando para Central de Contatos...`);
+      window.dispatchEvent(new CustomEvent('admin_switch_tab', {
+        detail: {
+          tab: 'contacts',
+          query: name || cleanPhone,
+        }
+      }));
     } catch (err: any) {
+      console.error('Erro ao salvar contato:', err);
       toast.error('Erro ao salvar contato: ' + (err.message || 'Falha no banco'));
     }
   };
@@ -6679,9 +6807,16 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                 lastMessageActivity?.title?.toLowerCase().includes('áudio')
               );
 
-              const isImageMsg = !isAudioMsg && hasExplicitImage;
-              const isVideoMsg = !isAudioMsg && !isImageMsg && hasExplicitVideo;
-              const isDocMsg = !isAudioMsg && !isImageMsg && !isVideoMsg && hasExplicitDoc;
+              const isContactMsg = (explicitMediaType as any) === 'vcard' ||
+                cleanedText.toLowerCase().includes('[contato]') ||
+                cleanedText.includes('BEGIN:VCARD') ||
+                cleanedText.startsWith('👤 Contato:') ||
+                cleanedText.startsWith('Contato:') ||
+                /(?:^|\n)(?:Phone|Telefone|Tel|Celular)(?:\s*\([^)]*\))?\s*:\s*\+?\d+/i.test(cleanedText);
+
+              const isImageMsg = !isAudioMsg && !isContactMsg && hasExplicitImage;
+              const isVideoMsg = !isAudioMsg && !isContactMsg && !isImageMsg && hasExplicitVideo;
+              const isDocMsg = !isAudioMsg && !isContactMsg && !isImageMsg && !isVideoMsg && hasExplicitDoc;
 
               // Extrai tempo/duração do áudio se disponível (ex: "(0:15)" ou "(1:20)")
               const durationMatch = cleanedText.match(/\((\d+:\d{2})\)/) || lastMessageActivity?.title?.match(/\((\d+:\d{2})\)/);
@@ -6690,6 +6825,9 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
               let cleanPreviewText = '';
               if (isAudioMsg) {
                 cleanPreviewText = audioDuration ? `Áudio (${audioDuration})` : 'Áudio';
+              } else if (isContactMsg) {
+                const cParsed = parseContactMessageInfo({ text: cleanedText, metadata: lastMessageActivity?.metadata });
+                cleanPreviewText = cParsed.name ? `Contato: ${cParsed.name}` : 'Contato';
               } else if (isImageMsg) {
                 const caption = cleanedText.replace(/\[(imagem|foto)\]/gi, '').replace(/📷/g, '').trim();
                 cleanPreviewText = (caption && caption !== 'Foto') ? `Foto: ${caption}` : 'Foto';
@@ -7166,6 +7304,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                       }}>
                         {isAudioMsg ? (
                           <Mic size={11} color="#10B981" style={{ flexShrink: 0 }} />
+                        ) : isContactMsg ? (
+                          <User size={11} color="var(--adm-accent, #6366F1)" style={{ flexShrink: 0 }} />
                         ) : isImageMsg ? (
                           <ImageIcon size={11} color="#3B82F6" style={{ flexShrink: 0 }} />
                         ) : isVideoMsg ? (
@@ -8711,11 +8851,12 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                         act.mediaType === 'audio'
                       );
 
+                      const contactInfo = parseContactMessageInfo({ text: effectiveText || act.text, mediaType: effectiveMediaType || act.mediaType, metadata: act.metadata });
                       const isContactMsg = Boolean(
                         (effectiveMediaType as any) === 'vcard' ||
                         (act.mediaType as any) === 'vcard' ||
                         (act.metadata as any)?.isContactCard ||
-                        (effectiveText && effectiveText.startsWith('👤 Contato:'))
+                        contactInfo.isContact
                       );
 
                       const hasExplicitNonAudioMedia = !isTitleOrTextAudio && !isContactMsg && (
@@ -8779,7 +8920,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                 <div style={{ width: '30px', flexShrink: 0 }} />
                               )}
 
-                              {/* Conteúdo: Sticker Solto vs Balão Clássico */}
+                              {/* Conteúdo: Sticker Solto vs Contato Solto vs Balão Clássico */}
                               {isSticker && effectiveMediaUrl ? (
                                 <div
                                   style={{ display: 'flex', flexDirection: 'column', gap: '4px', cursor: 'pointer' }}
@@ -8792,6 +8933,18 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                   />
                                   <span style={{ fontSize: '0.62rem', color: isDarkMode ? '#8696a0' : '#667781' }}>{formattedTime}</span>
                                 </div>
+                              ) : isContactMsg ? (
+                                <WhatsAppContactMessage
+                                  contactName={contactInfo.name || 'Contato'}
+                                  contactPhone={contactInfo.phone || ''}
+                                  avatarUrl={act.metadata?.avatarUrl || act.metadata?.profilePicUrl}
+                                  isIncoming={true}
+                                  formattedTime={formattedTime}
+                                  isDarkMode={isDarkMode}
+                                  isPostSale={isPostSaleFunnel}
+                                  onSaveContact={() => handleSaveContactFromCard(contactInfo.name, contactInfo.phone)}
+                                  onPullToFunnel={() => handlePullContactToFunnel(contactInfo.name, contactInfo.phone)}
+                                />
                               ) : (
                                 <div 
                                   onDoubleClick={() => setReplyingToMessage(act)}
@@ -9096,22 +9249,6 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                       isDarkMode={isDarkMode}
                                       status="read"
                                     />
-                                  ) : isContactMsg ? (
-                                    <WhatsAppContactMessage
-                                      contactName={(act.metadata as any)?.contactName || act.text?.replace(/^👤 Contato:\s*/i, '').replace(/\s*\([^)]*\)$/, '') || 'Contato'}
-                                      contactPhone={(act.metadata as any)?.contactPhone || act.text?.match(/\(([^)]+)\)$/)?.[1] || ''}
-                                      isIncoming={true}
-                                      formattedTime={formattedTime}
-                                      isDarkMode={isDarkMode}
-                                      onCreateLead={() => handleCreateLeadFromContactCard(
-                                        (act.metadata as any)?.contactName || act.text?.replace(/^👤 Contato:\s*/i, '').replace(/\s*\([^)]*\)$/, '') || 'Contato',
-                                        (act.metadata as any)?.contactPhone || act.text?.match(/\(([^)]+)\)$/)?.[1] || ''
-                                      )}
-                                      onSaveContact={() => handleSaveContactFromCard(
-                                        (act.metadata as any)?.contactName || act.text?.replace(/^👤 Contato:\s*/i, '').replace(/\s*\([^)]*\)$/, '') || 'Contato',
-                                        (act.metadata as any)?.contactPhone || act.text?.match(/\(([^)]+)\)$/)?.[1] || ''
-                                      )}
-                                    />
                                   ) : (
                                     <div style={{ fontSize: '0.84rem', lineHeight: 1.45, whiteSpace: 'pre-wrap', color: isDarkMode ? '#e9edef' : '#111b21', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: '8px' }}>
                                       {Boolean(
@@ -9371,7 +9508,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                               </button>
                             )}
 
-                            {/* Conteúdo: Sticker Solto vs Balão Clássico */}
+                            {/* Conteúdo: Sticker Solto vs Contato Solto vs Balão Clássico */}
                             {isSticker && act.mediaUrl ? (
                               <div
                                 style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px', cursor: 'pointer' }}
@@ -9387,6 +9524,19 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                   <CheckCircle2 size={11} color="#53bdeb" />
                                 </div>
                               </div>
+                            ) : isContactMsg ? (
+                              <WhatsAppContactMessage
+                                contactName={contactInfo.name || 'Contato'}
+                                contactPhone={contactInfo.phone || ''}
+                                avatarUrl={act.metadata?.avatarUrl || act.metadata?.profilePicUrl}
+                                isIncoming={false}
+                                formattedTime={formattedTime}
+                                isDarkMode={isDarkMode}
+                                status={act.status === 'failed' ? 'failed' : 'read'}
+                                isPostSale={isPostSaleFunnel}
+                                onSaveContact={() => handleSaveContactFromCard(contactInfo.name, contactInfo.phone)}
+                                onPullToFunnel={() => handlePullContactToFunnel(contactInfo.name, contactInfo.phone)}
+                              />
                             ) : (
                               <div 
                                 onDoubleClick={() => setReplyingToMessage(act)}
@@ -9726,15 +9876,6 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                   <WhatsAppDocumentMessage
                                     url={act.mediaUrl}
                                     filename={act.text}
-                                    isIncoming={false}
-                                    formattedTime={formattedTime}
-                                    isDarkMode={isDarkMode}
-                                    status={act.status === 'failed' ? 'failed' : 'read'}
-                                  />
-                                ) : isContactMsg ? (
-                                  <WhatsAppContactMessage
-                                    contactName={(act.metadata as any)?.contactName || act.text?.replace(/^👤 Contato:\s*/i, '').replace(/\s*\([^)]*\)$/, '') || 'Contato'}
-                                    contactPhone={(act.metadata as any)?.contactPhone || act.text?.match(/\(([^)]+)\)$/)?.[1] || ''}
                                     isIncoming={false}
                                     formattedTime={formattedTime}
                                     isDarkMode={isDarkMode}

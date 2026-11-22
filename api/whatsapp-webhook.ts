@@ -290,9 +290,9 @@ function extractSenderName(msg: any, payload?: any): string {
 
 // Prévia curta da última mensagem para a lista lateral (mídia vira marcador legível pelo front)
 function lastMessagePreview(text: string, mediaUrl?: string, mediaType?: string): string {
-  const label: Record<string, string> = { image: '[Foto]', video: '[Vídeo]', audio: '[Áudio]', document: '[Documento]' };
+  const label: Record<string, string> = { image: '[Foto]', video: '[Vídeo]', audio: '[Áudio]', document: '[Documento]', vcard: '[Contato]' };
   const base = (text || '').trim();
-  const prefix = mediaUrl ? (label[mediaType || ''] || '[Documento]') : '';
+  const prefix = mediaUrl ? (label[mediaType || ''] || '[Documento]') : (mediaType === 'vcard' ? '[Contato]' : '');
   return `${prefix} ${base}`.trim().slice(0, 200);
 }
 
@@ -506,12 +506,40 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         } else if (msgType.includes('sticker')) {
           mediaType = 'image';
           text = '✨ Figurinha';
-        } else if (msgType.includes('contact') || msgType.includes('vcard')) {
+        } else if (
+          msgType.includes('contact') || msgType.includes('vcard') ||
+          Boolean(msg.content?.displayName || msg.content?.vcard || msg.message?.contactMessage || msg.message?.contactsArrayMessage) ||
+          (typeof msg.text === 'string' && (msg.text.includes('BEGIN:VCARD') || /(?:^|\n)(?:Phone|Telefone|Tel|Celular)(?:\s*\([^)]*\))?\s*:\s*\+?\d+/i.test(msg.text)))
+        ) {
           mediaType = 'vcard';
-          const cName = msg.contactName || msg.name || msg.displayName || 'Contato';
-          const cPhone = (msg.contactPhone || msg.phone || msg.phoneNumber || '').replace(/\D/g, '');
-          text = `👤 Contato: ${cName}${cPhone ? ` (${cPhone})` : ''}`;
-          vcardData = { contactName: cName, contactPhone: cPhone, vcard: msg.vcard };
+          const cm = msg.content || msg.message?.contactMessage || msg.message?.contactsArrayMessage?.contacts?.[0] || msg;
+          const rawVcard = cm?.vcard || msg.vcard || (typeof msg.text === 'string' && msg.text.includes('BEGIN:VCARD') ? msg.text : '');
+          let cName = cm?.displayName || cm?.name || msg.contactName || '';
+          let cPhone = (cm?.phone || cm?.phoneNumber || msg.contactPhone || msg.phone || '').replace(/\D/g, '');
+
+          if (rawVcard) {
+            if (!cName) cName = rawVcard.match(/FN:(.+)/i)?.[1]?.trim() || '';
+            if (!cPhone) {
+              const waid = rawVcard.match(/waid=(\d+)/i)?.[1];
+              const tel = rawVcard.match(/TEL[^:]*:(.+)/i)?.[1]?.replace(/\D/g, '');
+              cPhone = waid || tel || '';
+            }
+          }
+
+          if (!cName || !cPhone) {
+            const rawT = typeof msg.text === 'string' ? msg.text : '';
+            const phoneLabelRegex = /(?:^|\n)(?:Phone|Telefone|Tel|Celular)(?:\s*\([^)]*\))?\s*:\s*(\+?\d[\d\s-]*\d|\d+)/i;
+            const pMatch = rawT.match(phoneLabelRegex);
+            if (pMatch && !cPhone) cPhone = pMatch[1].replace(/\D/g, '');
+            if (!cName && rawT) {
+              const lines = rawT.split('\n').map((l: string) => l.trim()).filter(Boolean);
+              cName = lines.find((l: string) => !phoneLabelRegex.test(l) && !l.toLowerCase().startsWith('phone') && !l.toLowerCase().startsWith('tel')) || '';
+            }
+          }
+
+          cName = cName || 'Contato';
+          text = `Contato: ${cName}${cPhone ? ` (${cPhone})` : ''}`;
+          vcardData = { contactName: cName, contactPhone: cPhone, vcard: rawVcard };
         }
 
         // Se o texto vier como JSON em string contendo URL/caption da UAZAPI
@@ -533,7 +561,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           }
         }
 
-        if (typeof msg.text === 'string' && msg.text.trim()) {
+        if (typeof msg.text === 'string' && msg.text.trim() && mediaType !== 'vcard') {
           text = msg.text;
         } else if (typeof msg.body === 'string' && msg.body.trim()) {
           text = msg.body;

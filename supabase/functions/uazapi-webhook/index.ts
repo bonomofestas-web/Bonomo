@@ -246,8 +246,47 @@ serve(async (req) => {
         let text = msg.body || msg.text || msg.conversation || msg.message?.conversation || msg.message?.extendedTextMessage?.text || "";
         const senderName = extractSenderName(msg, payload);
 
+        // Verifica se é cartão de contato (vCard)
+        const isMsgContact = msg.messageType === "ContactMessage" ||
+          msg.type === "contact" ||
+          Boolean(msg.content?.displayName || msg.content?.vcard || msg.message?.contactMessage || msg.message?.contactsArrayMessage) ||
+          (typeof text === "string" && (text.includes("BEGIN:VCARD") || /(?:^|\n)(?:Phone|Telefone|Tel|Celular)(?:\s*\([^)]*\))?\s*:\s*\+?\d+/i.test(text)));
+
+        let contactData: { name: string; phone: string; vcard?: string } | null = null;
+        if (isMsgContact) {
+          const cm = msg.content || msg.message?.contactMessage || msg.message?.contactsArrayMessage?.contacts?.[0] || msg;
+          const rawVcard = cm?.vcard || msg.vcard || (typeof text === "string" && text.includes("BEGIN:VCARD") ? text : "");
+          let cName = cm?.displayName || cm?.name || msg.contactName || "";
+          let cPhone = (cm?.phone || cm?.phoneNumber || msg.contactPhone || msg.phone || "").replace(/\D/g, "");
+
+          if (rawVcard) {
+            if (!cName) cName = rawVcard.match(/FN:(.+)/i)?.[1]?.trim() || "";
+            if (!cPhone) {
+              const waid = rawVcard.match(/waid=(\d+)/i)?.[1];
+              const tel = rawVcard.match(/TEL[^:]*:(.+)/i)?.[1]?.replace(/\D/g, "");
+              cPhone = waid || tel || "";
+            }
+          }
+
+          if (!cName || !cPhone) {
+            const phoneLabelRegex = /(?:^|\n)(?:Phone|Telefone|Tel|Celular)(?:\s*\([^)]*\))?\s*:\s*(\+?\d[\d\s-]*\d|\d+)/i;
+            const pMatch = text.match(phoneLabelRegex);
+            if (pMatch && !cPhone) cPhone = pMatch[1].replace(/\D/g, "");
+            if (!cName && text) {
+              const lines = text.split("\n").map((l: string) => l.trim()).filter(Boolean);
+              cName = lines.find((l: string) => !phoneLabelRegex.test(l) && !l.toLowerCase().startsWith("phone") && !l.toLowerCase().startsWith("tel")) || "";
+            }
+          }
+
+          cName = cName || "Contato";
+          text = `Contato: ${cName}${cPhone ? ` (${cPhone})` : ""}`;
+          contactData = { name: cName, phone: cPhone, vcard: rawVcard };
+        }
+
         // Verifica se é mensagem de mídia
-        const mediaType = msg.mediaType || (msg.message?.imageMessage ? "image" : msg.message?.audioMessage ? "audio" : msg.message?.videoMessage ? "video" : msg.message?.documentMessage ? "document" : "text");
+        const mediaType = isMsgContact
+          ? "vcard"
+          : (msg.mediaType || (msg.message?.imageMessage ? "image" : msg.message?.audioMessage ? "audio" : msg.message?.videoMessage ? "video" : msg.message?.documentMessage ? "document" : "text"));
         const mediaUrl = msg.mediaUrl || msg.fileURL || msg.url || undefined;
 
         // Identifica a origem vinculada a esta instância
@@ -333,6 +372,12 @@ serve(async (req) => {
               mediaUrl,
               fromMe: isFromMe,
               timestamp: new Date().toISOString(),
+              ...(contactData ? {
+                isContactCard: true,
+                contactName: contactData.name,
+                contactPhone: contactData.phone,
+                vcard: contactData.vcard,
+              } : {}),
             },
           });
         }
