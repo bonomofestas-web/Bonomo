@@ -69,8 +69,11 @@ const isDirectoria = (c: Collaborator): boolean => isUserDirector(c);
 /** Setor principal: define em qual secao do Time a pessoa aparece. */
 export const primarySectorOf = (c: Collaborator): CollabSectorKey => {
   const sectors = collaboratorSectors(c);
+  if ((c.jobRoles || []).includes('marketing_tecnologia:head_growth')) return 'marketing';
   if (isDirectoria(c)) return 'diretoria';
   if (c.role !== 'master' && hasMarketingJob(c) && sectors.includes('marketing')) return 'marketing';
+  // Cargo explicito do financeiro vence o papel base (ex.: papel pos_venda com cargo Analista financeiro)
+  if (c.role !== 'master' && sectors.includes('financeiro') && (c.jobRoles || []).some(r => r.startsWith('financeiro:'))) return 'financeiro';
   if (sectors.includes('gerencia') && (c.role === 'master' || c.role === 'admin' || c.role === 'gerencia' || (c.jobRoles || []).some(r => r.startsWith('gerencia:')))) return 'gerencia';
   if (commercialJobRoles(c).defined) return 'comercial';
   if (sectors.includes('pos_venda') && c.role === 'pos_venda') return 'pos_venda';

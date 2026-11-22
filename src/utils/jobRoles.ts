@@ -50,9 +50,11 @@ export const JOB_ROLE_OPTIONS: Record<string, JobRoleOption[]> = {
     { id: 'comercial:sdr', label: 'SDR', description: 'Qualifica e agenda' },
   ],
   marketing_tecnologia: [
+    { id: 'marketing_tecnologia:head_growth', label: 'Head de Growth', description: 'Mesmo poder de um diretor nas unidades liberadas; único que pode marcar a equipe de marketing' },
     { id: 'marketing_tecnologia:gestor', label: 'Gestor', description: 'Gestão de marketing e tecnologia (ex.: tráfego pago)' },
   ],
   marketing: [
+    { id: 'marketing_tecnologia:head_growth', label: 'Head de Growth', description: 'Mesmo poder de um diretor nas unidades liberadas; único que pode marcar a equipe de marketing' },
     { id: 'marketing_tecnologia:gestor', label: 'Gestor', description: 'Gestão de marketing e tecnologia (ex.: tráfego pago)' },
   ],
   pos_venda: [
@@ -120,6 +122,9 @@ export const jobRoleLabel = (id: string, custom: CustomJobRole[] = [], aliases: 
   const slug = id.split(':')[2] || id;
   return slug.replace(/-/g, ' ').replace(/^./, ch => ch.toUpperCase());
 };
+
+/** Cargo do sistema com poder de diretor fora da Diretoria. */
+export const HEAD_GROWTH_ROLE = 'marketing_tecnologia:head_growth';
 
 export const hasJobRole = (c: Pick<Collaborator, 'jobRoles'> | undefined | null, id: string): boolean => !!c?.jobRoles?.includes(id);
 

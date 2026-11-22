@@ -422,7 +422,8 @@ export const AdminCollaboratorsView: React.FC<AdminCollaboratorsViewProps> = ({ 
     setFormCustomJobTitle(collab.customJobTitle || '');
 
     const isMaster = collab.role === 'master';
-    const isDirector = collab.role === 'diretor' || collab.role === 'diretoria' || (collab.jobRoles || []).some(r => r.startsWith('diretoria:'));
+    const isHeadGrowth = (collab.jobRoles || []).includes('marketing_tecnologia:head_growth');
+    const isDirector = !isHeadGrowth && (collab.role === 'diretor' || collab.role === 'diretoria' || (collab.jobRoles || []).some(r => r.startsWith('diretoria:')));
 
     let existingSectors: string[] = collab.sectors && collab.sectors.length > 0
       ? (collab.sectors as string[]).filter(s => s !== 'gerencia')
@@ -483,7 +484,7 @@ export const AdminCollaboratorsView: React.FC<AdminCollaboratorsViewProps> = ({ 
     let computedRole: AdminRole = 'crm';
     if (isMasterTarget) {
       computedRole = 'master';
-    } else if (formSectors.includes('diretoria') || formJobRoles.some(r => r.startsWith('diretoria:'))) {
+    } else if (formSectors.includes('diretoria') || formJobRoles.some(r => r.startsWith('diretoria:')) || formJobRoles.includes('marketing_tecnologia:head_growth')) {
       computedRole = 'diretor';
     } else if (formSectors.includes('pos_venda') && !formSectors.includes('comercial')) {
       computedRole = 'pos_venda';
@@ -590,6 +591,7 @@ export const AdminCollaboratorsView: React.FC<AdminCollaboratorsViewProps> = ({ 
 
   const getCollabRoleTitle = (collab: Collaborator) => {
     if (collab.role === 'master' || (collab.jobRoles || []).includes('diretoria:master')) return 'Diretor Master';
+    if ((collab.jobRoles || []).includes('marketing_tecnologia:head_growth')) return 'Head de Growth';
     if (collab.role === 'diretor' || collab.role === 'diretoria' || (collab.jobRoles || []).includes('diretoria:diretor')) return 'Diretor(a)';
     const shownTitle = roleTitleOf(collab);
     if (shownTitle) return shownTitle;

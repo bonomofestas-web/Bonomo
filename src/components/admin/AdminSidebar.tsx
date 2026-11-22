@@ -249,7 +249,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
       return ['comercial', 'pos_venda', 'gerencia', 'financeiro', 'marketing'];
     }
     if (effectiveUser && 'sectors' in effectiveUser && Array.isArray((effectiveUser as any).sectors) && (effectiveUser as any).sectors.length > 0) {
-      return (effectiveUser as any).sectors;
+      return ((effectiveUser as any).sectors as string[]).map(s => (s === 'marketing_tecnologia' ? 'marketing' : s)) as any;
     }
     if (userRole === 'admin') return ['gerencia', 'comercial', 'pos_venda'];
     if (userRole === 'pos_venda') return ['pos_venda'];

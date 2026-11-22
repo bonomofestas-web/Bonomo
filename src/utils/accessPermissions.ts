@@ -1,5 +1,5 @@
 import type { Collaborator, AdminRole } from '../types/admin';
-import { hasJobRole } from './jobRoles';
+import { hasJobRole, HEAD_GROWTH_ROLE } from './jobRoles';
 
 export interface AccessLevelOption {
   id: AdminRole;
@@ -70,7 +70,7 @@ export const isUserDirector = (user?: Partial<Collaborator> | null): boolean => 
   if (user.sectors && user.sectors.includes('diretoria')) return true;
   const title = ((user as any).roleTitle || '').toLowerCase();
   if (title.includes('direto')) return true;
-  return hasJobRole(user as any, 'diretoria:diretor') || hasJobRole(user as any, 'diretoria:master');
+  return hasJobRole(user as any, 'diretoria:diretor') || hasJobRole(user as any, 'diretoria:master') || hasJobRole(user as any, HEAD_GROWTH_ROLE);
 };
 
 /**
