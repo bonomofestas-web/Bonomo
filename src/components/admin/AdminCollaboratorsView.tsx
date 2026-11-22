@@ -234,7 +234,13 @@ export const AdminCollaboratorsView: React.FC<AdminCollaboratorsViewProps> = ({ 
 
   const roleUsage = useMemo(() => {
     const out: Record<string, number> = {};
-    collaborators.forEach(c => (c.jobRoles || []).forEach(r => { out[r] = (out[r] || 0) + 1; }));
+    collaborators.forEach(c => {
+      // Cargos do sistema que vem do acesso (role) e nao estao gravados em jobRoles (ex.: o Master) tambem contam
+      const ids = new Set(c.jobRoles || []);
+      if (c.role === 'master') ids.add('diretoria:master');
+      else if (c.role === 'diretor' || c.role === 'diretoria') ids.add('diretoria:diretor');
+      ids.forEach(r => { out[r] = (out[r] || 0) + 1; });
+    });
     return out;
   }, [collaborators]);
 
@@ -1404,7 +1410,6 @@ export const AdminCollaboratorsView: React.FC<AdminCollaboratorsViewProps> = ({ 
               <button
                 type="button"
                 onClick={() => setIsRolesModalOpen(true)}
-                className="adm-btn-secondary"
                 style={{
                   height: '36px',
                   padding: '0 16px',
@@ -1414,6 +1419,12 @@ export const AdminCollaboratorsView: React.FC<AdminCollaboratorsViewProps> = ({ 
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: '6px',
+                  whiteSpace: 'nowrap',
+                  // Header preto: botao secundario translucido (a classe adm-btn-secondary e de tema claro)
+                  background: 'rgba(255, 255, 255, 0.08)',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  color: '#FFFFFF',
+                  cursor: 'pointer',
                 }}
               >
                 <UserCheck size={15} /> <span>Cargos</span>

@@ -364,8 +364,8 @@ export const AdminGlobalSearch: React.FC<AdminGlobalSearchProps> = ({
       ref={containerRef}
       style={{
         position: 'relative',
-        width: '340px',
-        minWidth: '340px',
+        width: '100%',
+        minWidth: 0,
         maxWidth: '340px',
         boxSizing: 'border-box',
       }}

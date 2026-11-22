@@ -6,13 +6,14 @@ import { isManagerKind } from '../../../utils/collaboratorAssets';
 
 /** Identidade visual e tipos compartilhados do Time (lista, perfil, edicao). */
 
-export const SECTOR_ORDER: CollabSectorKey[] = ['gerencia', 'comercial', 'pos_venda', 'marketing', 'financeiro'];
+export const SECTOR_ORDER: CollabSectorKey[] = ['diretoria', 'gerencia', 'comercial', 'pos_venda', 'marketing', 'financeiro'];
 
 export const SECTOR_META: Record<CollabSectorKey, { label: string; plural: string; color: string }> = {
-  gerencia: { label: 'Gerência', plural: 'Gerência', color: '#D4AF37' },
+  diretoria: { label: 'Diretoria', plural: 'Diretoria', color: '#D4AF37' },
+  gerencia: { label: 'Gerência', plural: 'Gerência', color: '#F59E0B' },
   comercial: { label: 'Comercial', plural: 'Comercial', color: '#14A9D7' },
   pos_venda: { label: 'Pós-Venda', plural: 'Pós-Venda', color: '#06B6D4' },
-  marketing: { label: 'Marketing', plural: 'Marketing', color: '#EC4899' },
+  marketing: { label: 'Marketing e Tecnologia', plural: 'Marketing e Tecnologia', color: '#EC4899' },
   financeiro: { label: 'Financeiro', plural: 'Financeiro', color: '#10B981' },
 };
 

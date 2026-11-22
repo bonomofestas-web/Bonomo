@@ -137,10 +137,12 @@ export const jobRoleService = {
       if (error) console.warn('[jobRoleService.listSectors]', error.message);
       return DEFAULT_JOB_SECTORS.map((s, idx) => ({ id: s.id, sector_id: s.id, name: s.label, color: s.color, position: idx }));
     }
+    // Nome gravado com a codificacao quebrada (ex.: "PÃ³S-VENDA"): setores oficiais voltam ao nome padrao
+    const garbled = (n: string) => /[ÃÂ]/.test(n);
     return data.map(r => ({
       id: r.id || r.sector_id,
       sector_id: r.sector_id,
-      name: r.name,
+      name: garbled(String(r.name)) ? (DEFAULT_JOB_SECTORS.find(s => s.id === r.sector_id)?.label || String(r.name)) : r.name,
       color: r.color || '#14A9D7',
       position: Number(r.position ?? 0),
     }));

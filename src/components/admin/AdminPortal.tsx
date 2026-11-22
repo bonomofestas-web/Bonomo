@@ -1061,9 +1061,10 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
           background: '#0B090E',
           borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
           padding: '0 24px',
-          display: 'flex',
+          // Grade: breadcrumb | busca | ações. As laterais nunca ficam menores que o conteúdo; a busca encolhe (150-340px) em vez de ficar por baixo dos botões.
+          display: 'grid',
+          gridTemplateColumns: 'minmax(max-content, 1fr) minmax(150px, 340px) minmax(max-content, 1fr)',
           alignItems: 'center',
-          justifyContent: 'space-between',
           zIndex: 1000,
           boxSizing: 'border-box',
           gap: '12px',
@@ -1358,12 +1359,10 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
             })()}
           </div>
 
-          {/* Center: Barra de Busca Centralizada com Largura e Posição Fixa */}
+          {/* Center: Barra de Busca (coluna central da grade do header) */}
           <div style={{
-            position: 'absolute',
-            left: '50%',
-            transform: 'translateX(-50%)',
-            width: '340px',
+            width: '100%',
+            minWidth: 0,
             display: 'flex',
             justifyContent: 'center',
             zIndex: 10,
@@ -1397,7 +1396,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
           </div>
 
           {/* Right Header Actions: Priorização das Ações do Funil Ativo */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: '180px', justifyContent: 'flex-end', flexShrink: 0, zIndex: 11 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', justifyContent: 'flex-end', justifySelf: 'end', flexShrink: 0, zIndex: 11 }}>
             {/* Indicador de Visualização como Colaborador Ativo (com botão de saída rápida) */}
             {viewingAsCollaborator && (
               <div
@@ -1635,6 +1634,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
           .admin-portal-header {
             padding: 0 12px !important;
             gap: 8px !important;
+            grid-template-columns: auto minmax(0, 1fr) auto !important;
           }
           .admin-mobile-menu-btn {
             display: flex !important;

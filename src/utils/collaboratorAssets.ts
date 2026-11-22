@@ -1,6 +1,7 @@
 import type { AdminTask, Client, Collaborator, CommercialFunnel, Lead } from '../types/admin';
 import type { Appointment } from '../types';
 import { getCommercialRolesInVenue, isCommercialCollaborator } from './funnelResponsibility';
+import { isUserDirector } from './accessPermissions';
 import { commercialJobRoles, jobRoleLabel, type CustomJobRole, type JobRoleAliases, type JobRoleOrder, roleRank } from './jobRoles';
 
 /**
@@ -11,7 +12,7 @@ import { commercialJobRoles, jobRoleLabel, type CustomJobRole, type JobRoleAlias
  * Gerentes nao tem ativos (os ativos sao os times deles): mostram resultado de gestao (managerResults.ts).
  */
 
-export type CollabSectorKey = 'gerencia' | 'comercial' | 'pos_venda' | 'marketing' | 'financeiro';
+export type CollabSectorKey = 'diretoria' | 'gerencia' | 'comercial' | 'pos_venda' | 'marketing' | 'financeiro';
 
 export type ProfileKind =
   | 'closer' | 'sdr' | 'sdr_closer'
@@ -37,30 +38,38 @@ export const isManagerKind = (k: ProfileKind): boolean => k === 'gerente_comerci
 /** Setores do colaborador (`sectors`, com o mesmo fallback pelo cargo-base usado na lista). */
 export const collaboratorSectors = (c: Collaborator): CollabSectorKey[] => {
   const found = new Set<CollabSectorKey>();
-  (c.sectors || []).forEach(s => found.add(s as CollabSectorKey));
-  (c.permissions || []).forEach(p => { if (typeof p === 'string' && p.startsWith('sector:')) found.add(p.replace('sector:', '') as CollabSectorKey); });
-  if (c.department && c.department !== 'diretoria') found.add(c.department as CollabSectorKey);
+  // `marketing_tecnologia` (id novo do setor) e o mesmo setor `marketing` da lista de equipe
+  const norm = (s: string) => (s === 'marketing_tecnologia' ? 'marketing' : s) as CollabSectorKey;
+  (c.sectors || []).forEach(s => found.add(norm(s)));
+  (c.permissions || []).forEach(p => { if (typeof p === 'string' && p.startsWith('sector:')) found.add(norm(p.replace('sector:', ''))); });
+  if (c.department) found.add(norm(c.department));
+  // Diretoria: Master, Diretor(a) e quem tem cargo `diretoria:*`
+  if (c.role === 'master' || c.role === 'diretor' || c.role === 'diretoria' || (c.jobRoles || []).some(r => r.startsWith('diretoria:'))) found.add('diretoria');
   // Master tem acesso global: sempre todos os setores (inclui os que forem criados depois)
-  if (c.role === 'master') ['gerencia', 'comercial', 'pos_venda', 'marketing', 'financeiro'].forEach(k => found.add(k as CollabSectorKey));
+  if (c.role === 'master') ['diretoria', 'gerencia', 'comercial', 'pos_venda', 'marketing', 'financeiro'].forEach(k => found.add(k as CollabSectorKey));
   if (c.role === 'master' || c.role === 'admin' || c.role === 'gerencia') {
     found.add('gerencia');
     if (found.size === 1) { found.add('comercial'); found.add('pos_venda'); }
   } else if (c.role === 'pos_venda') found.add('pos_venda');
   else if ((c.role as string) === 'financeiro') found.add('financeiro');
   else if (found.size === 0) found.add('comercial');
-  const order: CollabSectorKey[] = ['gerencia', 'comercial', 'pos_venda', 'marketing', 'financeiro'];
+  const order: CollabSectorKey[] = ['diretoria', 'gerencia', 'comercial', 'pos_venda', 'marketing', 'financeiro'];
   return order.filter(k => found.has(k));
 };
 
 /** Cargo explicito de marketing (ex.: gestor de trafego) sem cargo de gerencia: a pessoa e do marketing mesmo com acesso amplo. */
 const hasMarketingJob = (c: Collaborator): boolean => {
   const jobs = c.jobRoles || [];
-  return jobs.some(r => r.startsWith('marketing:')) && !jobs.some(r => r.startsWith('gerencia:'));
+  return jobs.some(r => r.startsWith('marketing:') || r.startsWith('marketing_tecnologia:')) && !jobs.some(r => r.startsWith('gerencia:') || r.startsWith('diretoria:'));
 };
+
+/** Diretoria: Master, Diretor(a), cargo `diretoria:*` ou titulo de diretor (ex.: socia diretora). */
+const isDirectoria = (c: Collaborator): boolean => isUserDirector(c);
 
 /** Setor principal: define em qual secao do Time a pessoa aparece. */
 export const primarySectorOf = (c: Collaborator): CollabSectorKey => {
   const sectors = collaboratorSectors(c);
+  if (isDirectoria(c)) return 'diretoria';
   if (c.role !== 'master' && hasMarketingJob(c) && sectors.includes('marketing')) return 'marketing';
   if (sectors.includes('gerencia') && (c.role === 'master' || c.role === 'admin' || c.role === 'gerencia' || (c.jobRoles || []).some(r => r.startsWith('gerencia:')))) return 'gerencia';
   if (commercialJobRoles(c).defined) return 'comercial';
@@ -76,7 +85,7 @@ export const primarySectorOf = (c: Collaborator): CollabSectorKey => {
 export const resolveProfileKind = (c: Collaborator, funnels: CommercialFunnel[], venueIds: string[]): ProfileKind => {
   const jobs = c.jobRoles || [];
   if (c.role !== 'master' && hasMarketingJob(c)) return 'marketing';
-  if (jobs.includes('gerencia:gerente_geral') || ((c.role === 'master' || c.role === 'admin' || c.role === 'gerencia') && !jobs.some(r => r.startsWith('comercial:') || r.startsWith('pos_venda:')))) {
+  if (jobs.includes('gerencia:gerente_geral') || ((c.role === 'master' || c.role === 'diretor' || c.role === 'diretoria' || c.role === 'admin' || c.role === 'gerencia') && !jobs.some(r => r.startsWith('comercial:') || r.startsWith('pos_venda:')))) {
     return 'gerente_geral';
   }
   if (jobs.includes('comercial:gerente') && !jobs.includes('comercial:sdr') && !jobs.includes('comercial:closer')) return 'gerente_comercial';
