@@ -42,6 +42,17 @@ Grande reestruturação de governança, experiência do usuário, banco de dados
 
 ### Recursos e Melhorias em Staging
 
+- **Padronização Estrutural entre Ficha de Pós-Venda e Comercial:**
+  * **Harmonização do Cabeçalho Superior:** Estrutura das 6 linhas padronizada tanto no Pós-Venda (`AdminClientDrawerInspector.tsx`) quanto no Comercial (`AdminLeadInspector.tsx`):
+    - **Linha 1:** Nome em destaque com ações rápidas à direita: Menu de 3 pontinhos com "Transformar em Fornecedor", botão de Arquivar (roxo), botão de Lixeira/Remoção (vermelho) e botão de Recolher/Fechar (ciano).
+    - **Linha 2:** Tag de Código Oficial com ícone `Tag`, código formatado (`CLI-XXXXXX` ou `LEAD-XXXXXX`), botão de copiar e badge "Copiado!".
+    - **Linha 3:** Seletor de Etapa do Funil com cor, ícone da etapa, borda lateral sólida e dropdown com etapas do funil ativo e navegação entre outros funis.
+    - **Linha 4:** Barra de progresso com tracinhos horizontais coloridos (6px), efeito hover interativo e avanço direto de etapa ao clicar.
+    - **Linha 5:** Barra unificada de Badges e Tags: Unidade Física (`Building2` com modal de transferência para gerentes/master), Situação do Contrato (`Contrato vinculado` em verde ou `Sem contrato` em cinza), botão `Vincular a Contrato` quando pendente, tags ativas do cliente e botão `+ Tag` com dropdown de seleção e criação rápida.
+    - **Linha 6:** Abas de navegação padronizadas (`Ficha`, `App da Debutante`, `Origem`, `Jornada`) com sublinhado sólido azul de 2px na aba ativa e tipografia alinhada.
+  * **Despoluição e Eliminação de Redundâncias:** Removida a barra secundária de tags e unidade que se repetia dentro da Aba 1 (Ficha), garantindo início limpo e direto das seções de dados do evento e financeiro.
+  * **Disponibilidade Total de Arquivamento e Exclusão:** Os botões de arquivar e remover agora funcionam sem restrição tanto para leads quanto para clientes cadastrados, assegurando que o operador possa gerenciar e limpar cards em qualquer esteira.
+
 - **Mídias, Documentos, Contatos (vCard) e Higienização de Telefones no WhatsApp Workspace:**
   * **Correção de Áudio de Voz (.ogg):** Gravação de mensagens de voz pelo navegador agora prioriza nativamente `audio/ogg; codecs=opus`, nomeia o arquivo como `voice_TIMESTAMP.ogg` e implementa dedução de extensão por MIME type no Cloudflare R2 e endpoint `/api/presign`. O player de áudio do chat agora detecta e reproduz áudios resilientemente mesmo em links legados salvos como `.bin`.
   * **Doca de Pré-visualização com Legenda (Staged Media Preview):** O envio de imagens e vídeos não dispara mais imediatamente ao selecionar o arquivo. Um dock flutuante exibe a miniatura, botão para inspeção em lightbox, botão de cancelamento (X) e campo de texto integrado para digitação de legenda antes do disparo.

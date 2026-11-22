@@ -7,10 +7,12 @@ import {
   FileText, Copy, Plus, Trash2, Tag,
   Shield, MessageSquare, Phone,
   Gift, Award, Star,
-  Compass, UserPlus, CheckCircle2, Eye, X, Building2,
-  ChevronLeft, Workflow, Archive, Link2, User, MoreVertical, Truck
+  UserPlus, CheckCircle2, Eye, X, Building2,
+  ChevronLeft, Workflow, Archive, Link2, User, MoreVertical, Truck,
+  ArrowRightLeft, Globe
 } from 'lucide-react';
 import { AdminConvertToSupplierModal } from './AdminConvertToSupplierModal';
+import { AdminTransferLeadVenueModal } from './AdminTransferLeadVenueModal';
 import { toast } from 'sonner';
 import { SafeAvatar } from './SafeAvatar';
 import { isPhoneMatch } from '../../services/leadService';
@@ -26,7 +28,7 @@ import { ClientContractSection } from './ClientContractSection';
 import { AdminLinkContractModal } from './AdminLinkContractModal';
 import { AdminLinkContractorModal } from './AdminLinkContractorModal';
 import { AdminConfirmModal } from './AdminConfirmModal';
-import { isUserMaster, isUserManager } from '../../utils/accessPermissions';
+import { isUserMaster, isUserManager, canChangeLeadVenue } from '../../utils/accessPermissions';
 import { contractService } from '../../services/contractService';
 import { contactService } from '../../services/contactService';
 import { whatsappMediaService } from '../../services/whatsappMediaService';
@@ -313,6 +315,8 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
     updateClientStage,
     deleteClient,
     updateLeadData,
+    archiveLead,
+    deleteLead,
     linkClientDebutante,
     addDebutanteAccount,
     currentUser,
@@ -350,6 +354,8 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
   const [isTagDropdownOpen, setIsTagDropdownOpen] = useState(false);
   const [showCustomTagInput, setShowCustomTagInput] = useState(false);
   const [newTagInput, setNewTagInput] = useState('');
+  const [isTransferVenueModalOpen, setIsTransferVenueModalOpen] = useState(false);
+  const [expandedFunnelId, setExpandedFunnelId] = useState<string | null>(null);
 
   // Subcontatos Form
   const [isAddingContact, setIsAddingContact] = useState(false);
@@ -448,6 +454,23 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
     }
     return POST_SALE_STAGES;
   }, [client?.funnelId, lead.funnelId, funnels]);
+
+  const isFunnelPostSale = useCallback((f: any) => Boolean(
+    f?.isPostSale ||
+    f?.category === 'Pós-Venda' ||
+    f?.category === 'pos_venda' ||
+    f?.name?.toLowerCase().includes('pós-venda') ||
+    f?.name?.toLowerCase().includes('pos-venda') ||
+    f?.name?.toLowerCase().includes('pós venda')
+  ), []);
+
+  const otherPostSaleFunnels = useMemo(() => {
+    const currentFId = client?.funnelId || lead.funnelId;
+    return funnels.filter(f => {
+      if (f.id === currentFId) return false;
+      return isFunnelPostSale(f);
+    });
+  }, [funnels, client?.funnelId, lead.funnelId, isFunnelPostSale]);
 
   const currentStage = (client?.stage || lead.stage || activePostSaleStages[0]?.id || 'onboarding') as ClientStage;
   const currentStageConfig = activePostSaleStages.find(s => s.id === currentStage) || activePostSaleStages[0] || POST_SALE_STAGES[0];
@@ -554,7 +577,14 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
   const [isQuickMenuOpen, setIsQuickMenuOpen] = useState(false);
   const [isConvertToSupplierOpen, setIsConvertToSupplierOpen] = useState(false);
   const [isConvertingSupplier, setIsConvertingSupplier] = useState(false);
-  const canRemoveClient = isUserMaster(currentUser) || isUserManager(currentUser);
+
+  const venueName = useMemo(() => {
+    return effectiveClient?.venueName || 
+      (linkedContract as any)?.venue?.name || 
+      venues?.find(v => v.id === (effectiveClient?.venueId || linkedContract?.venueId || lead.venueId))?.name || 
+      (lead as any).venueName || 
+      'Unidade Física';
+  }, [effectiveClient, linkedContract, venues, lead]);
 
   const handleConvertToSupplier = async (category: string) => {
     if (!fichaMasterId) return;
@@ -989,32 +1019,76 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
               )}
             </div>
 
-            {!readOnly && client && (
+            {!readOnly && (
               <button
                 type="button"
-                onClick={() => { updateClientStage(client.id, 'archived' as ClientStage); toast.success('Cliente arquivado.'); onToggleCollapse?.(); }}
-                title="Arquivar cliente"
-                style={{ background: 'rgba(139, 92, 246, 0.18)', border: '1px solid rgba(139, 92, 246, 0.45)', color: '#A78BFA', cursor: 'pointer', padding: '4px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: '6px' }}
+                onClick={async () => {
+                  if (client) {
+                    updateClientStage(client.id, 'archived' as ClientStage);
+                  }
+                  if (lead?.id) {
+                    await archiveLead(lead.id);
+                  }
+                  toast.success('Cliente arquivado.');
+                  onToggleCollapse?.();
+                }}
+                title="Arquivar este cliente"
+                style={{
+                  background: 'rgba(139, 92, 246, 0.12)',
+                  border: '1px solid rgba(139, 92, 246, 0.35)',
+                  color: '#A78BFA',
+                  borderRadius: '6px',
+                  padding: '4px 6px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  transition: 'all 0.15s ease',
+                }}
               >
-                <Archive size={14} />
+                <Archive size={13} />
               </button>
             )}
-            {!readOnly && client && canRemoveClient && (
+
+            {!readOnly && (
               <button
                 type="button"
                 onClick={() => setIsDeleteClientOpen(true)}
                 title="Remover cliente"
-                style={{ background: 'rgba(239, 68, 68, 0.18)', border: '1px solid rgba(239, 68, 68, 0.45)', color: '#F87171', cursor: 'pointer', padding: '4px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: '6px' }}
+                style={{
+                  background: 'rgba(239, 68, 68, 0.12)',
+                  border: '1px solid rgba(239, 68, 68, 0.3)',
+                  color: '#EF4444',
+                  borderRadius: '6px',
+                  padding: '4px 6px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  transition: 'all 0.15s ease',
+                }}
               >
-                <Trash2 size={14} />
+                <Trash2 size={13} />
               </button>
             )}
+
             {onToggleCollapse && (
               <button
                 type="button"
                 onClick={onToggleCollapse}
                 title="Recolher ficha do cliente"
-                style={{ background: 'rgba(255, 255, 255, 0.08)', border: '1px solid rgba(20, 169, 215, 0.3)', color: '#14A9D7', borderRadius: '6px', padding: '4px 6px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                style={{
+                  background: 'rgba(255, 255, 255, 0.08)',
+                  border: '1px solid rgba(20, 169, 215, 0.3)',
+                  color: '#14A9D7',
+                  borderRadius: '6px',
+                  padding: '4px 6px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  transition: 'all 0.15s ease',
+                }}
               >
                 <ChevronLeft size={14} />
               </button>
@@ -1022,135 +1096,119 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
           </div>
         </div>
 
-        {/* Linha 2: codigo de cliente + situacao do contrato */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', background: 'rgba(6, 182, 212, 0.15)', border: '1px solid rgba(6, 182, 212, 0.4)', borderRadius: '6px', padding: '2px 7px' }}>
-            <span style={{ fontSize: '0.60rem', color: 'rgba(255,255,255,0.6)', fontWeight: 700, textTransform: 'uppercase' }}>CLIENTE:</span>
-            <span style={{ fontSize: '0.70rem', fontWeight: 900, color: '#06B6D4', letterSpacing: '0.6px', fontFamily: "'Poppins', monospace" }}>{contractCodeDisplay}</span>
+        {/* Linha 2: Tag Oficial de Código Único (CLIENTE: CLI-XXXXXX) */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px' }}>
+          <div style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '5px',
+            background: 'rgba(20, 169, 215, 0.12)',
+            border: '1px solid rgba(20, 169, 215, 0.35)',
+            borderRadius: '6px',
+            padding: '2px 7px',
+          }}>
+            <Tag size={11} color="#14A9D7" />
+            <span style={{ fontSize: '0.60rem', color: 'rgba(255,255,255,0.6)', fontWeight: 700, textTransform: 'uppercase' }}>
+              CLIENTE:
+            </span>
+            <span style={{ fontSize: '0.70rem', fontWeight: 900, color: '#14A9D7', letterSpacing: '0.6px', fontFamily: "'Poppins', monospace" }}>
+              {contractCodeDisplay}
+            </span>
             <button
               type="button"
               onClick={handleCopyContractCode}
               title="Copiar código do cliente"
-              style={{ background: 'transparent', border: 'none', color: copiedContractCode ? '#10B981' : '#06B6D4', cursor: 'pointer', padding: '1px 2px', display: 'flex', alignItems: 'center', marginLeft: '3px' }}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: copiedContractCode ? '#10B981' : '#14A9D7',
+                cursor: 'pointer',
+                padding: '1px 2px',
+                display: 'flex',
+                alignItems: 'center',
+                marginLeft: '3px',
+              }}
             >
               {copiedContractCode ? <Check size={11} /> : <Copy size={11} />}
             </button>
           </div>
-          <span style={{
-            fontSize: '0.62rem', fontWeight: 700, padding: '2px 7px', borderRadius: '6px',
-            background: linkedContract || currentStage === 'completed' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(148, 163, 184, 0.18)',
-            color: linkedContract || currentStage === 'completed' ? '#34D399' : '#CBD5E1',
-            border: `1px solid ${linkedContract || currentStage === 'completed' ? 'rgba(16, 185, 129, 0.35)' : 'rgba(148, 163, 184, 0.35)'}`,
-            display: 'inline-flex', alignItems: 'center', gap: '4px',
-          }}>
-            <Shield size={10} /> {currentStage === 'completed' ? 'Festa Realizada' : (linkedContract ? 'Contrato vinculado' : 'Sem contrato')}
-          </span>
-
-          {/* Badge Rápida da Unidade Vinculada */}
-          {(() => {
-            const vName = effectiveClient?.venueName || (linkedContract as any)?.venue?.name || venues?.find((v: any) => v.id === (effectiveClient?.venueId || linkedContract?.venueId || lead.venueId))?.name || (lead as any).venueName;
-            if (!vName) return null;
-            return (
-              <span style={{
-                fontSize: '0.62rem', fontWeight: 700, padding: '2px 7px', borderRadius: '6px',
-                background: 'rgba(59, 130, 246, 0.12)',
-                color: '#60A5FA',
-                border: '1px solid rgba(59, 130, 246, 0.35)',
-                display: 'inline-flex', alignItems: 'center', gap: '4px',
-              }}>
-                <Building2 size={10} /> {vName}
-              </span>
-            );
-          })()}
-
-          {!linkedContract && !readOnly && (
-            <button
-              type="button"
-              onClick={() => setIsLinkContractorOpen(true)}
-              title="Vincular este cliente a um contrato existente (este contato entra como participante/dependente)"
-              style={{
-                fontSize: '0.64rem',
-                fontWeight: 800,
-                padding: '2.5px 8px',
-                borderRadius: '6px',
-                background: '#0284C7',
-                color: '#FFFFFF',
-                border: 'none',
-                cursor: 'pointer',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '4px',
-                boxShadow: '0 1px 3px rgba(2, 132, 199, 0.35)',
-                transition: 'all 0.15s ease',
-              }}
-              onMouseEnter={(e) => { e.currentTarget.style.background = '#0369A1'; }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = '#0284C7'; }}
-            >
-              <Link2 size={11} />
-              <span>Vincular a Contrato</span>
-            </button>
+          {copiedContractCode && (
+            <span style={{ fontSize: '0.62rem', color: '#10B981', fontWeight: 700 }}>
+              Copiado!
+            </span>
           )}
         </div>
 
-        {/* ── ETAPA DO FUNIL DE PÓS-VENDA (DROPDOWN + PROGRESS BAR) ── */}
-        <div style={{ position: 'relative', marginTop: '2px' }}>
+        {/* Linha 3: Pipeline Stage Dropdown with Colored Indicator & Stage Icon */}
+        <div data-inspector-dropdown="stage-container" style={{ position: 'relative', marginTop: '6px', zIndex: 70 }}>
           <div
+            data-inspector-dropdown="stage-toggle"
             onClick={() => !readOnly && setIsStageDropdownOpen(!isStageDropdownOpen)}
             style={{
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
-              padding: '6px 10px',
+              padding: '7px 10px',
               background: currentStageConfig.bg,
               border: `1px solid ${currentStageConfig.border}`,
               borderLeft: `3.5px solid ${currentStageConfig.color}`,
               borderRadius: '8px',
               cursor: readOnly ? 'default' : 'pointer',
-              fontSize: '0.72rem',
+              fontSize: '0.74rem',
               fontWeight: 800,
               color: currentStageConfig.color,
               transition: 'all 0.15s ease',
+              userSelect: 'none',
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: '7px', minWidth: 0 }}>
-              {renderFunnelOrStageIcon(currentStageConfig.icon, 13, currentStageConfig.color)}
+              {renderFunnelOrStageIcon(currentStageConfig.icon, 14, currentStageConfig.color)}
               <span style={{ textTransform: 'uppercase', letterSpacing: '0.3px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {currentStageConfig.label}
+                {String(currentStageConfig.label || '').toUpperCase()}
               </span>
             </div>
             {!readOnly && (
               <ChevronDown 
-                size={13} 
+                size={14} 
                 style={{ 
                   transform: isStageDropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)', 
                   transition: 'transform 0.15s ease',
                   flexShrink: 0,
-                  opacity: 0.8,
+                  opacity: 0.85,
                 }} 
               />
             )}
           </div>
 
-          {/* Barra de Progresso Colorida das Etapas Reais do Funil */}
-          <div style={{ display: 'flex', gap: '3px', marginTop: '5px' }}>
+          {/* Linha 4: Multi-Stage Color Progress Bar */}
+          <div style={{ display: 'flex', gap: '3px', marginTop: '6px' }}>
             {activePostSaleStages.map((stg, idx) => {
               const isFilled = idx <= currentStageIndex;
               return (
                 <div
                   key={stg.id}
                   onClick={() => {
-                    if (readOnly || !client) return;
-                    updateClient(client.id, { stage: stg.id });
+                    if (readOnly) return;
+                    if (client) {
+                      updateClient(client.id, { stage: stg.id });
+                    }
+                    updateLeadData(lead.id, { stage: stg.id as any });
                     onStageChange(stg.id);
                   }}
-                  title={stg.label}
+                  title={`Mudar para: ${stg.label.toUpperCase()}`}
                   style={{
                     flex: 1,
-                    height: '4px',
-                    borderRadius: '2px',
-                    background: isFilled ? stg.color : 'var(--adm-border)',
+                    height: '6px',
+                    borderRadius: '3px',
+                    background: isFilled ? stg.color : 'rgba(255,255,255,0.15)',
                     cursor: readOnly ? 'default' : 'pointer',
-                    transition: 'all 0.2s ease',
+                    transition: 'all 0.15s ease',
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!readOnly) e.currentTarget.style.transform = 'scaleY(1.3)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.transform = 'scaleY(1)';
                   }}
                 />
               );
@@ -1164,27 +1222,49 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
               top: 'calc(100% + 5px)',
               left: 0,
               right: 0,
-              maxHeight: '420px',
+              maxHeight: '440px',
               overflowY: 'auto',
-              background: 'var(--adm-bg-card)',
-              border: '1px solid var(--adm-border)',
-              borderRadius: '8px',
-              boxShadow: '0 10px 30px rgba(0,0,0,0.3)',
-              zIndex: 70,
+              background: '#0F1724',
+              border: '1px solid rgba(20, 169, 215, 0.4)',
+              borderRadius: '10px',
+              boxShadow: '0 16px 40px rgba(0,0,0,0.85)',
+              zIndex: 99999,
               padding: '5px',
               display: 'flex',
               flexDirection: 'column',
               gap: '2px',
             }}>
+              {/* Header do Funil Atual */}
+              <div style={{
+                fontSize: '0.62rem',
+                fontWeight: 800,
+                color: '#14A9D7',
+                textTransform: 'uppercase',
+                letterSpacing: '0.5px',
+                padding: '6px 8px 4px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                borderBottom: '1px solid rgba(255,255,255,0.06)',
+                marginBottom: '2px',
+              }}>
+                <Workflow size={11} color="#14A9D7" />
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  Etapas: {funnels.find(f => f.id === (client?.funnelId || lead.funnelId))?.name || 'Pós-Venda'}
+                </span>
+              </div>
+
               {activePostSaleStages.map(stg => {
                 const isSelected = currentStage === stg.id;
                 return (
-                  <div
+                  <button
                     key={stg.id}
+                    type="button"
                     onClick={() => {
                       if (client) {
                         updateClient(client.id, { stage: stg.id });
                       }
+                      updateLeadData(lead.id, { stage: stg.id as any });
                       onStageChange(stg.id);
                       setIsStageDropdownOpen(false);
                     }}
@@ -1195,48 +1275,493 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
                       alignItems: 'center',
                       justifyContent: 'space-between',
                       cursor: 'pointer',
-                      fontSize: '0.72rem',
+                      fontSize: '0.74rem',
                       fontWeight: isSelected ? 800 : 600,
-                      color: isSelected ? stg.color : 'var(--adm-text-title)',
+                      color: isSelected ? stg.color : '#E2E8F0',
                       background: isSelected ? stg.bg : 'transparent',
-                      transition: 'all 0.1s ease',
+                      border: isSelected ? `1px solid ${stg.border}` : '1px solid transparent',
+                      transition: 'all 0.12s ease',
+                      width: '100%',
+                      textAlign: 'left',
                     }}
-                    onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = 'var(--adm-bg-hover)'; }}
-                    onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.background = 'transparent'; }}
+                    onMouseEnter={(e) => {
+                      if (!isSelected) {
+                        e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
+                        e.currentTarget.style.color = '#FFFFFF';
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!isSelected) {
+                        e.currentTarget.style.background = 'transparent';
+                        e.currentTarget.style.color = '#E2E8F0';
+                      }
+                    }}
                   >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      {renderFunnelOrStageIcon(stg.icon, 12, stg.color)}
-                      <span>{stg.label}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
+                      {renderFunnelOrStageIcon(stg.icon, 14, stg.color)}
+                      <span>{stg.label.toUpperCase()}</span>
                     </div>
-                    {isSelected && <Check size={13} color={stg.color} />}
-                  </div>
+                    {isSelected && <Check size={14} color={stg.color} />}
+                  </button>
                 );
               })}
 
+              {/* Seção de Outros Funis de Pós-Venda */}
+              {otherPostSaleFunnels.length > 0 && (
+                <>
+                  <div style={{
+                    marginTop: '8px',
+                    marginBottom: '4px',
+                    padding: '8px 8px 4px',
+                    borderTop: '1px solid rgba(255, 255, 255, 0.12)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                  }}>
+                    <div style={{
+                      fontSize: '0.62rem',
+                      fontWeight: 800,
+                      color: '#06B6D4',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.5px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                    }}>
+                      <ArrowRightLeft size={11} color="#06B6D4" />
+                      <span>Outros Funis de Pós-Venda</span>
+                    </div>
+                    <span style={{ fontSize: '0.58rem', color: 'var(--adm-text-muted)', fontWeight: 600 }}>
+                      {otherPostSaleFunnels.length} {otherPostSaleFunnels.length === 1 ? 'funil' : 'funis'}
+                    </span>
+                  </div>
+
+                  {otherPostSaleFunnels.map(f => {
+                    const isExpanded = expandedFunnelId === f.id;
+                    const targetStages = (f.stages && f.stages.length > 0) ? f.stages : [];
+                    if (targetStages.length === 0) return null;
+
+                    return (
+                      <div key={f.id} style={{ display: 'flex', flexDirection: 'column', gap: '2px', marginBottom: '2px' }}>
+                        <button
+                          type="button"
+                          onClick={() => setExpandedFunnelId(prev => prev === f.id ? null : f.id)}
+                          style={{
+                            padding: '7px 10px',
+                            borderRadius: '6px',
+                            border: isExpanded ? '1px solid rgba(6, 182, 212, 0.5)' : '1px solid rgba(255, 255, 255, 0.06)',
+                            background: isExpanded ? 'rgba(6, 182, 212, 0.15)' : 'rgba(255, 255, 255, 0.03)',
+                            color: isExpanded ? '#06B6D4' : '#FFFFFF',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            cursor: 'pointer',
+                            fontSize: '0.74rem',
+                            fontWeight: 700,
+                            transition: 'all 0.15s ease',
+                            width: '100%',
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '7px', minWidth: 0 }}>
+                            {renderFunnelOrStageIcon(f.icon || 'layers', 14, isExpanded ? '#06B6D4' : '#94A3B8')}
+                            <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {f.name}
+                            </span>
+                            <span style={{
+                              fontSize: '0.60rem',
+                              padding: '1px 5px',
+                              borderRadius: '4px',
+                              background: 'rgba(255, 255, 255, 0.1)',
+                              color: 'var(--adm-text-muted)',
+                              fontWeight: 600,
+                            }}>
+                              {targetStages.length} etapas
+                            </span>
+                          </div>
+                          <ChevronDown
+                            size={14}
+                            style={{
+                              transform: isExpanded ? 'rotate(180deg)' : 'rotate(-90deg)',
+                              transition: 'transform 0.15s ease',
+                              flexShrink: 0,
+                              opacity: 0.8,
+                            }}
+                          />
+                        </button>
+
+                        {isExpanded && (
+                          <div style={{
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '2px',
+                            paddingLeft: '12px',
+                            borderLeft: '2px solid rgba(6, 182, 212, 0.3)',
+                            marginTop: '2px',
+                            marginBottom: '4px',
+                          }}>
+                            {targetStages.map(st => {
+                              const color = st.color || '#3B82F6';
+                              return (
+                                <button
+                                  key={st.id}
+                                  type="button"
+                                  onClick={() => {
+                                    if (client) {
+                                      updateClient(client.id, { funnelId: f.id, stage: st.id as ClientStage });
+                                    }
+                                    updateLeadData(lead.id, { funnelId: f.id, stage: st.id as any });
+                                    onStageChange(st.id as ClientStage);
+                                    setIsStageDropdownOpen(false);
+                                  }}
+                                  style={{
+                                    padding: '6px 8px',
+                                    borderRadius: '5px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    cursor: 'pointer',
+                                    fontSize: '0.70rem',
+                                    fontWeight: 600,
+                                    color: '#E2E8F0',
+                                    background: 'transparent',
+                                    border: 'none',
+                                    transition: 'all 0.12s ease',
+                                    width: '100%',
+                                    textAlign: 'left',
+                                  }}
+                                  onMouseEnter={(e) => {
+                                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
+                                    e.currentTarget.style.color = '#FFFFFF';
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    e.currentTarget.style.background = 'transparent';
+                                    e.currentTarget.style.color = '#E2E8F0';
+                                  }}
+                                >
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    {renderFunnelOrStageIcon(st.icon || st.id, 13, color)}
+                                    <span>{st.name.toUpperCase()}</span>
+                                  </div>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </>
+              )}
             </div>
           )}
         </div>
 
-        {/* ── SUB-ABAS DA FICHA DO CLIENTE ── */}
-        <div style={{ display: 'flex', gap: '4px', marginTop: '2px', borderBottom: '1px solid var(--adm-border)', paddingBottom: '2px' }}>
+        {/* Linha 5: Tags de Identificação no Topo (Abaixo da Barra de Progresso) */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '6px',
+          flexWrap: 'wrap',
+          marginTop: '6px',
+          paddingBottom: '2px',
+          position: 'relative',
+        }}>
+          {/* Tag da Unidade (Interativa para Gerência e Master, Somente Leitura para Colaboradores) */}
+          <button
+            type="button"
+            disabled={!canChangeLeadVenue(currentUser)}
+            onClick={() => {
+              if (canChangeLeadVenue(currentUser)) {
+                setIsTransferVenueModalOpen(true);
+              }
+            }}
+            style={{
+              fontSize: '0.68rem',
+              fontWeight: 800,
+              background: 'rgba(20, 169, 215, 0.14)',
+              color: '#14A9D7',
+              border: '1px solid rgba(20, 169, 215, 0.4)',
+              padding: '3px 8px',
+              borderRadius: '6px',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '5px',
+              flexShrink: 0,
+              cursor: canChangeLeadVenue(currentUser) ? 'pointer' : 'default',
+              transition: 'all 0.15s ease',
+            }}
+            title={
+              canChangeLeadVenue(currentUser)
+                ? 'Clique para transferir o cliente para outra casa de festas'
+                : 'Unidade vinculada (alteração restrita à Gerência e Master)'
+            }
+          >
+            <Building2 size={11} color="#14A9D7" />
+            <span>{venueName}</span>
+            {canChangeLeadVenue(currentUser) && (
+              <ArrowRightLeft size={10} color="#14A9D7" style={{ opacity: 0.7 }} />
+            )}
+          </button>
+
+          {/* Tag da Situação do Contrato */}
+          <span style={{
+            fontSize: '0.68rem',
+            fontWeight: 800,
+            padding: '2px 8px',
+            borderRadius: '6px',
+            background: linkedContract || currentStage === 'completed' ? 'rgba(16, 185, 129, 0.18)' : 'rgba(148, 163, 184, 0.18)',
+            color: linkedContract || currentStage === 'completed' ? '#10B981' : '#94A3B8',
+            border: `1px solid ${linkedContract || currentStage === 'completed' ? 'rgba(16, 185, 129, 0.45)' : 'rgba(148, 163, 184, 0.35)'}`,
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '4px',
+            flexShrink: 0,
+          }}>
+            <Shield size={11} /> {currentStage === 'completed' ? 'Festa Realizada' : (linkedContract ? 'Contrato vinculado' : 'Sem contrato')}
+          </span>
+
+          {/* Botão Vincular a Contrato (quando não há contrato) */}
+          {!linkedContract && !readOnly && (
+            <button
+              type="button"
+              onClick={() => setIsLinkContractorOpen(true)}
+              title="Vincular este cliente a um contrato existente (este contato entra como participante/dependente)"
+              style={{
+                fontSize: '0.68rem',
+                fontWeight: 800,
+                padding: '2px 8px',
+                borderRadius: '6px',
+                background: '#0284C7',
+                color: '#FFFFFF',
+                border: 'none',
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
+                boxShadow: '0 1px 3px rgba(2, 132, 199, 0.35)',
+                transition: 'all 0.15s ease',
+                flexShrink: 0,
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = '#0369A1'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = '#0284C7'; }}
+            >
+              <Link2 size={11} />
+              <span>Vincular a Contrato</span>
+            </button>
+          )}
+
+          {/* Tags Ativas */}
+          {activeClientTags.map(tag => (
+            <span
+              key={tag}
+              style={{
+                fontSize: '0.68rem',
+                fontWeight: 700,
+                background: 'rgba(20, 169, 215, 0.15)',
+                color: '#14A9D7',
+                border: '1px solid rgba(20, 169, 215, 0.35)',
+                padding: '2px 8px',
+                borderRadius: '6px',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
+                flexShrink: 0,
+              }}
+            >
+              {tag}
+              {!readOnly && (
+                <button
+                  type="button"
+                  onClick={() => handleRemoveTag(tag)}
+                  style={{ background: 'transparent', border: 'none', color: '#14A9D7', cursor: 'pointer', padding: 0, display: 'flex' }}
+                  title={`Remover tag ${tag}`}
+                >
+                  <X size={10} />
+                </button>
+              )}
+            </span>
+          ))}
+
+          {/* Botão + Tag com Popover Estilizado */}
+          {!readOnly && (
+            <div style={{ position: 'relative', display: 'inline-flex', flexShrink: 0 }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsTagDropdownOpen(prev => !prev);
+                  setShowCustomTagInput(false);
+                }}
+                style={{
+                  fontSize: '0.68rem',
+                  fontWeight: 700,
+                  background: 'rgba(255, 255, 255, 0.05)',
+                  color: 'var(--adm-text-muted, #94A3B8)',
+                  border: '1px dashed rgba(255, 255, 255, 0.2)',
+                  padding: '2px 8px',
+                  borderRadius: '6px',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = '#14A9D7';
+                  e.currentTarget.style.color = '#14A9D7';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.2)';
+                  e.currentTarget.style.color = 'var(--adm-text-muted, #94A3B8)';
+                }}
+                title="Adicionar etiqueta"
+              >
+                <Plus size={10} />
+                <span>Tag</span>
+              </button>
+
+              {isTagDropdownOpen && (
+                <div style={{
+                  position: 'absolute',
+                  top: 'calc(100% + 4px)',
+                  left: 0,
+                  background: 'var(--adm-bg-card, #1E293B)',
+                  border: '1px solid var(--adm-border, rgba(255, 255, 255, 0.12))',
+                  borderRadius: '10px',
+                  padding: '6px',
+                  boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
+                  zIndex: 100,
+                  minWidth: '200px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '3px',
+                }}>
+                  {availableTags.map(tag => (
+                    <div
+                      key={tag}
+                      onClick={() => handleAddTag(tag)}
+                      style={{
+                        padding: '6px 10px',
+                        cursor: 'pointer',
+                        fontSize: '0.74rem',
+                        fontWeight: 600,
+                        color: 'var(--adm-text-title, #FFFFFF)',
+                        borderRadius: '6px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        transition: 'background 0.12s ease',
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.background = 'var(--adm-bg-hover, rgba(255, 255, 255, 0.08))'}
+                      onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                    >
+                      <span>{tag}</span>
+                      <Plus size={12} color="var(--adm-text-muted, #94A3B8)" />
+                    </div>
+                  ))}
+
+                  {/* Opção Personalizada */}
+                  {!showCustomTagInput ? (
+                    <div
+                      onClick={() => setShowCustomTagInput(true)}
+                      style={{
+                        padding: '6px 10px',
+                        cursor: 'pointer',
+                        fontSize: '0.74rem',
+                        fontWeight: 700,
+                        color: 'var(--adm-accent, #14A9D7)',
+                        borderRadius: '6px',
+                        borderTop: availableTags.length > 0 ? '1px solid var(--adm-border, rgba(255, 255, 255, 0.1))' : 'none',
+                        marginTop: availableTags.length > 0 ? '2px' : 0,
+                        paddingTop: availableTags.length > 0 ? '6px' : '4px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.background = 'var(--adm-bg-hover, rgba(255, 255, 255, 0.08))'}
+                      onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                    >
+                      <Plus size={12} />
+                      <span>Personalizado...</span>
+                    </div>
+                  ) : (
+                    <div style={{
+                      display: 'flex',
+                      gap: '4px',
+                      padding: '4px 0 2px',
+                      borderTop: availableTags.length > 0 ? '1px solid var(--adm-border, rgba(255, 255, 255, 0.1))' : 'none',
+                      marginTop: '2px',
+                    }}>
+                      <input
+                        type="text"
+                        autoFocus
+                        placeholder="Nome da tag..."
+                        value={newTagInput}
+                        onChange={(e) => setNewTagInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleAddTag();
+                          }
+                          if (e.key === 'Escape') {
+                            setShowCustomTagInput(false);
+                          }
+                        }}
+                        style={{
+                          flex: 1,
+                          background: 'var(--adm-bg-input, rgba(0,0,0,0.25))',
+                          border: '1px solid var(--adm-border, rgba(255, 255, 255, 0.15))',
+                          color: 'var(--adm-text-title, #FFFFFF)',
+                          borderRadius: '6px',
+                          padding: '4px 8px',
+                          fontSize: '0.72rem',
+                          outline: 'none',
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleAddTag()}
+                        style={{
+                          padding: '4px 8px',
+                          borderRadius: '6px',
+                          background: 'var(--adm-accent, #14A9D7)',
+                          border: 'none',
+                          color: '#FFFFFF',
+                          fontSize: '0.72rem',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <Check size={12} />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Linha 6: Sub-Abas da Ficha do Cliente */}
+        <div style={{ display: 'flex', gap: '4px', marginTop: '6px', borderBottom: '1px solid rgba(255, 255, 255, 0.08)', paddingBottom: '2px' }}>
           <button
             type="button"
             onClick={() => setActiveTab('ficha')}
             style={{
               background: 'transparent',
               border: 'none',
-              borderBottom: activeTab === 'ficha' ? '2px solid var(--adm-accent, #06B6D4)' : '2px solid transparent',
-              padding: '5px 8px',
-              color: activeTab === 'ficha' ? '#FFFFFF' : 'rgba(255, 255, 255, 0.62)',
-              fontSize: '0.72rem',
+              borderBottom: activeTab === 'ficha' ? '2px solid #14A9D7' : '2px solid transparent',
+              padding: '3px 8px',
+              color: activeTab === 'ficha' ? '#FFFFFF' : 'rgba(255, 255, 255, 0.6)',
+              fontSize: '0.70rem',
               fontWeight: activeTab === 'ficha' ? 800 : 600,
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
               gap: '4px',
+              transition: 'all 0.15s ease',
             }}
           >
-            <FileText size={12} />
+            <FileText size={12} color={activeTab === 'ficha' ? '#14A9D7' : 'rgba(255, 255, 255, 0.6)'} />
             <span>Ficha</span>
           </button>
 
@@ -1246,18 +1771,19 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
             style={{
               background: 'transparent',
               border: 'none',
-              borderBottom: activeTab === 'debutante' ? '2px solid var(--adm-accent, #06B6D4)' : '2px solid transparent',
-              padding: '5px 8px',
-              color: activeTab === 'debutante' ? '#FFFFFF' : 'rgba(255, 255, 255, 0.62)',
-              fontSize: '0.72rem',
+              borderBottom: activeTab === 'debutante' ? '2px solid #14A9D7' : '2px solid transparent',
+              padding: '3px 8px',
+              color: activeTab === 'debutante' ? '#FFFFFF' : 'rgba(255, 255, 255, 0.6)',
+              fontSize: '0.70rem',
               fontWeight: activeTab === 'debutante' ? 800 : 600,
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
               gap: '4px',
+              transition: 'all 0.15s ease',
             }}
           >
-            <Sparkles size={12} color="#EC4899" />
+            <Sparkles size={12} color={activeTab === 'debutante' ? '#EC4899' : 'rgba(255, 255, 255, 0.6)'} />
             <span>App da Debutante</span>
           </button>
 
@@ -1267,18 +1793,19 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
             style={{
               background: 'transparent',
               border: 'none',
-              borderBottom: activeTab === 'comercial' ? '2px solid var(--adm-accent, #06B6D4)' : '2px solid transparent',
-              padding: '5px 8px',
-              color: activeTab === 'comercial' ? '#FFFFFF' : 'rgba(255, 255, 255, 0.62)',
-              fontSize: '0.72rem',
+              borderBottom: activeTab === 'comercial' ? '2px solid #14A9D7' : '2px solid transparent',
+              padding: '3px 8px',
+              color: activeTab === 'comercial' ? '#FFFFFF' : 'rgba(255, 255, 255, 0.6)',
+              fontSize: '0.70rem',
               fontWeight: activeTab === 'comercial' ? 800 : 600,
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
               gap: '4px',
+              transition: 'all 0.15s ease',
             }}
           >
-            <Compass size={12} color="#06B6D4" />
+            <Globe size={12} color={activeTab === 'comercial' ? '#14A9D7' : 'rgba(255, 255, 255, 0.6)'} />
             <span>Origem</span>
           </button>
         </div>
@@ -1292,219 +1819,6 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
         {/* ════════════════════════════════════════════════════════════════════ */}
         {activeTab === 'ficha' && (
           <>
-            {/* ── BARRA DE TAGS & UNIDADE FÍSICA ── */}
-            <div style={{
-              display: 'flex',
-              flexWrap: 'wrap',
-              alignItems: 'center',
-              gap: '6px',
-              paddingBottom: '8px',
-              borderBottom: '1px solid var(--adm-border)',
-            }}>
-              {/* Unidade Física Fixa */}
-              <span
-                style={{
-                  fontSize: '0.68rem',
-                  fontWeight: 800,
-                  background: 'rgba(20, 169, 215, 0.14)',
-                  color: '#14A9D7',
-                  border: '1px solid rgba(20, 169, 215, 0.4)',
-                  padding: '3px 8px',
-                  borderRadius: '6px',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '5px',
-                  flexShrink: 0,
-                }}
-              >
-                <Building2 size={11} color="#14A9D7" />
-                <span>{venues?.find(v => v.id === (client?.venueId || lead.venueId))?.name || client?.venueName || lead.venueName || 'Unidade não definida'}</span>
-              </span>
-
-              {/* Tags Ativas */}
-              {activeClientTags.map(tag => (
-                <span
-                  key={tag}
-                  style={{
-                    fontSize: '0.68rem',
-                    fontWeight: 700,
-                    background: 'rgba(20, 169, 215, 0.15)',
-                    color: '#14A9D7',
-                    border: '1px solid rgba(20, 169, 215, 0.35)',
-                    padding: '2px 8px',
-                    borderRadius: '6px',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '4px',
-                    flexShrink: 0,
-                  }}
-                >
-                  <Tag size={10} color="#14A9D7" />
-                  <span>{tag}</span>
-                  {!readOnly && (
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveTag(tag)}
-                      style={{ background: 'transparent', border: 'none', color: '#14A9D7', cursor: 'pointer', padding: 0, display: 'flex' }}
-                      title={`Remover tag ${tag}`}
-                    >
-                      <X size={11} />
-                    </button>
-                  )}
-                </span>
-              ))}
-
-              {/* Botão + Tag com Popover Dropdown */}
-              {!readOnly && (
-                <div style={{ position: 'relative', display: 'inline-flex', flexShrink: 0 }}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsTagDropdownOpen(prev => !prev);
-                      setShowCustomTagInput(false);
-                    }}
-                    style={{
-                      fontSize: '0.68rem',
-                      fontWeight: 700,
-                      background: isTagDropdownOpen ? 'rgba(20, 169, 215, 0.25)' : 'var(--adm-bg-input)',
-                      color: isTagDropdownOpen ? '#14A9D7' : 'var(--adm-text-muted)',
-                      border: `1px dashed ${isTagDropdownOpen ? '#14A9D7' : 'var(--adm-border)'}`,
-                      padding: '3px 8px',
-                      borderRadius: '6px',
-                      cursor: 'pointer',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                      transition: 'all 0.15s ease',
-                    }}
-                  >
-                    <Plus size={11} />
-                    <span>Tag</span>
-                  </button>
-
-                  {isTagDropdownOpen && (
-                    <div style={{
-                      position: 'absolute',
-                      top: '100%',
-                      left: 0,
-                      marginTop: '6px',
-                      background: 'var(--adm-bg-card)',
-                      border: '1px solid var(--adm-border)',
-                      borderRadius: '10px',
-                      padding: '6px',
-                      boxShadow: '0 10px 30px rgba(0,0,0,0.3)',
-                      zIndex: 100,
-                      minWidth: '200px',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '3px',
-                    }}>
-                      {availableTags.map(tag => (
-                        <div
-                          key={tag}
-                          onClick={() => handleAddTag(tag)}
-                          style={{
-                            padding: '6px 10px',
-                            cursor: 'pointer',
-                            fontSize: '0.74rem',
-                            fontWeight: 600,
-                            color: 'var(--adm-text-title)',
-                            borderRadius: '6px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            transition: 'background 0.12s ease',
-                          }}
-                          onMouseEnter={(e) => e.currentTarget.style.background = 'var(--adm-bg-hover)'}
-                          onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                        >
-                          <span>{tag}</span>
-                          <Plus size={12} color="var(--adm-text-muted)" />
-                        </div>
-                      ))}
-
-                      {/* Opção Personalizada */}
-                      {!showCustomTagInput ? (
-                        <div
-                          onClick={() => setShowCustomTagInput(true)}
-                          style={{
-                            padding: '6px 10px',
-                            cursor: 'pointer',
-                            fontSize: '0.74rem',
-                            fontWeight: 700,
-                            color: 'var(--adm-accent)',
-                            borderRadius: '6px',
-                            borderTop: availableTags.length > 0 ? '1px solid var(--adm-border)' : 'none',
-                            marginTop: availableTags.length > 0 ? '2px' : 0,
-                            paddingTop: availableTags.length > 0 ? '6px' : '4px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '6px',
-                          }}
-                          onMouseEnter={(e) => e.currentTarget.style.background = 'var(--adm-bg-hover)'}
-                          onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                        >
-                          <Plus size={12} />
-                          <span>Personalizado...</span>
-                        </div>
-                      ) : (
-                        <div style={{
-                          display: 'flex',
-                          gap: '4px',
-                          padding: '4px 0 2px',
-                          borderTop: availableTags.length > 0 ? '1px solid var(--adm-border)' : 'none',
-                          marginTop: '2px',
-                        }}>
-                          <input
-                            type="text"
-                            autoFocus
-                            placeholder="Nome da tag..."
-                            value={newTagInput}
-                            onChange={(e) => setNewTagInput(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
-                                e.preventDefault();
-                                handleAddTag();
-                              }
-                              if (e.key === 'Escape') {
-                                setShowCustomTagInput(false);
-                              }
-                            }}
-                            style={{
-                              flex: 1,
-                              background: 'var(--adm-bg-input)',
-                              border: '1px solid var(--adm-border)',
-                              color: 'var(--adm-text-title)',
-                              borderRadius: '6px',
-                              padding: '4px 8px',
-                              fontSize: '0.72rem',
-                              outline: 'none',
-                            }}
-                          />
-                          <button
-                            type="button"
-                            onClick={() => handleAddTag()}
-                            style={{
-                              padding: '4px 8px',
-                              borderRadius: '6px',
-                              background: 'var(--adm-accent)',
-                              border: 'none',
-                              color: '#FFFFFF',
-                              fontSize: '0.72rem',
-                              fontWeight: 700,
-                              cursor: 'pointer',
-                            }}
-                          >
-                            <Check size={12} />
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-
             {/* ── SEÇÃO: GESTÃO DO PÓS-VENDA & VALORES ── */}
             <div style={sectionTitleStyle}>
               <Shield size={12} color="#06B6D4" />
@@ -2356,22 +2670,6 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
                 }
               }}
             />
-
-            <AdminConfirmModal
-              isOpen={isDeleteClientOpen}
-              onClose={() => setIsDeleteClientOpen(false)}
-              onConfirm={() => {
-                if (!client) return;
-                deleteClient(client.id);
-                setIsDeleteClientOpen(false);
-                toast.success('Cliente removido.');
-                onToggleCollapse?.();
-              }}
-              title="Remover cliente"
-              message="O card do cliente será removido do pós-venda. O contrato, se houver, continua na seção Contratos."
-              itemName={client?.name || lead.name}
-              confirmText="Sim, remover"
-            />
           </>
         )}
 
@@ -2969,6 +3267,34 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
         onConfirm={handleConvertToSupplier}
         contactName={client?.name || lead.name}
         isLoading={isConvertingSupplier}
+      />
+
+      {/* Modal de Confirmação de Remoção do Cliente */}
+      <AdminConfirmModal
+        isOpen={isDeleteClientOpen}
+        onClose={() => setIsDeleteClientOpen(false)}
+        onConfirm={() => {
+          if (client) {
+            deleteClient(client.id);
+          }
+          if (lead?.id) {
+            deleteLead(lead.id, 'Removido pelo Pós-Venda');
+          }
+          setIsDeleteClientOpen(false);
+          toast.success('Cliente removido.');
+          onToggleCollapse?.();
+        }}
+        title="Remover cliente"
+        message="O card do cliente será removido do pós-venda. O contrato, se houver, continua na seção Contratos."
+        itemName={client?.name || lead.name}
+        confirmText="Sim, remover"
+      />
+
+      {/* Modal Inteligente de Transferência de Unidade */}
+      <AdminTransferLeadVenueModal
+        isOpen={isTransferVenueModalOpen}
+        onClose={() => setIsTransferVenueModalOpen(false)}
+        lead={lead}
       />
     </div>
   );

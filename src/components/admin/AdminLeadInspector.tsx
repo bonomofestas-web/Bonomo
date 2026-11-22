@@ -2486,30 +2486,28 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                       <Archive size={13} />
                     </button>
 
-                    {lead.stage !== 'contract_signed' && (lead.stage as string) !== 'deal_closed' && lead.stage !== 'lost' && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setDeletePermanently(false);
-                          setShowDeleteConfirmModal(true);
-                        }}
-                        title={isManagerOrMaster ? "Remover do Funil ou Excluir Lead" : "Remover Lead do Funil"}
-                        style={{
-                          background: 'rgba(239, 68, 68, 0.12)',
-                          border: '1px solid rgba(239, 68, 68, 0.3)',
-                          color: '#EF4444',
-                          borderRadius: '6px',
-                          padding: '4px 6px',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          transition: 'all 0.15s ease',
-                        }}
-                      >
-                        <Trash2 size={13} />
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDeletePermanently(false);
+                        setShowDeleteConfirmModal(true);
+                      }}
+                      title={isManagerOrMaster ? "Remover do Funil ou Excluir Lead" : "Remover Lead do Funil"}
+                      style={{
+                        background: 'rgba(239, 68, 68, 0.12)',
+                        border: '1px solid rgba(239, 68, 68, 0.3)',
+                        color: '#EF4444',
+                        borderRadius: '6px',
+                        padding: '4px 6px',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      <Trash2 size={13} />
+                    </button>
                   </>
                 )}
 
@@ -2670,26 +2668,6 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
             <span style={{ fontSize: '0.68rem', color: '#06B6D4', display: 'inline-flex', alignItems: 'center', gap: '4px', fontWeight: 600 }}>
               <PartyPopper size={11} color="#06B6D4" /> {new Date((lead.eventDate || lead.partyDate) + 'T12:00:00').toLocaleDateString('pt-BR')}
-            </span>
-          </div>
-        )}
-
-        {/* Badge de Pós-Venda (apenas se for pós-venda) */}
-        {isPostSale && (
-          <div>
-            <span style={{
-              fontSize: '0.62rem',
-              fontWeight: 700,
-              padding: '2px 7px',
-              borderRadius: '6px',
-              background: 'rgba(6, 182, 212, 0.15)',
-              color: '#06B6D4',
-              border: '1px solid rgba(6, 182, 212, 0.35)',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '4px',
-            }}>
-              <Shield size={11} /> Cliente Ativo
             </span>
           </div>
         )}
@@ -3177,6 +3155,25 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
               <ArrowRightLeft size={10} color="#14A9D7" style={{ opacity: 0.7 }} />
             )}
           </button>
+
+          {/* Badge de Contrato para Pós-Venda */}
+          {currentIsPostSale && (
+            <span style={{
+              fontSize: '0.68rem',
+              fontWeight: 800,
+              padding: '2px 8px',
+              borderRadius: '6px',
+              background: (lead as any).contractId || lead.stage === 'contract_signed' ? 'rgba(16, 185, 129, 0.18)' : 'rgba(148, 163, 184, 0.18)',
+              color: (lead as any).contractId || lead.stage === 'contract_signed' ? '#10B981' : '#94A3B8',
+              border: `1px solid ${(lead as any).contractId || lead.stage === 'contract_signed' ? 'rgba(16, 185, 129, 0.45)' : 'rgba(148, 163, 184, 0.35)'}`,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px',
+              flexShrink: 0,
+            }}>
+              <Shield size={11} /> {(lead as any).contractId || lead.stage === 'contract_signed' ? 'Contrato vinculado' : 'Sem contrato'}
+            </span>
+          )}
 
           {/* Tag de Origem Fixa (Sempre a 2ª Tag, Não Removível, Sem # e Sem Ícone) */}
           <span
