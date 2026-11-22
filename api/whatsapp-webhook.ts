@@ -726,11 +726,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             (s.whatsapp_instance_id && s.whatsapp_instance_id.toLowerCase().trim() === normName) ||
             (candidateOwner && (s.configuration?.connectedPhone || '').replace(/\D/g, '') === candidateOwner)
           );
-          // Isolamento: nome ambiguo (mais de uma origem, possivelmente de Masters diferentes) nao roteia.
+          // Isolamento: nome que casa com origens de Masters DIFERENTES nao roteia. Mesmo Master (varias casas): mantem o comportamento anterior (primeira origem).
           if (nameMatches.length === 1) {
             matchedSource = nameMatches[0];
           } else if (nameMatches.length > 1) {
-            console.warn(`[Webhook] instanceName "${candidateInstanceName}" ambiguo (${nameMatches.length} origens). Ignorado por seguranca.`);
+            const venueIds = Array.from(new Set(nameMatches.map((s: any) => s.venue_id).filter(Boolean)));
+            const { data: vRows } = venueIds.length
+              ? await supabase.from('venues').select('id, master_id').in('id', venueIds)
+              : { data: [] as any[] };
+            const masters = new Set((vRows || []).map((v: any) => v.master_id).filter(Boolean));
+            if (masters.size <= 1) {
+              matchedSource = nameMatches[0];
+            } else {
+              console.warn(`[Webhook] instanceName "${candidateInstanceName}" casa com origens de ${masters.size} Masters. Ignorado por seguranca.`);
+            }
           }
         }
 
