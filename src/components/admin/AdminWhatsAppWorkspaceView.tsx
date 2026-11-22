@@ -88,7 +88,7 @@ import {
   AdminBulkMoveStageModal,
   AdminBulkAssignModal
 } from './AdminLeadActionModals';
-import { formatPhone, maskPhoneInput } from '../../utils/phoneFormatter';
+import { formatPhone, maskPhoneInput, normalizeWhatsAppNumber } from '../../utils/phoneFormatter';
 import { generateUuid } from '../../utils/uuid';
 import { getLeadPendingWaitingTime, getLeadWaitTimeSla, getLeadConversationTime } from '../../utils/leadSorting';
 import { renderFunnelOrStageIcon } from '../../utils/funnelIconLibrary';
@@ -4639,7 +4639,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       });
   };
 
-  const handleShareContact = async (name: string, phone: string) => {
+  const handleShareContact = async (name: string, phone: string, extra?: { organization?: string; email?: string; url?: string }) => {
     if (!selectedLead || !ensureSenderReady()) return;
     const cleanPhone = phone.replace(/\D/g, '');
     if (!cleanPhone) {
@@ -4647,8 +4647,19 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       return;
     }
 
-    const author = currentUser?.name || 'Equipe Comercial';
-    const targetPhone = selectedRecipientPhone || selectedLead.phone;
+    const rawTargetPhone = selectedRecipientPhone || selectedLead.phone;
+    if (!rawTargetPhone) {
+      toast.error('Este contato/lead não possui um número de telefone configurado para receber mensagens.');
+      return;
+    }
+
+    if (!activeSenderToken) {
+      toast.error('Nenhum WhatsApp conectado para envio neste funil.');
+      return;
+    }
+
+    const targetPhone = normalizeWhatsAppNumber(rawTargetPhone);
+    const author = currentUser?.name || (isPostSaleFunnel || selectedLead.isClient ? 'Gestor de Sucesso' : 'Equipe Comercial');
     const activityId = generateUuid();
     const existingActs = selectedLead.activities || [];
     const lastActTime = existingActs.reduce((max, a) => Math.max(max, new Date(a.timestamp || 0).getTime()), 0);
@@ -4666,12 +4677,14 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       authorName: currentUser?.name || author,
       authorId: currentUser?.id,
       authorAvatarUrl: currentUser?.avatarUrl,
-      status: 'sent',
+      status: 'sending',
       metadata: {
         ...getAppSenderMetadata(),
         isContactCard: true,
         contactName: name,
         contactPhone: cleanPhone,
+        ...(extra?.organization ? { organization: extra.organization } : {}),
+        ...(extra?.email ? { email: extra.email } : {}),
         isOptimistic: true,
       },
     } as any;
@@ -4680,30 +4693,53 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     updateLeadData(selectedLead.id, {
       activities: updatedActivities,
       updatedAt: new Date().toISOString().split('T')[0],
+      lastInteractionAt: finalTimestampIso,
+      lastMessageDirection: 'outgoing',
+      lastMessageText: `👤 Contato: ${name}`,
+      lastMessageAt: finalTimestampIso,
     });
-
-    if (isSupabaseConfigured) {
-      leadService.addActivity(selectedLead.id, newActivity)
-        .catch(err => console.error('Erro ao salvar contato no Supabase:', err));
-    }
-
-    if (targetPhone && activeSenderToken) {
-      try {
-        await uazapiService.sendContact(activeSenderToken, {
-          number: targetPhone,
-          contactName: name,
-          contactPhone: cleanPhone,
-        });
-      } catch (err) {
-        console.error('Falha ao enviar contato via UAZAPI:', err);
-      }
-    }
 
     setIsShareContactModalOpen(false);
     setContactSearchQuery('');
     setCustomContactName('');
     setCustomContactPhone('');
-    toast.success(`Contato de "${name}" compartilhado com sucesso!`);
+
+    try {
+      const sendRes = await uazapiService.sendContact(activeSenderToken, {
+        number: targetPhone,
+        fullName: name,
+        phoneNumber: cleanPhone,
+        contactName: name,
+        contactPhone: cleanPhone,
+        organization: extra?.organization,
+        email: extra?.email,
+        url: extra?.url,
+      });
+
+      const messageId = sendRes?.messageid || (sendRes as any)?.id || (sendRes as any)?.key?.id;
+      if (messageId) {
+        updateLeadActivity(selectedLead.id, activityId, {
+          status: 'sent',
+          messageId,
+        });
+      } else {
+        updateLeadActivity(selectedLead.id, activityId, { status: 'sent' });
+      }
+
+      if (isSupabaseConfigured) {
+        leadService.addActivity(selectedLead.id, {
+          ...newActivity,
+          status: 'sent',
+          messageId: messageId || undefined,
+        }).catch(err => console.error('Erro ao salvar contato no Supabase:', err));
+      }
+
+      toast.success(`Cartão de contato de "${name}" enviado com sucesso!`);
+    } catch (err: any) {
+      console.error('Falha ao enviar contato via UAZAPI:', err);
+      updateLeadActivity(selectedLead.id, activityId, { status: 'failed' });
+      toast.error(`Erro ao disparar contato via WhatsApp: ${err?.message || 'Falha no servidor'}`);
+    }
   };
 
   const handleCreateLeadFromContactCard = async (name: string, phone: string) => {
@@ -15930,7 +15966,15 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                       });
                     });
 
-                    // 2. Colaboradores
+                    // 2. Clientes (Pós-Venda / Contratos)
+                    (clients || []).forEach(cl => {
+                      const clPhone = cl.payerPhone || (cl as any).phone;
+                      if (clPhone && (cl.name?.toLowerCase().includes(q) || clPhone.includes(q))) {
+                        results.push({ id: `cli-${cl.id}`, name: cl.name || 'Cliente', phone: clPhone, role: 'Cliente' });
+                      }
+                    });
+
+                    // 3. Colaboradores
                     (collaborators || []).forEach(col => {
                       if (col.phone && (col.name?.toLowerCase().includes(q) || col.phone.includes(q))) {
                         results.push({ id: `col-${col.id}`, name: col.name, phone: col.phone, role: 'Equipe' });

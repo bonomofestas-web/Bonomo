@@ -614,9 +614,20 @@ export const uazapiService = {
   },
 
   /**
-   * Envia um cartão de contato (vCard) pelo WhatsApp
+   * Envia um cartão de contato (vCard) pelo WhatsApp via UAZAPI /send/contact
    */
-  async sendContact(instanceToken: string, payload: { number: string; contactName: string; contactPhone: string; delay?: number; replyid?: string }): Promise<UazapiSendMessageResponse> {
+  async sendContact(instanceToken: string, payload: {
+    number: string;
+    fullName?: string;
+    phoneNumber?: string;
+    contactName?: string;
+    contactPhone?: string;
+    organization?: string;
+    email?: string;
+    url?: string;
+    delay?: number;
+    replyid?: string;
+  }): Promise<UazapiSendMessageResponse> {
     await ensureMessagingEnabled();
     const baseUrl = this.getServerUrl();
     if (!baseUrl) throw new Error('URL do servidor UAZAPI não configurada.');
@@ -636,10 +647,30 @@ export const uazapiService = {
       finalNumber = normalizeWhatsAppNumber(cleanDigits);
     }
 
-    const cleanContactPhone = normalizeWhatsAppNumber(payload.contactPhone);
-    const vcard = `BEGIN:VCARD\nVERSION:3.0\nFN:${payload.contactName}\nTEL;type=CELL;waid=${cleanContactPhone}:+${cleanContactPhone}\nEND:VCARD`;
+    const contactName = (payload.fullName || payload.contactName || '').trim();
+    const rawContactPhone = (payload.phoneNumber || payload.contactPhone || '').trim();
+    const cleanContactPhone = normalizeWhatsAppNumber(rawContactPhone);
 
-    // 1. Tenta endpoint /send/contact dedicado
+    if (!finalNumber) throw new Error('Número de destino inválido.');
+    if (!contactName) throw new Error('Nome do contato é obrigatório.');
+    if (!cleanContactPhone) throw new Error('Telefone do contato é obrigatório.');
+
+    const body: Record<string, any> = {
+      number: finalNumber,
+      fullName: contactName,
+      phoneNumber: cleanContactPhone,
+      readchat: true,
+      track_source: 'f5_system',
+      track_id: `cnt_${Date.now()}`,
+    };
+
+    if (payload.organization?.trim()) body.organization = payload.organization.trim();
+    if (payload.email?.trim()) body.email = payload.email.trim();
+    if (payload.url?.trim()) body.url = payload.url.trim();
+    if (payload.delay) body.delay = payload.delay;
+    if (payload.replyid) body.replyid = payload.replyid;
+
+    // 1. Tenta endpoint /send/contact oficial da UAZAPI com fullName e phoneNumber
     try {
       const res = await fetch(`${baseUrl}/send/contact`, {
         method: 'POST',
@@ -647,27 +678,23 @@ export const uazapiService = {
           'Content-Type': 'application/json',
           'token': instanceToken,
         },
-        body: JSON.stringify({
-          number: finalNumber,
-          contactName: payload.contactName,
-          contactPhone: cleanContactPhone,
-          name: payload.contactName,
-          phone: cleanContactPhone,
-          vcard,
-          delay: payload.delay || 0,
-          replyid: payload.replyid,
-        }),
+        body: JSON.stringify(body),
       });
 
       if (res.ok) {
         return await res.json();
       }
-    } catch {}
+
+      const errText = await res.text();
+      console.error('❌ Erro na API UAZAPI /send/contact:', res.status, errText);
+    } catch (fetchErr) {
+      console.error('❌ Falha na requisição /send/contact:', fetchErr);
+    }
 
     // 2. Fallback: Envia mensagem de texto estruturada com link do WhatsApp
     return this.sendText(instanceToken, {
       number: finalNumber,
-      text: `👤 *Contato Compartilhado:*\n*Nome:* ${payload.contactName}\n*WhatsApp:* https://wa.me/${cleanContactPhone}`,
+      text: `👤 *Contato Compartilhado:*\n*Nome:* ${contactName}\n*WhatsApp:* https://wa.me/${cleanContactPhone}`,
       delay: payload.delay,
       replyid: payload.replyid,
     });
