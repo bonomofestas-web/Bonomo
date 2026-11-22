@@ -1,5 +1,5 @@
 import React from 'react';
-import { Download, CheckCheck, Check } from 'lucide-react';
+import { Download, CheckCheck, Check, FileText } from 'lucide-react';
 
 interface WhatsAppDocumentMessageProps {
   url?: string;
@@ -74,45 +74,42 @@ export const WhatsAppDocumentMessage: React.FC<WhatsAppDocumentMessageProps> = (
         {isPdf && (
           <div style={{
             width: '100%',
-            height: '110px',
+            height: '130px',
             position: 'relative',
-            background: thumbnailUrl 
-              ? `url(${thumbnailUrl}) center/cover no-repeat` 
-              : 'linear-gradient(180deg, #0f2742 0%, #091727 100%)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+            background: isDarkMode ? '#111b21' : '#f0f2f5',
+            borderBottom: '1px solid rgba(0, 0, 0, 0.08)',
             overflow: 'hidden',
           }}>
-            {!thumbnailUrl && (
+            {thumbnailUrl ? (
+              <img
+                src={thumbnailUrl}
+                alt="Prévia do PDF"
+                style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top' }}
+              />
+            ) : url ? (
+              <div style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden' }}>
+                <iframe
+                  src={`${url}#page=1&view=FitH&toolbar=0&navpanes=0&scrollbar=0`}
+                  title="Prévia do PDF"
+                  style={{
+                    width: '100%',
+                    height: '240px',
+                    border: 'none',
+                    pointerEvents: 'none',
+                    transform: 'translateY(-10px)',
+                  }}
+                />
+              </div>
+            ) : (
               <div style={{
                 width: '100%',
                 height: '100%',
                 display: 'flex',
-                flexDirection: 'column',
                 alignItems: 'center',
                 justifyContent: 'center',
-                background: 'radial-gradient(circle at 50% 25%, rgba(56, 189, 248, 0.22) 0%, transparent 70%)',
-                padding: '12px',
-                textAlign: 'center',
+                background: isDarkMode ? 'linear-gradient(180deg, #1e293b 0%, #0f172a 100%)' : '#e2e8f0',
               }}>
-                <div style={{
-                  width: '55%',
-                  height: '3px',
-                  background: 'rgba(255, 255, 255, 0.65)',
-                  borderRadius: '2px',
-                  boxShadow: '0 0 10px rgba(255, 255, 255, 0.8)',
-                  marginBottom: '14px',
-                }} />
-                <span style={{
-                  color: 'rgba(255, 255, 255, 0.85)',
-                  fontSize: '0.82rem',
-                  fontWeight: 600,
-                  letterSpacing: '0.3px',
-                }}>
-                  {cleanName.replace(/\.pdf$/i, '').slice(0, 32)}
-                </span>
+                <FileText size={32} color={isDarkMode ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.3)'} />
               </div>
             )}
           </div>

@@ -8,7 +8,7 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import {
   MessageSquare, Search, SlidersHorizontal, Send, Mic,
   FileText, ChevronRight, ChevronLeft, ChevronDown, Calendar,
-  Plus, Check, X, Clock, PhoneCall, Eye, Building2, UserPlus, CheckSquare,
+  Plus, Check, X, Clock, PhoneCall, Eye, Building2, User, UserPlus, CheckSquare,
   GitBranch, Users, Trash2, Zap, Smile, Image as ImageIcon,
   Headphones, Pause, Play, CheckCircle2, Edit3, AlertCircle, AlertTriangle, Copy,
   History, RefreshCw, MoreVertical, CheckCheck, DollarSign, TrendingUp, Folder,
@@ -26,6 +26,7 @@ import { WhatsAppBrandIcon } from './WhatsAppBrandIcon';
 import { SafeAvatar } from './SafeAvatar';
 import { WhatsAppAudioMessage } from './WhatsAppAudioMessage';
 import { WhatsAppDocumentMessage } from './WhatsAppDocumentMessage';
+import { WhatsAppContactMessage } from './WhatsAppContactMessage';
 import { AdminPostSaleChannelModal } from './AdminPostSaleChannelModal';
 
 const InstagramIcon: React.FC<{ size?: number; className?: string; color?: string }> = ({ size = 16, className = '', color = 'currentColor' }) => (
@@ -87,7 +88,7 @@ import {
   AdminBulkMoveStageModal,
   AdminBulkAssignModal
 } from './AdminLeadActionModals';
-import { formatPhone } from '../../utils/phoneFormatter';
+import { formatPhone, maskPhoneInput } from '../../utils/phoneFormatter';
 import { generateUuid } from '../../utils/uuid';
 import { getLeadPendingWaitingTime, getLeadWaitTimeSla, getLeadConversationTime } from '../../utils/leadSorting';
 import { renderFunnelOrStageIcon } from '../../utils/funnelIconLibrary';
@@ -492,6 +493,7 @@ interface WhatsAppMessageInputBoxProps {
   onStartAudioRecording: () => void;
   isSpectator?: boolean;
   hasPendingAttachment?: boolean;
+  hasStagedMedia?: boolean;
   pendingAttachmentCaption?: string;
 }
 
@@ -504,6 +506,7 @@ const WhatsAppMessageInputBox: React.FC<WhatsAppMessageInputBoxProps> = React.me
   onStartAudioRecording,
   isSpectator,
   hasPendingAttachment,
+  hasStagedMedia,
   pendingAttachmentCaption,
 }) => {
   const { quickMessages } = useAdminState();
@@ -751,7 +754,7 @@ const WhatsAppMessageInputBox: React.FC<WhatsAppMessageInputBoxProps> = React.me
   const triggerSend = () => {
     if (!editorRef.current) return;
     const finalFormattedText = htmlToWhatsAppText(editorRef.current.innerHTML);
-    if ((finalFormattedText.trim() || hasPendingAttachment) && !disabled && !isSpectator) {
+    if ((finalFormattedText.trim() || hasPendingAttachment || hasStagedMedia) && !disabled && !isSpectator) {
       editorRef.current.innerHTML = '';
       setHasText(false);
       setIsSlashActive(false);
@@ -882,7 +885,7 @@ const WhatsAppMessageInputBox: React.FC<WhatsAppMessageInputBoxProps> = React.me
         onKeyUp={checkSelection}
         onMouseUp={checkSelection}
         onKeyDown={handleKeyDown}
-        data-placeholder={hasPendingAttachment ? "Adicionar uma legenda à foto (opcional)..." : isSpectator ? "Modo espectador (apenas leitura)" : "Digite uma mensagem ou digite / para atalhos"}
+        data-placeholder={hasStagedMedia ? "Adicionar legenda... (opcional)" : hasPendingAttachment ? "Adicionar uma legenda à foto (opcional)..." : isSpectator ? "Modo espectador (apenas leitura)" : "Digite uma mensagem ou digite / para atalhos"}
         style={{
           flex: 1,
           minHeight: '24px',
@@ -901,7 +904,7 @@ const WhatsAppMessageInputBox: React.FC<WhatsAppMessageInputBoxProps> = React.me
         }}
       />
 
-      {(hasText || hasPendingAttachment) ? (
+      {(hasText || hasPendingAttachment || hasStagedMedia) ? (
         <button
           type="button"
           onClick={triggerSend}
@@ -1388,13 +1391,32 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   } | null>(null);
   const [previewAttachmentUrl, setPreviewAttachmentUrl] = useState<string | null>(null);
 
+  // Mídia Estagiada para envio no chat (com suporte a legenda, preview e cancelamento)
+  const [stagedMedia, setStagedMedia] = useState<{
+    file: File;
+    previewUrl: string;
+    category: 'image' | 'video' | 'document' | 'audio';
+    fileName: string;
+    fileSize: number;
+  } | null>(null);
+
+  // Modal de Compartilhamento de Contato (vCard)
+  const [isShareContactModalOpen, setIsShareContactModalOpen] = useState(false);
+  const [contactSearchQuery, setContactSearchQuery] = useState('');
+  const [customContactName, setCustomContactName] = useState('');
+  const [customContactPhone, setCustomContactPhone] = useState('');
+
   // Recurso de Responder Mensagem (Quote / Reply)
   const [replyingToMessage, setReplyingToMessage] = useState<LeadActivity | null>(null);
   const [, setHighlightedMsgId] = useState<string | null>(null);
 
-  // Limpa mensagem respondida ao alternar entre leads
+  // Limpa mensagem respondida e mídia estagiada ao alternar entre leads
   useEffect(() => {
     setReplyingToMessage(null);
+    if (stagedMedia?.previewUrl) {
+      URL.revokeObjectURL(stagedMedia.previewUrl);
+    }
+    setStagedMedia(null);
   }, [selectedLeadId]);
 
   // Escuta anexos do sessionStorage ou evento customizado ao carregar/trocar lead
@@ -3860,6 +3882,12 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       return;
     }
 
+    // Se houver mídia estagiada no chat (foto, vídeo ou documento selecionado), dispara com a legenda
+    if (stagedMedia) {
+      await handleSendStagedMedia(textToUse.trim());
+      return;
+    }
+
     if (!selectedLead || !textToUse.trim() || isLeadSpectator) return;
 
     if (presenceTimerRef.current) clearTimeout(presenceTimerRef.current);
@@ -4452,26 +4480,61 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     if (type === 'audio' && fileAudioInputRef.current) fileAudioInputRef.current.click();
   };
 
-  const handleSendUploadedFiles = async (
+  const handleSelectFilesForStaging = (
     e: React.ChangeEvent<HTMLInputElement>,
     forcedCategory?: 'document' | 'image' | 'video' | 'audio'
   ) => {
-    const fileList = e.target.files ? Array.from(e.target.files) : [];
-    if (fileList.length === 0 || !selectedLead) return;
-    if (!ensureSenderReady()) { e.target.value = ''; return; }
-
-    // Reseta o valor do input imediatamente
+    const file = e.target.files?.[0];
+    if (!file || !selectedLead) {
+      e.target.value = '';
+      return;
+    }
     e.target.value = '';
 
-    const author = currentUser?.name || 'Equipe Comercial';
-    const targetPhone = selectedRecipientPhone || selectedLead.phone;
-    const currentCaption = messageText.trim();
-    // Limpa o campo de mensagem se foi usado como legenda
-    if (currentCaption) {
-      setMessageText('');
+    const isVid = file.type.startsWith('video');
+    const isAud = file.type.startsWith('audio');
+    const isImg = file.type.startsWith('image');
+    const category: 'document' | 'image' | 'video' | 'audio' =
+      forcedCategory || (isVid ? 'video' : isImg ? 'image' : isAud ? 'audio' : 'document');
+
+    if (stagedMedia?.previewUrl) {
+      URL.revokeObjectURL(stagedMedia.previewUrl);
     }
 
-    // Prepara quote se o usuário estiver respondendo a alguma mensagem
+    const previewUrl = URL.createObjectURL(file);
+    setStagedMedia({
+      file,
+      previewUrl,
+      category,
+      fileName: file.name,
+      fileSize: file.size,
+    });
+  };
+
+  const handleCancelStagedMedia = () => {
+    if (stagedMedia?.previewUrl) {
+      URL.revokeObjectURL(stagedMedia.previewUrl);
+    }
+    setStagedMedia(null);
+  };
+
+  const handleSendStagedMedia = async (customCaption?: string) => {
+    if (!stagedMedia || !selectedLead || isLeadSpectator) return;
+    if (!ensureSenderReady()) return;
+    const mediaItem = stagedMedia;
+    setStagedMedia(null);
+
+    const caption = customCaption !== undefined ? customCaption : messageText.trim();
+    setMessageText('');
+
+    const targetPhone = selectedRecipientPhone || selectedLead.phone;
+    const author = currentUser?.name || (isPostSaleFunnel || selectedLead.isClient ? 'Gestor de Sucesso' : 'Equipe Comercial');
+
+    const activityId = generateUuid();
+    const existingActs = selectedLead.activities || [];
+    const lastActTime = existingActs.reduce((max, a) => Math.max(max, new Date(a.timestamp || 0).getTime()), 0);
+    const finalTimestampIso = new Date(Math.max(Date.now(), lastActTime + 1000)).toISOString();
+
     const quotePayload = replyingToMessage ? {
       id: replyingToMessage.id,
       messageId: replyingToMessage.messageId,
@@ -4479,108 +4542,225 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       text: replyingToMessage.text || (replyingToMessage.mediaType === 'audio' ? 'Mensagem de voz' : replyingToMessage.mediaType === 'image' ? 'Foto' : replyingToMessage.mediaType === 'video' ? 'Vídeo' : 'Documento'),
       type: (replyingToMessage.mediaType || 'text') as any,
       mediaUrl: replyingToMessage.mediaUrl,
-      audioDuration: (replyingToMessage as any).mediaDuration || (replyingToMessage as any).durationText,
     } : undefined;
     const replyingTargetMsg = replyingToMessage;
     setReplyingToMessage(null);
 
-    for (let index = 0; index < fileList.length; index++) {
-      const file = fileList[index];
-      const isVid = file.type.startsWith('video');
-      const isAud = file.type.startsWith('audio');
-      const isImg = file.type.startsWith('image');
-      const fileCategory: 'document' | 'image' | 'video' | 'audio' =
-        forcedCategory || (isVid ? 'video' : isImg ? 'image' : isAud ? 'audio' : 'document');
+    const fallbackText = caption || (
+      mediaItem.category === 'audio' ? `🎵 ${mediaItem.fileName}` :
+      mediaItem.category === 'document' ? mediaItem.fileName :
+      mediaItem.category === 'video' ? '🎥 Vídeo' :
+      mediaItem.category === 'image' ? '📷 Foto' :
+      mediaItem.fileName
+    );
 
-      // Aplica a legenda no primeiro arquivo do lote
-      const fileCaption = (index === 0 && currentCaption) ? currentCaption : '';
+    // Atividade otimista usa blob: URL para renderização instantânea sem sobrecarregar LocalStorage/memória
+    const newActivity: LeadActivity = {
+      id: activityId,
+      leadId: selectedLead.id,
+      timestamp: finalTimestampIso,
+      type: 'contact',
+      title: mediaItem.category === 'image' ? 'Foto enviada' : mediaItem.category === 'video' ? 'Vídeo enviado' : mediaItem.category === 'audio' ? 'Áudio enviado' : `Documento: ${mediaItem.fileName}`,
+      text: fallbackText,
+      mediaUrl: mediaItem.previewUrl,
+      mediaType: mediaItem.category,
+      authorName: currentUser?.name || author,
+      authorId: currentUser?.id,
+      authorAvatarUrl: currentUser?.avatarUrl,
+      quotedMessage: quotePayload,
+      metadata: {
+        ...getAppSenderMetadata(),
+        fileName: mediaItem.fileName,
+        caption: caption || undefined,
+        isOptimistic: true,
+      },
+    } as any;
 
-      const base64Data = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      }).catch(err => {
-        console.error('Erro ao ler arquivo local:', err);
-        return null;
-      });
+    const updatedActivities = mergeAndSortActivities(selectedLead.activities || [], [newActivity], selectedLead.id);
+    updateLeadData(selectedLead.id, {
+      activities: updatedActivities,
+      updatedAt: new Date().toISOString().split('T')[0],
+    });
 
-      if (!base64Data) continue;
+    // 1. Converte em Base64 estritamente para envio na UAZAPI
+    const base64Data = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(mediaItem.file);
+    }).catch(err => {
+      console.error('Erro ao ler arquivo para envio UAZAPI:', err);
+      return null;
+    });
 
-      const activityId = generateUuid();
-      const existingActs = selectedLead.activities || [];
-      const lastActTime = existingActs.reduce((max, a) => Math.max(max, new Date(a.timestamp || 0).getTime()), 0);
-      const finalTimestampIso = new Date(Math.max(Date.now(), lastActTime + 1000 + (index * 500))).toISOString();
-
-      const fallbackText = fileCaption || (
-        fileCategory === 'audio' ? `🎵 ${file.name}` :
-        fileCategory === 'document' ? file.name :
-        file.name
-      );
-
-      const newActivity: LeadActivity = {
-        id: activityId,
-        leadId: selectedLead.id,
-        timestamp: finalTimestampIso,
-        type: 'contact',
-        title: fileCategory === 'image' ? 'Foto enviada' : fileCategory === 'video' ? 'Vídeo enviado' : fileCategory === 'audio' ? 'Áudio enviado' : `Documento: ${file.name}`,
-        text: fallbackText,
-        mediaUrl: base64Data,
-        mediaType: fileCategory,
-        authorName: currentUser?.name || author,
-        authorId: currentUser?.id,
-        authorAvatarUrl: currentUser?.avatarUrl,
-        quotedMessage: index === 0 ? quotePayload : undefined,
-        metadata: {
-          ...getAppSenderMetadata(),
-          fileName: file.name,
-          caption: fileCaption || undefined,
-          isOptimistic: true,
-        },
-      } as any;
-
-      const updatedActivities = mergeAndSortActivities(selectedLead.activities || [], [newActivity], selectedLead.id);
-      updateLeadData(selectedLead.id, {
-        activities: updatedActivities,
-        updatedAt: new Date().toISOString().split('T')[0],
-      });
-
-      if (isSupabaseConfigured) {
-        leadService.addActivity(selectedLead.id, newActivity)
-          .catch(err => console.error('Erro ao salvar mídia no Supabase:', err));
-      }
-
-      if (targetPhone && activeSenderToken) {
-        try {
-          const mediaRes = await uazapiService.sendMedia(activeSenderToken, {
-            number: targetPhone,
-            file: base64Data,
-            type: fileCategory === 'audio' ? 'audio' : fileCategory === 'video' ? 'video' : fileCategory === 'image' ? 'image' : 'document',
-            fileName: file.name,
-            // docName é o campo oficial UAZAPI para o nome visível de documentos
-            ...(fileCategory === 'document' ? { docName: file.name } : {}),
-            caption: fileCaption || (fileCategory === 'document' ? file.name : undefined),
-            replyid: (index === 0 && replyingTargetMsg) ? (replyingTargetMsg.messageId || replyingTargetMsg.id) : undefined,
-            ptt: false,
-            delay: 0,
-          });
-          const mediaMsgId = (mediaRes as any)?.messageId || (mediaRes as any)?.key?.id || (mediaRes as any)?.id;
-          if (mediaMsgId) {
-            newActivity.messageId = mediaMsgId;
-          }
-        } catch (err) {
-          console.error('Falha no envio de mídia UAZAPI:', err);
+    if (targetPhone && activeSenderToken && base64Data) {
+      try {
+        const mediaRes = await uazapiService.sendMedia(activeSenderToken, {
+          number: targetPhone,
+          file: base64Data,
+          type: mediaItem.category === 'audio' ? 'audio' : mediaItem.category === 'video' ? 'video' : mediaItem.category === 'image' ? 'image' : 'document',
+          fileName: mediaItem.fileName,
+          ...(mediaItem.category === 'document' ? { docName: mediaItem.fileName } : {}),
+          caption: caption || (mediaItem.category === 'document' ? mediaItem.fileName : undefined),
+          replyid: replyingTargetMsg ? (replyingTargetMsg.messageId || replyingTargetMsg.id) : undefined,
+          ptt: false,
+          delay: 0,
+        });
+        const mediaMsgId = (mediaRes as any)?.messageId || (mediaRes as any)?.key?.id || (mediaRes as any)?.id;
+        if (mediaMsgId) {
+          updateLeadActivity(selectedLead.id, activityId, { messageId: mediaMsgId });
         }
+      } catch (err) {
+        console.error('Falha no envio de mídia UAZAPI:', err);
+      }
+    }
+
+    // 2. Upload assíncrono para o Cloudflare R2 para obter URL permanente
+    whatsappMediaService.uploadOutboundMedia(mediaItem.file, activeSenderToken || 'default')
+      .then(({ publicUrl }) => {
+        if (publicUrl) {
+          updateLeadActivity(selectedLead.id, activityId, { mediaUrl: publicUrl, mediaType: mediaItem.category });
+          if (isSupabaseConfigured) {
+            leadService.addActivity(selectedLead.id, {
+              ...newActivity,
+              mediaUrl: publicUrl,
+            }).catch(err => console.error('Erro ao salvar mídia permanente no Supabase:', err));
+          }
+        }
+      })
+      .catch(err => {
+        console.warn('Erro ao salvar mídia enviada no R2:', err);
+        if (isSupabaseConfigured) {
+          leadService.addActivity(selectedLead.id, {
+            ...newActivity,
+            mediaUrl: undefined,
+          }).catch(() => { });
+        }
+      });
+  };
+
+  const handleShareContact = async (name: string, phone: string) => {
+    if (!selectedLead || !ensureSenderReady()) return;
+    const cleanPhone = phone.replace(/\D/g, '');
+    if (!cleanPhone) {
+      toast.error('Telefone de contato inválido.');
+      return;
+    }
+
+    const author = currentUser?.name || 'Equipe Comercial';
+    const targetPhone = selectedRecipientPhone || selectedLead.phone;
+    const activityId = generateUuid();
+    const existingActs = selectedLead.activities || [];
+    const lastActTime = existingActs.reduce((max, a) => Math.max(max, new Date(a.timestamp || 0).getTime()), 0);
+    const finalTimestampIso = new Date(Math.max(Date.now(), lastActTime + 1000)).toISOString();
+
+    const formattedCleanPhone = formatPhone(cleanPhone);
+    const newActivity: LeadActivity = {
+      id: activityId,
+      leadId: selectedLead.id,
+      timestamp: finalTimestampIso,
+      type: 'contact',
+      title: 'Contato compartilhado via WhatsApp',
+      text: `👤 Contato: ${name} (${formattedCleanPhone})`,
+      mediaType: 'vcard' as any,
+      authorName: currentUser?.name || author,
+      authorId: currentUser?.id,
+      authorAvatarUrl: currentUser?.avatarUrl,
+      status: 'sent',
+      metadata: {
+        ...getAppSenderMetadata(),
+        isContactCard: true,
+        contactName: name,
+        contactPhone: cleanPhone,
+        isOptimistic: true,
+      },
+    } as any;
+
+    const updatedActivities = mergeAndSortActivities(selectedLead.activities || [], [newActivity], selectedLead.id);
+    updateLeadData(selectedLead.id, {
+      activities: updatedActivities,
+      updatedAt: new Date().toISOString().split('T')[0],
+    });
+
+    if (isSupabaseConfigured) {
+      leadService.addActivity(selectedLead.id, newActivity)
+        .catch(err => console.error('Erro ao salvar contato no Supabase:', err));
+    }
+
+    if (targetPhone && activeSenderToken) {
+      try {
+        await uazapiService.sendContact(activeSenderToken, {
+          number: targetPhone,
+          contactName: name,
+          contactPhone: cleanPhone,
+        });
+      } catch (err) {
+        console.error('Falha ao enviar contato via UAZAPI:', err);
+      }
+    }
+
+    setIsShareContactModalOpen(false);
+    setContactSearchQuery('');
+    setCustomContactName('');
+    setCustomContactPhone('');
+    toast.success(`Contato de "${name}" compartilhado com sucesso!`);
+  };
+
+  const handleCreateLeadFromContactCard = async (name: string, phone: string) => {
+    const masterId = currentUser?.masterId || currentUser?.id || '';
+    if (!activeFunnel?.id || !masterId) {
+      toast.error('Nenhum funil ativo selecionado.');
+      return;
+    }
+    const cleanPhone = phone.replace(/\D/g, '');
+    const venueId = selectedLead?.venueId || (venues?.[0]?.id || '');
+    try {
+      const { supabase } = await import('../../lib/supabase');
+      const leadId = generateUuid();
+      const newLeadData: any = {
+        id: leadId,
+        name: name || 'Novo Lead',
+        phone: cleanPhone,
+        funnel_id: activeFunnel.id,
+        venue_id: venueId,
+        master_id: masterId,
+        stage: 'entrada',
+        notes: `Criado a partir de contato compartilhado no chat do lead ${selectedLead?.name || ''}.`,
+      };
+      await supabase.from('leads').insert([newLeadData]);
+      toast.success(`Lead "${name}" criado com sucesso no funil!`);
+    } catch (err: any) {
+      toast.error('Erro ao criar lead: ' + (err.message || 'Falha no banco'));
+    }
+  };
+
+  const handleSaveContactFromCard = async (name: string, phone: string) => {
+    const masterId = currentUser?.masterId || currentUser?.id || '';
+    if (!masterId) return;
+    const cleanPhone = phone.replace(/\D/g, '');
+    try {
+      const { supabase } = await import('../../lib/supabase');
+      const { data: existing } = await supabase
+        .from('contacts')
+        .select('id')
+        .eq('master_id', masterId)
+        .or(`primary_phone.ilike.%${cleanPhone.slice(-8)}%,secondary_phone.ilike.%${cleanPhone.slice(-8)}%`)
+        .maybeSingle();
+
+      if (existing) {
+        toast.info('Este contato já está cadastrado na sua Central de Contatos.');
+        return;
       }
 
-      // Background Cloudflare R2 Upload
-      whatsappMediaService.uploadOutboundMedia(file, activeSenderToken || 'default')
-        .then(({ publicUrl }) => {
-          if (publicUrl) {
-            updateLeadActivity(selectedLead.id, activityId, { mediaUrl: publicUrl, mediaType: fileCategory });
-          }
-        })
-        .catch(err => console.warn('Erro ao salvar mídia enviada no R2:', err));
+      await supabase.from('contacts').insert([{
+        master_id: masterId,
+        full_name: name,
+        primary_phone: cleanPhone,
+        notes: `Salvo via WhatsApp a partir de contato recebido.`,
+      }]);
+      toast.success(`Contato "${name}" salvo na Central de Contatos!`);
+    } catch (err: any) {
+      toast.error('Erro ao salvar contato: ' + (err.message || 'Falha no banco'));
     }
   };
 
@@ -4672,10 +4852,10 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       audioStreamRef.current = stream;
 
-      const mimeType = MediaRecorder.isTypeSupported('audio/webm; codecs=opus')
-        ? 'audio/webm; codecs=opus'
-        : MediaRecorder.isTypeSupported('audio/ogg; codecs=opus')
-          ? 'audio/ogg; codecs=opus'
+      const mimeType = MediaRecorder.isTypeSupported('audio/ogg; codecs=opus')
+        ? 'audio/ogg; codecs=opus'
+        : MediaRecorder.isTypeSupported('audio/webm; codecs=opus')
+          ? 'audio/webm; codecs=opus'
           : MediaRecorder.isTypeSupported('audio/mp4')
             ? 'audio/mp4'
             : '';
@@ -4840,13 +5020,15 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
 
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.onstop = () => {
-        const mimeType = mediaRecorderRef.current?.mimeType || 'audio/webm; codecs=opus';
-        const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
+        const mimeType = mediaRecorderRef.current?.mimeType || 'audio/ogg; codecs=opus';
+        const isOgg = mimeType.includes('ogg');
+        const ext = isOgg ? 'ogg' : 'webm';
+        const audioFile = new File(audioChunksRef.current, `voice_${Date.now()}.${ext}`, { type: isOgg ? 'audio/ogg' : 'audio/webm' });
         const reader = new FileReader();
         reader.onloadend = () => {
-          finalizeAndSend(reader.result as string, audioBlob);
+          finalizeAndSend(reader.result as string, audioFile);
         };
-        reader.readAsDataURL(audioBlob);
+        reader.readAsDataURL(audioFile);
         if (audioStreamRef.current) {
           audioStreamRef.current.getTracks().forEach(t => t.stop());
         }
@@ -8485,20 +8667,38 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                       const isInstagramMsg = Boolean(msgRawContent && /https?:\/\/(www\.)?instagram\.com/i.test(msgRawContent));
                       const instagramMsgUrl = msgRawContent.match(/https?:\/\/(?:www\.)?instagram\.com[^\s]*/i)?.[0] || msgRawContent;
 
-                      const hasExplicitNonAudioMedia = 
+                      const isTitleOrTextAudio = Boolean(
+                        act.title?.toLowerCase().includes('voz') ||
+                        act.title?.toLowerCase().includes('áudio') ||
+                        effectiveText?.includes('🎵') ||
+                        effectiveMediaType === 'audio' ||
+                        act.mediaType === 'audio'
+                      );
+
+                      const isContactMsg = Boolean(
+                        (effectiveMediaType as any) === 'vcard' ||
+                        (act.mediaType as any) === 'vcard' ||
+                        (act.metadata as any)?.isContactCard ||
+                        (effectiveText && effectiveText.startsWith('👤 Contato:'))
+                      );
+
+                      const hasExplicitNonAudioMedia = !isTitleOrTextAudio && !isContactMsg && (
                         effectiveMediaType === 'image' || act.mediaType === 'image' ||
                         effectiveMediaType === 'video' || act.mediaType === 'video' ||
-                        effectiveMediaType === 'document' || act.mediaType === 'document' ||
-                        isSticker;
+                        (effectiveMediaType === 'document' && !act.mediaUrl?.includes('.bin')) ||
+                        isSticker
+                      );
 
-                      const isAudioMsg = !hasExplicitNonAudioMedia && Boolean(
+                      const isAudioMsg = !isContactMsg && (isTitleOrTextAudio || (!hasExplicitNonAudioMedia && Boolean(
                         effectiveMediaType === 'audio' ||
+                        act.mediaType === 'audio' ||
                         (effectiveMediaUrl && (
                           effectiveMediaUrl.startsWith('data:audio') ||
+                          (/\.(ogg|mp3|opus|wav|m4a|aac|bin)(\?.*)?$/i.test(effectiveMediaUrl) && isTitleOrTextAudio) ||
                           /\.(ogg|mp3|opus|wav|m4a|aac)(\?.*)?$/i.test(effectiveMediaUrl) ||
                           (effectiveMediaUrl.includes('mmg.whatsapp.net') && (effectiveText.includes('🎵') || effectiveText.toLowerCase().includes('voz') || effectiveText.toLowerCase().includes('áudio')))
                         ))
-                      );
+                      )));
 
                       // Audio/foto sem arquivo utilizavel (nao baixado, URL expirada ou que falhou ao carregar): mostra o
                       // cartao de sincronizacao (API e, se preciso, celular) em vez de um player falso de 1 segundo
@@ -8859,6 +9059,22 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                       formattedTime={formattedTime}
                                       isDarkMode={isDarkMode}
                                       status="read"
+                                    />
+                                  ) : isContactMsg ? (
+                                    <WhatsAppContactMessage
+                                      contactName={(act.metadata as any)?.contactName || act.text?.replace(/^👤 Contato:\s*/i, '').replace(/\s*\([^)]*\)$/, '') || 'Contato'}
+                                      contactPhone={(act.metadata as any)?.contactPhone || act.text?.match(/\(([^)]+)\)$/)?.[1] || ''}
+                                      isIncoming={true}
+                                      formattedTime={formattedTime}
+                                      isDarkMode={isDarkMode}
+                                      onCreateLead={() => handleCreateLeadFromContactCard(
+                                        (act.metadata as any)?.contactName || act.text?.replace(/^👤 Contato:\s*/i, '').replace(/\s*\([^)]*\)$/, '') || 'Contato',
+                                        (act.metadata as any)?.contactPhone || act.text?.match(/\(([^)]+)\)$/)?.[1] || ''
+                                      )}
+                                      onSaveContact={() => handleSaveContactFromCard(
+                                        (act.metadata as any)?.contactName || act.text?.replace(/^👤 Contato:\s*/i, '').replace(/\s*\([^)]*\)$/, '') || 'Contato',
+                                        (act.metadata as any)?.contactPhone || act.text?.match(/\(([^)]+)\)$/)?.[1] || ''
+                                      )}
                                     />
                                   ) : (
                                     <div style={{ fontSize: '0.84rem', lineHeight: 1.45, whiteSpace: 'pre-wrap', color: isDarkMode ? '#e9edef' : '#111b21', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: '8px' }}>
@@ -9474,6 +9690,15 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                   <WhatsAppDocumentMessage
                                     url={act.mediaUrl}
                                     filename={act.text}
+                                    isIncoming={false}
+                                    formattedTime={formattedTime}
+                                    isDarkMode={isDarkMode}
+                                    status={act.status === 'failed' ? 'failed' : 'read'}
+                                  />
+                                ) : isContactMsg ? (
+                                  <WhatsAppContactMessage
+                                    contactName={(act.metadata as any)?.contactName || act.text?.replace(/^👤 Contato:\s*/i, '').replace(/\s*\([^)]*\)$/, '') || 'Contato'}
+                                    contactPhone={(act.metadata as any)?.contactPhone || act.text?.match(/\(([^)]+)\)$/)?.[1] || ''}
                                     isIncoming={false}
                                     formattedTime={formattedTime}
                                     isDarkMode={isDarkMode}
@@ -11708,25 +11933,22 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
               ref={fileDocInputRef}
               type="file"
               style={{ display: 'none' }}
-              multiple
               accept="*/*"
-              onChange={(e) => handleSendUploadedFiles(e, 'document')}
+              onChange={(e) => handleSelectFilesForStaging(e, 'document')}
             />
             <input
               ref={fileMediaInputRef}
               type="file"
               style={{ display: 'none' }}
-              multiple
               accept="image/*,video/*"
-              onChange={(e) => handleSendUploadedFiles(e)}
+              onChange={(e) => handleSelectFilesForStaging(e)}
             />
             <input
               ref={fileAudioInputRef}
               type="file"
               style={{ display: 'none' }}
-              multiple
               accept="audio/*"
-              onChange={(e) => handleSendUploadedFiles(e, 'audio')}
+              onChange={(e) => handleSelectFilesForStaging(e, 'audio')}
             />
 
             {/* Hidden Native File Inputs for Note Multimedia Uploads */}
@@ -13720,6 +13942,37 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                             </div>
                             <span>Áudio</span>
                           </button>
+
+                          {/* 4. Contato (Verde Esmeralda) */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsAttachmentMenuOpen(false);
+                              setIsShareContactModalOpen(true);
+                            }}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '12px',
+                              padding: '10px 14px',
+                              borderRadius: '10px',
+                              background: 'transparent',
+                              border: 'none',
+                              color: isDarkMode ? '#e9edef' : '#111b21',
+                              fontSize: '0.85rem',
+                              fontWeight: 600,
+                              cursor: 'pointer',
+                              textAlign: 'left',
+                              transition: 'background 0.15s ease',
+                            }}
+                            onMouseEnter={(e) => e.currentTarget.style.background = isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)'}
+                            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                          >
+                            <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: '#00a884', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff' }}>
+                              <User size={15} />
+                            </div>
+                            <span>Contato</span>
+                          </button>
                         </div>
                       )}
 
@@ -14223,14 +14476,91 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                         </div>
                       )}
 
+                      {/* Prévia Estagiada de Mídia (Foto, Vídeo ou Documento) antes do envio com suporte a legenda */}
+                      {stagedMedia && (
+                        <div style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          padding: '8px 12px',
+                          background: isDarkMode ? '#182229' : '#f0f2f5',
+                          borderTopLeftRadius: '16px',
+                          borderTopRightRadius: '16px',
+                          border: isDarkMode ? '1px solid rgba(255,255,255,0.08)' : '1px solid #d1d7db',
+                          borderBottom: 'none',
+                          gap: '12px',
+                          boxShadow: '0 -2px 6px rgba(0,0,0,0.03)',
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', overflow: 'hidden', flex: 1 }}>
+                            {stagedMedia.category === 'image' ? (
+                              <img
+                                src={stagedMedia.previewUrl}
+                                alt="Prévia"
+                                onClick={() => setLightboxMedia({ url: stagedMedia.previewUrl, type: 'image', title: stagedMedia.fileName })}
+                                style={{ width: '48px', height: '48px', borderRadius: '8px', objectFit: 'cover', cursor: 'pointer', border: '1px solid var(--adm-border)' }}
+                                title="Clique para ampliar imagem"
+                              />
+                            ) : stagedMedia.category === 'video' ? (
+                              <div
+                                onClick={() => setLightboxMedia({ url: stagedMedia.previewUrl, type: 'video', title: stagedMedia.fileName })}
+                                style={{ position: 'relative', width: '48px', height: '48px', borderRadius: '8px', overflow: 'hidden', cursor: 'pointer', background: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                                title="Clique para pré-visualizar vídeo"
+                              >
+                                <video src={stagedMedia.previewUrl} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                <Play size={16} color="#fff" style={{ position: 'absolute' }} fill="#fff" />
+                              </div>
+                            ) : stagedMedia.category === 'audio' ? (
+                              <div style={{ width: '44px', height: '44px', borderRadius: '8px', background: '#ff6b00', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff' }}>
+                                <Headphones size={22} />
+                              </div>
+                            ) : (
+                              <div style={{ width: '44px', height: '44px', borderRadius: '8px', background: '#7f66ff', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff' }}>
+                                <FileText size={22} />
+                              </div>
+                            )}
+
+                            <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                              <span style={{ fontSize: '0.82rem', fontWeight: 700, color: isDarkMode ? '#f1f5f9' : '#1e293b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                {stagedMedia.fileName}
+                              </span>
+                              <span style={{ fontSize: '0.70rem', color: isDarkMode ? '#94a3b8' : '#64748b' }}>
+                                {(stagedMedia.fileSize / (1024 * 1024)).toFixed(1)} MB • {stagedMedia.category === 'image' ? 'Foto selecionada' : stagedMedia.category === 'video' ? 'Vídeo selecionado' : stagedMedia.category === 'audio' ? 'Áudio selecionado' : 'Documento'} (digite a legenda abaixo)
+                              </span>
+                            </div>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={handleCancelStagedMedia}
+                            title="Remover anexo"
+                            style={{
+                              background: 'transparent',
+                              border: 'none',
+                              color: isDarkMode ? '#8696a0' : '#54656f',
+                              cursor: 'pointer',
+                              padding: '5px',
+                              borderRadius: '50%',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              flexShrink: 0,
+                            }}
+                            onMouseEnter={(e) => (e.currentTarget.style.color = '#ef4444')}
+                            onMouseLeave={(e) => (e.currentTarget.style.color = isDarkMode ? '#8696a0' : '#54656f')}
+                          >
+                            <X size={18} />
+                          </button>
+                        </div>
+                      )}
+
                       <form onSubmit={handleSendMessage} style={{
                         display: 'flex',
                         alignItems: 'center',
                         background: isDarkMode ? '#202c33' : '#ffffff',
-                        borderRadius: (Boolean(pendingAttachment && (!pendingAttachment.leadId || pendingAttachment.leadId === selectedLead.id)) || Boolean(replyingToMessage)) ? '0 0 16px 16px' : '24px',
+                        borderRadius: (Boolean(stagedMedia) || Boolean(pendingAttachment && (!pendingAttachment.leadId || pendingAttachment.leadId === selectedLead.id)) || Boolean(replyingToMessage)) ? '0 0 16px 16px' : '24px',
                         padding: '4px 8px 4px 10px',
                         border: isDarkMode ? '1px solid rgba(255,255,255,0.08)' : '1px solid #d1d7db',
-                        borderTop: (Boolean(pendingAttachment && (!pendingAttachment.leadId || pendingAttachment.leadId === selectedLead.id)) || Boolean(replyingToMessage)) ? 'none' : (isDarkMode ? '1px solid rgba(255,255,255,0.08)' : '1px solid #d1d7db'),
+                        borderTop: (Boolean(stagedMedia) || Boolean(pendingAttachment && (!pendingAttachment.leadId || pendingAttachment.leadId === selectedLead.id)) || Boolean(replyingToMessage)) ? 'none' : (isDarkMode ? '1px solid rgba(255,255,255,0.08)' : '1px solid #d1d7db'),
                         boxShadow: isDarkMode ? 'none' : '0 1px 2px rgba(11,20,26,0.08)',
                         gap: '8px',
                         width: '100%',
@@ -14295,6 +14625,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                           disabled={!activeSenderToken || isSenderDisconnected}
                           isSpectator={isLeadSpectator}
                           hasPendingAttachment={Boolean(pendingAttachment && (!pendingAttachment.leadId || pendingAttachment.leadId === selectedLead.id))}
+                          hasStagedMedia={Boolean(stagedMedia)}
                           pendingAttachmentCaption={pendingAttachment?.caption}
                           onSendMessageText={(text) => handleSendMessage(undefined, text)}
                           onTriggerComposing={triggerComposingPresence}
@@ -15476,6 +15807,282 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
         onClose={() => setDuplicateModalLead(null)}
         lead={duplicateModalLead}
       />
+
+      {/* ── MODAL: COMPARTILHAR CONTATO (vCard) ── */}
+      {isShareContactModalOpen && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0, 0, 0, 0.65)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 99999,
+            padding: '16px',
+          }}
+          onClick={() => setIsShareContactModalOpen(false)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: 'var(--adm-bg-card, #1E293B)',
+              border: '1px solid var(--adm-border)',
+              borderRadius: '14px',
+              width: '100%',
+              maxWidth: '460px',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
+              overflow: 'hidden',
+              display: 'flex',
+              flexDirection: 'column',
+              maxHeight: '85vh',
+            }}
+          >
+            {/* Header */}
+            <div style={{
+              padding: '14px 18px',
+              borderBottom: '1px solid var(--adm-border)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              background: 'var(--adm-bg-input)',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <User size={18} color="#00a884" />
+                <h3 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
+                  Compartilhar Contato
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsShareContactModalOpen(false)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--adm-text-muted)',
+                  cursor: 'pointer',
+                  padding: '4px',
+                  borderRadius: '6px',
+                  display: 'flex',
+                  alignItems: 'center',
+                }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Conteúdo do Modal */}
+            <div style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: '14px', overflowY: 'auto' }}>
+              {/* Busca de Contatos na Base */}
+              <div>
+                <label style={{ fontSize: '0.74rem', fontWeight: 700, color: 'var(--adm-text-muted)', display: 'block', marginBottom: '6px' }}>
+                  Pesquisar na base de contatos / leads / equipe:
+                </label>
+                <div style={{ position: 'relative' }}>
+                  <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--adm-text-muted)' }} />
+                  <input
+                    type="text"
+                    value={contactSearchQuery}
+                    onChange={(e) => setContactSearchQuery(e.target.value)}
+                    placeholder="Digite o nome ou telefone..."
+                    style={{
+                      width: '100%',
+                      boxSizing: 'border-box',
+                      padding: '8px 12px 8px 32px',
+                      background: 'var(--adm-bg-input)',
+                      border: '1px solid var(--adm-border)',
+                      borderRadius: '8px',
+                      fontSize: '0.82rem',
+                      color: 'var(--adm-text-title)',
+                      outline: 'none',
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* Lista filtrada de contatos */}
+              {contactSearchQuery.trim().length > 1 && (
+                <div style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '4px',
+                  maxHeight: '160px',
+                  overflowY: 'auto',
+                  border: '1px solid var(--adm-border)',
+                  borderRadius: '8px',
+                  padding: '4px',
+                  background: 'var(--adm-bg-input)',
+                }}>
+                  {(() => {
+                    const q = contactSearchQuery.toLowerCase();
+                    const results: Array<{ id: string; name: string; phone: string; role: string }> = [];
+
+                    // 1. Leads
+                    (leads || []).forEach(l => {
+                      if (l.phone && (l.name?.toLowerCase().includes(q) || l.phone.includes(q))) {
+                        results.push({ id: `lead-${l.id}`, name: l.name || 'Lead', phone: l.phone, role: 'Lead' });
+                      }
+                      (l.contacts || []).forEach(c => {
+                        if (c.phone && (c.name?.toLowerCase().includes(q) || c.phone.includes(q))) {
+                          results.push({ id: `sub-${c.id}`, name: c.name || 'Contato', phone: c.phone, role: c.role || 'Contato' });
+                        }
+                      });
+                    });
+
+                    // 2. Colaboradores
+                    (collaborators || []).forEach(col => {
+                      if (col.phone && (col.name?.toLowerCase().includes(q) || col.phone.includes(q))) {
+                        results.push({ id: `col-${col.id}`, name: col.name, phone: col.phone, role: 'Equipe' });
+                      }
+                    });
+
+                    // Deduplica por telefone
+                    const seenPhones = new Set<string>();
+                    const unique = results.filter(r => {
+                      const clean = r.phone.replace(/\D/g, '').slice(-8);
+                      if (seenPhones.has(clean)) return false;
+                      seenPhones.add(clean);
+                      return true;
+                    }).slice(0, 10);
+
+                    if (unique.length === 0) {
+                      return (
+                        <div style={{ padding: '12px', textAlign: 'center', fontSize: '0.76rem', color: 'var(--adm-text-muted)' }}>
+                          Nenhum contato encontrado com este termo.
+                        </div>
+                      );
+                    }
+
+                    return unique.map(item => (
+                      <div
+                        key={item.id}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          padding: '8px 10px',
+                          borderRadius: '6px',
+                          background: 'var(--adm-bg-card)',
+                          gap: '8px',
+                        }}
+                      >
+                        <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                          <span style={{ fontSize: '0.80rem', fontWeight: 700, color: 'var(--adm-text-title)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {item.name}
+                          </span>
+                          <span style={{ fontSize: '0.70rem', color: 'var(--adm-text-muted)' }}>
+                            {formatPhone(item.phone)} • {item.role}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleShareContact(item.name, item.phone)}
+                          style={{
+                            padding: '4px 10px',
+                            borderRadius: '6px',
+                            background: '#00a884',
+                            border: 'none',
+                            color: '#fff',
+                            fontSize: '0.72rem',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                            flexShrink: 0,
+                          }}
+                        >
+                          Enviar
+                        </button>
+                      </div>
+                    ));
+                  })()}
+                </div>
+              )}
+
+              {/* Separador */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{ flex: 1, height: '1px', background: 'var(--adm-border)' }} />
+                <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--adm-text-muted)', textTransform: 'uppercase' }}>Ou digite manualmente</span>
+                <div style={{ flex: 1, height: '1px', background: 'var(--adm-border)' }} />
+              </div>
+
+              {/* Campos manuais */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <input
+                  type="text"
+                  placeholder="Nome do contato..."
+                  value={customContactName}
+                  onChange={(e) => setCustomContactName(e.target.value)}
+                  style={{
+                    width: '100%',
+                    boxSizing: 'border-box',
+                    padding: '8px 12px',
+                    background: 'var(--adm-bg-input)',
+                    border: '1px solid var(--adm-border)',
+                    borderRadius: '8px',
+                    fontSize: '0.82rem',
+                    color: 'var(--adm-text-title)',
+                    outline: 'none',
+                  }}
+                />
+                <input
+                  type="text"
+                  placeholder="WhatsApp do contato..."
+                  value={customContactPhone}
+                  onChange={(e) => setCustomContactPhone(maskPhoneInput(e.target.value))}
+                  style={{
+                    width: '100%',
+                    boxSizing: 'border-box',
+                    padding: '8px 12px',
+                    background: 'var(--adm-bg-input)',
+                    border: '1px solid var(--adm-border)',
+                    borderRadius: '8px',
+                    fontSize: '0.82rem',
+                    color: 'var(--adm-text-title)',
+                    outline: 'none',
+                  }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '4px' }}>
+                <button
+                  type="button"
+                  onClick={() => setIsShareContactModalOpen(false)}
+                  style={{
+                    padding: '8px 14px',
+                    borderRadius: '8px',
+                    background: 'transparent',
+                    border: '1px solid var(--adm-border)',
+                    color: 'var(--adm-text-muted)',
+                    fontSize: '0.78rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  disabled={!customContactName.trim() || !customContactPhone.trim()}
+                  onClick={() => handleShareContact(customContactName.trim(), customContactPhone.trim())}
+                  style={{
+                    padding: '8px 16px',
+                    borderRadius: '8px',
+                    background: (!customContactName.trim() || !customContactPhone.trim()) ? 'var(--adm-border)' : '#00a884',
+                    border: 'none',
+                    color: '#fff',
+                    fontSize: '0.78rem',
+                    fontWeight: 700,
+                    cursor: (!customContactName.trim() || !customContactPhone.trim()) ? 'not-allowed' : 'pointer',
+                    boxShadow: '0 2px 8px rgba(0, 168, 132, 0.25)',
+                  }}
+                >
+                  Compartilhar Contato
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

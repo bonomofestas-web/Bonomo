@@ -34,7 +34,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ error: 'contentType não fornecido.' });
     }
 
-    const ext = fileName ? fileName.split('.').pop() : (contentType.split('/')[1] || 'bin');
+    let ext = fileName && fileName.includes('.') ? fileName.split('.').pop()?.toLowerCase() : '';
+    if (!ext || ext === 'bin') {
+      const mime = (contentType || '').toLowerCase();
+      if (mime.includes('ogg')) ext = 'ogg';
+      else if (mime.includes('webm')) ext = 'webm';
+      else if (mime.includes('mp4')) ext = 'mp4';
+      else if (mime.includes('mp3') || mime.includes('mpeg')) ext = 'mp3';
+      else if (mime.includes('wav')) ext = 'wav';
+      else if (mime.includes('png')) ext = 'png';
+      else if (mime.includes('jpeg') || mime.includes('jpg')) ext = 'jpg';
+      else if (mime.includes('webp')) ext = 'webp';
+      else if (mime.includes('pdf')) ext = 'pdf';
+      else ext = 'bin';
+    }
     const timestamp  = Date.now();
     const randomHex  = Math.random().toString(36).substring(2, 8);
     const key        = customKey ? `${folder}/${customKey}` : `${folder}/${timestamp}_${randomHex}.${ext}`;

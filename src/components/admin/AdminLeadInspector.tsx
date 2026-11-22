@@ -37,7 +37,7 @@ import { lastSystemSentSourceId } from '../../utils/senderResolver';
 import { collectPhoneHolders, findPhoneConflict, duplicatePhoneMessage } from '../../utils/phoneDuplicates';
 import { validateLeadForWon, getMissingLeadFieldKeys } from '../../utils/leadValidation';
 import { useAdminState } from '../../context/AdminStateContext';
-import { maskPhoneInput, formatPhone } from '../../utils/phoneFormatter';
+import { maskPhoneInput, formatPhone, sanitizeBrazilianPhone } from '../../utils/phoneFormatter';
 import { isPhoneMatch } from '../../services/leadService';
 import { contactService } from '../../services/contactService';
 import { whatsappMediaService } from '../../services/whatsappMediaService';
@@ -201,8 +201,8 @@ const SubContactCard: React.FC<SubContactCardProps> = ({
   };
 
   const commitPhone = () => {
-    const cleanDigits = draftPhone.replace(/\D/g, '');
-    const oldCleanDigits = (contact.phone || '').replace(/\D/g, '');
+    const cleanDigits = sanitizeBrazilianPhone(draftPhone);
+    const oldCleanDigits = sanitizeBrazilianPhone(contact.phone || '');
     if (cleanDigits !== oldCleanDigits) {
       onUpdateSubContact(contact.id, { phone: cleanDigits });
     }
@@ -1702,7 +1702,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
       return;
     }
 
-    const trimmedPhone = newContactPhone.trim();
+    const trimmedPhone = sanitizeBrazilianPhone(newContactPhone);
     if (trimmedPhone) {
       const conflict = (leads || []).find(l => l.id !== lead.id && (
         (l.phone && isPhoneMatch(l.phone, trimmedPhone)) ||
@@ -5068,8 +5068,8 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                       disabled={effectiveReadOnly}
                       onChange={(e) => setDraftPhone(maskPhoneInput(e.target.value))}
                       onBlur={() => {
-                        const cleanDraft = draftPhone.replace(/\D/g, '');
-                        const cleanLead = (lead.phone || '').replace(/\D/g, '');
+                        const cleanDraft = sanitizeBrazilianPhone(draftPhone);
+                        const cleanLead = sanitizeBrazilianPhone(lead.phone || '');
                         if (cleanDraft !== cleanLead) {
                           // O numero principal (decisor/contratante) nao pode repetir o de outra pessoa do mesmo lead
                           const dup = findPhoneConflict(cleanDraft, collectPhoneHolders({ ...lead, phone: undefined, payerPhone: undefined }));

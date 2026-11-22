@@ -614,6 +614,66 @@ export const uazapiService = {
   },
 
   /**
+   * Envia um cartão de contato (vCard) pelo WhatsApp
+   */
+  async sendContact(instanceToken: string, payload: { number: string; contactName: string; contactPhone: string; delay?: number; replyid?: string }): Promise<UazapiSendMessageResponse> {
+    await ensureMessagingEnabled();
+    const baseUrl = this.getServerUrl();
+    if (!baseUrl) throw new Error('URL do servidor UAZAPI não configurada.');
+    if (!instanceToken) throw new Error('Token da instância não fornecido.');
+
+    let finalNumber = payload.number.trim();
+    const cleanDigits = finalNumber.replace(/@.*$/, '').replace(/\D/g, '');
+
+    if (finalNumber.includes('@lid') || (cleanDigits.length >= 14 && cleanDigits.startsWith('15'))) {
+      const contact = await this.fetchChatContactInfo(instanceToken, cleanDigits);
+      if (contact.realPhone && contact.realPhone.length <= 13) {
+        finalNumber = normalizeWhatsAppNumber(contact.realPhone);
+      } else {
+        finalNumber = `${cleanDigits}@lid`;
+      }
+    } else {
+      finalNumber = normalizeWhatsAppNumber(cleanDigits);
+    }
+
+    const cleanContactPhone = normalizeWhatsAppNumber(payload.contactPhone);
+    const vcard = `BEGIN:VCARD\nVERSION:3.0\nFN:${payload.contactName}\nTEL;type=CELL;waid=${cleanContactPhone}:+${cleanContactPhone}\nEND:VCARD`;
+
+    // 1. Tenta endpoint /send/contact dedicado
+    try {
+      const res = await fetch(`${baseUrl}/send/contact`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'token': instanceToken,
+        },
+        body: JSON.stringify({
+          number: finalNumber,
+          contactName: payload.contactName,
+          contactPhone: cleanContactPhone,
+          name: payload.contactName,
+          phone: cleanContactPhone,
+          vcard,
+          delay: payload.delay || 0,
+          replyid: payload.replyid,
+        }),
+      });
+
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch {}
+
+    // 2. Fallback: Envia mensagem de texto estruturada com link do WhatsApp
+    return this.sendText(instanceToken, {
+      number: finalNumber,
+      text: `👤 *Contato Compartilhado:*\n*Nome:* ${payload.contactName}\n*WhatsApp:* https://wa.me/${cleanContactPhone}`,
+      delay: payload.delay,
+      replyid: payload.replyid,
+    });
+  },
+
+  /**
    * Baixa a mídia transitória do CDN da UAZAPI e transcreve áudio se solicitado
    */
   async downloadMedia(instanceToken: string, payload: UazapiDownloadMediaPayload): Promise<UazapiDownloadMediaResponse> {

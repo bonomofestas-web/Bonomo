@@ -487,6 +487,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         let text = '';
         let mediaUrl = msg.fileURL || msg.mediaUrl || msg.file || payload?.fileURL || payload?.mediaUrl || undefined;
         let mediaType = 'text';
+        let vcardData: { contactName: string; contactPhone: string; vcard?: string } | null = null;
 
         const rawMime = String(msg.mimetype || msg.mime || payload?.mimetype || payload?.mime || '').toLowerCase();
         const msgType = String(msg.messageType || msg.type || payload?.messageType || '').toLowerCase();
@@ -505,6 +506,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         } else if (msgType.includes('sticker')) {
           mediaType = 'image';
           text = '✨ Figurinha';
+        } else if (msgType.includes('contact') || msgType.includes('vcard')) {
+          mediaType = 'vcard';
+          const cName = msg.contactName || msg.name || msg.displayName || 'Contato';
+          const cPhone = (msg.contactPhone || msg.phone || msg.phoneNumber || '').replace(/\D/g, '');
+          text = `👤 Contato: ${cName}${cPhone ? ` (${cPhone})` : ''}`;
+          vcardData = { contactName: cName, contactPhone: cPhone, vcard: msg.vcard };
         }
 
         // Se o texto vier como JSON em string contendo URL/caption da UAZAPI
@@ -560,6 +567,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             mediaType = 'image';
             text = text || '✨ Figurinha';
             mediaUrl = mediaUrl || m.stickerMessage.url;
+          } else if (m.contactMessage) {
+            mediaType = 'vcard';
+            const v = m.contactMessage;
+            const cName = v.displayName || v.vcard?.match(/FN:(.+)/i)?.[1]?.trim() || 'Contato';
+            const cPhone = v.vcard?.match(/waid=(\d+)/i)?.[1] || v.vcard?.match(/TEL[^:]*:(.+)/i)?.[1]?.replace(/\D/g, '') || '';
+            text = `👤 Contato: ${cName}${cPhone ? ` (${cPhone})` : ''}`;
+            vcardData = { contactName: cName, contactPhone: cPhone, vcard: v.vcard };
+          } else if (m.contactsArrayMessage) {
+            mediaType = 'vcard';
+            const first = m.contactsArrayMessage.contacts?.[0];
+            const cName = first?.displayName || first?.vcard?.match(/FN:(.+)/i)?.[1]?.trim() || 'Contato';
+            const cPhone = first?.vcard?.match(/waid=(\d+)/i)?.[1] || first?.vcard?.match(/TEL[^:]*:(.+)/i)?.[1]?.replace(/\D/g, '') || '';
+            text = `👤 Contato: ${cName}${cPhone ? ` (${cPhone})` : ''}`;
+            vcardData = { contactName: cName, contactPhone: cPhone, vcard: first?.vcard };
           } else if (m.viewOnceMessage?.message) {
             const vo = m.viewOnceMessage.message;
             if (vo.imageMessage) {
@@ -599,6 +620,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           else if (typeof payload?.data?.content === 'string' && payload.data.content.trim()) text = payload.data.content;
           else if (typeof payload?.data?.message?.conversation === 'string') text = payload.data.message.conversation;
           else if (typeof payload?.data?.message?.extendedTextMessage?.text === 'string') text = payload.data.message.extendedTextMessage.text;
+        }
+
+        if (!vcardData && (payload.contact || msg.contact || payload.type === 'contact')) {
+          const c = payload.contact || msg.contact || payload;
+          const cName = c.name || c.contactName || c.displayName || 'Contato';
+          const cPhone = (c.phone || c.phoneNumber || c.contactPhone || '').replace(/\D/g, '');
+          if (cName || cPhone) {
+            mediaType = 'vcard';
+            text = `👤 Contato: ${cName}${cPhone ? ` (${cPhone})` : ''}`;
+            vcardData = { contactName: cName, contactPhone: cPhone, vcard: c.vcard };
+          }
         }
 
         // Se tiver mídia mas o tipo for texto, resolve por extensão da URL
@@ -939,8 +971,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             timestamp: activityIso,
             type: 'contact',
             title: isFromMe 
-              ? (isAudio ? 'Mensagem de voz enviada (Celular/Web)' : mediaType === 'image' ? 'Foto enviada (Celular/Web)' : mediaType === 'video' ? 'Vídeo enviado (Celular/Web)' : mediaType === 'document' ? 'Documento enviado (Celular/Web)' : 'Mensagem enviada via WhatsApp (Celular/Web)')
-              : (isAudio ? 'Mensagem de voz recebida' : mediaType === 'image' ? 'Foto recebida' : mediaType === 'video' ? 'Vídeo recebido' : mediaType === 'document' ? 'Documento recebido' : 'Mensagem recebida no WhatsApp'),
+              ? (isAudio ? 'Mensagem de voz enviada (Celular/Web)' : mediaType === 'vcard' ? 'Contato enviado (Celular/Web)' : mediaType === 'image' ? 'Foto enviada (Celular/Web)' : mediaType === 'video' ? 'Vídeo enviado (Celular/Web)' : mediaType === 'document' ? 'Documento enviado (Celular/Web)' : 'Mensagem enviada via WhatsApp (Celular/Web)')
+              : (isAudio ? 'Mensagem de voz recebida' : mediaType === 'vcard' ? 'Contato compartilhado' : mediaType === 'image' ? 'Foto recebida' : mediaType === 'video' ? 'Vídeo recebido' : mediaType === 'document' ? 'Documento recebido' : 'Mensagem recebida no WhatsApp'),
             text: storedText,
             author_name: isFromMe ? 'WhatsApp App / Web' : (senderName || 'Cliente (WhatsApp)'),
             author_id: null,
@@ -955,6 +987,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               senderPhone: (matchedSource?.configuration as any)?.connectedPhone || (matchedSource?.configuration as any)?.whatsappNumber,
               senderAvatar: (matchedSource?.configuration as any)?.connectedAvatar || (matchedSource?.configuration as any)?.profilePicUrl,
               ...(isForwarded ? { isForwarded: true } : {}),
+              ...(vcardData ? {
+                isContactCard: true,
+                contactName: vcardData.contactName,
+                contactPhone: vcardData.contactPhone,
+                vcard: vcardData.vcard,
+              } : {}),
               // Preserva o nome original do arquivo de documentos para renderização no frontend
               ...(mediaType === 'document' && (msg.fileName || msg.message?.documentMessage?.fileName) ? {
                 fileName: msg.fileName || msg.message?.documentMessage?.fileName,
@@ -1251,8 +1289,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             timestamp: activityIso,
             type: 'contact',
             title: isFromMe 
-              ? (isAudio ? 'Mensagem de voz enviada (Celular/Web)' : mediaType === 'image' ? 'Foto enviada (Celular/Web)' : mediaType === 'video' ? 'Vídeo enviado (Celular/Web)' : mediaType === 'document' ? 'Documento enviado (Celular/Web)' : 'Mensagem enviada via WhatsApp (Celular/Web)') 
-              : (isAudio ? 'Mensagem de voz recebida' : mediaType === 'image' ? 'Foto recebida' : mediaType === 'video' ? 'Vídeo recebido' : mediaType === 'document' ? 'Documento recebido' : 'Mensagem recebida no WhatsApp'),
+              ? (isAudio ? 'Mensagem de voz enviada (Celular/Web)' : mediaType === 'vcard' ? 'Contato enviado (Celular/Web)' : mediaType === 'image' ? 'Foto enviada (Celular/Web)' : mediaType === 'video' ? 'Vídeo enviado (Celular/Web)' : mediaType === 'document' ? 'Documento enviado (Celular/Web)' : 'Mensagem enviada via WhatsApp (Celular/Web)') 
+              : (isAudio ? 'Mensagem de voz recebida' : mediaType === 'vcard' ? 'Contato compartilhado' : mediaType === 'image' ? 'Foto recebida' : mediaType === 'video' ? 'Vídeo recebido' : mediaType === 'document' ? 'Documento recebido' : 'Mensagem recebida no WhatsApp'),
             text: creationStoredText,
             author_name: isFromMe ? 'WhatsApp App / Web' : (senderName || 'Cliente (WhatsApp)'),
             status: isFromMe ? 'sent' : 'delivered',
@@ -1264,6 +1302,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               senderPhone: (matchedSource?.configuration as any)?.connectedPhone || (matchedSource?.configuration as any)?.whatsappNumber,
               senderAvatar: (matchedSource?.configuration as any)?.connectedAvatar || (matchedSource?.configuration as any)?.profilePicUrl,
               ...(isForwarded ? { isForwarded: true } : {}),
+              ...(vcardData ? {
+                isContactCard: true,
+                contactName: vcardData.contactName,
+                contactPhone: vcardData.contactPhone,
+                vcard: vcardData.vcard,
+              } : {}),
               // Preserva o nome original do arquivo de documentos para renderização no frontend
               ...(mediaType === 'document' && (msg.fileName || msg.message?.documentMessage?.fileName) ? {
                 fileName: msg.fileName || msg.message?.documentMessage?.fileName,

@@ -99,6 +99,14 @@ export interface UazapiSendMediaPayload {
   track_id?: string;
 }
 
+export interface UazapiSendContactPayload {
+  number: string;
+  contactName: string;
+  contactPhone: string;
+  delay?: number;
+  replyid?: string;
+}
+
 export interface UazapiSendMessageResponse {
   id: string;
   messageid?: string;

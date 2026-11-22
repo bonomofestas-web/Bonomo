@@ -27,8 +27,23 @@ export const cloudflareR2Service = {
     onProgress?: (progress: R2UploadProgress) => void,
     customKey?: string
   ): Promise<string> {
-    const fileName    = (file as File).name || 'upload.bin';
     const contentType = file.type || 'application/octet-stream';
+    let fileName = (file as File).name;
+    if (!fileName || fileName === 'upload.bin') {
+      const mime = contentType.toLowerCase();
+      const extFromMime = 
+        mime.includes('ogg') ? 'ogg' :
+        mime.includes('webm') ? 'webm' :
+        mime.includes('mp4') ? 'mp4' :
+        mime.includes('mpeg') || mime.includes('mp3') ? 'mp3' :
+        mime.includes('wav') ? 'wav' :
+        mime.includes('png') ? 'png' :
+        mime.includes('jpeg') || mime.includes('jpg') ? 'jpg' :
+        mime.includes('webp') ? 'webp' :
+        mime.includes('pdf') ? 'pdf' :
+        'bin';
+      fileName = `file_${Date.now()}.${extFromMime}`;
+    }
 
     // Step 1: Ask the server for a presigned PUT URL
     const presignRes = await fetch('/api/presign', {
