@@ -168,7 +168,7 @@ export const TeamDirectory: React.FC<Props> = ({ collaborators, data, actions, p
         key={c.id}
         onClick={() => actions.onOpen(c)}
         style={{
-          display: 'grid', gridTemplateColumns: 'minmax(250px, 2.2fr) minmax(170px, 1.4fr) minmax(120px, 0.9fr) minmax(190px, 1.4fr) 150px 40px', gap: '16px', alignItems: 'center',
+          display: 'grid', gridTemplateColumns: 'minmax(220px, 2.2fr) minmax(150px, 1.4fr) minmax(110px, 0.9fr) minmax(170px, 1.4fr) 140px 40px', gap: '16px', alignItems: 'center',
           padding: '12px 18px', cursor: 'pointer', borderTop: index === 0 ? 'none' : '1px solid var(--adm-border)', opacity: c.active ? 1 : 0.7, transition: 'background 0.12s',
         }}
         onMouseEnter={e => { e.currentTarget.style.background = 'var(--adm-bg-input)'; }}
@@ -257,7 +257,7 @@ export const TeamDirectory: React.FC<Props> = ({ collaborators, data, actions, p
           </div>
           {viewMode === 'list' ? (
             <div style={{ ...card, overflow: 'hidden' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(250px, 2.2fr) minmax(170px, 1.4fr) minmax(120px, 0.9fr) minmax(190px, 1.4fr) 150px 40px', gap: '16px', padding: '10px 18px', background: 'var(--adm-bg-input)', borderBottom: '1px solid var(--adm-border)' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 2.2fr) minmax(150px, 1.4fr) minmax(110px, 0.9fr) minmax(170px, 1.4fr) 140px 40px', gap: '16px', padding: '10px 18px', background: 'var(--adm-bg-input)', borderBottom: '1px solid var(--adm-border)' }}>
                 {['Pessoa', 'Cargo', 'Unidades', 'Em aberto', 'Status', ''].map(h => <span key={h} style={eyebrow}>{h}</span>)}
               </div>
               {g.people.map((c, i) => renderPerson(c, i))}
@@ -280,7 +280,7 @@ export const TeamDirectory: React.FC<Props> = ({ collaborators, data, actions, p
           </div>
           {viewMode === 'list' ? (
             <div style={{ ...card, overflow: 'hidden' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(250px, 2.2fr) minmax(170px, 1.4fr) minmax(120px, 0.9fr) minmax(190px, 1.4fr) 150px 40px', gap: '16px', padding: '10px 18px', background: 'var(--adm-bg-input)', borderBottom: '1px solid var(--adm-border)' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 2.2fr) minmax(150px, 1.4fr) minmax(110px, 0.9fr) minmax(170px, 1.4fr) 140px 40px', gap: '16px', padding: '10px 18px', background: 'var(--adm-bg-input)', borderBottom: '1px solid var(--adm-border)' }}>
                 {['Pessoa', 'Cargo', 'Unidades', 'Em aberto', 'Status', ''].map(h => <span key={h} style={eyebrow}>{h}</span>)}
               </div>
               {groups.inactivePeople.map((c, i) => renderPerson(c, i))}
