@@ -42,6 +42,25 @@ Grande reestruturação de governança, experiência do usuário, banco de dados
 
 ### Recursos e Melhorias em Staging
 
+- **Cartões de Contato WhatsApp Nativos e Ações Rápidas de Funil:**
+  * **Design Idêntico ao WhatsApp Web (Solto sem Bolha de Texto):** Cartões de contato vCard recebidos agora são renderizados de forma limpa e isolada fora do balão de texto em `WhatsAppContactMessage.tsx`, exibindo avatar com iniciais do contato, nome completo, telefone formatado em padrão internacional/nacional e linha divisória elegante.
+  * **Ação 'Salvar contato':** Salva o contato diretamente na tabela `contacts` (com verificação de duplicidade por telefone e dados completos) e redireciona instantaneamente o operador para a Central de Contatos (`admin_switch_tab` para `contacts`).
+  * **Ação 'Puxar no funil' Contextual:**
+    - Em Funis Comerciais: Verifica se o lead já existe na esteira atual; caso não exista, cadastra novo lead imediatamente com o nome e telefone do contato recebido, seleciona o card e abre a Ficha do Lead (`AdminLeadInspector`).
+    - Em Funis de Pós-Venda: Verifica se o cliente já existe; caso não exista, cria o novo cliente na primeira etapa do pós-venda, seleciona o registro e abre a Ficha do Cliente (`AdminClientDrawerInspector`).
+  * **Parser Universal de Mensagens de Contato:** Suporte robusto para vCards brutos, formato multiline do Baileys (`Phone (Celular): 55...`) e cabeçalhos textuais de contato, com retrocompatibilidade e higienização no banco de produção.
+
+- **Cargo 'Diretor Master' Exclusivo e Normalização de Novos Cargos:**
+  * **Blindagem Inviolável de 'Diretor Master' (`diretoria:master`):**
+    - O cargo **Diretor Master** pertence estritamente e exclusivamente ao Master da conta (`role === 'master'`).
+    - É permanentemente assegurado na visualização e nas permissões do Master, exibindo badge nobre com destaque dourado (`#D4AF37`) e erradicando o rótulo "Sem cargo definido".
+    - Para qualquer outro colaborador da empresa, a opção `diretoria:master` é rigorosamente oculta e expurgada tanto na interface de edição quanto no salvamento no banco de dados, impedindo que outro membro receba essa atribuição.
+  * **Normalização Universal de Setores de Cargos (`normalizeSector`):**
+    - Unificação de setores legados (`gerencia` -> `diretoria` e `marketing` -> `marketing_tecnologia`) em `jobRoles.ts`, `jobRoleService.ts`, `AdminCollaboratorsView.tsx` e `AdminJobRolesModal.tsx`.
+    - Os cargos cadastrados no catálogo e novos cargos criados via `+ Outro` agora são indexados e exibidos perfeitamente em seus respectivos setores sem sumiço de chips.
+    - Sincronização em tempo real do catálogo (`reloadRoles` e `reloadRoleCatalog`) ao adicionar, editar apelido ou reordenar cargos.
+    - Saneamento relacional executado no Supabase de produção normalizando os registros da tabela `job_roles` e os arrays de `permissions` dos colaboradores.
+
 - **Padronização Estrutural entre Ficha de Pós-Venda e Comercial:**
   * **Harmonização do Cabeçalho Superior:** Estrutura das 6 linhas padronizada tanto no Pós-Venda (`AdminClientDrawerInspector.tsx`) quanto no Comercial (`AdminLeadInspector.tsx`):
     - **Linha 1:** Nome em destaque com ações rápidas à direita: Menu de 3 pontinhos com "Transformar em Fornecedor", botão de Arquivar (roxo), botão de Lixeira/Remoção (vermelho) e botão de Recolher/Fechar (ciano).

@@ -82,12 +82,17 @@ export const SectorChip: React.FC<{ sector: CollabSectorKey; small?: boolean }> 
   );
 };
 
-export const RoleChip: React.FC<{ label: string }> = ({ label }) => (
-  <span style={{
-    display: 'inline-flex', alignItems: 'center', padding: '2px 8px', borderRadius: '6px', fontSize: '0.64rem', fontWeight: 800, whiteSpace: 'nowrap',
-    color: 'var(--adm-text-title)', background: 'var(--adm-bg-input)', border: '1px solid var(--adm-border)',
-  }}>{label}</span>
-);
+export const RoleChip: React.FC<{ label: string }> = ({ label }) => {
+  const isMasterRole = label.toLowerCase().includes('diretor master');
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', padding: '2px 8px', borderRadius: '6px', fontSize: '0.64rem', fontWeight: 800, whiteSpace: 'nowrap',
+      color: isMasterRole ? '#D4AF37' : 'var(--adm-text-title)',
+      background: isMasterRole ? '#D4AF371A' : 'var(--adm-bg-input)',
+      border: isMasterRole ? '1px solid #D4AF3766' : '1px solid var(--adm-border)',
+    }}>{label}</span>
+  );
+};
 
 export const StatusChip: React.FC<{ active: boolean; pending: boolean }> = ({ active, pending }) => {
   const cfg = pending ? { label: 'Convite pendente', color: '#F59E0B' } : active ? { label: 'Ativo', color: '#10B981' } : { label: 'Inativo', color: '#94A3B8' };

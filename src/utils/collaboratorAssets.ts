@@ -110,7 +110,26 @@ export const collaboratorRank = (c: Collaborator, order: JobRoleOrder, custom: C
 };
 
 /** Cargos legiveis (labels de jobRoles; custom pelo catalogo) para chips. */
-export const jobRoleLabels = (c: Collaborator, custom: CustomJobRole[], aliases: JobRoleAliases = {}): string[] => (c.jobRoles || []).map(r => jobRoleLabel(r, custom, aliases));
+export const jobRoleLabels = (c: Collaborator, custom: CustomJobRole[], aliases: JobRoleAliases = {}): string[] => {
+  const isMaster = c.role === 'master' || Boolean((c as any).isMaster);
+  let roles = (c.jobRoles || []).slice();
+
+  if (isMaster) {
+    if (!roles.includes('diretoria:master')) {
+      roles = ['diretoria:master', ...roles.filter(r => r !== 'diretoria:diretor')];
+    }
+  } else {
+    // Regra inviolável: cargo Diretor Master pertence unicamente ao Master da conta
+    roles = roles.filter(r => r !== 'diretoria:master');
+  }
+
+  // Se não tem jobRoles cadastrados, mas tem customJobTitle preenchido: usa customJobTitle
+  if (roles.length === 0 && c.customJobTitle?.trim()) {
+    return [c.customJobTitle.trim()];
+  }
+
+  return roles.map(r => jobRoleLabel(r, custom, aliases));
+};
 
 /* ───────── Leads (comercial) ───────── */
 

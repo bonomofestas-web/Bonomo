@@ -5,6 +5,7 @@ import {
   JOB_ROLE_OPTIONS,
   DEFAULT_JOB_SECTORS,
   orderedSectorRoleIds,
+  normalizeSector,
   type CustomJobRole,
   type JobRoleAliases,
   type JobRoleOrder,
@@ -158,8 +159,9 @@ export const AdminJobRolesModal: React.FC<Props> = ({
       {/* Lista de Setores Ordenáveis */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginTop: '6px' }}>
         {currentSectors.map((sector, sectorIdx) => {
-          const mine = customRoles.filter(r => r.sector === sector.id);
-          const isProtected = PROTECTED_SECTORS.includes(sector.id);
+          const normSec = normalizeSector(sector.id);
+          const mine = customRoles.filter(r => normalizeSector(r.sector) === normSec);
+          const isProtected = PROTECTED_SECTORS.includes(sector.id) || PROTECTED_SECTORS.includes(normSec);
 
           return (
             <div
@@ -292,14 +294,15 @@ export const AdminJobRolesModal: React.FC<Props> = ({
                   );
 
                   return ids.map((id, idx) => {
-                    const fixed = (JOB_ROLE_OPTIONS[sector.id] || []).find(o => o.id === id);
-                    const custom = mine.find(r => r.id === id);
+                    const normSectorId = normalizeSector(sector.id);
+                    const fixed = (JOB_ROLE_OPTIONS[normSectorId] || JOB_ROLE_OPTIONS[sector.id] || []).find(o => o.id === id);
+                    const custom = mine.find(r => r.id === id || r.id === id.replace(/^gerencia:/, 'diretoria:').replace(/^marketing:/, 'marketing_tecnologia:'));
                     const base = fixed ? fixed.label : (custom?.name || id);
 
                     return (
                       <span
                         key={id}
-                        title={fixed?.description}
+                        title={id === 'diretoria:master' ? 'Cargo exclusivo do Master da conta' : fixed?.description}
                         style={{
                           display: 'inline-flex',
                           alignItems: 'center',
@@ -320,9 +323,13 @@ export const AdminJobRolesModal: React.FC<Props> = ({
                             <>
                               {aliases[id] || base}
                               {aliases[id] && <span style={{ fontWeight: 600, color: 'var(--adm-text-muted)' }}>padrão: {base}</span>}
-                              {fixed && <Lock size={10} color="var(--adm-text-muted)" aria-label="Cargo padrão" />}
+                              {id === 'diretoria:master' ? (
+                                <span style={{ fontSize: '0.62rem', fontWeight: 800, color: '#D4AF37', background: '#D4AF371A', padding: '1px 6px', borderRadius: '4px' }}>Exclusivo Master</span>
+                              ) : (
+                                fixed && <Lock size={10} color="var(--adm-text-muted)" aria-label="Cargo padrão" />
+                              )}
                               <span style={{ fontWeight: 600, color: 'var(--adm-text-muted)' }}>{usage[id] || 0} {(usage[id] || 0) === 1 ? 'pessoa' : 'pessoas'}</span>
-                              {canEdit && (
+                              {canEdit && id !== 'diretoria:master' && (
                                 <button
                                   type="button"
                                   aria-label={`Renomear exibição de ${base}`}
@@ -351,7 +358,7 @@ export const AdminJobRolesModal: React.FC<Props> = ({
                   });
                 })()}
 
-                {((JOB_ROLE_OPTIONS[sector.id] || []).length === 0 && mine.length === 0) && (
+                {((JOB_ROLE_OPTIONS[normalizeSector(sector.id)] || JOB_ROLE_OPTIONS[sector.id] || []).length === 0 && mine.length === 0) && (
                   <span style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)' }}>
                     Nenhum cargo ainda. Digite abaixo para criar.
                   </span>

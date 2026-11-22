@@ -18,7 +18,7 @@ import { AdminCollabInviteModal } from './AdminCollabInviteModal';
 import type { Collaborator, AdminRole, LeadActivity, Lead } from '../../types/admin';
 import type { AdminTabType } from './AdminSidebar';
 import { GOALS_COLLAB_KEY } from './AdminVenueGoalsView';
-import { JOB_ROLE_OPTIONS, DEFAULT_JOB_SECTORS, jobRoleLabel, orderedSectorRoleIds, slugifyRole, type CustomJobRole, type JobSector, type JobSectorConfig } from '../../utils/jobRoles';
+import { JOB_ROLE_OPTIONS, DEFAULT_JOB_SECTORS, jobRoleLabel, orderedSectorRoleIds, slugifyRole, normalizeSector, type CustomJobRole, type JobSector, type JobSectorConfig } from '../../utils/jobRoles';
 import { isUserDirector, isUserMaster, isUserManager } from '../../utils/accessPermissions';
 import { jobRoleService } from '../../services/jobRoleService';
 import { collaboratorHistoryService, type CollaboratorHistoryAction } from '../../services/collaboratorHistoryService';
@@ -210,6 +210,8 @@ export const AdminCollaboratorsView: React.FC<AdminCollaboratorsViewProps> = ({ 
       return null;
     }
     await reloadRoles();
+    await reloadRoleCatalog();
+    toast.success(`Cargo "${res.role.name}" criado com sucesso!`);
     return res.role;
   };
 
@@ -226,6 +228,7 @@ export const AdminCollaboratorsView: React.FC<AdminCollaboratorsViewProps> = ({ 
     });
     setFormJobRoles(prev => prev.filter(r => r !== role.id));
     await reloadRoles();
+    await reloadRoleCatalog();
     toast.success('Cargo excluído.');
   };
 
@@ -429,10 +432,16 @@ export const AdminCollaboratorsView: React.FC<AdminCollaboratorsViewProps> = ({ 
     }
 
     let currentJobRoles = [...(collab.jobRoles || [])];
-    if (isMaster && !currentJobRoles.includes('diretoria:master')) {
-      currentJobRoles.push('diretoria:master');
-    } else if (isDirector && !currentJobRoles.includes('diretoria:diretor') && !isMaster) {
-      currentJobRoles.push('diretoria:diretor');
+    if (isMaster) {
+      if (!currentJobRoles.includes('diretoria:master')) {
+        currentJobRoles = ['diretoria:master', ...currentJobRoles.filter(r => r !== 'diretoria:diretor')];
+      }
+    } else {
+      // Regra inviolável: cargo Diretor Master pertence unicamente ao Master da conta
+      currentJobRoles = currentJobRoles.filter(r => r !== 'diretoria:master');
+      if (isDirector && !currentJobRoles.includes('diretoria:diretor')) {
+        currentJobRoles.push('diretoria:diretor');
+      }
     }
 
     setFormJobRoles(currentJobRoles);
@@ -462,14 +471,14 @@ export const AdminCollaboratorsView: React.FC<AdminCollaboratorsViewProps> = ({ 
       ? 'all'
       : (formSelectedVenueIds[0] || 'all');
 
+    const isMasterTarget = collaboratorToEdit?.role === 'master' || Boolean((collaboratorToEdit as any)?.isMaster);
+
     // Computa a role base para compatibilidade
     let computedRole: AdminRole = 'crm';
-    if (formSectors.includes('diretoria') || formJobRoles.some(r => r.startsWith('diretoria:'))) {
-      if (collaboratorToEdit?.role === 'master' || formJobRoles.includes('diretoria:master')) {
-        computedRole = 'master';
-      } else {
-        computedRole = 'diretor';
-      }
+    if (isMasterTarget) {
+      computedRole = 'master';
+    } else if (formSectors.includes('diretoria') || formJobRoles.some(r => r.startsWith('diretoria:'))) {
+      computedRole = 'diretor';
     } else if (formSectors.includes('pos_venda') && !formSectors.includes('comercial')) {
       computedRole = 'pos_venda';
     } else if (formSectors.includes('comercial')) {
@@ -480,13 +489,23 @@ export const AdminCollaboratorsView: React.FC<AdminCollaboratorsViewProps> = ({ 
 
     const isMasterRole = computedRole === 'master';
 
+    // Regra inviolável: cargo Diretor Master pertence exclusivamente ao Master da conta
+    let cleanJobRoles = formJobRoles.filter(r => formSectors.includes(r.split(':')[0] as any));
+    if (isMasterTarget) {
+      if (!cleanJobRoles.includes('diretoria:master')) {
+        cleanJobRoles = ['diretoria:master', ...cleanJobRoles.filter(r => r !== 'diretoria:diretor')];
+      }
+    } else {
+      cleanJobRoles = cleanJobRoles.filter(r => r !== 'diretoria:master');
+    }
+
     const payload = {
       name: formName.trim(),
       email: formEmail.trim().toLowerCase(),
       phone: formPhone.trim() || undefined,
       customJobTitle: formCustomJobTitle.trim() || undefined,
       // Cargo so vale para setores marcados (acesso x cargo)
-      jobRoles: formJobRoles.filter(r => formSectors.includes(r.split(':')[0] as any)),
+      jobRoles: cleanJobRoles,
       sectors: formSectors,
       role: computedRole,
       department: formSectors[0] || 'comercial',
@@ -564,7 +583,7 @@ export const AdminCollaboratorsView: React.FC<AdminCollaboratorsViewProps> = ({ 
 
 
   const getCollabRoleTitle = (collab: Collaborator) => {
-    if (collab.role === 'master' || (collab.jobRoles || []).includes('diretoria:master')) return 'Diretor(a) Master';
+    if (collab.role === 'master' || (collab.jobRoles || []).includes('diretoria:master')) return 'Diretor Master';
     if (collab.role === 'diretor' || collab.role === 'diretoria' || (collab.jobRoles || []).includes('diretoria:diretor')) return 'Diretor(a)';
     const shownTitle = roleTitleOf(collab);
     if (shownTitle) return shownTitle;
@@ -1127,9 +1146,11 @@ export const AdminCollaboratorsView: React.FC<AdminCollaboratorsViewProps> = ({ 
               </div>
 
               {sectors.filter(g => formSectors.includes(g.id as any)).map(g => {
-                const fixed = JOB_ROLE_OPTIONS[g.id] || [];
-                const custom = customRoles.filter(r => r.sector === g.id);
+                const normG = normalizeSector(g.id);
+                const fixed = JOB_ROLE_OPTIONS[normG] || JOB_ROLE_OPTIONS[g.id] || [];
+                const custom = customRoles.filter(r => normalizeSector(r.sector) === normG);
                 const orderedIds = orderedSectorRoleIds(g.id, customRoles, roleOrder);
+                const isEditingMaster = collaboratorToEdit?.role === 'master' || Boolean((collaboratorToEdit as any)?.isMaster);
                 const moveRole = (id: string, dir: -1 | 1) => {
                   const i = orderedIds.indexOf(id);
                   const j = i + dir;
@@ -1138,13 +1159,19 @@ export const AdminCollaboratorsView: React.FC<AdminCollaboratorsViewProps> = ({ 
                   [next[i], next[j]] = [next[j], next[i]];
                   void reorderRoles(g.id, next);
                 };
-                const rawOptions = [
+                let rawOptions = [
                   ...fixed.map(o => ({ id: o.id, label: roleAliases[o.id] || o.label, description: o.description, custom: undefined as CustomJobRole | undefined })),
                   ...custom.map(o => ({ id: o.id, label: roleAliases[o.id] || o.name, description: 'Cargo personalizado', custom: o })),
                   // Cargo ainda selecionado mas ja excluido do catalogo: continua visivel ate salvar
                   ...formJobRoles.filter(id => id.startsWith(`${g.id}:`) && !fixed.some(o => o.id === id) && !custom.some(o => o.id === id))
                     .map(id => ({ id, label: jobRoleLabel(id, customRoles, roleAliases), description: '', custom: undefined as CustomJobRole | undefined })),
                 ];
+
+                // Regra inviolável: cargo Diretor Master pertence estritamente e exclusivamente ao Master da conta!
+                if (!isEditingMaster) {
+                  rawOptions = rawOptions.filter(o => o.id !== 'diretoria:master');
+                }
+
                 const rankIn = (id: string) => { const i = orderedIds.indexOf(id); return i < 0 ? 9999 : i; };
                 const options = [...rawOptions].sort((a, b) => rankIn(a.id) - rankIn(b.id));
                 const isAdding = addingRoleSector === g.id;
@@ -1172,8 +1199,12 @@ export const AdminCollaboratorsView: React.FC<AdminCollaboratorsViewProps> = ({ 
                             <button
                               type="button"
                               aria-pressed={active}
-                              title={opt.description}
+                              title={opt.id === 'diretoria:master' ? 'Cargo exclusivo do Master da conta' : opt.description}
                               onClick={() => {
+                                if (opt.id === 'diretoria:master' && isEditingMaster) {
+                                  // Master sempre mantém Diretor Master
+                                  return;
+                                }
                                 if (active) {
                                   setFormJobRoles(formJobRoles.filter(r => r !== opt.id));
                                 } else {
@@ -1184,7 +1215,7 @@ export const AdminCollaboratorsView: React.FC<AdminCollaboratorsViewProps> = ({ 
                                 }
                               }}
                               style={{
-                                padding: removable ? '8px 10px 8px 14px' : '8px 14px', fontSize: '0.78rem', fontWeight: 800, cursor: 'pointer',
+                                padding: removable ? '8px 10px 8px 14px' : '8px 14px', fontSize: '0.78rem', fontWeight: 800, cursor: (opt.id === 'diretoria:master' && isEditingMaster) ? 'default' : 'pointer',
                                 borderRadius: removable ? '999px 0 0 999px' : '999px',
                                 border: `1.5px solid ${active ? g.color : 'var(--adm-border)'}`, borderRight: removable ? 'none' : undefined,
                                 background: active ? `${g.color}1F` : 'var(--adm-bg-input)',

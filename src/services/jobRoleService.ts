@@ -1,5 +1,5 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import { customRoleId, slugifyRole, DEFAULT_JOB_SECTORS, type CustomJobRole, type JobSector } from '../utils/jobRoles';
+import { customRoleId, slugifyRole, normalizeSector, DEFAULT_JOB_SECTORS, type CustomJobRole, type JobSector } from '../utils/jobRoles';
 
 export interface JobSectorItem {
   id: string;
@@ -29,11 +29,20 @@ export const jobRoleService = {
       console.error('[jobRoleService.list]', error.message);
       return [];
     }
-    return (data || []).map(r => ({ id: customRoleId(r.sector as JobSector, r.slug as string), sector: r.sector as JobSector, name: r.name as string, slug: r.slug as string }));
+    return (data || []).map(r => {
+      const normSector = normalizeSector(r.sector as string);
+      return {
+        id: customRoleId(normSector, r.slug as string),
+        sector: normSector,
+        name: r.name as string,
+        slug: r.slug as string,
+      };
+    });
   },
 
   /** Cria o cargo digitado. Repetido no mesmo setor devolve o ja existente (sem erro para quem digitou de novo). */
-  async create(masterId: string, sector: JobSector, rawName: string, actor?: { id?: string; name?: string }): Promise<JobRoleResult> {
+  async create(masterId: string, rawSector: JobSector, rawName: string, actor?: { id?: string; name?: string }): Promise<JobRoleResult> {
+    const sector = normalizeSector(rawSector);
     const name = rawName.trim().replace(/\s+/g, ' ');
     const slug = slugifyRole(name);
     if (!isSupabaseConfigured || !masterId) return { ok: false, reason: 'error' };
