@@ -28,8 +28,8 @@ export const sanitizeBrazilianPhone = (value?: string | null): string => {
   let digits = raw.replace(/\D/g, '');
   if (!digits) return '';
 
-  // Se o número começa com +55 ou foi colado com 55 no início e tem 12 ou 13 dígitos (+55 XX 9XXXX-XXXX ou 55XXXXXXXXXXX)
-  if (digits.startsWith('55') && (digits.length === 12 || digits.length === 13)) {
+  // Se o número começa com +55 ou foi colado com 55 no início e tem mais de 11 dígitos (+55 XX 9XXXX-XXXX ou 55XXXXXXXXXXX)
+  if (digits.startsWith('55') && digits.length > 11) {
     digits = digits.slice(2);
   } else if (raw.startsWith('+55') && digits.startsWith('55')) {
     digits = digits.slice(2);

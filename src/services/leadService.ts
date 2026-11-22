@@ -1,7 +1,7 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { isUuid, generateUuid } from '../utils/uuid';
 import { generateBase36Code, contactService } from './contactService';
-import { isLidIdentifier } from './uazapiSseService';
+import { isLidIdentifier, sanitizeBrazilianPhone } from '../utils/phoneFormatter';
 import { fetchAllRows } from '../utils/fetchAllRows';
 import { chatCache } from '../utils/chatCache';
 import type { Lead, LeadActivity, LeadParticipant } from '../types/admin';
@@ -10,7 +10,23 @@ function mapLeadToDatabase(lead: Partial<Lead>): Record<string, any> {
   const payload: Record<string, any> = {};
   if (lead.code !== undefined) payload.code = lead.code;
   if (lead.name !== undefined) payload.name = lead.name;
-  if (lead.phone !== undefined) payload.phone = lead.phone;
+  if (lead.phone !== undefined) {
+    const rawP = typeof lead.phone === 'string' ? lead.phone.trim() : '';
+    if (!rawP) {
+      payload.phone = '';
+    } else if (isLidIdentifier(rawP)) {
+      payload.phone = rawP;
+    } else {
+      const cleanDigits = sanitizeBrazilianPhone(rawP);
+      if (cleanDigits) {
+        payload.phone = cleanDigits.length >= 10 && !cleanDigits.startsWith('55')
+          ? `55${cleanDigits}`
+          : cleanDigits;
+      } else {
+        payload.phone = rawP;
+      }
+    }
+  }
   if (lead.age !== undefined) payload.age = lead.age;
   if (lead.group !== undefined) payload.group = lead.group;
   if (lead.notes !== undefined) payload.notes = lead.notes;
@@ -619,40 +635,81 @@ export const leadService = {
       const payload = mapLeadToDatabase(updates);
       if (Object.keys(payload).length === 0) return true;
 
-      const effectiveMasterId = (updates.masterId && isUuid(updates.masterId))
+      let effectiveMasterId = (updates.masterId && isUuid(updates.masterId))
         ? updates.masterId
         : (masterId && isUuid(masterId) ? masterId : (payload.master_id && isUuid(payload.master_id) ? payload.master_id : null));
+
+      // Resolve master_id, contact_id e custom_field_values do lead existente caso necessário
+      let existingLeadRow: { id?: string; master_id?: string; contact_id?: string; name?: string; custom_field_values?: any } | null = null;
+      if (!effectiveMasterId || updates.phone !== undefined || payload.custom_field_values) {
+        try {
+          let checkQ = supabase.from('leads').select('id, master_id, contact_id, name, custom_field_values');
+          if (isUuid(id)) {
+            checkQ = checkQ.eq('id', id);
+          } else {
+            checkQ = checkQ.eq('code', id);
+          }
+          const { data: row } = await checkQ.maybeSingle();
+          if (row) {
+            existingLeadRow = row;
+            if (!effectiveMasterId && row.master_id) {
+              effectiveMasterId = row.master_id;
+              payload.master_id = row.master_id;
+            }
+            if (payload.custom_field_values && row.custom_field_values && typeof row.custom_field_values === 'object') {
+              payload.custom_field_values = {
+                ...row.custom_field_values,
+                ...payload.custom_field_values,
+              };
+            }
+          }
+        } catch {
+          // Continua normalmente se a consulta falhar
+        }
+      }
 
       if (effectiveMasterId) {
         payload.master_id = effectiveMasterId;
       }
 
-      // 1. Tenta atualizar diretamente por ID se for UUID
-      if (isUuid(id)) {
-        // Preserva e mescla custom_field_values com o que já existe no banco para nunca perder campos
-        if (payload.custom_field_values) {
+      // Sincronização inteligente de contato ao alterar telefone do lead (evita quebra por uq_contacts_master_phone_key)
+      if (updates.phone !== undefined && effectiveMasterId) {
+        const rawP = typeof updates.phone === 'string' ? updates.phone.trim() : '';
+        const cleanDigits = sanitizeBrazilianPhone(rawP);
+        if (cleanDigits && cleanDigits.length >= 8) {
           try {
-            let checkQ = supabase
-              .from('leads')
-              .select('custom_field_values, master_id')
-              .eq('id', id);
-            if (effectiveMasterId) checkQ = checkQ.eq('master_id', effectiveMasterId);
-            const { data: existingRow } = await checkQ.maybeSingle();
-
-            if (existingRow?.custom_field_values && typeof existingRow.custom_field_values === 'object') {
-              payload.custom_field_values = {
-                ...existingRow.custom_field_values,
-                ...payload.custom_field_values,
-              };
+            const existingContact = await contactService.findExisting(effectiveMasterId, {
+              phones: [cleanDigits, `55${cleanDigits}`],
+            });
+            if (existingContact) {
+              payload.contact_id = existingContact.id;
+              updates.contactId = existingContact.id;
+            } else if (existingLeadRow?.contact_id) {
+              await supabase.from('contacts')
+                .update({ primary_phone: cleanDigits, updated_at: new Date().toISOString() })
+                .eq('id', existingLeadRow.contact_id)
+                .eq('master_id', effectiveMasterId);
+            } else {
+              const leadName = String(updates.name || existingLeadRow?.name || 'Lead sem nome').trim();
+              const { contact: newContact } = await contactService.findOrCreateContact({
+                masterId: effectiveMasterId,
+                venueId: payload.venue_id || updates.venueId,
+                name: leadName,
+                primaryPhone: cleanDigits,
+              });
+              if (newContact) {
+                payload.contact_id = newContact.id;
+                updates.contactId = newContact.id;
+              }
             }
-            if (!effectiveMasterId && existingRow?.master_id) {
-              payload.master_id = existingRow.master_id;
-            }
-          } catch {
-            // Continua normalmente se a consulta falhar
+          } catch (cErr) {
+            console.warn('⚠️ Não foi possível sincronizar contato na atualização de telefone:', cErr);
           }
         }
+      }
 
+      // 1. Tenta atualizar diretamente por ID se for UUID
+      if (isUuid(id)) {
         let query = supabase.from('leads').update(payload).eq('id', id);
         if (effectiveMasterId || payload.master_id) {
           query = query.eq('master_id', effectiveMasterId || payload.master_id);
@@ -661,7 +718,31 @@ export const leadService = {
         if (!error && data && data.length > 0) return true;
 
         if (error) {
-          console.warn('⚠️ Supabase update error no lead, tentando fallback seguro com custom_field_values:', error.message);
+          console.warn('⚠️ Supabase update error no lead, analisando causa:', error.message);
+
+          // Se for conflito de chave única no trigger de contatos (uq_contacts_master_phone_key)
+          if (error.code === '23505' || error.message?.includes('uq_contacts_master_phone_key')) {
+            try {
+              const cleanDigits = sanitizeBrazilianPhone(updates.phone || payload.phone || '');
+              if (cleanDigits && effectiveMasterId) {
+                const conflictingContact = await contactService.findExisting(effectiveMasterId, {
+                  phones: [cleanDigits, `55${cleanDigits}`],
+                });
+                if (conflictingContact) {
+                  payload.contact_id = conflictingContact.id;
+                  let retryWithContactQ = supabase.from('leads').update(payload).eq('id', id);
+                  if (effectiveMasterId || payload.master_id) {
+                    retryWithContactQ = retryWithContactQ.eq('master_id', effectiveMasterId || payload.master_id);
+                  }
+                  const { data: rData, error: rErr } = await retryWithContactQ.select('id');
+                  if (!rErr && rData && rData.length > 0) return true;
+                }
+              }
+            } catch {
+              // Segue para fallback
+            }
+          }
+
           const fallbackPayload = { ...payload };
           delete fallbackPayload.has_credit_card;
           delete fallbackPayload.profession;

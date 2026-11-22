@@ -205,6 +205,9 @@ const SubContactCard: React.FC<SubContactCardProps> = ({
     const oldCleanDigits = sanitizeBrazilianPhone(contact.phone || '');
     if (cleanDigits !== oldCleanDigits) {
       onUpdateSubContact(contact.id, { phone: cleanDigits });
+      if (cleanDigits && onSelectRecipientPhone && selectedRecipientPhone === contact.phone) {
+        onSelectRecipientPhone(cleanDigits);
+      }
     }
   };
 
@@ -5076,6 +5079,9 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                             return;
                           }
                           handleUpdate({ phone: cleanDraft });
+                          if (cleanDraft && onSelectRecipientPhone) {
+                            onSelectRecipientPhone(cleanDraft);
+                          }
                         }
                       }}
                       onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}

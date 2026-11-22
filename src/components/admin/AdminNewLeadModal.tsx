@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import type { LeadSource, CrmStage } from '../../types/admin';
+import { maskPhoneInput, sanitizeBrazilianPhone } from '../../utils/phoneFormatter';
 
 interface AdminNewLeadModalProps {
   isOpen: boolean;
@@ -166,17 +167,9 @@ export const AdminNewLeadModal: React.FC<AdminNewLeadModalProps> = ({
     setEstimatedBudget(num.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
   };
 
-  // Máscara simples de Telefone Brasileiro
-  const maskPhoneInput = (val: string) => {
-    const digits = val.replace(/\D/g, '').slice(0, 11);
-    if (digits.length <= 2) return digits;
-    if (digits.length <= 7) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
-    return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
-  };
-
   // Verificação em Tempo Real de Contato Existente (Áudio 2)
   const matchedExistingLead = useMemo(() => {
-    const cleanDigits = phone.replace(/\D/g, '');
+    const cleanDigits = sanitizeBrazilianPhone(phone);
     if (cleanDigits.length < 8) return null;
 
     return (leads || []).find(l => {
@@ -185,7 +178,7 @@ export const AdminNewLeadModal: React.FC<AdminNewLeadModalProps> = ({
       // Não considera clientes pós-venda como duplicados de lead comercial
       if (l.isClient) return false;
 
-      const lp = (l.phone || '').replace(/\D/g, '');
+      const lp = sanitizeBrazilianPhone(l.phone || '');
       if (!lp) return false;
 
       return lp === cleanDigits ||
@@ -204,7 +197,7 @@ export const AdminNewLeadModal: React.FC<AdminNewLeadModalProps> = ({
     }
 
     const cleanName = name.trim();
-    const cleanPhoneDigits = phone.replace(/\D/g, '');
+    const cleanPhoneDigits = sanitizeBrazilianPhone(phone);
 
     if (!cleanName) {
       setErrorMsg('Por favor, informe o nome do lead.');
@@ -247,7 +240,7 @@ export const AdminNewLeadModal: React.FC<AdminNewLeadModalProps> = ({
 
       const newId = await createLead({
         name: cleanName,
-        phone: phone.trim(),
+        phone: cleanPhoneDigits,
         venueId: finalVenueId,
         funnelId: finalFunnelId,
         stage: initialStage as CrmStage,
