@@ -1230,7 +1230,7 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
               padding: '4px 8px',
             }}>
               <Building2 size={14} color="#D4AF37" />
-              <select
+              <Select
                 value={selectedVenueId}
                 onChange={(e) => {
                   setSelectedVenueId(e.target.value);
@@ -1249,7 +1249,7 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
                 {venues.map(v => (
                   <option key={v.id} value={v.id}>{v.name}</option>
                 ))}
-              </select>
+              </Select>
             </div>
 
             {/* Alternador Visitas / Degustações */}

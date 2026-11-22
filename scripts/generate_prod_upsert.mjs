@@ -227,9 +227,9 @@ async function main() {
     `  (SELECT count(*) FROM public.fin_payables) as total_a_pagar;`
   ].join('\n');
 
-  writeFileSync('supabase/migrations/01_ATUALIZAR_CONTRATOS_E_CLIENTES.sql', part1Header, 'utf-8');
-  writeFileSync('supabase/migrations/02_ATUALIZAR_FINANCEIRO_RECEBIVEIS_PARTE_1.sql', part2Header, 'utf-8');
-  writeFileSync('supabase/migrations/03_ATUALIZAR_FINANCEIRO_RECEBIVEIS_PARTE_2.sql', part3Header, 'utf-8');
+  writeFileSync('supabase/manual/dados_reais/01_ATUALIZAR_CONTRATOS_E_CLIENTES.sql', part1Header, 'utf-8');
+  writeFileSync('supabase/manual/02_ATUALIZAR_FINANCEIRO_RECEBIVEIS_PARTE_1.sql', part2Header, 'utf-8');
+  writeFileSync('supabase/manual/03_ATUALIZAR_FINANCEIRO_RECEBIVEIS_PARTE_2.sql', part3Header, 'utf-8');
 
   console.log('Scripts atualizados com auto-criação de colunas e tabelas!');
 }

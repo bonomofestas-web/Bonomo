@@ -256,7 +256,7 @@ async function main() {
   sqlParts.push(`  count(*) FILTER (WHERE contract_file_url IS NOT NULL) as com_pdf_r2`);
   sqlParts.push(`FROM public.contracts;`);
 
-  const targetPath = 'supabase/migrations/04_APLICAR_NOVOS_PADROES_E_LIMPAR_LEGADOS.sql';
+  const targetPath = 'supabase/manual/04_APLICAR_NOVOS_PADROES_E_LIMPAR_LEGADOS.sql';
   writeFileSync(targetPath, sqlParts.join('\n'), 'utf-8');
   console.log(`\nScript gerado com sucesso em: ${targetPath}`);
 }

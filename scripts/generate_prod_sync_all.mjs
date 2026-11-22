@@ -376,19 +376,19 @@ async function main() {
     `  (SELECT count(*) FROM public.admin_tasks) as total_tarefas_admin;`
   ].join('\n');
 
-  const outPathA = 'supabase/migrations/05A_SINCRONIZAR_ESTRUTURA_E_CONTATOS.sql';
+  const outPathA = 'supabase/manual/dados_reais/05A_SINCRONIZAR_ESTRUTURA_E_CONTATOS.sql';
   writeFileSync(outPathA, sqlPartA, 'utf-8');
   console.log(`✅ Gerado: ${outPathA} (${(sqlPartA.length / 1024).toFixed(1)} KB)`);
 
-  const outPathB = 'supabase/migrations/05B_SINCRONIZAR_218_CONTRATOS.sql';
+  const outPathB = 'supabase/manual/dados_reais/05B_SINCRONIZAR_218_CONTRATOS.sql';
   writeFileSync(outPathB, sqlPartB, 'utf-8');
   console.log(`✅ Gerado: ${outPathB} (${(sqlPartB.length / 1024).toFixed(1)} KB)`);
 
-  const outPathC = 'supabase/migrations/05C_SINCRONIZAR_218_CLIENTES_POSVENDA.sql';
+  const outPathC = 'supabase/manual/dados_reais/05C_SINCRONIZAR_218_CLIENTES_POSVENDA.sql';
   writeFileSync(outPathC, sqlPartC, 'utf-8');
   console.log(`✅ Gerado: ${outPathC} (${(sqlPartC.length / 1024).toFixed(1)} KB)`);
 
-  const outPathD = 'supabase/migrations/05D_SINCRONIZAR_AGENDA_METAS_TAREFAS.sql';
+  const outPathD = 'supabase/manual/dados_reais/05D_SINCRONIZAR_AGENDA_METAS_TAREFAS.sql';
   writeFileSync(outPathD, sqlPartD, 'utf-8');
   console.log(`✅ Gerado: ${outPathD} (${(sqlPartD.length / 1024).toFixed(1)} KB)`);
 
@@ -460,11 +460,11 @@ async function main() {
     `  (SELECT count(*) FROM public.admin_tasks) as total_tarefas_admin;`
   ].join('\n');
 
-  const outPathPending = 'supabase/migrations/05_APENAS_O_QUE_FALTA_EM_PRODUCAO.sql';
+  const outPathPending = 'supabase/manual/dados_reais/05_APENAS_O_QUE_FALTA_EM_PRODUCAO.sql';
   writeFileSync(outPathPending, sqlPending, 'utf-8');
   console.log(`✅ Gerado: ${outPathPending} (${(sqlPending.length / 1024).toFixed(1)} KB)`);
 
-  const outPathFull = 'supabase/migrations/05_SINCRONIZAR_PRODUCAO_218_CONTRATOS_CLIENTES_AGENDA.sql';
+  const outPathFull = 'supabase/manual/dados_reais/05_SINCRONIZAR_PRODUCAO_218_CONTRATOS_CLIENTES_AGENDA.sql';
   writeFileSync(outPathFull, sqlFull, 'utf-8');
   console.log(`✅ Gerado unificado: ${outPathFull} (${(sqlFull.length / 1024).toFixed(1)} KB)`);
 }

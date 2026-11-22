@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Truck, X, AlertTriangle, Loader2 } from 'lucide-react';
+import { Select } from '../ui';
 
 interface AdminConvertToSupplierModalProps {
   isOpen: boolean;
@@ -154,7 +155,7 @@ export const AdminConvertToSupplierModal: React.FC<AdminConvertToSupplierModalPr
             >
               Categoria do Fornecedor
             </label>
-            <select
+            <Select
               value={category}
               onChange={(e) => setCategory(e.target.value)}
               disabled={isLoading}
@@ -170,11 +171,11 @@ export const AdminConvertToSupplierModal: React.FC<AdminConvertToSupplierModalPr
               }}
             >
               {SUPPLIER_CATEGORIES.map((cat) => (
-                <option key={cat} value={cat} style={{ background: '#1E293B', color: '#FFFFFF' }}>
+                <option key={cat} value={cat}>
                   {cat}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
 
           {/* Footer Actions */}

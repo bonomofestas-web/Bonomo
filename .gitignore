@@ -36,3 +36,6 @@ scripts/*.json
 # Local agent & tool configs
 .playwright-mcp/
 .mcp.json
+
+# SQLs de producao com dados reais de clientes (nunca versionar)
+supabase/manual/dados_reais/

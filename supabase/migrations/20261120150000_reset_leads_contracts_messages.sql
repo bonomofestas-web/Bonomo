@@ -20,7 +20,7 @@
 --   tarefas e compromissos sem lead.
 --
 -- SEGURANCA
---   1. TRAVA: nada e apagado enquanto v_confirm for 'NAO'. NESTA COPIA ESTA 'SIM' (pronto para executar).
+--   1. TRAVA: nada e apagado enquanto v_confirm for 'NAO'. NESTA COPIA ESTA 'NAO' (desarmado; mude para 'SIM' so manualmente, no SQL Editor).
 --   2. BACKUP: antes de apagar, copia as tabelas afetadas para o schema reset_backup_20261120 (mesma transacao).
 --      Esse schema NAO e exposto pela API. Quando tiver certeza, remova com:
 --        DROP SCHEMA reset_backup_20261120 CASCADE;
@@ -183,7 +183,7 @@ $f$ LANGUAGE plpgsql;
 DO $$
 DECLARE
     -- >>>>>>>>>> TRAVA DE CONFIRMACAO: 'SIM' = executa de verdade; 'NAO' = nada e alterado <<<<<<<<<<
-    v_confirm CONSTANT TEXT := 'SIM';
+    v_confirm CONSTANT TEXT := 'NAO';
     -- >>>>>>>>>> DEDUPE DE CONTATOS depois do reset: TRUE = aplica; FALSE = so o reset <<<<<<<<<<
     v_dedupe  CONSTANT BOOLEAN := TRUE;
 

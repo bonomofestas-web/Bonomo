@@ -718,13 +718,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             .select('*')
             .eq('type', 'whatsapp_api')
             .order('created_at', { ascending: true });
-          matchedSource = (srcs || []).find((s: any) => 
+          const normName = candidateInstanceName.toLowerCase().trim();
+          const nameMatches = (srcs || []).filter((s: any) =>
             s.whatsapp_instance_id === candidateInstanceName ||
-            (s.configuration?.instanceName && String(s.configuration.instanceName).toLowerCase().trim() === candidateInstanceName.toLowerCase().trim()) ||
-            (s.name && String(s.name).toLowerCase().trim() === candidateInstanceName.toLowerCase().trim()) ||
-            (s.whatsapp_instance_id && s.whatsapp_instance_id.toLowerCase().trim() === candidateInstanceName.toLowerCase().trim()) ||
+            (s.configuration?.instanceName && String(s.configuration.instanceName).toLowerCase().trim() === normName) ||
+            (s.name && String(s.name).toLowerCase().trim() === normName) ||
+            (s.whatsapp_instance_id && s.whatsapp_instance_id.toLowerCase().trim() === normName) ||
             (candidateOwner && (s.configuration?.connectedPhone || '').replace(/\D/g, '') === candidateOwner)
           );
+          // Isolamento: nome ambiguo (mais de uma origem, possivelmente de Masters diferentes) nao roteia.
+          if (nameMatches.length === 1) {
+            matchedSource = nameMatches[0];
+          } else if (nameMatches.length > 1) {
+            console.warn(`[Webhook] instanceName "${candidateInstanceName}" ambiguo (${nameMatches.length} origens). Ignorado por seguranca.`);
+          }
         }
 
         // Instância sem origem cadastrada: ignora. Nunca busca nem cria lead "no sistema inteiro" (isolamento por Master).
