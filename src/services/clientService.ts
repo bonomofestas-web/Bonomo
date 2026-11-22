@@ -124,6 +124,9 @@ export const clientService = {
           funnelEnteredAt: row.funnel_entered_at || (row.created_at ? new Date(row.created_at).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]),
           tags: (row.tags as string[]) || [],
           contractTitle: row.contract_title || commHist.contractTitle || undefined,
+          contractId: row.contract_id || (row as any).contractId || row.migrated_to_contract_id || undefined,
+          migratedToContractId: row.migrated_to_contract_id || (row as any).migratedToContractId || undefined,
+          migratedToContactId: row.migrated_to_contact_id || undefined,
           hasCreditCard: row.has_credit_card !== undefined && row.has_credit_card !== null 
             ? Boolean(row.has_credit_card) 
             : (commHist.hasCreditCard !== undefined ? Boolean(commHist.hasCreditCard) : undefined),
@@ -131,7 +134,9 @@ export const clientService = {
           eventYear: row.event_year || commHist.eventYear || undefined,
           createdAt: row.created_at ? new Date(row.created_at).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
           updatedAt: row.updated_at ? new Date(row.updated_at).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
-        };
+          migrated_to_contract_id: row.migrated_to_contract_id || undefined,
+          contract_id: row.contract_id || row.migrated_to_contract_id || undefined,
+        } as unknown as Client;
       });
 
       // Complementa com contratos homologados caso existam no banco sem registro correspondente em clients
@@ -323,6 +328,9 @@ export const clientService = {
       if ((client as any).hasCreditCard !== undefined) payload.has_credit_card = (client as any).hasCreditCard;
       if ((client as any).profession !== undefined) payload.profession = (client as any).profession;
       if (client.contractTitle !== undefined) payload.contract_title = client.contractTitle;
+      if (client.contractId !== undefined) payload.contract_id = client.contractId;
+      if (client.migratedToContractId !== undefined) payload.migrated_to_contract_id = client.migratedToContractId;
+      if ((client as any).migrated_to_contract_id !== undefined) payload.migrated_to_contract_id = (client as any).migrated_to_contract_id;
       if (client.eventYear !== undefined) payload.event_year = String(client.eventYear);
       if (client.notes !== undefined) payload.notes = client.notes;
       if (client.documents !== undefined) payload.documents = client.documents;

@@ -102,7 +102,7 @@ const STORAGE_KEY_USER = 'bonomo_admin_user_v7';
 const STORAGE_KEY_COLLABORATORS = 'bonomo_admin_collaborators_v7';
 const STORAGE_KEY_VENUES = 'bonomo_admin_venues_v7';
 const STORAGE_KEY_DEBUTANTES = 'bonomo_admin_debutantes_v7';
-const STORAGE_KEY_CLIENTS = 'bonomo_admin_clients_v8';
+const STORAGE_KEY_CLIENTS = 'bonomo_admin_clients_v9';
 const STORAGE_KEY_AGENDA_CONFIGS = 'bonomo_admin_agenda_configs_v1';
 const STORAGE_KEY_APPOINTMENTS = 'bonomo_admin_appointments_v1';
 const STORAGE_KEY_LEADS = 'f5_admin_leads_v11';
@@ -5509,6 +5509,10 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       commercialLeadId: clientData.commercialLeadId,
       commercialLeadCode: clientData.commercialLeadCode,
       commercialHistory: clientData.commercialHistory,
+      contractTitle: clientData.contractTitle,
+      contractId: clientData.contractId,
+      migratedToContractId: clientData.migratedToContractId || (clientData as any).migrated_to_contract_id,
+      contacts: clientData.contacts || [],
       notes: clientData.notes || '',
       documents: clientData.documents || [],
       activities: clientData.activities || [

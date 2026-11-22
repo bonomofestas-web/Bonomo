@@ -1161,6 +1161,46 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             }
           }
 
+          // HERANÇA AUTOMÁTICA DE CONTRATO ENTRE FUNIS:
+          // Se o telefone recebido pertence aos contatos/família de um contrato existente no tenant (master):
+          // O novo lead herda automaticamente o contrato vinculado e tags de contrato!
+          let autoContractId: string | null = null;
+          let autoContractTitle: string | null = null;
+          let autoContractCode: string | null = null;
+          if (finalPhone && venueMasterId) {
+            const digits = finalPhone.replace(/\D/g, '').slice(-8);
+            if (digits.length >= 8) {
+              try {
+                const { data: matchedContracts } = await supabase
+                  .from('contracts')
+                  .select('id, contract_code, contract_title, title, client_snapshot, contacts')
+                  .eq('master_id', venueMasterId)
+                  .order('created_at', { ascending: false })
+                  .limit(200);
+
+                if (matchedContracts && matchedContracts.length > 0) {
+                  const found = matchedContracts.find((c: any) => {
+                    const snap = c.client_snapshot as any;
+                    const snapPhone = (snap?.phone || '').replace(/\D/g, '').slice(-8);
+                    if (snapPhone === digits) return true;
+                    const cts = c.contacts as any;
+                    if (Array.isArray(cts) && cts.some((ct: any) => (ct?.phone || '').replace(/\D/g, '').slice(-8) === digits)) {
+                      return true;
+                    }
+                    return false;
+                  });
+                  if (found) {
+                    autoContractId = found.id;
+                    autoContractTitle = found.contract_title || found.title;
+                    autoContractCode = found.contract_code;
+                  }
+                }
+              } catch (contractErr: any) {
+                console.warn('[Webhook] Erro ao buscar herança de contrato:', contractErr.message);
+              }
+            }
+          }
+
           const newLead: any = {
             id: leadId,
             code: isPostSaleTarget ? `CLI-${randomPart}` : leadCode,
@@ -1174,7 +1214,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             stage: targetStage,
             group: isPostSaleTarget ? 'Pós-Venda' : 'WhatsApp',
             is_client: isPostSaleTarget,
-            tags: isPostSaleTarget ? ['Cliente'] : [],
+            tags: [
+              ...(isPostSaleTarget ? ['Cliente'] : []),
+              ...(autoContractId ? ['Contrato Vinculado'] : []),
+            ],
             unread_count: (isFromMe || isHistory) ? 0 : 1,
             notes: isFromMe ? `Conversa iniciada via WhatsApp: "${initialNoteText}"` : `Primeira mensagem via WhatsApp: "${initialNoteText}"`,
             // Data de ENTRADA: a da mensagem real (historico nunca entra "hoje"); ao vivo e praticamente o mesmo instante
@@ -1184,7 +1227,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             last_message_direction: isFromMe ? 'outgoing' : 'incoming',
             last_message_text: lastMessagePreview(text, mediaUrl, mediaType) || null,
             last_message_at: activityIso,
-            custom_field_values: isLid ? { whatsappLid: cleanPhone, whatsapp_lid: cleanPhone } : {},
+            migrated_to_contract_id: autoContractId,
+            custom_field_values: {
+              ...(isLid ? { whatsappLid: cleanPhone, whatsapp_lid: cleanPhone } : {}),
+              ...(autoContractId ? {
+                contractId: autoContractId,
+                contractTitle: autoContractTitle,
+                contractCode: autoContractCode,
+                associated_contract_id: autoContractId,
+              } : {}),
+            },
           };
 
           const { error: leadErr } = await supabase.from('leads').insert([newLead]);

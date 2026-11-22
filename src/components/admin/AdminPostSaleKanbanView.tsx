@@ -887,51 +887,87 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
     let list = allClients.filter(client => {
       if ((client as any).isRemovedFromFunnel || client.stage === 'archived') return false;
 
-      // Se for um card que NÃO é o card oficial do contrato (ex: familiar, mãe, ou lead avulso):
-      // Se este contato já estiver vinculado a um contrato oficial na esteira (por ID de contrato ou por telefone
-      // na lista de familiares/contatos do contrato), ele NÃO deve aparecer como um card avulso separado no Kanban,
-      // pois o contrato oficial do evento já é o card representativo no Kanban!
+      // Se for um card secundário/familiar (CLI- ou com vínculo familiar) ou lead avulso:
+      // Se este contato já estiver vinculado a um contrato oficial na esteira (por ID de contrato,
+      // por título de contrato coincidente, ou por telefone/contatos na família do contrato),
+      // ele NÃO deve aparecer como um card avulso separado no Kanban de Pós-Venda,
+      // pois o contrato oficial do evento (CTR-...) já é o card representativo oficial do evento no Kanban!
       const isOfficialContractCard = contractClientIds
         ? contractClientIds.has(client.id)
         : (client.code?.startsWith('CTR-') || Boolean(client.contractTitle && !client.payerRelationship));
 
-      if (!isOfficialContractCard) {
-        // 1. Checagem direta por ID de contrato vinculado
-        const assocContractId = (client as any).contractId || (client as any).contract_id || (client as any).associated_contract_id || (client as any).migrated_to_contract_id;
-        if (assocContractId) {
-          const contractCardAlreadyOnBoard = baseClientsList.some(c =>
-            c.id !== client.id && (
+      const isSecondaryOrLoose = !isOfficialContractCard || client.code?.startsWith('CLI-');
+
+      if (isSecondaryOrLoose) {
+        // Checagem se o contrato oficial deste evento já está presente na esteira
+        const contractCardAlreadyOnBoard = baseClientsList.some(c => {
+          if (c.id === client.id) return false;
+          const isTargetOfficial = contractClientIds
+            ? contractClientIds.has(c.id)
+            : (c.code?.startsWith('CTR-') || Boolean(c.contractTitle && !c.payerRelationship));
+          if (!isTargetOfficial && !c.code?.startsWith('CTR-')) return false;
+
+          // 1. Título do Contrato Coincidente (ex: "Vitória Rodrigues 15 anos")
+          if (
+            client.contractTitle &&
+            c.contractTitle &&
+            client.contractTitle.trim().toLowerCase() === c.contractTitle.trim().toLowerCase()
+          ) {
+            return true;
+          }
+
+          // 2. Checagem direta por ID de contrato vinculado
+          const assocContractId =
+            (client as any).contractId ||
+            (client as any).contract_id ||
+            (client as any).associated_contract_id ||
+            (client as any).migrated_to_contract_id ||
+            (client as any).migratedToContractId;
+
+          if (assocContractId) {
+            if (
               c.id === assocContractId ||
               (c as any).contractId === assocContractId ||
               (c as any).contract_id === assocContractId ||
               (c as any).migrated_to_contract_id === assocContractId ||
-              (contractClientIds && contractClientIds.has(c.id))
-            )
-          );
-          if (contractCardAlreadyOnBoard) return false;
-        }
+              (c as any).migratedToContractId === assocContractId ||
+              (c as any).contractCode === assocContractId
+            ) {
+              return true;
+            }
+          }
 
-        // 2. Checagem por telefone vinculado na família do contrato
-        const rawPhone = client.payerPhone || (client as any).phone || (client as any).payer_phone || '';
-        const cPhoneDigits = rawPhone.replace(/\D/g, '').slice(-8);
-        if (cPhoneDigits.length >= 8) {
-          const isPartOfContract = baseClientsList.some(c => {
-            if (c.id === client.id) return false;
-            const isTargetOfficial = contractClientIds
-              ? contractClientIds.has(c.id)
-              : (c.code?.startsWith('CTR-') || Boolean(c.contractTitle && !c.payerRelationship));
-            if (!isTargetOfficial) return false;
-
+          // 3. Checagem por telefone vinculado na família/contatos do contrato
+          const rawPhone = client.payerPhone || (client as any).phone || (client as any).payer_phone || '';
+          const cPhoneDigits = rawPhone.replace(/\D/g, '').slice(-8);
+          if (cPhoneDigits.length >= 8) {
             const pDigits = (c.payerPhone || (c as any).payer_phone || (c as any).phone || '').replace(/\D/g, '').slice(-8);
             if (pDigits === cPhoneDigits) return true;
             const contactsList = c.contacts || (c as any).contacts;
             if (Array.isArray(contactsList) && contactsList.some((ct: any) => (ct?.phone || '').replace(/\D/g, '').slice(-8) === cPhoneDigits)) {
               return true;
             }
-            return false;
-          });
-          if (isPartOfContract) return false;
-        }
+          }
+
+          // 4. Telefone de qualquer subcontato do card secundário batendo com o contrato
+          if (Array.isArray(client.contacts)) {
+            const subDigits = client.contacts
+              .map((ct: any) => (ct?.phone || '').replace(/\D/g, '').slice(-8))
+              .filter((d: string) => d.length >= 8);
+            if (subDigits.length > 0) {
+              const cDigits = (c.payerPhone || (c as any).payer_phone || (c as any).phone || '').replace(/\D/g, '').slice(-8);
+              if (subDigits.includes(cDigits)) return true;
+              const cContactsList = c.contacts || (c as any).contacts;
+              if (Array.isArray(cContactsList) && cContactsList.some((ct: any) => subDigits.includes((ct?.phone || '').replace(/\D/g, '').slice(-8)))) {
+                return true;
+              }
+            }
+          }
+
+          return false;
+        });
+
+        if (contractCardAlreadyOnBoard) return false;
       }
 
       // 0. Funil Vinculado e Unidades (Isolamento Estrito de Funis de Pós-Venda)

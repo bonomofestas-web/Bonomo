@@ -909,6 +909,8 @@ export interface Client {
 
   packageSold: string;                   // Pacote fechado (ex: Pacote Imperial Ouro)
   contractTitle?: string;                // Título persistido do contrato ex: 'Roberto Carlos – Manuella 15 Anos'
+  contractId?: string;                   // ID do contrato homologado vinculado
+  migratedToContractId?: string;         // ID do contrato de destino caso seja um card de familiar migrado
   contractFileUrl?: string;              // Arquivo do contrato assinado
   paymentFileUrl?: string;               // Comprovante de entrada / sinal
   dealValue: number;                     // Valor total do contrato (R$)

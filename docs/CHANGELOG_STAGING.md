@@ -42,6 +42,12 @@ Grande reestruturação de governança, experiência do usuário, banco de dados
 
 ### Recursos e Melhorias em Staging
 
+- **Ocultação Definitiva de Cards de Familiares no Kanban de Pós-Venda:**
+  * **Deduplicação de Cards por Título, Telefone e ID de Contrato:** Implementado filtro à prova de falhas em `AdminPostSaleKanbanView.tsx` que oculta automaticamente qualquer card secundário (`CLI-` ou contato familiar como mãe/pai) quando o card oficial do contrato (`CTR-`) correspondente estiver presente no quadro do evento.
+  * **Mapeamento de Contrato no ClientService:** Adicionado mapeamento explícito de `migrated_to_contract_id` e `contract_id` em `clientService.ts` para que o estado do React reconheça instantaneamente o vínculo do contrato.
+  * **Herança Automática de Contratos entre Funis:** Mensagens recebidas no WhatsApp (`api/whatsapp-webhook.ts`) e novos leads criados passam a detectar automaticamente se o telefone pertence a um contato ou familiar de contrato homologado. O novo lead/cliente herda de imediato o vínculo contratual (`contract_id`, `contract_title`, `contract_code` e tags), eliminando cadastros e vínculos manuais repetidos.
+  * **Invalidação de Cache de Clientes (LocalStorage v9):** Chave de armazenamento atualizada para `bonomo_admin_clients_v9`, forçando o descarte de dados desatualizados do navegador.
+
 - **Roteamento Estrito de Mensagens por Instância e Funil de Origem:**
   * **Match Estrito de Origem no Webhook:** Erradicado o match frouxo por substring (`.includes()`) em `api/whatsapp-webhook.ts` que casava incorretamente com origens sem funil (como o seed do Financeiro). O vínculo com a origem agora exige correspondência exata de token, ID da instância ou telefone conectado.
   * **Escopo 100% Amarrado ao Funil Alvo da Instância:** A verificação se o número já existe no sistema é avaliada **estritamente dentro do funil ao qual a instância receptora pertence**. Se o número não existir naquele funil específico, um novo lead/cliente é criado imediatamente na primeira etapa configurada daquela esteira — mesmo que o contato já possua histórico em outros funis da empresa.
