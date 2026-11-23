@@ -453,6 +453,8 @@ export interface AdminContextType {
     initialStage?: CrmStage;
     /** Hora REAL da (primeira) mensagem. Sincronização usa a da primeira mensagem puxada: o lead nunca "entra hoje". */
     messageTimestamp?: string;
+    /** wamid da mensagem: deduplica com a atividade gravada pelo webhook */
+    messageId?: string;
   }) => Promise<string>;
   createLead: (data: {
     name: string;
@@ -5093,20 +5095,25 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       // 1. Verificação instantânea do cache em LocalStorage (0ms)
       const cached = leadService.getActivitiesFromCache(leadId);
       if (cached && cached.length > 0) {
-        setLeads(prev => prev.map(lead => {
-          if (lead.id !== leadId) return lead;
-          const currentActs = lead.activities || [];
-          if (currentActs.length >= cached.length) return lead;
-          const existingIds = new Set(currentActs.map(a => a.id));
-          const newActs = cached.filter(a => !existingIds.has(a.id));
-          if (newActs.length === 0) return lead;
-          return {
-            ...lead,
-            activities: [...currentActs, ...newActs].sort(
-              (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-            ),
-          };
-        }));
+        setLeads(prev => {
+          let changed = false;
+          const next = prev.map(lead => {
+            if (lead.id !== leadId) return lead;
+            const currentActs = lead.activities || [];
+            if (currentActs.length >= cached.length) return lead;
+            const existingIds = new Set(currentActs.map(a => a.id));
+            const newActs = cached.filter(a => !existingIds.has(a.id));
+            if (newActs.length === 0) return lead;
+            changed = true;
+            return {
+              ...lead,
+              activities: [...currentActs, ...newActs].sort(
+                (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+              ),
+            };
+          });
+          return changed ? next : prev;
+        });
       }
 
       // 2. Busca do Supabase as mensagens mais recentes do lead de forma rápida e otimizada
@@ -5119,7 +5126,10 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       if (!res || !res.activities || res.activities.length === 0) return false;
 
       setLeads(prev => {
-        return prev.map(lead => {
+        // Devolve a MESMA referência quando nada muda: um array novo a cada chamada re-renderiza o app inteiro
+        // e realimenta os efeitos que dependem de `leads` (loop de requisições a lead_activities).
+        let changed = false;
+        const next = prev.map(lead => {
           if (lead.id !== leadId) return lead;
           const currentActs = lead.activities || [];
           const existingById = new Map(currentActs.map(a => [a.id, a]));
@@ -5131,12 +5141,14 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           });
           if (!hasNew && !needsEnrich) return lead;
 
+          changed = true;
           const merged = mergeAndSortActivities(currentActs, res.activities, lead.id);
           return {
             ...lead,
             activities: merged,
           };
         });
+        return changed ? next : prev;
       });
       return true;
     } catch (err) {
@@ -6905,6 +6917,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     initialFunnelId?: string;
     initialStage?: CrmStage;
     messageTimestamp?: string;
+    messageId?: string;
   }): Promise<string> => {
     const cleanPhoneDigits = data.phone.replace(/\D/g, '');
     // Hora da mensagem (real) — nunca "agora" quando a mensagem é antiga (sincronização)
@@ -6979,11 +6992,13 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       }
     }
 
-    // Auto-resolução automática de duplicados se configurado no Funil
+    // Auto-resolução automática de duplicados se configurado no Funil.
+    // Duplicidade só existe DENTRO do mesmo funil: o mesmo número em funis diferentes (origens diferentes) nunca é mesclado/excluído.
     const targetFunnel = funnels.find(f => f.id === (incomingFunnelId || existing?.funnelId));
-    if (candidateLeads.length > 1 && targetFunnel?.duplicateRuleConfig?.autoResolve) {
+    const sameFunnelCandidates = targetFunnel ? candidateLeads.filter(l => l.funnelId === targetFunnel.id) : [];
+    if (sameFunnelCandidates.length > 1 && targetFunnel?.duplicateRuleConfig?.autoResolve) {
       const autoAction = targetFunnel.duplicateRuleConfig.action;
-      const sortedByAge = [...candidateLeads].sort((a, b) => new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime());
+      const sortedByAge = [...sameFunnelCandidates].sort((a, b) => new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime());
       const oldest = sortedByAge[0];
       const newest = sortedByAge[sortedByAge.length - 1];
 
@@ -7026,7 +7041,9 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           authorName: data.fromMe ? 'WhatsApp' : (existing.name || 'Cliente'),
           authorId: data.fromMe ? 'whatsapp_mobile' : 'lead',
           status: data.fromMe ? 'sent' : 'delivered',
+          ...(data.messageId ? { messageId: data.messageId } : {}),
           metadata: {
+            ...(data.messageId ? { messageId: data.messageId } : {}),
             sourceId: waSource?.id,
             senderSourceId: waSource?.id,
             senderSourceName: waSource?.name,
@@ -7334,9 +7351,17 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
     uazapiSseService.syncActiveInstances(activeWaTokens);
 
-    // Auto-configura webhook da UAZAPI para garantir ingestão mesmo quando o navegador estiver fechado
-    if (typeof window !== 'undefined' && activeWaTokens.length > 0) {
-      const webhookUrl = `${window.location.origin}/api/whatsapp-webhook`;
+    // Auto-configura webhook da UAZAPI para garantir ingestão mesmo quando o navegador estiver fechado.
+    // Nunca a partir de dev/preview: apontaria a instância real para um endereço que a UAZAPI não alcança
+    // (localhost, IP de rede local, preview *.vercel.app) e as mensagens parariam de entrar.
+    const envWebhookUrl = String((import.meta as any).env?.VITE_WEBHOOK_PUBLIC_URL || '').trim();
+    const host = typeof window !== 'undefined' ? window.location.hostname : '';
+    const isNonProductionHost = !host ||
+      host === 'localhost' || host.endsWith('.localhost') || host === '0.0.0.0' || host === '[::1]' ||
+      /^(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host) ||
+      host.endsWith('.vercel.app') || host.endsWith('.local');
+    if (typeof window !== 'undefined' && activeWaTokens.length > 0 && (envWebhookUrl || !isNonProductionHost)) {
+      const webhookUrl = envWebhookUrl || `${window.location.origin}/api/whatsapp-webhook`;
       activeWaTokens.forEach(tok => {
         uazapiService.configureWebhook(tok, {
           url: webhookUrl,
@@ -7411,6 +7436,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         const tokenOf = (s: any) => String(s.whatsappInstanceId || s.configuration?.token || s.configuration?.instanceToken || s.configuration?.instanceKey || '').trim();
         const phoneOf = (s: any) => String(s.configuration?.connectedPhone || '').replace(/\D/g, '');
         const matchedSource =
+          // Token canônico (whatsappInstanceId) vence token velho esquecido no `configuration` de outra origem
+          (incomingToken ? currentSources.find(s => String(s.whatsappInstanceId || '').trim() === incomingToken) : undefined) ||
           (incomingToken ? currentSources.find(s => tokenOf(s) && tokenOf(s) === incomingToken) : undefined) ||
           (incomingToken ? currentSources.find(s => phoneOf(s) && phoneOf(s) === incomingToken.replace(/\D/g, '')) : undefined) ||
           (incomingOwner ? currentSources.find(s => phoneOf(s) && phoneOf(s) === incomingOwner) : undefined) ||
@@ -7455,13 +7482,6 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         const targetSourceFunnelId = matchedSource?.funnelId;
         const isSourcePostSale = targetSourceFunnelId === 'post_sale_default' ||
           funnels.some(f => f.id === targetSourceFunnelId && (f.isPostSale || f.category === 'Pós-Venda'));
-
-        // Separação estrita: se a origem for Comercial, filtra apenas leads comerciais (!isClient);
-        // se a origem for Pós-Venda, filtra apenas clientes (isClient === true)
-        const eligibleTypeLeads = tenantLeads.filter(l => {
-          const isClient = Boolean(l.isClient || l.group === 'Pós-Venda' || (Array.isArray(l.tags) && l.tags.some(t => t.toLowerCase() === 'cliente')));
-          return isSourcePostSale ? isClient : !isClient;
-        });
 
         // Conversa de CONTRATO (pos-venda): origem de pos-venda casa primeiro com o cliente pelo telefone
         // (contratante ou pessoas vinculadas) e grava a mensagem em clients.activities e no Supabase.
@@ -7540,7 +7560,9 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         // 1ª Prioridade: Buscar lead existente ESTRITAMENTE DENTRO DO FUNIL da origem receptora
         let matchedLead: Lead | null = null;
         if (targetSourceFunnelId) {
-          const funnelSpecificLeads = eligibleTypeLeads.filter(l => l.funnelId === targetSourceFunnelId);
+          // Dentro do funil da origem vale qualquer card do numero (mesma regra do webhook, sem filtro comercial/cliente),
+          // senao o navegador criaria um card duplicado que o servidor nao cria.
+          const funnelSpecificLeads = tenantLeads.filter(l => l.funnelId === targetSourceFunnelId);
           const matchInFunnel = findMatchingLead(funnelSpecificLeads, {
             phone: cleanPhone,
             jid: rawJid,
@@ -7550,9 +7572,10 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           if (matchInFunnel.matchedLead) {
             matchedLead = matchInFunnel.matchedLead;
           }
-        } else if (matchedSource?.id) {
-          // Apenas para origens legadas/avulsas sem funil vinculado
-          const globalMatch = findMatchingLead(originlessCarrierLeads(eligibleTypeLeads, currentSources, matchedSource.id), {
+        }
+        if (!matchedLead && matchedSource?.id) {
+          // Card que foi para um funil SEM WhatsApp proprio (ex.: follow-up) e conversa por esta instancia: segue o card
+          const globalMatch = findMatchingLead(originlessCarrierLeads(tenantLeads.filter(l => l.funnelId !== targetSourceFunnelId), currentSources, matchedSource.id), {
             phone: cleanPhone,
             jid: rawJid,
             lid: rawLid,
@@ -7799,6 +7822,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             initialFunnelId: matchedSource?.funnelId || (isTargetPostSale ? 'post_sale_default' : undefined),
             initialStage: isTargetPostSale ? ('new_lead' as any) : undefined,
             messageTimestamp: incoming.timestamp,
+            messageId: incoming.messageId,
           });
 
           if (newId && incoming.instanceToken) {

@@ -47,7 +47,7 @@ const InstagramIcon: React.FC<{ size?: number; className?: string; color?: strin
   </svg>
 );
 import { useAdminState } from '../../context/AdminStateContext';
-import { uazapiService } from '../../services/uazapiService';
+import { uazapiService, isUazapiNetworkError } from '../../services/uazapiService';
 import { isMessagingPaused, MESSAGING_PAUSED_TEXT } from '../../utils/messagingPause';
 import { useMessagingPause } from '../../hooks/useMessagingPause';
 import { MessagingPausedBanner } from './MessagingPausedBanner';
@@ -3870,6 +3870,29 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     }
   };
 
+  // Sem resposta do servidor (rede/timeout): a mensagem pode ter saído. Confere no chat da instância se há uma
+  // mensagem nossa com o mesmo texto nos últimos minutos; se houver, devolve o id dela (evita reenvio duplicado).
+  const findRecentlySentMessageId = async (token: string, phone: string, text: string): Promise<string | null> => {
+    try {
+      const chatNumber = normalizeWhatsAppNumber(phone).replace(/@.*$/, '');
+      const recent = await uazapiService.fetchChatMessages(token, chatNumber, 10);
+      const wanted = text.trim();
+      const minMs = Date.now() - 3 * 60 * 1000;
+      for (let i = recent.length - 1; i >= 0; i--) {
+        const m: any = recent[i];
+        const fromMe = m?.fromMe === true || m?.key?.fromMe === true;
+        if (!fromMe) continue;
+        const rawTs = Number(m?.messageTimestamp || 0);
+        const tsMs = rawTs > 0 ? (rawTs > 1e11 ? rawTs : rawTs * 1000) : new Date(m?.timestamp || m?.createdAt || 0).getTime();
+        if (tsMs && tsMs < minMs) continue;
+        const body = String(m?.text || m?.content?.text || m?.content || m?.body || m?.message?.conversation || m?.message?.extendedTextMessage?.text || '').trim();
+        if (body !== wanted) continue;
+        return String(m?.messageid || m?.key?.id || m?.id || '') || null;
+      }
+    } catch { /* sem confirmação: segue como falha */ }
+    return null;
+  };
+
   // Handle Send Message / Note
   const handleSendMessage = async (e?: React.FormEvent, directText?: string) => {
     if (e) e.preventDefault();
@@ -4031,6 +4054,26 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       } catch (err: any) {
         console.error('Disparo UAZAPI falhou:', err);
         const errMsg = err?.message || 'Falha ao conectar com o WhatsApp via UAZAPI';
+        // Sem resposta do servidor: confirma no chat da instância se a mensagem saiu antes de marcar falha
+        const confirmedId = isUazapiNetworkError(err)
+          ? await findRecentlySentMessageId(effectiveToken, targetPhone, textToSend)
+          : null;
+        if (confirmedId && newActivity) {
+          const sentActivity: LeadActivity = { ...newActivity, status: 'sent', errorMessage: undefined, messageId: confirmedId };
+          updateLeadActivity(selectedLead.id, newActivity.id, { status: 'sent', errorMessage: undefined, messageId: confirmedId });
+          if (isSupabaseConfigured) {
+            leadService.addActivity(selectedLead.id, sentActivity)
+              .catch(e => console.error('Erro ao salvar mensagem no Supabase:', e));
+            leadService.update(selectedLead.id, {
+              updatedAt: new Date().toISOString().split('T')[0],
+              lastInteractionAt: finalTimestampIso,
+              lastMessageDirection: 'outgoing',
+              lastMessageText: textToSend.slice(0, 200),
+              lastMessageAt: finalTimestampIso,
+            }).catch(() => { });
+          }
+          return;
+        }
         if (newActivity) {
           const failedActivity: LeadActivity = { ...newActivity, status: 'failed', errorMessage: errMsg };
           updateLeadActivity(selectedLead.id, newActivity.id, {
@@ -4071,22 +4114,41 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   // Reenviar mensagem que falhou
   const handleRetryMessage = async (activity: LeadActivity) => {
     if (!selectedLead || !activity || retryingMessageId) return;
-    if (!ensureSenderReady()) return;
+    if (isMessagingPaused()) { toast.error(MESSAGING_PAUSED_TEXT); return; }
+
+    // Reenvia pelo MESMO número da mensagem original (o chip mostrado na bolha). Só usa o selecionado agora
+    // se o original não atende mais o funil do lead. Nunca troca de número em silêncio se o original caiu.
+    const originalSourceId = activity.instanceId || (activity.metadata as any)?.senderSourceId || (activity.metadata as any)?.instanceId;
+    const originalSource = originalSourceId ? venueSenderSources.find(s => s.id === originalSourceId) : undefined;
+    if (originalSource && !isSourceOnline(originalSource)) {
+      toast.error(`O WhatsApp ${originalSource.name} (número desta mensagem) está desconectado. Reconecte antes de reenviar.`);
+      return;
+    }
+    if (!originalSource && !ensureSenderReady()) return;
+    const retrySource = originalSource || activeSenderSource;
+    const retryToken = retrySource ? getSourceInstanceToken(retrySource) : '';
 
     const targetPhone = selectedRecipientPhone || selectedLead.phone;
-    if (!activeSenderToken || !targetPhone) {
-      toast.warning(!activeSenderToken ? 'Nenhum canal de WhatsApp conectado para esta unidade.' : 'Telefone do destinatário não encontrado.');
+    if (!retryToken || !targetPhone) {
+      toast.warning(!retryToken ? 'Nenhum canal de WhatsApp conectado para esta unidade.' : 'Telefone do destinatário não encontrado.');
       return;
     }
 
     setRetryingMessageId(activity.id);
 
     try {
-      if (activity.mediaUrl && activity.mediaType && activity.mediaType !== 'text') {
+      const isMediaRetry = Boolean(activity.mediaUrl && activity.mediaType && activity.mediaType !== 'text');
+      // A tentativa anterior pode ter saído sem resposta do servidor: se já está no chat, só marca como enviada
+      const alreadySentId = !isMediaRetry
+        ? await findRecentlySentMessageId(retryToken, targetPhone, activity.text || activity.title || '')
+        : null;
+      if (alreadySentId) {
+        // segue para o bloco de sucesso abaixo sem reenviar
+      } else if (isMediaRetry) {
         // Reenvia mídia
-        await uazapiService.sendMedia(activeSenderToken, {
+        await uazapiService.sendMedia(retryToken, {
           number: targetPhone,
-          file: activity.mediaUrl,
+          file: activity.mediaUrl as string,
           type: activity.mediaType as any,
           caption: activity.text,
           ptt: activity.mediaType === 'audio',
@@ -4094,7 +4156,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       } else {
         // Reenvia texto
         const textContent = activity.text || activity.title || '';
-        const res = await uazapiService.sendText(activeSenderToken, {
+        const res = await uazapiService.sendText(retryToken, {
           number: targetPhone,
           text: textContent,
           linkPreview: textContent.includes('http://') || textContent.includes('https://'),
@@ -4112,6 +4174,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
         ...activity,
         status: 'sent',
         errorMessage: undefined,
+        instanceId: retrySource?.id || activity.instanceId,
+        ...(alreadySentId ? { messageId: alreadySentId } : {}),
       };
 
       const updatedActivities = (selectedLead.activities || []).map(a =>
@@ -5813,41 +5877,45 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   }, [loadOlderMessages]);
 
   // Carrega a janela de mensagens dos últimos 3 dias de conversa (ancorada na data da última mensagem do lead)
+  // Chave estavel da familia (ultimos 8 digitos dos telefones): o efeito so roda quando a conversa ou a familia muda,
+  // nunca a cada atualizacao de `leads`/`selectedLead` (antes isso gerava centenas de requisicoes por minuto).
+  const conversationFamilyKey = useMemo(() => {
+    const digits = new Set<string>();
+    (availableRecipients || []).forEach(r => {
+      const d = (r.phone || '').replace(/\D/g, '');
+      if (d.length >= 8) digits.add(d.slice(-8));
+    });
+    if (selectedLead && Array.isArray(selectedLead.contacts)) {
+      selectedLead.contacts.forEach((ct: any) => {
+        const d = (ct?.phone || '').replace(/\D/g, '');
+        if (d.length >= 8) digits.add(d.slice(-8));
+      });
+    }
+    return Array.from(digits).sort().join(',');
+  }, [availableRecipients, selectedLead?.contacts]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const conversationLeadsRef = useRef({ leads, sourceLeads, funnelId: selectedLead?.funnelId });
+  conversationLeadsRef.current = { leads, sourceLeads, funnelId: selectedLead?.funnelId };
+
   useEffect(() => {
     if (!selectedLeadId || (composerTab !== 'whatsapp' && composerTab !== 'notes')) return;
     loadLeadConversationDays(selectedLeadId, 3);
 
-    // Carrega mensagens do banco para cada número registrado na família deste contrato no mesmo funil
-    const familyDigits = new Set<string>();
-    if (availableRecipients && availableRecipients.length > 0) {
-      availableRecipients.forEach(r => {
-        if (r.phone) {
-          const d = r.phone.replace(/\D/g, '');
-          if (d.length >= 8) familyDigits.add(d.slice(-8));
-        }
-      });
-    }
-    if (selectedLead && Array.isArray(selectedLead.contacts)) {
-      selectedLead.contacts.forEach((ct: any) => {
-        if (ct?.phone) {
-          const d = ct.phone.replace(/\D/g, '');
-          if (d.length >= 8) familyDigits.add(d.slice(-8));
-        }
-      });
-    }
-
-    if (familyDigits.size > 0) {
-      const allCandidates = (leads || []).concat(sourceLeads || []);
-      allCandidates.forEach(sl => {
-        if (!sl || sl.id === selectedLeadId) return;
-        if (sl.funnelId && selectedLead?.funnelId && sl.funnelId !== selectedLead.funnelId) return;
-        const slDigits = (sl.phone || '').replace(/\D/g, '').slice(-8);
-        if (slDigits.length >= 8 && familyDigits.has(slDigits)) {
-          loadLeadConversationDays(sl.id, 3);
-        }
-      });
-    }
-  }, [selectedLeadId, composerTab, loadLeadConversationDays, availableRecipients, selectedLead, leads, sourceLeads]);
+    // Carrega mensagens do banco para cada numero registrado na familia deste contrato no mesmo funil
+    if (!conversationFamilyKey) return;
+    const familyDigits = new Set(conversationFamilyKey.split(','));
+    const { leads: curLeads, sourceLeads: curSourceLeads, funnelId } = conversationLeadsRef.current;
+    const seen = new Set<string>();
+    (curLeads || []).concat(curSourceLeads || []).forEach(sl => {
+      if (!sl || sl.id === selectedLeadId || seen.has(sl.id)) return;
+      if (sl.funnelId && funnelId && sl.funnelId !== funnelId) return;
+      const slDigits = (sl.phone || '').replace(/\D/g, '').slice(-8);
+      if (slDigits.length >= 8 && familyDigits.has(slDigits)) {
+        seen.add(sl.id);
+        loadLeadConversationDays(sl.id, 3);
+      }
+    });
+  }, [selectedLeadId, composerTab, loadLeadConversationDays, conversationFamilyKey]);
 
   // Histórico de Ações e Anotações Internas (Aba Histórico - Sem mensagens de chat do cliente e sem marcadores de caixa de mensagem)
   const historyActivities = useMemo(() => {
