@@ -36,6 +36,15 @@ Período em um único campo: clica no início e no fim.
 <DateRangeField className="adm-input" start={start} end={end} onChange={(s, e) => { setStart(s); setEnd(e); }} />
 ```
 
+### `Checkbox` e `Switch`
+Substituem `<input type="checkbox">` nas telas do portal. `onChange` recebe `{ target: { checked, name } }`, igual ao nativo.
+```tsx
+<Checkbox checked={isDecider} onChange={e => setIsDecider(e.target.checked)} label="É decisor financeiro" />
+<Switch checked={enabled} onChange={e => setEnabled(e.target.checked)} label="Recorrência ativa" />
+```
+- `Switch` para opções que valem na hora (ativo/inativo); `Checkbox` para escolher itens ou confirmar.
+- `Checkbox` aceita `indeterminate`; `Switch` aceita `size="sm"` e `color`.
+
 ### `MonthYearSwitcher`
 Título de calendário clicável: clique no mês abre o seletor de meses; clique no ano abre o seletor de anos (blocos de 12). Use no lugar do texto fixo "Novembro 2026" em **todo** calendário que navega por mês. `CalendarGrid` (portanto `DateField` e `DateRangeField`) já traz isso embutido.
 ```tsx

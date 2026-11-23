@@ -1,15 +1,16 @@
-import { DateField, Select , MonthYearSwitcher } from '../ui';
+import { DateField, Select , MonthYearSwitcher, Switch, Checkbox } from '../ui';
+import { getAppointmentTheme } from '../../utils/appointmentTheme';
 import { toast } from 'sonner';
 import { formatMonthYear } from '../ui';
 import { getTodayLocalStr } from '../../utils/dateUtils';
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { 
   X, Calendar, Trash2, ShieldAlert, Sparkles,
   Check, Copy, ChevronLeft, ChevronRight,
   Plus, Building2, UtensilsCrossed,
   Repeat, CalendarRange, ArrowRight, ArrowLeft, ArrowUp, ArrowDown,
   Edit3, CheckCircle2, AlertCircle, RotateCcw,
-  Users, UserCheck, Send, Search
+  Users, UserCheck, Send, Search, LayoutGrid
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { generateUuid } from '../../utils/uuid';
@@ -64,62 +65,62 @@ interface ToggleSwitchProps {
   size?: 'sm' | 'md';
 }
 
-const ToggleSwitch: React.FC<ToggleSwitchProps> = ({ 
-  checked, 
-  onChange, 
-  disabled = false, 
-  activeColor = '#10B981',
-  size = 'md' 
-}) => {
-  const isSm = size === 'sm';
-  const width = isSm ? '38px' : '48px';
-  const height = isSm ? '22px' : '26px';
-  const knobSize = isSm ? '18px' : '22px';
-  const translate = isSm ? '16px' : '22px';
+const ToggleSwitch: React.FC<ToggleSwitchProps> = ({ checked, onChange, disabled = false, activeColor = '#10B981', size = 'md' }) => (
+  <Switch checked={checked} onChange={e => { e.stopPropagation(); onChange(e.target.checked); }} disabled={disabled} color={activeColor} size={size} />
+);
 
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      disabled={disabled}
-      onClick={(e) => {
-        e.stopPropagation();
-        if (!disabled) onChange(!checked);
-      }}
-      style={{
-        position: 'relative',
-        display: 'inline-flex',
-        alignItems: 'center',
-        width,
-        height,
-        borderRadius: '9999px',
-        background: checked ? activeColor : '#CBD5E1',
-        border: 'none',
-        cursor: disabled ? 'not-allowed' : 'pointer',
-        transition: 'background-color 0.2s ease, box-shadow 0.2s ease',
-        padding: '2px',
-        boxShadow: checked ? `0 2px 8px ${activeColor}40` : 'none',
-        opacity: disabled ? 0.6 : 1,
-        outline: 'none',
-        flexShrink: 0,
-      }}
-    >
-      <span
+interface OverviewRowProps {
+  icon: React.ReactNode;
+  color: string;
+  title: string;
+  description: React.ReactNode;
+  badge?: string;
+  active?: boolean;
+  control?: React.ReactNode;
+  actionLabel?: string;
+  onOpen?: () => void;
+}
+
+/** Linha da visão geral do planejamento: ícone, título, resumo, interruptor opcional e ação de abrir. */
+const OverviewRow: React.FC<OverviewRowProps> = ({ icon, color, title, description, badge, active, control, actionLabel, onOpen }) => (
+  <div style={{
+    background: '#FFFFFF', borderRadius: '12px', padding: '14px 18px', display: 'flex', alignItems: 'center', gap: '14px',
+    border: `1.5px solid ${active ? color : 'var(--adm-border, #E2E8F0)'}`,
+    boxShadow: active ? `0 4px 16px ${color}1a` : '0 1px 4px rgba(0,0,0,0.03)', transition: 'all 0.2s ease',
+  }}>
+    <div style={{
+      width: '40px', height: '40px', borderRadius: '10px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+      background: active ? `${color}18` : `${color}10`, color,
+    }}>
+      {icon}
+    </div>
+    <div style={{ flex: 1, minWidth: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '3px', flexWrap: 'wrap' }}>
+        <span style={{ fontSize: '0.96rem', fontWeight: 800, color: 'var(--adm-text-title, #0F172A)' }}>{title}</span>
+        {badge && (
+          <span style={{ fontSize: '0.68rem', fontWeight: 800, padding: '2px 8px', borderRadius: '12px', background: `${color}14`, color, border: `1px solid ${color}33` }}>
+            {badge}
+          </span>
+        )}
+      </div>
+      <p style={{ margin: 0, fontSize: '0.78rem', color: '#64748B', lineHeight: 1.45 }}>{description}</p>
+    </div>
+    {control}
+    {onOpen && (
+      <button
+        type="button"
+        onClick={onOpen}
         style={{
-          display: 'inline-block',
-          width: knobSize,
-          height: knobSize,
-          borderRadius: '50%',
-          background: '#FFFFFF',
-          boxShadow: '0 1px 3px rgba(0, 0, 0, 0.25)',
-          transform: checked ? `translateX(${translate})` : 'translateX(0)',
-          transition: 'transform 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+          display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '7px 12px', borderRadius: '8px', flexShrink: 0,
+          border: '1px solid #CBD5E1', background: '#F8FAFC', color: '#334155', fontSize: '0.76rem', fontWeight: 700, cursor: 'pointer',
         }}
-      />
-    </button>
-  );
-};
+      >
+        <span>{actionLabel || 'Abrir'}</span>
+        <ChevronRight size={14} color="#64748B" />
+      </button>
+    )}
+  </div>
+);
 
 export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModalProps> = ({
   venueId,
@@ -287,7 +288,31 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
 
   const currentRule = activeType === 'visit' ? visitsRule : tastingsRule;
   const setCurrentRule = activeType === 'visit' ? setVisitsRule : setTastingsRule;
-  const themeColor = activeType === 'visit' ? '#10B981' : '#D97706';
+  const theme = getAppointmentTheme(activeType);
+  const themeColor = theme.color;
+  const themeSoft = theme.soft;
+
+  type PlanningMode = 'hub' | 'recurring' | 'block' | 'override' | 'closers';
+  // Instantâneo das regras ao abrir a grade semanal: "Descartar" volta a ele (antes "Cancelar edição" mantinha as mudanças)
+  const recurringSnapshotRef = useRef<{ visits: AgendaRecurringRule; tastings: AgendaRecurringRule } | null>(null);
+
+  const openMode = (mode: PlanningMode) => {
+    if (mode === 'block') setBlockViewMode('list');
+    if (mode === 'recurring' && activeMode !== 'recurring') {
+      recurringSnapshotRef.current = { visits: visitsRule, tastings: tastingsRule };
+    }
+    setIsEditingRecurring(mode === 'recurring');
+    setActiveMode(mode);
+  };
+
+  const discardRecurringChanges = () => {
+    const snap = recurringSnapshotRef.current;
+    if (snap) {
+      setVisitsRule(snap.visits);
+      setTastingsRule(snap.tastings);
+    }
+    openMode('hub');
+  };
 
   // Auto-Save reativo ao alternar o Modo Livre no Hub
   const handleToggleFreeModeAutoSave = async (willBeFree: boolean) => {
@@ -1115,6 +1140,17 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
 
   const venueName = venues.find(v => v.id === selectedVenueId)?.name || 'Todas as Unidades';
 
+  const planningNavItems: { mode: PlanningMode; label: string; icon: React.ReactNode; badge?: string }[] = [
+    { mode: 'hub', label: 'Visão geral', icon: <LayoutGrid size={16} /> },
+    {
+      mode: 'recurring', label: 'Grade semanal', icon: <Repeat size={16} />,
+      badge: currentRule.isFreeMode ? 'Livre' : (currentRule.enabled !== false ? `${currentRule.enabledDays.length} dias` : 'Off'),
+    },
+    { mode: 'block', label: 'Períodos', icon: <CalendarRange size={16} />, badge: activeTypeBlockRules.length > 0 ? String(activeTypeBlockRules.length) : undefined },
+    { mode: 'override', label: 'Datas especiais', icon: <Calendar size={16} />, badge: dateOverrides.length > 0 ? String(dateOverrides.length) : undefined },
+    { mode: 'closers', label: 'Especialistas', icon: <Users size={16} />, badge: closerDistributionMode === 'round_robin' ? 'Rodízio' : 'Manual' },
+  ];
+
   // ═════════════════════════════════════════════════════════════════════════════
   // MODAL DE PLANEJAMENTO DE AGENDAMENTO (GRADE E DISPONIBILIDADE)
   // ═════════════════════════════════════════════════════════════════════════════
@@ -1154,7 +1190,7 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* HEADER SUPERIOR UNIFICADO */}
+        {/* CABEÇALHO */}
         <div style={{
           padding: '14px 22px',
           borderBottom: '1px solid var(--adm-border, #E2E8F0)',
@@ -1166,42 +1202,26 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
           gap: '14px',
           flexWrap: 'wrap',
         }}>
-          {/* Lado Esquerdo: Voltar (se em sub-modo) ou Ícone + Título */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
-            {activeMode !== 'hub' ? (
+            {activeMode === 'block' && blockViewMode === 'editor' ? (
               <button
                 type="button"
                 onClick={handleUniversalBack}
                 style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  background: 'var(--adm-bg-card, #FFFFFF)',
-                  border: '1px solid var(--adm-border, #CBD5E1)',
-                  color: 'var(--adm-text-title, #0F172A)',
-                  borderRadius: '8px',
-                  padding: '6px 12px',
-                  fontSize: '0.78rem',
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                  flexShrink: 0,
+                  display: 'inline-flex', alignItems: 'center', gap: '6px',
+                  background: 'var(--adm-bg-card, #FFFFFF)', border: '1px solid var(--adm-border, #CBD5E1)',
+                  color: 'var(--adm-text-title, #0F172A)', borderRadius: '8px', padding: '6px 12px',
+                  fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer', flexShrink: 0,
                 }}
               >
                 <ArrowLeft size={14} />
-                <span>Voltar ao Menu</span>
+                <span>Voltar aos períodos</span>
               </button>
             ) : (
               <div style={{
-                width: '36px',
-                height: '36px',
-                borderRadius: '10px',
-                background: '#141118',
-                border: '1px solid rgba(212, 175, 55, 0.3)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: '#D4AF37',
-                flexShrink: 0,
+                width: '36px', height: '36px', borderRadius: '10px', background: themeSoft,
+                border: `1px solid ${theme.border}`, display: 'flex', alignItems: 'center',
+                justifyContent: 'center', color: themeColor, flexShrink: 0,
               }}>
                 <CalendarRange size={18} />
               </div>
@@ -1212,38 +1232,26 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
                 Planejamento de Agendamento
               </h2>
               <p style={{ margin: '1px 0 0', fontSize: '0.72rem', color: 'var(--adm-text-muted, #64748B)' }}>
-                Grade e regras para visitas comerciais e degustações
+                Quando a unidade recebe {activeType === 'visit' ? 'visitas comerciais' : 'degustações'} e quem atende
               </p>
             </div>
           </div>
 
-          {/* Centro: Seletor de Casa + Alternador Visitas/Degustações */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-            {/* Seletor de Unidade */}
             <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              background: 'var(--adm-bg-card, #FFFFFF)',
-              border: '1px solid var(--adm-border, #CBD5E1)',
-              borderRadius: '8px',
-              padding: '4px 8px',
+              display: 'flex', alignItems: 'center', gap: '6px', background: 'var(--adm-bg-card, #FFFFFF)',
+              border: '1px solid var(--adm-border, #CBD5E1)', borderRadius: '8px', padding: '4px 8px',
             }}>
-              <Building2 size={14} color="#D4AF37" />
+              <Building2 size={14} color={themeColor} />
               <Select
                 value={selectedVenueId}
                 onChange={(e) => {
                   setSelectedVenueId(e.target.value);
-                  setActiveMode('hub');
+                  openMode('hub');
                 }}
                 style={{
-                  border: 'none',
-                  background: 'transparent',
-                  color: 'var(--adm-text-title, #0F172A)',
-                  fontSize: '0.78rem',
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                  outline: 'none',
+                  border: 'none', background: 'transparent', color: 'var(--adm-text-title, #0F172A)',
+                  fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer', outline: 'none',
                 }}
               >
                 {venues.map(v => (
@@ -1252,114 +1260,111 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
               </Select>
             </div>
 
-            {/* Alternador Visitas / Degustações */}
             <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '3px',
-              background: 'var(--adm-bg-input, #E2E8F0)',
-              padding: '3px',
-              borderRadius: '8px',
-              border: '1px solid var(--adm-border, #CBD5E1)',
+              display: 'flex', alignItems: 'center', gap: '3px', background: 'var(--adm-bg-input, #E2E8F0)',
+              padding: '3px', borderRadius: '8px', border: '1px solid var(--adm-border, #CBD5E1)',
             }}>
-              <button
-                type="button"
-                onClick={() => setActiveType('visit')}
-                style={{
-                  padding: '5px 12px',
-                  borderRadius: '6px',
-                  border: 'none',
-                  background: activeType === 'visit' ? '#10B981' : 'transparent',
-                  color: activeType === 'visit' ? '#FFFFFF' : 'var(--adm-text-muted, #64748B)',
-                  fontSize: '0.78rem',
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '5px',
-                  transition: 'all 0.15s ease',
-                  boxShadow: activeType === 'visit' ? '0 1px 4px rgba(16,185,129,0.3)' : 'none',
-                }}
-              >
-                <Building2 size={13} />
-                <span>Visitas</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setActiveType('tasting')}
-                style={{
-                  padding: '5px 12px',
-                  borderRadius: '6px',
-                  border: 'none',
-                  background: activeType === 'tasting' ? '#D97706' : 'transparent',
-                  color: activeType === 'tasting' ? '#FFFFFF' : 'var(--adm-text-muted, #64748B)',
-                  fontSize: '0.78rem',
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '5px',
-                  transition: 'all 0.15s ease',
-                  boxShadow: activeType === 'tasting' ? '0 1px 4px rgba(217,119,6,0.3)' : 'none',
-                }}
-              >
-                <UtensilsCrossed size={13} />
-                <span>Degustações</span>
-              </button>
+              {(['visit', 'tasting'] as const).map(kind => {
+                const t = getAppointmentTheme(kind);
+                const selected = activeType === kind;
+                return (
+                  <button
+                    key={kind}
+                    type="button"
+                    onClick={() => setActiveType(kind)}
+                    style={{
+                      padding: '5px 12px', borderRadius: '6px', border: 'none',
+                      background: selected ? t.color : 'transparent',
+                      color: selected ? '#FFFFFF' : 'var(--adm-text-muted, #64748B)',
+                      fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer',
+                      display: 'inline-flex', alignItems: 'center', gap: '5px', transition: 'all 0.15s ease',
+                      boxShadow: selected ? `0 1px 4px ${t.color}4d` : 'none',
+                    }}
+                  >
+                    {kind === 'visit' ? <Building2 size={13} /> : <UtensilsCrossed size={13} />}
+                    <span>{kind === 'visit' ? 'Visitas' : 'Degustações'}</span>
+                  </button>
+                );
+              })}
             </div>
           </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexShrink: 0 }}>
-          {activeMode !== 'hub' && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexShrink: 0 }}>
+            {(activeMode === 'block' || activeMode === 'override') && (
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={isSaving}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '8px 20px',
+                  borderRadius: '8px', background: themeColor, color: '#FFFFFF', border: 'none',
+                  fontSize: '0.84rem', fontWeight: 700, cursor: 'pointer', boxShadow: `0 4px 14px ${themeColor}33`,
+                }}
+              >
+                <Check size={16} />
+                {isSaving ? 'Salvando...' : 'Salvar alterações'}
+              </button>
+            )}
+
             <button
               type="button"
-              onClick={handleSave}
-              disabled={isSaving}
+              onClick={onClose}
               style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '8px 20px',
-                borderRadius: '8px',
-                background: themeColor,
-                color: '#FFFFFF',
-                border: 'none',
-                fontSize: '0.84rem',
-                fontWeight: 700,
-                cursor: 'pointer',
-                boxShadow: `0 4px 14px ${themeColor}33`,
+                background: 'transparent', border: '1px solid var(--adm-border, #CBD5E1)',
+                color: 'var(--adm-text-muted, #64748B)', cursor: 'pointer', padding: '7px', borderRadius: '8px',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
               }}
+              title="Fechar"
             >
-              <Check size={16} />
-              {isSaving ? 'Salvando...' : 'Salvar Alterações'}
+              <X size={18} />
             </button>
-          )}
-
-          <button
-            type="button"
-            onClick={onClose}
-            style={{
-              background: 'transparent',
-              border: '1px solid var(--adm-border, #CBD5E1)',
-              color: 'var(--adm-text-muted, #64748B)',
-              cursor: 'pointer',
-              padding: '7px',
-              borderRadius: '8px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-            title="Fechar"
-          >
-            <X size={18} />
-          </button>
+          </div>
         </div>
-      </div>
 
-      {/* CORPO PRINCIPAL EXPANDIDO */}
+        <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
+          {/* NAVEGAÇÃO LATERAL */}
+          <nav
+            aria-label="Seções do planejamento"
+            style={{
+              width: '216px', flexShrink: 0, padding: '14px 10px', display: 'flex', flexDirection: 'column', gap: '4px',
+              borderRight: '1px solid var(--adm-border, #E2E8F0)', background: 'var(--adm-bg-surface, #F8FAFC)', overflowY: 'auto',
+            }}
+          >
+            {planningNavItems.map(item => {
+              const selected = activeMode === item.mode;
+              return (
+                <button
+                  key={item.mode}
+                  type="button"
+                  onClick={() => openMode(item.mode)}
+                  aria-current={selected ? 'page' : undefined}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 10px', borderRadius: '8px',
+                    border: 'none', textAlign: 'left', cursor: 'pointer', width: '100%',
+                    background: selected ? themeSoft : 'transparent',
+                    color: selected ? theme.text : 'var(--adm-text-title, #334155)',
+                    fontSize: '0.82rem', fontWeight: selected ? 800 : 600, transition: 'background .12s',
+                  }}
+                >
+                  <span style={{ color: selected ? themeColor : '#64748B', display: 'inline-flex', flexShrink: 0 }}>{item.icon}</span>
+                  <span style={{ flex: 1, minWidth: 0 }}>{item.label}</span>
+                  {item.badge && (
+                    <span style={{
+                      fontSize: '0.66rem', fontWeight: 800, padding: '1px 7px', borderRadius: '10px',
+                      background: selected ? '#FFFFFF' : 'rgba(100,116,139,0.12)', color: selected ? theme.text : '#64748B',
+                    }}>
+                      {item.badge}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </nav>
+
+      {/* CORPO PRINCIPAL */}
       <div style={{
         flex: 1,
+        minWidth: 0,
         overflowY: 'auto',
         padding: '24px',
         display: 'flex',
@@ -1367,545 +1372,119 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
         gap: '20px',
         background: 'var(--adm-bg-app, #F8FAFC)',
       }}>
-        {/* ═══════════════════════════════════════════════════════════════════
-            HUB GERAL (3 CARDS COM SETINHA)
-            ═══════════════════════════════════════════════════════════════════ */}
+        {/* ═══ VISÃO GERAL ═══ */}
         {activeMode === 'hub' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', maxWidth: '860px', margin: '0 auto', width: '100%' }}>
-            
-            {/* Banner Moderno quando Nenhuma Modalidade está Ativa */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxWidth: '860px', margin: '0 auto', width: '100%' }}>
             {!currentRule.isFreeMode && currentRule.enabled === false && activeTypeBlockRules.length === 0 && (
               <div style={{
-                background: 'rgba(239, 68, 68, 0.05)',
-                border: '1px solid rgba(239, 68, 68, 0.25)',
-                borderRadius: '12px',
-                padding: '14px 18px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '14px',
-                color: '#991B1B',
-                boxShadow: '0 2px 8px rgba(239, 68, 68, 0.04)',
+                background: 'rgba(239, 68, 68, 0.05)', border: '1px solid rgba(239, 68, 68, 0.25)', borderRadius: '12px',
+                padding: '14px 18px', display: 'flex', alignItems: 'center', gap: '14px', color: '#991B1B',
               }}>
-                <div style={{
-                  width: '36px',
-                  height: '36px',
-                  borderRadius: '10px',
-                  background: 'rgba(239, 68, 68, 0.12)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  flexShrink: 0,
-                  color: '#DC2626',
-                }}>
-                  <AlertCircle size={20} />
-                </div>
+                <AlertCircle size={20} color="#DC2626" style={{ flexShrink: 0 }} />
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: '0.88rem', fontWeight: 800, color: '#B91C1C' }}>
-                    Agenda de {activeType === 'visit' ? 'Visitas Comerciais' : 'Degustações'} Desativada para esta Casa
+                    Agenda de {activeType === 'visit' ? 'visitas comerciais' : 'degustações'} desativada nesta unidade
                   </div>
                   <div style={{ fontSize: '0.76rem', color: '#7F1D1D', marginTop: '2px', lineHeight: 1.45 }}>
-                    Nenhum dia ou horário está aberto para agendamentos na unidade <strong>{venueName}</strong>. Para liberar a agenda desta casa, ligue a chavinha da <strong>Recorrência Semanal</strong> ou do <strong>Modo Livre</strong> abaixo.
+                    Nenhum dia ou horário está aberto na unidade <strong>{venueName}</strong>. Ligue a <strong>Grade semanal</strong> ou o <strong>Modo livre</strong> para liberar a agenda.
                   </div>
                 </div>
               </div>
             )}
 
-            {/* Card 0: Modo Livre (Qualquer Horário) */}
-            <div style={{
-              background: '#FFFFFF',
-              borderRadius: '14px',
-              border: `1.5px solid ${currentRule.isFreeMode ? themeColor : 'var(--adm-border, #E2E8F0)'}`,
-              padding: '20px 24px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: '20px',
-              boxShadow: currentRule.isFreeMode ? `0 4px 18px ${themeColor}1a` : '0 2px 8px rgba(0,0,0,0.03)',
-              transition: 'all 0.2s ease',
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flex: 1 }}>
-                <div style={{
-                  width: '46px',
-                  height: '46px',
-                  borderRadius: '12px',
-                  background: currentRule.isFreeMode ? `${themeColor}18` : 'rgba(100,116,139,0.08)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: currentRule.isFreeMode ? themeColor : '#64748B',
-                  flexShrink: 0,
-                }}>
-                  <Sparkles size={22} />
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '4px' }}>
-                    <span style={{ fontSize: '1.02rem', fontWeight: 900, color: 'var(--adm-text-title, #0F172A)' }}>
-                      Modo Livre (Qualquer Horário)
-                    </span>
-                    {/* Switch On/Off Elegante Inline junto ao título sem texto redundante */}
-                    <ToggleSwitch
-                      checked={Boolean(currentRule.isFreeMode)}
-                      onChange={handleToggleFreeModeAutoSave}
-                      activeColor={themeColor}
-                      size="sm"
-                    />
-                  </div>
-                  <p style={{ margin: 0, fontSize: '0.80rem', color: '#64748B', lineHeight: 1.45 }}>
-                    Permite agendar em qualquer horário livremente sem travas na grade semanal fixa. Blocos especiais continuam prevalecendo com prioridade.
-                  </p>
-                </div>
-              </div>
-            </div>
+            <OverviewRow
+              icon={<Sparkles size={20} />}
+              color={themeColor}
+              active={Boolean(currentRule.isFreeMode)}
+              title="Modo livre"
+              description="Permite agendar em qualquer horário, sem a grade semanal. Períodos e datas especiais continuam valendo."
+              control={<ToggleSwitch checked={Boolean(currentRule.isFreeMode)} onChange={handleToggleFreeModeAutoSave} activeColor={themeColor} size="sm" />}
+            />
 
-            {/* Card 1: Recorrência Semanal */}
-            <div style={{
-              background: '#FFFFFF',
-              borderRadius: '14px',
-              border: `1.5px solid ${currentRule.enabled !== false && !currentRule.isFreeMode ? themeColor : 'var(--adm-border, #E2E8F0)'}`,
-              padding: '20px 24px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: '20px',
-              boxShadow: currentRule.enabled !== false && !currentRule.isFreeMode ? `0 4px 18px ${themeColor}1a` : '0 2px 8px rgba(0,0,0,0.03)',
-              transition: 'all 0.2s ease',
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flex: 1 }}>
-                <div style={{
-                  width: '46px',
-                  height: '46px',
-                  borderRadius: '12px',
-                  background: currentRule.enabled !== false && !currentRule.isFreeMode ? `${themeColor}18` : 'rgba(100,116,139,0.08)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: currentRule.enabled !== false && !currentRule.isFreeMode ? themeColor : '#64748B',
-                  flexShrink: 0,
-                }}>
-                  <Repeat size={22} />
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '4px' }}>
-                    <span style={{ fontSize: '1.02rem', fontWeight: 900, color: 'var(--adm-text-title, #0F172A)' }}>
-                      Recorrência Semanal
-                    </span>
-                    {/* Switch On/Off Elegante Inline junto ao título sem texto redundante */}
-                    <ToggleSwitch
-                      checked={Boolean(currentRule.enabled !== false && !currentRule.isFreeMode)}
-                      onChange={handleToggleRecurringAutoSave}
-                      activeColor={themeColor}
-                      size="sm"
-                    />
-                  </div>
-                  <p style={{ margin: 0, fontSize: '0.80rem', color: '#64748B', lineHeight: 1.45 }}>
-                    {currentRule.enabled !== false && !currentRule.isFreeMode ? (
-                      <>Grade fixa ativa em <strong>{currentRule.enabledDays.length} dia(s) da semana</strong> com horários, vagas e limites configurados por dia.</>
-                    ) : currentRule.isFreeMode ? (
-                      <span style={{ color: '#D97706', fontWeight: 600 }}>Grade semanal suspensa temporariamente enquanto o Modo Livre estiver ativo.</span>
-                    ) : (
-                      <span style={{ color: '#DC2626', fontWeight: 600 }}>Recorrência desativada. Ligue o interruptor para ativar.</span>
-                    )}
-                  </p>
-                </div>
-              </div>
+            <OverviewRow
+              icon={<Repeat size={20} />}
+              color={themeColor}
+              active={currentRule.enabled !== false && !currentRule.isFreeMode}
+              title="Grade semanal"
+              description={
+                currentRule.enabled !== false && !currentRule.isFreeMode
+                  ? `Aberta em ${currentRule.enabledDays.length} dia(s) da semana, com horários, vagas e limite de pessoas por dia.`
+                  : currentRule.isFreeMode
+                    ? 'Suspensa enquanto o Modo livre estiver ligado.'
+                    : 'Desativada. Ligue o interruptor para abrir a agenda nos dias da semana.'
+              }
+              control={<ToggleSwitch checked={Boolean(currentRule.enabled !== false && !currentRule.isFreeMode)} onChange={handleToggleRecurringAutoSave} activeColor={themeColor} size="sm" />}
+              actionLabel="Configurar grade"
+              onOpen={() => openMode('recurring')}
+            />
 
-              {/* Botão Configurar Grade */}
-              <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
-                <button
-                  type="button"
-                  onClick={() => setActiveMode('recurring')}
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    padding: '8px 14px',
-                    borderRadius: '8px',
-                    border: '1px solid #CBD5E1',
-                    background: '#F8FAFC',
-                    color: '#334155',
-                    fontSize: '0.78rem',
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    transition: 'all 0.15s ease',
-                  }}
-                  title="Configurar horários de cada dia da semana"
-                >
-                  <span>Configurar Grade</span>
-                  <ChevronRight size={15} color="#64748B" />
-                </button>
-              </div>
-            </div>
+            <OverviewRow
+              icon={<CalendarRange size={20} />}
+              color="#0284C7"
+              title="Períodos"
+              badge={`${activeTypeBlockRules.length} configurado(s)`}
+              description="Períodos com dias, horários e vagas próprios, como férias ou temporada de eventos."
+              actionLabel="Gerenciar períodos"
+              onOpen={() => openMode('block')}
+            />
 
-            {/* Card 2: Configuração por Bloco de Datas */}
-            <div style={{
-              background: '#FFFFFF',
-              borderRadius: '14px',
-              border: '1px solid var(--adm-border, #E2E8F0)',
-              padding: '20px 24px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: '20px',
-              boxShadow: '0 2px 8px rgba(0,0,0,0.03)',
-              transition: 'all 0.2s ease',
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flex: 1 }}>
-                <div style={{
-                  width: '46px',
-                  height: '46px',
-                  borderRadius: '12px',
-                  background: 'rgba(2,132,199,0.10)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: '#0284C7',
-                  flexShrink: 0,
-                }}>
-                  <CalendarRange size={22} />
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
-                    <span style={{ fontSize: '1.02rem', fontWeight: 900, color: 'var(--adm-text-title, #0F172A)' }}>
-                      Configuração por Bloco
-                    </span>
-                    <span style={{
-                      fontSize: '0.68rem',
-                      fontWeight: 800,
-                      padding: '2px 8px',
-                      borderRadius: '12px',
-                      background: activeTypeBlockRules.length > 0 ? 'rgba(2,132,199,0.12)' : 'rgba(100,116,139,0.10)',
-                      color: activeTypeBlockRules.length > 0 ? '#0284C7' : '#64748B',
-                      border: `1px solid ${activeTypeBlockRules.length > 0 ? 'rgba(2,132,199,0.25)' : 'rgba(100,116,139,0.18)'}`,
-                    }}>
-                      {activeTypeBlockRules.length} bloco(s) configurado(s)
-                    </span>
-                  </div>
-                  <p style={{ margin: 0, fontSize: '0.80rem', color: '#64748B', lineHeight: 1.45 }}>
-                    Defina períodos com minicalendário onde cada dia é configurado de forma individual com horários e vagas próprias.
-                  </p>
-                </div>
-              </div>
+            <OverviewRow
+              icon={<Calendar size={20} />}
+              color="#DC2626"
+              title="Datas especiais"
+              badge={`${dateOverrides.length} data(s)`}
+              description="Bloqueie feriados ou abra horários diferentes em datas pontuais."
+              actionLabel="Gerenciar datas"
+              onOpen={() => openMode('override')}
+            />
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setBlockViewMode('list');
-                    setActiveMode('block');
-                  }}
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    padding: '8px 14px',
-                    borderRadius: '8px',
-                    border: '1px solid #CBD5E1',
-                    background: '#F8FAFC',
-                    color: '#0284C7',
-                    fontSize: '0.78rem',
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    transition: 'all 0.15s ease',
-                  }}
-                >
-                  <span>Configurar Blocos</span>
-                  <ChevronRight size={15} color="#0284C7" />
-                </button>
-              </div>
-            </div>
-
-            {/* Card 3: Configuração por Data */}
-            <div style={{
-              background: '#FFFFFF',
-              borderRadius: '14px',
-              border: '1px solid var(--adm-border, #E2E8F0)',
-              padding: '20px 24px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: '20px',
-              boxShadow: '0 2px 8px rgba(0,0,0,0.03)',
-              transition: 'all 0.2s ease',
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flex: 1 }}>
-                <div style={{
-                  width: '46px',
-                  height: '46px',
-                  borderRadius: '12px',
-                  background: 'rgba(239,68,68,0.10)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: '#EF4444',
-                  flexShrink: 0,
-                }}>
-                  <Calendar size={22} />
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
-                    <span style={{ fontSize: '1.02rem', fontWeight: 900, color: 'var(--adm-text-title, #0F172A)' }}>
-                      Configuração por Data
-                    </span>
-                    <span style={{
-                      fontSize: '0.68rem',
-                      fontWeight: 800,
-                      padding: '2px 8px',
-                      borderRadius: '12px',
-                      background: dateOverrides.length > 0 ? 'rgba(239,68,68,0.12)' : 'rgba(100,116,139,0.10)',
-                      color: dateOverrides.length > 0 ? '#DC2626' : '#64748B',
-                      border: `1px solid ${dateOverrides.length > 0 ? 'rgba(239,68,68,0.25)' : 'rgba(100,116,139,0.18)'}`,
-                    }}>
-                      {dateOverrides.length} data(s) personalizada(s)
-                    </span>
-                  </div>
-                  <p style={{ margin: 0, fontSize: '0.80rem', color: '#64748B', lineHeight: 1.45 }}>
-                    Calendário mensal 100% livre para bloquear feriados ou criar horários especiais em datas pontuais.
-                  </p>
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
-                <button
-                  type="button"
-                  onClick={() => setActiveMode('override')}
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    padding: '8px 14px',
-                    borderRadius: '8px',
-                    border: '1px solid #CBD5E1',
-                    background: '#F8FAFC',
-                    color: '#DC2626',
-                    fontSize: '0.78rem',
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    transition: 'all 0.15s ease',
-                  }}
-                >
-                  <span>Configurar Datas</span>
-                  <ChevronRight size={15} color="#DC2626" />
-                </button>
-              </div>
-            </div>
-
-            {/* Card 4: Distribuição de Closers (Split de Atendimento) */}
-            <div style={{
-              background: '#FFFFFF',
-              borderRadius: '14px',
-              border: `1.5px solid ${closerDistributionMode === 'round_robin' ? '#8B5CF6' : 'var(--adm-border, #E2E8F0)'}`,
-              padding: '20px 24px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: '20px',
-              boxShadow: closerDistributionMode === 'round_robin' ? '0 4px 18px rgba(139, 92, 246, 0.1)' : '0 2px 8px rgba(0,0,0,0.03)',
-              transition: 'all 0.2s ease',
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flex: 1 }}>
-                <div style={{
-                  width: '46px',
-                  height: '46px',
-                  borderRadius: '12px',
-                  background: 'rgba(139, 92, 246, 0.10)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: '#8B5CF6',
-                  flexShrink: 0,
-                }}>
-                  <Users size={22} />
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
-                    <span style={{ fontSize: '1.02rem', fontWeight: 900, color: 'var(--adm-text-title, #0F172A)' }}>
-                      Distribuição de Closers (Split de Atendimento)
-                    </span>
-                    <span style={{
-                      fontSize: '0.68rem',
-                      fontWeight: 800,
-                      padding: '2px 8px',
-                      borderRadius: '12px',
-                      background: closerDistributionMode === 'round_robin' ? 'rgba(139, 92, 246, 0.12)' : 'rgba(100,116,139,0.10)',
-                      color: closerDistributionMode === 'round_robin' ? '#7C3AED' : '#64748B',
-                      border: `1px solid ${closerDistributionMode === 'round_robin' ? 'rgba(139, 92, 246, 0.25)' : 'rgba(100,116,139,0.18)'}`,
-                    }}>
-                      {closerDistributionMode === 'round_robin' ? 'Round-Robin Ativo' : 'Manual'}
-                    </span>
-                  </div>
-                  <p style={{ margin: 0, fontSize: '0.80rem', color: '#64748B', lineHeight: 1.45 }}>
-                    {closerDistributionMode === 'round_robin'
-                      ? `Distribuição automática e rotativa entre ${(closerIds.length > 0 ? closerIds.length : availableClosers.length)} closer(s) da unidade. Leads com atendimento anterior mantêm o Closer Fixo.`
-                      : 'Distribuição manual: o operador escolhe o closer no momento de registrar o agendamento.'}
-                  </p>
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
-                <button
-                  type="button"
-                  onClick={() => setActiveMode('closers')}
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    padding: '8px 14px',
-                    borderRadius: '8px',
-                    border: '1px solid #CBD5E1',
-                    background: '#F8FAFC',
-                    color: '#7C3AED',
-                    fontSize: '0.78rem',
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    transition: 'all 0.15s ease',
-                  }}
-                >
-                  <span>Configurar Split</span>
-                  <ChevronRight size={15} color="#7C3AED" />
-                </button>
-              </div>
-            </div>
-
+            <OverviewRow
+              icon={<Users size={20} />}
+              color="#7C3AED"
+              active={closerDistributionMode === 'round_robin'}
+              title="Distribuição de especialistas"
+              badge={closerDistributionMode === 'round_robin' ? 'Rodízio ativo' : 'Manual'}
+              description={closerDistributionMode === 'round_robin'
+                ? `Rodízio automático entre ${(closerIds.length > 0 ? closerIds.length : availableClosers.length)} especialista(s) da unidade. Lead que já foi atendido mantém o mesmo especialista.`
+                : 'Manual: quem agenda escolhe o especialista na hora de registrar.'}
+              actionLabel="Configurar distribuição"
+              onOpen={() => openMode('closers')}
+            />
           </div>
         )}
 
         {activeMode === 'recurring' && (
           <div style={{
-            background: '#FFFFFF',
-            borderRadius: '14px',
-            border: '1px solid var(--adm-border, #E2E8F0)',
-            padding: '22px',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '20px',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.03)',
-            flex: 1,
-            minHeight: '540px',
+            background: '#FFFFFF', borderRadius: '14px', border: '1px solid var(--adm-border, #E2E8F0)',
+            display: 'flex', flexDirection: 'column', boxShadow: '0 2px 8px rgba(0,0,0,0.03)', overflow: 'hidden',
           }}>
-            {/* Barra Superior Enxuta da Recorrência Semanal */}
             <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              flexWrap: 'wrap',
-              gap: '14px',
-              paddingBottom: '16px',
-              borderBottom: '1px solid var(--adm-border, #E2E8F0)',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px',
+              padding: '16px 20px', borderBottom: '1px solid var(--adm-border, #E2E8F0)',
             }}>
               <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <h3 style={{ margin: 0, fontSize: '1.08rem', fontWeight: 900, color: 'var(--adm-text-title, #0F172A)' }}>
-                    Grade de Horários Semanais Padrão
-                  </h3>
-                  <span style={{
-                    fontSize: '0.68rem',
-                    fontWeight: 800,
-                    padding: '2px 8px',
-                    borderRadius: '6px',
-                    background: isEditingRecurring ? 'rgba(2,132,199,0.12)' : 'rgba(100,116,139,0.12)',
-                    color: isEditingRecurring ? '#0284C7' : '#64748B',
-                    border: `1px solid ${isEditingRecurring ? 'rgba(2,132,199,0.3)' : 'rgba(100,116,139,0.2)'}`,
-                  }}>
-                    {isEditingRecurring ? 'MODO EDIÇÃO' : 'MODO VISUALIZAÇÃO'}
-                  </span>
-                </div>
-                <p style={{ margin: '4px 0 0', fontSize: '0.78rem', color: '#64748B' }}>
-                  Configure individualmente para cada dia da semana os horários, duração, vagas simultâneas e limite de convidados (PAX).
+                <h3 style={{ margin: 0, fontSize: '1.02rem', fontWeight: 900, color: 'var(--adm-text-title, #0F172A)' }}>
+                  Grade semanal
+                </h3>
+                <p style={{ margin: '3px 0 0', fontSize: '0.78rem', color: '#64748B' }}>
+                  Para cada dia: horário, duração, vagas simultâneas e limite de pessoas (PAX).
                 </p>
               </div>
-
-              {/* Controles de Ação da Grade Semanal */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                {/* Switch de Ativação Geral da Recorrência */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingRight: '12px', borderRight: '1px solid #E2E8F0' }}>
-                  <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#475569' }}>
-                    {currentRule.enabled !== false && !currentRule.isFreeMode ? 'Recorrência Ativa' : 'Recorrência Desativada'}
-                  </span>
-                  <ToggleSwitch
-                    checked={Boolean(currentRule.enabled !== false && !currentRule.isFreeMode)}
-                    onChange={handleToggleRecurringAutoSave}
-                    activeColor={themeColor}
-                    size="sm"
-                  />
-                </div>
-
-                {!isEditingRecurring ? (
-                  <button
-                    type="button"
-                    onClick={() => setIsEditingRecurring(true)}
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                      padding: '8px 18px',
-                      borderRadius: '8px',
-                      background: themeColor,
-                      color: '#FFFFFF',
-                      border: 'none',
-                      fontSize: '0.82rem',
-                      fontWeight: 700,
-                      cursor: 'pointer',
-                      boxShadow: `0 4px 12px ${themeColor}33`,
-                      transition: 'all 0.15s ease',
-                    }}
-                  >
-                    <Edit3 size={15} />
-                    <span>Editar Grade Semanal</span>
-                  </button>
-                ) : (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => setIsEditingRecurring(false)}
-                      style={{
-                        padding: '8px 14px',
-                        borderRadius: '8px',
-                        background: 'transparent',
-                        border: '1px solid #CBD5E1',
-                        color: '#64748B',
-                        fontSize: '0.80rem',
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                      }}
-                    >
-                      Cancelar Edição
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setShowRecurringConfirmModal(true)}
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        padding: '8px 18px',
-                        borderRadius: '8px',
-                        background: '#10B981',
-                        color: '#FFFFFF',
-                        border: 'none',
-                        fontSize: '0.82rem',
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                        boxShadow: '0 4px 12px rgba(16,185,129,0.25)',
-                      }}
-                    >
-                      <Check size={16} />
-                      <span>Salvar Grade</span>
-                    </button>
-                  </>
-                )}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                <ToggleSwitch
+                  checked={Boolean(currentRule.enabled !== false && !currentRule.isFreeMode)}
+                  onChange={handleToggleRecurringAutoSave}
+                  activeColor={themeColor}
+                  size="sm"
+                />
+                <span style={{ fontSize: '0.76rem', fontWeight: 700, color: '#475569' }}>
+                  {currentRule.enabled !== false && !currentRule.isFreeMode ? 'Grade ativa' : 'Grade desativada'}
+                </span>
               </div>
             </div>
 
-            {/* Grid Visual de 7 Colunas da Semana (Configuração Individual por Dia) */}
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(7, 1fr)',
-              gap: '10px',
-              flex: 1,
-              alignItems: 'stretch',
-            }}>
-              {DAYS_OF_WEEK.map(day => {
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              {DAYS_OF_WEEK.map((day, idx) => {
                 const isEnabled = currentRule.enabledDays.includes(day.id);
                 const schedule: AgendaDaySchedule = currentRule.daySchedules?.[day.id] || {
                   dayOfWeek: day.id,
@@ -1920,295 +1499,159 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
                 const dayDuration = schedule.slotDurationMinutes || currentRule.durationMinutes || 60;
                 const dayConcurrent = schedule.maxConcurrentPerSlot || currentRule.maxConcurrentPerSlot || 1;
                 const dayPax = schedule.maxPaxPerSlot || currentRule.maxPaxPerSlot || 5;
-
-                const slots = isEnabled 
+                const slots = isEnabled
                   ? (schedule.timeSlots?.length ? schedule.timeSlots : generateSlotsFromRange(schedule.startTime, schedule.endTime, dayDuration))
                   : [];
+
+                const fieldStyle: React.CSSProperties = {
+                  padding: '6px 8px', borderRadius: '6px', border: '1px solid #CBD5E1', fontSize: '0.8rem',
+                  fontWeight: 700, color: '#0F172A', background: '#FFFFFF', colorScheme: 'light', textAlign: 'center',
+                  boxSizing: 'border-box',
+                };
+                const labelStyle: React.CSSProperties = {
+                  display: 'block', fontSize: '0.62rem', fontWeight: 800, color: '#64748B', marginBottom: '3px', textTransform: 'uppercase',
+                };
 
                 return (
                   <div
                     key={day.id}
                     style={{
+                      padding: '12px 20px', display: 'flex', flexDirection: 'column', gap: '10px',
+                      borderTop: idx === 0 ? 'none' : '1px solid #F1F5F9',
                       background: isEnabled ? '#FFFFFF' : 'var(--adm-bg-surface, #F8FAFC)',
-                      borderRadius: '12px',
-                      border: isEnabled ? `1.5px solid ${themeColor}55` : '1px dashed var(--adm-border, #CBD5E1)',
-                      padding: '12px 10px',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '10px',
-                      boxShadow: isEnabled ? '0 2px 8px rgba(0,0,0,0.03)' : 'none',
-                      transition: 'all 0.15s ease',
                     }}
                   >
-                    {/* Topo da Coluna: Checkbox de ativação do dia e nome */}
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '6px', borderBottom: isEnabled ? '1px solid #F1F5F9' : 'none' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <input
-                          type="checkbox"
-                          disabled={!isEditingRecurring}
-                          checked={isEnabled}
-                          onChange={() => handleToggleDay(day.id)}
-                          style={{ width: '15px', height: '15px', cursor: isEditingRecurring ? 'pointer' : 'default', accentColor: themeColor }}
-                        />
-                        <span style={{ fontSize: '0.84rem', fontWeight: 900, color: isEnabled ? '#0F172A' : '#94A3B8' }}>
-                          {day.short}
+                    <div style={{ display: 'flex', alignItems: 'flex-end', gap: '16px', flexWrap: 'wrap' }}>
+                      <div style={{ width: '148px', display: 'flex', alignItems: 'center', gap: '10px', alignSelf: 'center' }}>
+                        <ToggleSwitch checked={isEnabled} onChange={() => handleToggleDay(day.id)} activeColor={themeColor} size="sm" />
+                        <span style={{ fontSize: '0.88rem', fontWeight: 800, color: isEnabled ? '#0F172A' : '#94A3B8', whiteSpace: 'nowrap' }}>
+                          {day.label}
                         </span>
                       </div>
 
-                      {isEnabled && isEditingRecurring && (
-                        <button
-                          type="button"
-                          onClick={() => handleCopyDayScheduleToAll(day.id)}
-                          style={{
-                            background: 'transparent',
-                            border: 'none',
-                            color: '#64748B',
-                            cursor: 'pointer',
-                            padding: '3px 5px',
-                            borderRadius: '4px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '3px',
-                            fontSize: '0.65rem',
-                            fontWeight: 700,
-                          }}
-                          title="Copiar horários, duração, vagas e PAX deste dia para os outros dias da semana"
-                        >
-                          <Copy size={12} />
-                          <span>Copiar</span>
-                        </button>
+                      {isEnabled ? (
+                        <>
+                          <div>
+                            <label style={labelStyle}>Horário</label>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <input type="time" value={schedule.startTime} onChange={e => handleUpdateDayTime(day.id, 'startTime', e.target.value)} style={{ ...fieldStyle, width: '92px' }} />
+                              <span style={{ fontSize: '0.7rem', color: '#94A3B8' }}>às</span>
+                              <input type="time" value={schedule.endTime} onChange={e => handleUpdateDayTime(day.id, 'endTime', e.target.value)} style={{ ...fieldStyle, width: '92px' }} />
+                            </div>
+                          </div>
+
+                          <div>
+                            <label style={labelStyle}>Duração</label>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              <Select
+                                value={[30, 45, 60, 90, 120].includes(dayDuration) ? dayDuration : 'custom'}
+                                onChange={e => {
+                                  const val = e.target.value;
+                                  if (val !== 'custom') handleUpdateDayScheduleField(day.id, 'slotDurationMinutes', Number(val));
+                                }}
+                                style={{ ...fieldStyle, width: '98px', textAlign: 'left' }}
+                              >
+                                <option value={30}>30 min</option>
+                                <option value={45}>45 min</option>
+                                <option value={60}>1h</option>
+                                <option value={90}>1h 30m</option>
+                                <option value={120}>2h</option>
+                                <option value="custom">Outro</option>
+                              </Select>
+                              <input
+                                type="number" min={10} max={300} value={dayDuration}
+                                onChange={e => handleUpdateDayScheduleField(day.id, 'slotDurationMinutes', Math.max(10, Number(e.target.value) || 60))}
+                                style={{ ...fieldStyle, width: '56px' }} title="Duração em minutos"
+                              />
+                              <span style={{ fontSize: '0.7rem', color: '#64748B' }}>min</span>
+                            </div>
+                          </div>
+
+                          <div>
+                            <label style={labelStyle}>Vagas</label>
+                            <input
+                              type="number" min={1} max={50} value={dayConcurrent}
+                              onChange={e => handleUpdateDayScheduleField(day.id, 'maxConcurrentPerSlot', Math.max(1, Number(e.target.value) || 1))}
+                              style={{ ...fieldStyle, width: '64px' }}
+                            />
+                          </div>
+
+                          <div>
+                            <label style={labelStyle}>PAX máx.</label>
+                            <input
+                              type="number" min={1} max={100} value={dayPax}
+                              onChange={e => handleUpdateDayScheduleField(day.id, 'maxPaxPerSlot', Math.max(1, Number(e.target.value) || 5))}
+                              style={{ ...fieldStyle, width: '64px' }}
+                            />
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => handleCopyDayScheduleToAll(day.id)}
+                            style={{
+                              marginLeft: 'auto', alignSelf: 'flex-end', background: 'transparent', border: '1px solid #E2E8F0',
+                              color: '#475569', cursor: 'pointer', padding: '6px 10px', borderRadius: '6px',
+                              display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '0.72rem', fontWeight: 700,
+                            }}
+                            title="Copiar horários, duração, vagas e PAX deste dia para os outros dias ativos"
+                          >
+                            <Copy size={14} />
+                          </button>
+                        </>
+                      ) : (
+                        <span style={{ fontSize: '0.8rem', color: '#94A3B8', fontStyle: 'italic', alignSelf: 'center' }}>Fechado</span>
                       )}
                     </div>
 
-                    {/* Conteúdo do Dia Ativo */}
-                    {isEnabled ? (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flex: 1 }}>
-                        {/* 1. Horário Início e Fim */}
-                        <div>
-                          <label style={{ display: 'block', fontSize: '0.62rem', fontWeight: 800, color: '#64748B', marginBottom: '2px', textTransform: 'uppercase' }}>
-                            Horário
-                          </label>
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '3px' }}>
-                            <input
-                              type="time"
-                              disabled={!isEditingRecurring}
-                              value={schedule.startTime}
-                              onChange={e => handleUpdateDayTime(day.id, 'startTime', e.target.value)}
-                              style={{
-                                width: '100%',
-                                padding: '4px 3px',
-                                borderRadius: '5px',
-                                border: '1px solid #CBD5E1',
-                                fontSize: '0.74rem',
-                                fontWeight: 800,
-                                color: '#0F172A',
-                                background: isEditingRecurring ? '#FFFFFF' : '#F8FAFC',
-                                colorScheme: 'light',
-                                textAlign: 'center',
-                              }}
-                            />
-                            <span style={{ fontSize: '0.65rem', color: '#94A3B8' }}>às</span>
-                            <input
-                              type="time"
-                              disabled={!isEditingRecurring}
-                              value={schedule.endTime}
-                              onChange={e => handleUpdateDayTime(day.id, 'endTime', e.target.value)}
-                              style={{
-                                width: '100%',
-                                padding: '4px 3px',
-                                borderRadius: '5px',
-                                border: '1px solid #CBD5E1',
-                                fontSize: '0.74rem',
-                                fontWeight: 800,
-                                color: '#0F172A',
-                                background: isEditingRecurring ? '#FFFFFF' : '#F8FAFC',
-                                colorScheme: 'light',
-                                textAlign: 'center',
-                              }}
-                            />
-                          </div>
-                        </div>
-
-                        {/* 2. Duração do Horário deste Dia */}
-                        <div>
-                          <label style={{ display: 'block', fontSize: '0.62rem', fontWeight: 800, color: '#64748B', marginBottom: '2px', textTransform: 'uppercase' }}>
-                            Duração
-                          </label>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                            <Select
-                              disabled={!isEditingRecurring}
-                              value={[30, 45, 60, 90, 120].includes(dayDuration) ? dayDuration : 'custom'}
-                              onChange={e => {
-                                const val = e.target.value;
-                                if (val !== 'custom') {
-                                  handleUpdateDayScheduleField(day.id, 'slotDurationMinutes', Number(val));
-                                }
-                              }}
-                              style={{
-                                flex: 1,
-                                padding: '4px 3px',
-                                borderRadius: '5px',
-                                border: '1px solid #CBD5E1',
-                                fontSize: '0.72rem',
-                                fontWeight: 800,
-                                color: '#0F172A',
-                                background: isEditingRecurring ? '#FFFFFF' : '#F8FAFC',
-                              }}
-                            >
-                              <option value={30}>30 min</option>
-                              <option value={45}>45 min</option>
-                              <option value={60}>1h</option>
-                              <option value={90}>1h 30m</option>
-                              <option value={120}>2h</option>
-                              <option value="custom">Outro</option>
-                            </Select>
-
-                            <input
-                              type="number"
-                              min={10}
-                              max={300}
-                              disabled={!isEditingRecurring}
-                              value={dayDuration}
-                              onChange={e => handleUpdateDayScheduleField(day.id, 'slotDurationMinutes', Math.max(10, Number(e.target.value) || 60))}
-                              style={{
-                                width: '42px',
-                                padding: '4px 2px',
-                                borderRadius: '5px',
-                                border: '1px solid #CBD5E1',
-                                fontSize: '0.72rem',
-                                fontWeight: 800,
-                                color: '#0F172A',
-                                textAlign: 'center',
-                                background: isEditingRecurring ? '#FFFFFF' : '#F8FAFC',
-                              }}
-                              title="Duração em minutos"
-                            />
-                            <span style={{ fontSize: '0.62rem', color: '#64748B' }}>m</span>
-                          </div>
-                        </div>
-
-                        {/* 3. Vagas Simultâneas e PAX Máximo deste Dia */}
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
-                          <div>
-                            <label style={{ display: 'block', fontSize: '0.60rem', fontWeight: 800, color: '#64748B', marginBottom: '2px', textTransform: 'uppercase' }}>
-                              Vagas
-                            </label>
-                            <input
-                              type="number"
-                              min={1}
-                              max={50}
-                              disabled={!isEditingRecurring}
-                              value={dayConcurrent}
-                              onChange={e => handleUpdateDayScheduleField(day.id, 'maxConcurrentPerSlot', Math.max(1, Number(e.target.value) || 1))}
-                              style={{
-                                width: '100%',
-                                padding: '4px 3px',
-                                borderRadius: '5px',
-                                border: '1px solid #CBD5E1',
-                                fontSize: '0.72rem',
-                                fontWeight: 800,
-                                color: '#0F172A',
-                                textAlign: 'center',
-                                background: isEditingRecurring ? '#FFFFFF' : '#F8FAFC',
-                              }}
-                            />
-                          </div>
-
-                          <div>
-                            <label style={{ display: 'block', fontSize: '0.60rem', fontWeight: 800, color: '#64748B', marginBottom: '2px', textTransform: 'uppercase' }}>
-                              PAX Máx
-                            </label>
-                            <input
-                              type="number"
-                              min={1}
-                              max={100}
-                              disabled={!isEditingRecurring}
-                              value={dayPax}
-                              onChange={e => handleUpdateDayScheduleField(day.id, 'maxPaxPerSlot', Math.max(1, Number(e.target.value) || 5))}
-                              style={{
-                                width: '100%',
-                                padding: '4px 3px',
-                                borderRadius: '5px',
-                                border: '1px solid #CBD5E1',
-                                fontSize: '0.72rem',
-                                fontWeight: 800,
-                                color: '#0F172A',
-                                textAlign: 'center',
-                                background: isEditingRecurring ? '#FFFFFF' : '#F8FAFC',
-                              }}
-                            />
-                          </div>
-                        </div>
-
-                        {/* 4. Grade de Slots Calculados deste Dia */}
-                        <div style={{ marginTop: '4px', borderTop: '1px solid #F1F5F9', paddingTop: '6px' }}>
-                          <span style={{ fontSize: '0.62rem', fontWeight: 800, color: '#94A3B8', display: 'block', marginBottom: '4px' }}>
-                            SLOTS ({slots.length})
-                          </span>
-                          <div style={{
-                            display: 'grid',
-                            gridTemplateColumns: 'repeat(auto-fill, minmax(50px, 1fr))',
-                            gap: '4px',
-                            maxHeight: '180px',
-                            overflowY: 'auto',
-                          }}>
-                            {slots.map(s => (
-                              <div
-                                key={s}
-                                style={{
-                                  padding: '3px 2px',
-                                  borderRadius: '4px',
-                                  background: `${themeColor}12`,
-                                  border: `1px solid ${themeColor}33`,
-                                  color: themeColor,
-                                  fontSize: '0.68rem',
-                                  fontWeight: 800,
-                                  textAlign: 'center',
-                                }}
-                              >
-                                {s}
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                    ) : (
-                      <div style={{
-                        flex: 1,
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        color: '#94A3B8',
-                        fontSize: '0.74rem',
-                        fontStyle: 'italic',
-                        minHeight: '220px',
-                        gap: '8px',
-                      }}>
-                        <span>Fechado</span>
-                        {isEditingRecurring && (
-                          <button
-                            type="button"
-                            onClick={() => handleToggleDay(day.id)}
+                    {isEnabled && slots.length > 0 && (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px', paddingLeft: '164px' }}>
+                        {slots.map(s => (
+                          <span
+                            key={s}
                             style={{
-                              padding: '3px 8px',
-                              borderRadius: '4px',
-                              border: '1px solid #CBD5E1',
-                              background: '#FFFFFF',
-                              color: '#64748B',
-                              fontSize: '0.68rem',
-                              fontWeight: 700,
-                              cursor: 'pointer',
+                              padding: '2px 8px', borderRadius: '5px', background: `${themeColor}12`, border: `1px solid ${themeColor}33`,
+                              color: theme.text, fontSize: '0.7rem', fontWeight: 800,
                             }}
                           >
-                            Ativar
-                          </button>
-                        )}
+                            {s}
+                          </span>
+                        ))}
                       </div>
                     )}
                   </div>
                 );
               })}
+            </div>
+
+            <div style={{
+              position: 'sticky', bottom: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px',
+              padding: '12px 20px', borderTop: '1px solid var(--adm-border, #E2E8F0)', background: 'var(--adm-bg-surface, #F8FAFC)',
+            }}>
+              <span style={{ fontSize: '0.76rem', color: '#64748B' }}>As alterações só valem depois de salvar a grade.</span>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button
+                  type="button"
+                  onClick={discardRecurringChanges}
+                  style={{
+                    padding: '8px 16px', borderRadius: '8px', background: 'transparent', border: '1px solid #CBD5E1',
+                    color: '#475569', fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer',
+                  }}
+                >
+                  Descartar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowRecurringConfirmModal(true)}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '8px 18px', borderRadius: '8px',
+                    background: themeColor, color: '#FFFFFF', border: 'none', fontSize: '0.82rem', fontWeight: 700,
+                    cursor: 'pointer', boxShadow: `0 4px 12px ${themeColor}33`,
+                  }}
+                >
+                  <Check size={16} />
+                  <span>Salvar grade</span>
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -2679,7 +2122,7 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
                                   <button
                                     type="button"
                                     onClick={() => setBlockCalendarMonth(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))}
-                                    style={{ background: 'transparent', border: '1px solid #CBD5E1', padding: '5px 8px', borderRadius: '6px', cursor: 'pointer' }}
+                                    style={{ background: 'transparent', border: '1px solid #CBD5E1', color: '#334155', padding: '5px 8px', borderRadius: '6px', cursor: 'pointer' }}
                                     title="Mês Anterior"
                                   >
                                     <ChevronLeft size={16} />
@@ -2691,7 +2134,7 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
                                   <button
                                     type="button"
                                     onClick={() => setBlockCalendarMonth(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))}
-                                    style={{ background: 'transparent', border: '1px solid #CBD5E1', padding: '5px 8px', borderRadius: '6px', cursor: 'pointer' }}
+                                    style={{ background: 'transparent', border: '1px solid #CBD5E1', color: '#334155', padding: '5px 8px', borderRadius: '6px', cursor: 'pointer' }}
                                     title="Próximo Mês"
                                   >
                                     <ChevronRight size={16} />
@@ -2912,22 +2355,22 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
                                 <>
                                   {/* Cabeçalho do Card da Data Selecionada */}
                                   <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '10px', paddingBottom: '14px', borderBottom: '1px solid #F1F5F9' }}>
-                                    <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}>
-                                      <input
-                                        type="checkbox"
-                                        checked={selectedCfg.enabled}
-                                        onChange={e => handleUpdateSelectedBlockDay({ enabled: e.target.checked })}
-                                        style={{ width: '18px', height: '18px', accentColor: '#10B981', cursor: 'pointer' }}
-                                      />
-                                      <div>
-                                        <span style={{ display: 'block', fontSize: '0.95rem', fontWeight: 800, color: '#0F172A' }}>
-                                          {formatDateLong(selectedBlockDate)}
-                                        </span>
-                                        <span style={{ fontSize: '0.74rem', fontWeight: 600, color: '#64748B' }}>
-                                          {formatWeekdayLong(selectedBlockDate)}
-                                        </span>
-                                      </div>
-                                    </label>
+                                    <Checkbox
+                                      checked={selectedCfg.enabled}
+                                      onChange={e => handleUpdateSelectedBlockDay({ enabled: e.target.checked })}
+                                      size={18}
+                                      style={{ alignItems: 'center', gap: '10px' }}
+                                      label={(
+                                        <div>
+                                          <span style={{ display: 'block', fontSize: '0.95rem', fontWeight: 800, color: '#0F172A' }}>
+                                            {formatDateLong(selectedBlockDate)}
+                                          </span>
+                                          <span style={{ fontSize: '0.74rem', fontWeight: 600, color: '#64748B' }}>
+                                            {formatWeekdayLong(selectedBlockDate)}
+                                          </span>
+                                        </div>
+                                      )}
+                                    />
 
                                     <span style={{
                                       fontSize: '0.70rem',
@@ -3340,7 +2783,7 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
                     <button
                       type="button"
                       onClick={() => setOverrideCalendarMonth(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))}
-                      style={{ background: 'transparent', border: '1px solid #CBD5E1', padding: '5px 8px', borderRadius: '6px', cursor: 'pointer' }}
+                      style={{ background: 'transparent', border: '1px solid #CBD5E1', color: '#334155', padding: '5px 8px', borderRadius: '6px', cursor: 'pointer' }}
                       title="Mês Anterior"
                     >
                       <ChevronLeft size={16} />
@@ -3352,7 +2795,7 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
                     <button
                       type="button"
                       onClick={() => setOverrideCalendarMonth(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))}
-                      style={{ background: 'transparent', border: '1px solid #CBD5E1', padding: '5px 8px', borderRadius: '6px', cursor: 'pointer' }}
+                      style={{ background: 'transparent', border: '1px solid #CBD5E1', color: '#334155', padding: '5px 8px', borderRadius: '6px', cursor: 'pointer' }}
                       title="Próximo Mês"
                     >
                       <ChevronRight size={16} />
@@ -3800,7 +3243,7 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
                 </div>
                 <div>
                   <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 900, color: '#0F172A' }}>
-                    Distribuição de Closers (Split de Atendimento)
+                    Distribuição de especialistas
                   </h3>
                   <p style={{ margin: '3px 0 0', fontSize: '0.82rem', color: '#64748B' }}>
                     Unidade: <strong>{venueName}</strong> • Configure como os novos agendamentos serão atribuídos à equipe comercial.
@@ -3849,7 +3292,7 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
                   </div>
                 </div>
                 <p style={{ margin: 0, fontSize: '0.78rem', color: '#64748B', lineHeight: 1.45 }}>
-                  Distribui os agendamentos de forma equilibrada e rotativa entre os closers selecionados. Se um lead já possui histórico de atendimento, seu <strong>Closer Fixo</strong> é mantido.
+                  Distribui os agendamentos de forma equilibrada e rotativa entre os especialistas selecionados. Se um lead já possui histórico de atendimento, seu <strong>especialista fixo</strong> é mantido.
                 </p>
               </div>
 
@@ -3891,7 +3334,7 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
                   </div>
                 </div>
                 <p style={{ margin: 0, fontSize: '0.78rem', color: '#64748B', lineHeight: 1.45 }}>
-                  O closer responsável é escolhido manualmente pelo operador ou SDR em cada novo agendamento, sem sorteio rotativo prévio.
+                  O especialista responsável é escolhido manualmente por quem agenda, em cada novo agendamento, sem sorteio rotativo prévio.
                 </p>
               </div>
             </div>
@@ -3911,10 +3354,10 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
                 <Send size={16} color={closerAutoNotify ? '#10B981' : '#64748B'} />
                 <div>
                   <div style={{ fontSize: '0.84rem', fontWeight: 800, color: '#0F172A' }}>
-                    Envio Automático ao Colaborador Selecionado
+                    Aviso automático ao especialista
                   </div>
                   <div style={{ fontSize: '0.73rem', color: '#64748B' }}>
-                    Dispara automaticamente um resumo do agendamento via WhatsApp para o telefone do colaborador atribuído.
+                    Dispara automaticamente um resumo do agendamento via WhatsApp para o telefone do especialista atribuído.
                   </div>
                 </div>
               </div>
@@ -3972,7 +3415,7 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
                     )}
                   </div>
 
-                  {/* Botão + Adicionar Colaborador com dropdown pesquisável igual ao Funil */}
+                  {/* Botão + Adicionar especialista com dropdown pesquisável igual ao Funil */}
                   <div style={{ position: 'relative' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <button
@@ -3996,7 +3439,7 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
                         }}
                       >
                         <Plus size={14} />
-                        <span>Adicionar Colaborador</span>
+                        <span>Adicionar especialista</span>
                       </button>
                       {closerIds.length > 0 && (
                         <button
@@ -4040,7 +3483,7 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
                             autoFocus
                             value={closerDropdownSearch}
                             onChange={(e) => setCloserDropdownSearch(e.target.value)}
-                            placeholder="Buscar colaborador..."
+                            placeholder="Buscar especialista..."
                             style={{
                               width: '100%',
                               padding: '6px 8px 6px 26px',
@@ -4095,7 +3538,7 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
                             ))}
                           {availableClosers.length === 0 && (
                             <div style={{ padding: '12px', textAlign: 'center', fontSize: '0.74rem', color: '#64748B' }}>
-                              Nenhum colaborador elegível encontrado nesta unidade.
+                              Nenhum especialista elegível encontrado nesta unidade.
                             </div>
                           )}
                         </div>
@@ -4108,7 +3551,7 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '280px', overflowY: 'auto' }}>
                   {closerIds.length === 0 ? (
                     <div style={{ padding: '18px', textAlign: 'center', color: '#64748B', fontSize: '0.78rem', background: '#FFFFFF', borderRadius: '8px', border: '1px dashed #CBD5E1' }}>
-                      Nenhum colaborador na lista de ordem. Clique em <strong>"+ Adicionar Colaborador"</strong> para montar a sequência do rodízio (ou clique abaixo para preencher com todos da unidade).
+                      Nenhum especialista na lista de ordem. Clique em <strong>"+ Adicionar especialista"</strong> para montar a sequência do rodízio (ou clique abaixo para preencher com todos da unidade).
                       <div style={{ marginTop: '10px' }}>
                         <button
                           type="button"
@@ -4203,7 +3646,7 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
                             )}
                             <button
                               type="button"
-                              title="Repetir colaborador na sequência (peso)"
+                              title="Repetir especialista na sequência (peso)"
                               onClick={() => {
                                 const updated = [...closerIds];
                                 updated.splice(idx + 1, 0, collabId);
@@ -4246,7 +3689,7 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
                   cursor: 'pointer',
                 }}
               >
-                Voltar ao Menu
+                Voltar à visão geral
               </button>
               <button
                 type="button"
@@ -4268,12 +3711,13 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
                 }}
               >
                 <Check size={16} />
-                <span>{isSaving ? 'Salvando...' : 'Salvar Distribuição de Closers'}</span>
+                <span>{isSaving ? 'Salvando...' : 'Salvar distribuição'}</span>
               </button>
             </div>
           </div>
         )}
       </div>
+        </div>
 
       {/* MODAL DE CONFIRMAÇÃO COM RESUMO DE ALTERAÇÃO DA RECORRÊNCIA */}
       {showRecurringConfirmModal && (
@@ -4418,9 +3862,6 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
           <span>Configurações salvas com sucesso!</span>
         </div>
       )}
-
-      {/* MODAL DE ADICIONAR NOVA DATA / BLOQUEIO */}
-      
 
       {/* MODAL DE CONFIRMAÇÃO DE CONFLITO DE BLOQUEIO */}
       {conflictModalData && (

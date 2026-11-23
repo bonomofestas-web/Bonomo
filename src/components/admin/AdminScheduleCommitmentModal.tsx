@@ -1,4 +1,5 @@
 import { Select , MonthYearSwitcher } from '../ui';
+import { getAppointmentTheme } from '../../utils/appointmentTheme';
 import { formatMonthYear } from '../ui';
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { eventsOnDay, venueEventWarning } from '../../utils/venueEventDay';
@@ -600,7 +601,7 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
 
       await addTask({
         title: taskTitle,
-        description: `Agendamento confirmado (${receiptCode})\nLocal: ${targetVenue?.name}\nHorário: ${selectedTime}\nAcompanhantes: Até ${pax} pessoas\nAnfitrião/Closer: ${assignedUser?.name || 'Equipe'}\nSDR: ${sdrUser?.name || 'Equipe'}\nObs: ${notes || 'Sem observações.'}`,
+        description: `Agendamento confirmado (${receiptCode})\nLocal: ${targetVenue?.name}\nHorário: ${selectedTime}\nAcompanhantes: Até ${pax} pessoas\nEspecialista: ${assignedUser?.name || 'Equipe'}\nSDR: ${sdrUser?.name || 'Equipe'}\nObs: ${notes || 'Sem observações.'}`,
         dueDate: selectedDate,
         dueTime: selectedTime,
         venueId: targetVenueId,
@@ -640,7 +641,7 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
         const c1Date = computeConfirm1DateStr(confirm1Days);
         await addTask({
           title: `Confirmação 1 (${confirm1Days}d antes): ${type === 'visit' ? 'Visita' : 'Degustação'} • ${currentLead.name}`,
-          description: `Primeira confirmação (${confirm1Days} dia(s) antes) com ${currentLead.name} para ${selectedDate.split('-').reverse().join('/')} às ${selectedTime} (${targetVenue?.name || 'Unidade'}).\nAnfitrião/Closer: ${assignedUser?.name || 'Equipe'}\nOrientações: ${followUpNotes || 'Confirmar presença e lembrar endereço da unidade.'}`,
+          description: `Primeira confirmação (${confirm1Days} dia(s) antes) com ${currentLead.name} para ${selectedDate.split('-').reverse().join('/')} às ${selectedTime} (${targetVenue?.name || 'Unidade'}).\nEspecialista: ${assignedUser?.name || 'Equipe'}\nOrientações: ${followUpNotes || 'Confirmar presença e lembrar endereço da unidade.'}`,
           dueDate: c1Date,
           dueTime: confirm1Time,
           venueId: targetVenueId,
@@ -672,7 +673,7 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
         const c2 = computeConfirm2DateTime(confirm2Hours);
         await addTask({
           title: `Confirmação 2 (${confirm2Hours}h antes): ${type === 'visit' ? 'Visita' : 'Degustação'} • ${currentLead.name}`,
-          description: `Reforço final (${confirm2Hours} hora(s) antes) com ${currentLead.name} para ${selectedDate.split('-').reverse().join('/')} às ${selectedTime} (${targetVenue?.name || 'Unidade'}).\nAnfitrião/Closer: ${assignedUser?.name || 'Equipe'}\nOrientações: ${followUpNotes || 'Enviar mensagem de confirmação e localização.'}`,
+          description: `Reforço final (${confirm2Hours} hora(s) antes) com ${currentLead.name} para ${selectedDate.split('-').reverse().join('/')} às ${selectedTime} (${targetVenue?.name || 'Unidade'}).\nEspecialista: ${assignedUser?.name || 'Equipe'}\nOrientações: ${followUpNotes || 'Enviar mensagem de confirmação e localização.'}`,
           dueDate: c2.date,
           dueTime: c2.time,
           venueId: targetVenueId,
@@ -763,7 +764,8 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
     );
   }
 
-  const themeColor = type === 'visit' ? '#10B981' : '#D97706';
+  const theme = getAppointmentTheme(type);
+  const themeColor = theme.color;
 
   return (
     <div style={{
@@ -781,16 +783,112 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
       <div style={{
         background: '#FFFFFF',
         borderRadius: '20px',
-        maxWidth: '720px',
+        maxWidth: '980px',
         width: '100%',
-        maxHeight: '92vh',
+        height: '86vh',
+        maxHeight: '760px',
         boxShadow: '0 25px 60px -15px rgba(0,0,0,0.3)',
         display: 'flex',
-        flexDirection: 'column',
+        flexDirection: 'row',
         overflow: 'hidden',
         border: '1px solid rgba(226,232,240,0.8)',
       }}>
-        {/* Barra de Progresso no Topo Dinâmica */}
+        {/* PAINEL LATERAL: tipo, etapas e resumo que se preenche a cada passo */}
+        <aside style={{
+          width: '270px',
+          flexShrink: 0,
+          background: theme.soft,
+          borderRight: '1px solid #E2E8F0',
+          padding: '22px 18px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '20px',
+          overflowY: 'auto',
+        }}>
+          <div>
+            <div style={{ fontSize: '0.68rem', fontWeight: 800, color: theme.text, textTransform: 'uppercase', letterSpacing: '0.6px', marginBottom: '8px' }}>
+              Novo agendamento
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              {([
+                { kind: 'visit' as const, ok: isVisitConfigured, icon: <Building2 size={15} /> },
+                { kind: 'tasting' as const, ok: isTastingConfigured, icon: <UtensilsCrossed size={15} /> },
+              ]).map(opt => {
+                const t = getAppointmentTheme(opt.kind);
+                const selected = type === opt.kind;
+                return (
+                  <button
+                    key={opt.kind}
+                    type="button"
+                    disabled={!opt.ok}
+                    onClick={() => opt.ok && setType(opt.kind)}
+                    title={!opt.ok ? `${t.fullLabel} não configurada para a unidade "${targetVenue?.name || ''}"` : undefined}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: '8px', padding: '9px 12px', borderRadius: '10px', textAlign: 'left',
+                      border: `1.5px solid ${selected ? t.color : '#E2E8F0'}`,
+                      background: selected ? '#FFFFFF' : 'rgba(255,255,255,0.6)',
+                      color: selected ? t.text : '#64748B',
+                      fontSize: '0.82rem', fontWeight: 800, cursor: opt.ok ? 'pointer' : 'not-allowed', opacity: opt.ok ? 1 : 0.45,
+                      boxShadow: selected ? `0 2px 10px ${t.color}26` : 'none',
+                    }}
+                  >
+                    <span style={{ color: t.color, display: 'inline-flex' }}>{opt.icon}</span>
+                    <span style={{ flex: 1 }}>{t.fullLabel}</span>
+                    {!opt.ok && <span style={{ fontSize: '0.64rem', fontWeight: 600 }}>Indisponível</span>}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <ol style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            {wizardSteps.map((stepKey, idx) => {
+              const done = idx < currentStepIdx;
+              const current = idx === currentStepIdx;
+              const stepLabel =
+                stepKey === 'lead_select' ? 'Lead ou cliente' :
+                stepKey === 'datetime' ? 'Data e horário' :
+                stepKey === 'pax_closer' ? 'Pessoas e especialista' : 'Confirmações';
+              return (
+                <li key={stepKey} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '6px 4px' }}>
+                  <span style={{
+                    width: '22px', height: '22px', borderRadius: '50%', flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: '0.7rem', fontWeight: 800,
+                    background: done || current ? themeColor : '#FFFFFF',
+                    color: done || current ? '#FFFFFF' : '#94A3B8',
+                    border: done || current ? 'none' : '1.5px solid #CBD5E1',
+                  }}>
+                    {done ? <Check size={12} strokeWidth={3} /> : idx + 1}
+                  </span>
+                  <span style={{ fontSize: '0.82rem', fontWeight: current ? 800 : 600, color: current ? '#0F172A' : done ? '#334155' : '#94A3B8' }}>
+                    {stepLabel}
+                  </span>
+                </li>
+              );
+            })}
+          </ol>
+
+          <div style={{ marginTop: 'auto', background: '#FFFFFF', borderRadius: '12px', border: '1px solid #E2E8F0', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: '9px' }}>
+            <div style={{ fontSize: '0.66rem', fontWeight: 800, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Resumo</div>
+            {[
+              { label: 'Lead', value: currentLead?.name },
+              { label: 'Unidade', value: currentLead ? targetVenue?.name : undefined },
+              { label: 'Data', value: selectedDate && selectedTime ? `${selectedDate.split('-').reverse().join('/')} às ${selectedTime}` : undefined },
+              { label: 'Pessoas', value: activeStepKey === 'pax_closer' || activeStepKey === 'confirmations' ? `${pax}` : undefined },
+              { label: 'Especialista', value: commercialCollaborators.find(c => c.id === responsibleId)?.name },
+            ].map(row => (
+              <div key={row.label} style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
+                <span style={{ fontSize: '0.64rem', fontWeight: 700, color: '#94A3B8' }}>{row.label}</span>
+                <span style={{ fontSize: '0.82rem', fontWeight: 700, color: row.value ? '#0F172A' : '#CBD5E1', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {row.value || 'A definir'}
+                </span>
+              </div>
+            ))}
+          </div>
+        </aside>
+
+        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+        {/* Cabeçalho da etapa */}
         <div style={{
           padding: '16px 24px',
           background: 'var(--adm-bg-surface, #F8FAFC)',
@@ -800,14 +898,14 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
           justifyContent: 'space-between',
         }}>
           <div>
-            <span style={{ fontSize: '0.72rem', fontWeight: 800, color: themeColor, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-              Etapa {currentStepIdx + 1} de {wizardSteps.length} • Novo Agendamento
+            <span style={{ fontSize: '0.72rem', fontWeight: 800, color: theme.text, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              Etapa {currentStepIdx + 1} de {wizardSteps.length}
             </span>
             <h2 style={{ margin: '2px 0 0', fontSize: '1.2rem', fontWeight: 900, color: '#0F172A' }}>
-              {activeStepKey === 'lead_select' && 'Quem é o Lead ou Cliente?'}
-              {activeStepKey === 'datetime' && 'Escolha a Data e o Horário'}
-              {activeStepKey === 'pax_closer' && (isCloserFixed || isAutoSplitConfigured ? 'Número de Pessoas (PAX)' : 'Número de Pessoas e Closer Responsável')}
-              {activeStepKey === 'confirmations' && 'Tarefas de Confirmação e Notificação'}
+              {activeStepKey === 'lead_select' && 'Quem é o lead ou cliente?'}
+              {activeStepKey === 'datetime' && 'Escolha a data e o horário'}
+              {activeStepKey === 'pax_closer' && (isCloserFixed || isAutoSplitConfigured ? 'Número de pessoas (PAX)' : 'Número de pessoas e especialista')}
+              {activeStepKey === 'confirmations' && 'Confirmações e notificações'}
             </h2>
           </div>
 
@@ -824,86 +922,6 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
             }}
           >
             <X size={18} />
-          </button>
-        </div>
-
-        {/* Indicador Visual dos Passos */}
-        <div style={{ display: 'flex', height: '4px', background: '#E2E8F0' }}>
-          {wizardSteps.map((stepKey, idx) => (
-            <div
-              key={stepKey}
-              style={{
-                flex: 1,
-                background: currentStepIdx >= idx ? themeColor : 'transparent',
-                transition: 'all 0.2s ease',
-              }}
-            />
-          ))}
-        </div>
-
-        {/* Tipo de Agendamento (Visita vs Degustação) */}
-        <div style={{
-          padding: '12px 24px',
-          background: '#FFFFFF',
-          borderBottom: '1px solid #E2E8F0',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '12px',
-        }}>
-          <button
-            type="button"
-            disabled={!isVisitConfigured}
-            onClick={() => isVisitConfigured && setType('visit')}
-            title={!isVisitConfigured ? `Visita comercial não configurada para a unidade "${targetVenue?.name || ''}"` : undefined}
-            style={{
-              padding: '7px 14px',
-              borderRadius: '8px',
-              border: '1px solid',
-              borderColor: type === 'visit' ? '#10B981' : '#E2E8F0',
-              background: type === 'visit' ? 'rgba(16,185,129,0.1)' : '#FFFFFF',
-              color: type === 'visit' ? '#10B981' : '#64748B',
-              fontSize: '0.80rem',
-              fontWeight: 800,
-              cursor: isVisitConfigured ? 'pointer' : 'not-allowed',
-              opacity: isVisitConfigured ? 1 : 0.45,
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-            }}
-          >
-            <Building2 size={16} />
-            <span>Visita Comercial</span>
-            {!isVisitConfigured && (
-              <span style={{ fontSize: '0.68rem', fontWeight: 600, opacity: 0.85 }}>(Indisponível)</span>
-            )}
-          </button>
-
-          <button
-            type="button"
-            disabled={!isTastingConfigured}
-            onClick={() => isTastingConfigured && setType('tasting')}
-            title={!isTastingConfigured ? `Degustação não configurada para a unidade "${targetVenue?.name || ''}"` : undefined}
-            style={{
-              padding: '7px 14px',
-              borderRadius: '8px',
-              border: '1px solid',
-              borderColor: type === 'tasting' ? '#D97706' : '#E2E8F0',
-              background: type === 'tasting' ? 'rgba(217,119,6,0.1)' : '#FFFFFF',
-              color: type === 'tasting' ? '#D97706' : '#64748B',
-              fontSize: '0.80rem',
-              fontWeight: 800,
-              cursor: isTastingConfigured ? 'pointer' : 'not-allowed',
-              opacity: isTastingConfigured ? 1 : 0.45,
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-            }}
-          >
-            <UtensilsCrossed size={16} />
-            <span>Degustação Gastronômica</span>
-            {!isTastingConfigured && (
-              <span style={{ fontSize: '0.68rem', fontWeight: 600, opacity: 0.85 }}>(Indisponível)</span>
-            )}
           </button>
         </div>
 
@@ -1016,6 +1034,7 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
                         width: '100%',
                         border: 'none',
                         outline: 'none',
+                        background: 'transparent',
                         fontSize: '0.88rem',
                         fontWeight: 600,
                         color: '#0F172A',
@@ -1675,13 +1694,13 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
                   <div>
                     <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#0F172A' }}>
                       {isCloserFixed
-                        ? `Closer Vinculado ao Lead: ${collaborators.find(c => c.id === existingFixedCloserId)?.name || 'Anfitrião'}`
-                        : 'Anfitrião definido automaticamente pelo Split da Unidade'}
+                        ? `Especialista do lead: ${collaborators.find(c => c.id === existingFixedCloserId)?.name || 'Especialista'}`
+                        : 'Especialista definido automaticamente pela distribuição da unidade'}
                     </div>
                     <div style={{ fontSize: '0.72rem', color: '#64748B' }}>
                       {isCloserFixed
-                        ? 'O lead já possui anfitrião fixo em seu histórico.'
-                        : `Próximo closer na fila configurada: ${collaborators.find(c => c.id === autoSplitCloserId)?.name || 'Será atribuído ao confirmar'}.`}
+                        ? 'O lead já tem um especialista fixo no histórico.'
+                        : `Próximo especialista na fila: ${collaborators.find(c => c.id === autoSplitCloserId)?.name || 'Será atribuído ao confirmar'}.`}
                     </div>
                   </div>
                 </div>
@@ -1689,10 +1708,10 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px' }}>
                     <label style={{ fontSize: '0.78rem', fontWeight: 800, color: '#334155', margin: 0 }}>
-                      SELECIONE O ANFITRIÃO / CLOSER RESPONSÁVEL *
+                      SELECIONE O ESPECIALISTA RESPONSÁVEL *
                     </label>
                     <span style={{ fontSize: '0.70rem', color: '#64748B' }}>
-                      Listando apenas os closers configurados para esta unidade/funil
+                      Mostra só os especialistas configurados para esta unidade e funil
                     </span>
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '10px' }}>
@@ -2150,6 +2169,7 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
               )}
             </button>
           )}
+        </div>
         </div>
       </div>
     </div>
