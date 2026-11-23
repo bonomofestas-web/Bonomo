@@ -5,6 +5,7 @@ import { isUuid, generateUuid } from '../utils/uuid';
 import { generateBase36Code, buildContactSearchFilter, contactService, reciprocalKinship } from './contactService';
 import { generateSearchTermVariants } from '../utils/searchUtils';
 import { buildContractTitle, generateContractCode } from '../utils/contractTitle';
+import { repairBrokenAccents } from '../utils/textRepair';
 import { canChangeEventType } from '../utils/accessPermissions';
 import { taskService } from './taskService';
 import type { Contract, ContractApprovalStatus, ContractFunnelPlacement, Lead } from '../types/admin';
@@ -461,10 +462,10 @@ export const contractService = {
         payment_summary: (typeof params.paymentTerms === 'object' ? describePlan(parsePlan(params.paymentTerms), totalAmount) : '') || null,
         payment_terms: params.paymentTerms || {},
         sdr_id: params.sdrId && isUuid(params.sdrId) ? params.sdrId : null,
-        sdr_name: params.sdrName || 'Equipe Comercial',
+        sdr_name: params.sdrName ?? 'Equipe Comercial',
         sdr_email: params.sdrEmail || null,
         closer_id: params.closerId && isUuid(params.closerId) ? params.closerId : null,
-        closer_name: params.closerName || 'Closer Responsável',
+        closer_name: params.closerName ?? 'Closer Responsável',
         closer_email: params.closerEmail || null,
         approval_status: params.approvalStatus || 'pending_approval',
         target_pos_sale_funnel_ids: params.targetPosSaleFunnelIds || [],
@@ -557,6 +558,128 @@ export const contractService = {
     } catch (err: any) {
       console.error('Exceção em contractService.createContract:', err);
       throw err;
+    }
+  },
+
+  /**
+   * Código único para contrato registrado à mão. O padrão CTR-<iniciais><AAAAMMDD> repete quando há duas festas
+   * na mesma unidade e data (ou sem data); aqui acrescenta -2, -3... ou um sufixo curto quando não há data.
+   */
+  async reserveContractCode(params: { masterId: string; venueName?: string | null; eventDate?: string | null }): Promise<string> {
+    const { masterId, venueName, eventDate } = params;
+    const base = generateContractCode(venueName, eventDate);
+    if (!isSupabaseConfigured || !masterId) return base;
+    const root = eventDate ? base : base.replace(/SEMDATA$/, '');
+    const taken = new Set<string>();
+    const { data } = await supabase
+      .from('contracts')
+      .select('contract_code')
+      .eq('master_id', masterId)
+      .like('contract_code', `${root}%`)
+      .limit(500);
+    (data || []).forEach((r: any) => taken.add(String(r.contract_code)));
+
+    if (eventDate) {
+      if (!taken.has(base)) return base;
+      for (let n = 2; n < 200; n++) {
+        const candidate = `${base}-${n}`;
+        if (!taken.has(candidate)) return candidate;
+      }
+    }
+    const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    for (let tries = 0; tries < 30; tries++) {
+      let suffix = '';
+      for (let i = 0; i < 5; i++) suffix += alphabet[Math.floor(Math.random() * alphabet.length)];
+      const candidate = `${eventDate ? base : root}-${suffix}`;
+      if (!taken.has(candidate)) return candidate;
+    }
+    return `${root}-${Date.now().toString(36).toUpperCase()}`;
+  },
+
+  /**
+   * Edita os dados básicos da venda enquanto o contrato ainda está em fechamento (pending_approval).
+   * O código do contrato nunca muda; o título é recalculado pelo padrão único. Depois de aprovado, só o financeiro altera.
+   */
+  async updateContractBasics(params: {
+    contractId: string;
+    masterId: string;
+    patch: {
+      eventType?: string;
+      eventDate?: string | null;
+      eventTime?: string | null;
+      guestCount?: number;
+      packageName?: string | null;
+      totalAmount?: number;
+      closedAt?: string | null;
+      clientSnapshot?: Record<string, any>;
+      sdrId?: string | null;
+      sdrName?: string;
+      closerId?: string | null;
+      closerName?: string;
+      notes?: string;
+    };
+  }): Promise<{ success: boolean; message?: string; contract?: Contract }> {
+    const { contractId, masterId, patch } = params;
+    if (!isSupabaseConfigured || !contractId || !masterId) return { success: false, message: 'Parâmetros inválidos.' };
+    try {
+      const { data: row, error: rErr } = await supabase
+        .from('contracts')
+        .select('*')
+        .eq('id', contractId)
+        .eq('master_id', masterId)
+        .maybeSingle();
+      if (rErr || !row) return { success: false, message: 'Contrato não encontrado.' };
+      if (row.approval_status !== 'pending_approval') return { success: false, message: 'Contrato já aprovado: alterações passam pelo financeiro.' };
+
+      const update: Record<string, any> = { updated_at: new Date().toISOString() };
+      if (patch.eventType !== undefined) update.event_type = patch.eventType;
+      if (patch.eventDate !== undefined) update.event_date = patch.eventDate || null;
+      if (patch.eventTime !== undefined) update.event_time = patch.eventTime || null;
+      if (patch.guestCount !== undefined) update.guest_count = Math.max(0, Number(patch.guestCount) || 0);
+      if (patch.packageName !== undefined) update.package_name = patch.packageName || null;
+      if (patch.closedAt !== undefined) update.closed_at = patch.closedAt || null;
+      if (patch.notes !== undefined) update.notes = patch.notes;
+      if (patch.sdrId !== undefined) update.sdr_id = patch.sdrId && isUuid(patch.sdrId) ? patch.sdrId : null;
+      if (patch.sdrName !== undefined) update.sdr_name = patch.sdrName ?? '';
+      if (patch.closerId !== undefined) update.closer_id = patch.closerId && isUuid(patch.closerId) ? patch.closerId : null;
+      if (patch.closerName !== undefined) update.closer_name = patch.closerName ?? '';
+
+      if (patch.totalAmount !== undefined) {
+        const total = Math.max(0, Number(patch.totalAmount) || 0);
+        update.total_amount = total;
+        update.balance_amount = Math.max(0, total - Number(row.signal_amount || 0) - Number(row.entry_amount || 0));
+      }
+
+      const snapshot = { ...(row.client_snapshot || {}), ...(patch.clientSnapshot || {}) };
+      if (patch.clientSnapshot) update.client_snapshot = snapshot;
+
+      if (patch.clientSnapshot || patch.eventType !== undefined) {
+        const title = buildContractTitle({
+          contractors: [snapshot.payerName || snapshot.name],
+          protagonists: snapshot.birthdayPersonName ? [snapshot.birthdayPersonName] : [],
+          eventType: patch.eventType ?? row.event_type,
+          age: snapshot.birthdayPersonAge,
+          contractorIsProtagonist: snapshot.payerRelationship === 'self',
+          contractCode: row.contract_code,
+        }).trim();
+        if (title) {
+          update.event_title = title;
+          update.contract_title = title;
+          update.title = title;
+        }
+      }
+
+      const { data: updated, error } = await supabase
+        .from('contracts')
+        .update(update)
+        .eq('id', contractId)
+        .eq('master_id', masterId)
+        .select('*, contact:contacts(*), venue:venues(id, name)')
+        .single();
+      if (error || !updated) return { success: false, message: error?.message || 'Não foi possível salvar.' };
+      return { success: true, contract: mapRowToContract(updated) };
+    } catch (err: any) {
+      return { success: false, message: err.message || 'Erro ao salvar os dados do contrato.' };
     }
   },
 
@@ -2749,9 +2872,9 @@ function mapRowToContract(row: any): Contract {
     venueId: row.venue_id,
     venueName: row.venue?.name || row.venue_name || '',
     eventType: row.event_type || '15_anos',
-    eventTitle: row.event_title || row.contract_title || row.title || '',
-    contractTitle: row.contract_title || row.title || row.event_title || '',
-    title: row.title || row.contract_title || row.event_title || '',
+    eventTitle: repairBrokenAccents(row.event_title || row.contract_title || row.title || ''),
+    contractTitle: repairBrokenAccents(row.contract_title || row.title || row.event_title || ''),
+    title: repairBrokenAccents(row.title || row.contract_title || row.event_title || ''),
     clientId: row.client_id || undefined,
     eventDate: row.event_date,
     eventTime: row.event_time,
@@ -2770,16 +2893,16 @@ function mapRowToContract(row: any): Contract {
     contractValue: totalAmount,
     paymentTerms: row.payment_terms,
     sdrId: row.sdr_id,
-    sdrName: row.sdr_name || '',
+    sdrName: repairBrokenAccents(row.sdr_name || ''),
     sdrEmail: row.sdr_email,
     closerId: row.closer_id,
-    closerName: row.closer_name || '',
+    closerName: repairBrokenAccents(row.closer_name || ''),
     closerEmail: row.closer_email,
     approvalStatus: row.approval_status || 'pending_approval',
     submittedBy: row.submitted_by,
     submittedAt: row.submitted_at,
     approvedBy: row.approved_by,
-    approvedByName: row.approved_by_name,
+    approvedByName: repairBrokenAccents(row.approved_by_name),
     approvedByRole: row.approved_by_role,
     approvedAt: row.approved_at,
     rejectionReason: row.rejection_reason,

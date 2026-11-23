@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, CheckCircle2, FileText, MessageSquare, Upload, Wallet, Calendar, Users, Send, X } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, FileText, MessageSquare, Pencil, Upload, Wallet, Calendar, Users, Send, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAdminState } from '../../../context/AdminStateContext';
 import { contractService } from '../../../services/contractService';
@@ -8,6 +8,7 @@ import { getContractDocuments } from '../../../utils/contractDocuments';
 import { EMPTY_PLAN, parsePlan, type PaymentPlan, type PlanValidation } from '../../../utils/paymentPlan';
 import { buildVenueAccentMap } from '../../../utils/venueColors';
 import { PaymentPlanEditor } from '../finance/PaymentPlanEditor';
+import { ContractFormModal } from './ContractFormModal';
 import { ContractSideList, type SideItem } from '../finance/ContractSideList';
 import { EmbeddedDocViewer } from '../EmbeddedDocViewer';
 import { FILL_STAGES } from './ContractBoard';
@@ -55,6 +56,7 @@ export const ContractClosingWorkspace: React.FC<Props> = ({ contracts, masterId,
   const [tab, setTab] = useState<'docs' | 'whatsapp'>('docs');
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState<'contract' | 'payment' | null>(null);
+  const [editing, setEditing] = useState(false);
 
   useEffect(() => { setPlan(parsePlan(selected?.paymentTerms) || EMPTY_PLAN); }, [selected?.id, selected?.paymentTerms]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -142,9 +144,14 @@ export const ContractClosingWorkspace: React.FC<Props> = ({ contracts, masterId,
               <span style={{ width: 38, height: 38, borderRadius: 10, background: 'rgba(2,132,199,0.12)', color: '#0284C7', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Wallet size={19} /></span>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--adm-text-title)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selected.contractTitle || selected.title}</div>
-                <div style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)' }}>{selected.contractCode} · {snap.payerName || snap.name} · {selected.venueName} · Closer {selected.closerName || '—'}</div>
+                <div style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)' }}>{selected.contractCode} · {snap.payerName || snap.name} · {selected.venueName} · Especialista {selected.closerName || '—'}</div>
               </div>
               <span style={{ fontSize: '0.7rem', fontWeight: 800, padding: '3px 10px', borderRadius: 999, background: 'rgba(245,158,11,0.15)', color: '#B45309' }}>{FILL_STAGES.find(s => s.id === stage)?.label}</span>
+              {canEdit && (
+                <button type="button" onClick={() => setEditing(true)} title="Editar data da festa, convidados, contratante, valor e equipe" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, border: '1px solid var(--adm-border)', background: 'transparent', color: 'var(--adm-text-title)', fontSize: '0.76rem', fontWeight: 700, cursor: 'pointer' }}>
+                  <Pencil size={13} /> Editar dados
+                </button>
+              )}
               <button type="button" onClick={onBack} aria-label="Voltar ao quadro" title="Voltar ao quadro" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--adm-text-muted)' }}><X size={20} /></button>
             </div>
 
@@ -232,7 +239,7 @@ export const ContractClosingWorkspace: React.FC<Props> = ({ contracts, masterId,
                     // Espelho da conversa do lead no ultimo funil em que ele estava; o envio sai pela instancia que o vendedor ja usava
                     <AdminWhatsAppWorkspaceView initialLeadId={(selected.originLeadId || selected.leadId) as string} activeFunnelId={leads.find(l => l.id === (selected.originLeadId || selected.leadId))?.funnelId || selected.originFunnelId || undefined} isEmbeddedInFunnel chatOnly />
                   ) : (
-                    <div style={{ padding: 24, fontSize: '0.8rem', color: 'var(--adm-text-muted)' }}>Este contrato não tem lead de origem para abrir a conversa.</div>
+                    <div style={{ padding: 24, fontSize: '0.8rem', color: 'var(--adm-text-muted)' }}>Sem conversa de WhatsApp vinculada: o contrato foi registrado manualmente ou importado.</div>
                   )}
                 </div>
               </div>
@@ -251,6 +258,15 @@ export const ContractClosingWorkspace: React.FC<Props> = ({ contracts, masterId,
           </div>
         )}
       </div>
+      {editing && selected && (
+        <ContractFormModal
+          mode="edit"
+          contract={selected}
+          masterId={masterId}
+          onClose={() => setEditing(false)}
+          onSaved={() => { setEditing(false); onChanged(); }}
+        />
+      )}
     </div>
   );
 };

@@ -1,4 +1,4 @@
-import { Select } from '../ui';
+import { Select, Checkbox } from '../ui';
 import { useScreenSearch, screenQueryTerm } from '../../utils/screenSearch';
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
@@ -6,7 +6,7 @@ import {
   Clock, ShieldCheck, Calendar,
   AlertTriangle, RefreshCw, X, ArrowLeft,
   User, Users, Kanban, Receipt, ArrowRightLeft,
-  Check, Send, History, CheckSquare
+  Check, Send, History, CheckSquare, Plus
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { toast } from 'sonner';
@@ -15,6 +15,7 @@ import { getExtraContractDocuments } from '../../utils/contractDocuments';
 import { ContractTeamAssignModal } from './ContractTeamAssignModal';
 import { canEditContractTeam, canSeeApprovedContracts, canViewContractDocument } from '../../utils/accessPermissions';
 import { ContractClosingWorkspace } from './contracts/ContractClosingWorkspace';
+import { ContractFormModal } from './contracts/ContractFormModal';
 import { paymentTextLines } from '../../utils/paymentPlan';
 import { PaymentTextList } from './contracts/PaymentTextList';
 import { ContractBoard, type BoardCard } from './contracts/ContractBoard';
@@ -69,6 +70,8 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
   const [activeTab, setActiveTab] = useState<'pending' | 'approved'>('pending');
   // Contrato aberto na aba Em fechamento (null = quadro)
   const [closingId, setClosingId] = useState<string | null>(null);
+  // Registro manual de contrato (comercial que ainda vende fora do WhatsApp do F5 System)
+  const [formModal, setFormModal] = useState<{ mode: 'create' } | null>(null);
   // A busca vem da barra do topo (filtra ao vivo); nao ha barra propria aqui
   const screenSearch = useScreenSearch();
   const searchQuery = screenQueryTerm(screenSearch);
@@ -437,42 +440,82 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
       color: colors.textBody,
       overflow: 'hidden',
     }}>
-      {/* Título no breadcrumb; controles em linha compacta */}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+      {/* Cabeçalho da página: título, ação principal, abas e filtros */}
+      <div style={{
+        padding: '18px 24px 14px',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '14px',
+        borderBottom: `1px solid ${colors.border}`,
+        backgroundColor: colors.bgHeader,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '16px', flexWrap: 'wrap' }}>
+          <div style={{ minWidth: 0 }}>
+            <h1 style={{ margin: 0, fontSize: '1.3rem', fontWeight: 800, color: colors.textTitle, letterSpacing: '-0.2px' }}>
+              Central de Contratos
+            </h1>
+            <p style={{ margin: '4px 0 0', fontSize: '0.8rem', color: colors.textMuted, maxWidth: '640px', lineHeight: 1.45 }}>
+              Acompanhe as vendas em fechamento e os contratos homologados. O contrato nasce na venda e segue até o financeiro.
+            </p>
+          </div>
 
-        {/* Controles de Topo: Abas Sólidas e Filtros */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+          {canEditClosing && (
+            <button
+              type="button"
+              onClick={() => setFormModal({ mode: 'create' })}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '10px 18px',
+                borderRadius: '10px',
+                border: 'none',
+                backgroundColor: colors.primary,
+                color: '#FFFFFF',
+                fontSize: '0.84rem',
+                fontWeight: 800,
+                cursor: 'pointer',
+                boxShadow: '0 4px 14px rgba(2, 132, 199, 0.28)',
+              }}
+            >
+              <Plus size={16} />
+              <span>Novo contrato</span>
+            </button>
+          )}
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
           {/* Abas */}
           <div style={{
             display: 'flex',
             backgroundColor: colors.bgCardSub,
             padding: '3px',
-            borderRadius: '8px',
+            borderRadius: '10px',
             border: `1px solid ${colors.border}`,
           }}>
             <button
               onClick={() => setActiveTab('pending')}
               style={{
-                padding: '6px 14px',
-                borderRadius: '6px',
+                padding: '7px 16px',
+                borderRadius: '8px',
                 border: 'none',
                 backgroundColor: activeTab === 'pending' ? colors.primary : 'transparent',
                 color: activeTab === 'pending' ? '#FFFFFF' : colors.textMuted,
                 fontWeight: 700,
-                fontSize: '0.78rem',
+                fontSize: '0.8rem',
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '6px',
+                gap: '7px',
                 transition: 'all 0.15s ease',
               }}
             >
-              <Clock size={13} />
+              <Clock size={14} />
               <span>Em fechamento</span>
               <span style={{
-                fontSize: '0.68rem',
-                padding: '1px 5px',
-                borderRadius: '4px',
+                fontSize: '0.7rem',
+                padding: '1px 6px',
+                borderRadius: '5px',
                 backgroundColor: activeTab === 'pending' ? 'rgba(0,0,0,0.25)' : colors.border,
                 color: activeTab === 'pending' ? '#FFFFFF' : colors.textMuted,
                 fontWeight: 800,
@@ -484,26 +527,26 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
             {canSeeApproved && <button
               onClick={() => setActiveTab('approved')}
               style={{
-                padding: '6px 14px',
-                borderRadius: '6px',
+                padding: '7px 16px',
+                borderRadius: '8px',
                 border: 'none',
                 backgroundColor: activeTab === 'approved' ? colors.primary : 'transparent',
                 color: activeTab === 'approved' ? '#FFFFFF' : colors.textMuted,
                 fontWeight: 700,
-                fontSize: '0.78rem',
+                fontSize: '0.8rem',
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '6px',
+                gap: '7px',
                 transition: 'all 0.15s ease',
               }}
             >
-              <CheckCircle2 size={13} />
-              <span>Contratos Aprovados</span>
+              <CheckCircle2 size={14} />
+              <span>Contratos aprovados</span>
               <span style={{
-                fontSize: '0.68rem',
-                padding: '1px 5px',
-                borderRadius: '4px',
+                fontSize: '0.7rem',
+                padding: '1px 6px',
+                borderRadius: '5px',
                 backgroundColor: activeTab === 'approved' ? 'rgba(0,0,0,0.25)' : colors.border,
                 color: activeTab === 'approved' ? '#FFFFFF' : colors.textMuted,
                 fontWeight: 800,
@@ -513,81 +556,69 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
             </button>}
           </div>
 
-          {/* Filtro de Unidades */}
-          {venues.length > 1 && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <Building2 size={14} color={colors.textMuted} />
-              <Select
-                value={selectedVenueFilter}
-                onChange={e => setSelectedVenueFilter(e.target.value)}
-                style={{
-                  padding: '6px 10px',
-                  borderRadius: '6px',
-                  border: `1px solid ${colors.border}`,
-                  backgroundColor: colors.bgCard,
-                  color: colors.textTitle,
-                  fontSize: '0.78rem',
-                  outline: 'none',
-                }}
-              >
-                <option value="all">Todas as Unidades</option>
-                {venues.map(v => (
-                  <option key={v.id} value={v.id}>{v.name}</option>
-                ))}
-              </Select>
-            </div>
-          )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+            {!canApproveContract && (
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                fontSize: '0.74rem',
+                color: colors.warning,
+                backgroundColor: isLight ? '#FEF3C7' : 'rgba(217, 119, 6, 0.1)',
+                padding: '5px 10px',
+                borderRadius: '8px',
+                border: `1px solid ${isLight ? '#FDE68A' : 'rgba(217, 119, 6, 0.2)'}`,
+              }}>
+                <ShieldCheck size={13} />
+                <span>Homologação restrita à gerência comercial ou master</span>
+              </div>
+            )}
 
-          {/* Botão de Atualizar */}
-          <button
-            onClick={() => loadContracts()}
-            disabled={loading}
-            title="Recarregar contratos"
-            style={{
-              padding: '7px 9px',
-              borderRadius: '6px',
-              border: `1px solid ${colors.border}`,
-              backgroundColor: colors.bgCard,
-              color: colors.textTitle,
-              cursor: loading ? 'wait' : 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-          </button>
-        </div>
-      </div>
+            {venues.length > 1 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Building2 size={14} color={colors.textMuted} />
+                <Select
+                  value={selectedVenueFilter}
+                  onChange={e => setSelectedVenueFilter(e.target.value)}
+                  style={{
+                    padding: '7px 10px',
+                    borderRadius: '8px',
+                    border: `1px solid ${colors.border}`,
+                    backgroundColor: colors.bgCard,
+                    color: colors.textTitle,
+                    fontSize: '0.8rem',
+                    outline: 'none',
+                  }}
+                >
+                  <option value="all">Todas as unidades</option>
+                  {venues.map(v => (
+                    <option key={v.id} value={v.id}>{v.name}</option>
+                  ))}
+                </Select>
+              </div>
+            )}
 
-      {/* Barra de Busca Rápida */}
-      <div style={{
-        padding: '10px 24px',
-        borderBottom: `1px solid ${colors.borderSub}`,
-        backgroundColor: colors.bgApp,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        gap: '16px',
-      }}>
-        <div />
-
-        {!canApproveContract && (
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-            fontSize: '0.74rem',
-            color: colors.warning,
-            backgroundColor: isLight ? '#FEF3C7' : 'rgba(217, 119, 6, 0.1)',
-            padding: '4px 10px',
-            borderRadius: '6px',
-            border: `1px solid ${isLight ? '#FDE68A' : 'rgba(217, 119, 6, 0.2)'}`,
-          }}>
-            <ShieldCheck size={13} />
-            <span>Visualização para consulta (homologação restrita à gerência comercial ou master)</span>
+            <button
+              onClick={() => loadContracts()}
+              disabled={loading}
+              title="Recarregar contratos"
+              aria-label="Recarregar contratos"
+              style={{
+                padding: '8px 10px',
+                borderRadius: '8px',
+                border: `1px solid ${colors.border}`,
+                backgroundColor: colors.bgCard,
+                color: colors.textTitle,
+                cursor: loading ? 'wait' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+            </button>
           </div>
-        )}
+        </div>
       </div>
 
       {/* Miolo de Conteúdo Rolável */}
@@ -619,9 +650,19 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
             </h3>
             <p style={{ margin: 0, fontSize: '0.78rem', color: colors.textMuted, maxWidth: '420px' }}>
               {activeTab === 'pending'
-                ? 'Quando um lead for arrastado para a venda, o contrato aparece aqui para o closer completar documentos e condições de pagamento.'
+                ? 'Quando um lead for arrastado para a venda, o contrato aparece aqui para o especialista completar documentos e condições de pagamento. Você também pode registrar uma venda manualmente.'
                 : 'Os contratos aprovados e ativos no pós-venda serão listados aqui com auditoria perpétua.'}
             </p>
+            {activeTab === 'pending' && canEditClosing && (
+              <button
+                type="button"
+                onClick={() => setFormModal({ mode: 'create' })}
+                style={{ marginTop: '16px', display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '9px 18px', borderRadius: '9px', border: 'none', backgroundColor: colors.primary, color: '#FFFFFF', fontSize: '0.82rem', fontWeight: 800, cursor: 'pointer' }}
+              >
+                <Plus size={15} />
+                <span>Registrar contrato</span>
+              </button>
+            )}
           </div>
         ) : activeTab === 'pending' ? (
           /* ABA 1: FECHAMENTO. Quadro por etapa; clicar abre a ficha (mesma estrutura da aprovacao do financeiro) */
@@ -654,6 +695,7 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
                     closer: c.closerName,
                     message: c.financeMessage ? `Financeiro: ${c.financeMessage}` : undefined,
                     missing: contractService.getFillMissing(c).length,
+                    tag: (c.commercialFieldsSnapshot as any)?.registroManual ? 'Registro manual' : undefined,
                   }))}
                   onOpen={setClosingId}
                   emptyText="Nenhuma venda"
@@ -695,7 +737,7 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
               </div>
             )}
             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.80rem' }}>
-              <thead>
+              <thead style={{ position: 'sticky', top: 0, zIndex: 2 }}>
                 <tr style={{
                   backgroundColor: colors.bgCardSub,
                   borderBottom: `1px solid ${colors.border}`,
@@ -706,13 +748,13 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
                   fontWeight: 700,
                 }}>
                   {canEditTeam && selectMode && <th style={{ padding: '12px 8px 12px 16px', width: 28 }} />}
-                  <th style={{ padding: '12px 16px' }}>Contrato</th>
-                  <th style={{ padding: '12px 16px' }}>Cliente / Contato</th>
-                  <th style={{ padding: '12px 16px' }}>Data do Evento</th>
-                  <th style={{ padding: '12px 16px' }}>Equipe da Venda</th>
-                  <th style={{ padding: '12px 16px' }}>Valor Total</th>
-                  <th style={{ padding: '12px 16px' }}>Homologado Por</th>
-                  <th style={{ padding: '12px 16px', textAlign: 'right' }}>Ações</th>
+                  <th style={{ padding: '12px 16px', width: '170px' }}>Contrato</th>
+                  <th style={{ padding: '12px 16px' }}>Cliente / contrato</th>
+                  <th style={{ padding: '12px 16px', width: '130px' }}>Data da festa</th>
+                  <th style={{ padding: '12px 16px', width: '210px' }}>Equipe da venda</th>
+                  <th style={{ padding: '12px 16px', width: '130px' }}>Valor total</th>
+                  <th style={{ padding: '12px 16px', width: '200px' }}>Homologado por</th>
+                  <th style={{ padding: '12px 16px', textAlign: 'right', width: '120px' }}>Ações</th>
                 </tr>
               </thead>
               <tbody>
@@ -737,14 +779,16 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
                     >
                       {canEditTeam && selectMode && (
                         <td style={{ padding: '12px 8px 12px 16px' }}>
-                          <input type="checkbox" readOnly checked={pickedIds.has(ctr.id)} style={{ accentColor: colors.primary, cursor: 'pointer', pointerEvents: 'none' }} />
+                          <span style={{ pointerEvents: 'none', display: 'inline-flex' }}><Checkbox checked={pickedIds.has(ctr.id)} /></span>
                         </td>
                       )}
-                      <td style={{ padding: '12px 16px' }}>
+                      <td style={{ padding: '14px 16px', verticalAlign: 'middle' }}>
                         <span style={{
                           fontFamily: 'monospace',
                           fontWeight: 800,
-                          padding: '2px 6px',
+                          whiteSpace: 'nowrap',
+                          fontSize: '0.76rem',
+                          padding: '3px 8px',
                           borderRadius: '4px',
                           backgroundColor: isLight ? '#E0F2FE' : 'rgba(2, 132, 199, 0.15)',
                           color: colors.primary,
@@ -753,7 +797,7 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
                         </span>
                       </td>
 
-                      <td style={{ padding: '12px 16px' }}>
+                      <td style={{ padding: '14px 16px', verticalAlign: 'middle' }}>
                         <strong style={{ color: colors.textTitle, display: 'block' }}>
                           {(ctr.contractTitle || ctr.title || clientName || 'Contrato').replace(/\?{2,}/g, ' - ').replace(/\?/g, '').trim()}
                         </strong>
@@ -762,19 +806,19 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
                         </span>
                       </td>
 
-                      <td style={{ padding: '12px 16px' }}>
+                      <td style={{ padding: '14px 16px', verticalAlign: 'middle' }}>
                         <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', color: colors.textTitle }}>
                           <Calendar size={12} color={colors.primary} />
                           {ctr.eventDate ? new Date(ctr.eventDate + 'T12:00:00').toLocaleDateString('pt-BR') : 'A definir'}
                         </span>
                       </td>
 
-                      <td style={{ padding: '12px 16px' }}>
+                      <td style={{ padding: '14px 16px', verticalAlign: 'middle' }}>
                         <div style={{ fontSize: '0.74rem', display: 'flex', flexDirection: 'column', gap: '4px' }}>
                           {ctr.closerName ? (
                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                               <SafeAvatar src={collabAvatar(ctr.closerId, ctr.closerName)} name={ctr.closerName} size={20} />
-                              <span>Closer: <strong style={{ color: colors.textTitle }}>{ctr.closerName}</strong></span>
+                              <span>Especialista: <strong style={{ color: colors.textTitle }}>{ctr.closerName}</strong></span>
                             </div>
                           ) : !ctr.sdrName && (
                             <span style={{ color: colors.textMuted, fontStyle: 'italic' }}>Sem responsável definido</span>
@@ -792,17 +836,21 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
                         R$ {totalAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                       </td>
 
-                      <td style={{ padding: '12px 16px' }}>
+                      <td style={{ padding: '14px 16px', verticalAlign: 'middle' }}>
                         <span style={{
-                          fontSize: '0.70rem',
+                          fontSize: '0.74rem',
                           fontWeight: 700,
-                          padding: '2px 6px',
-                          borderRadius: '4px',
+                          padding: '3px 9px',
+                          borderRadius: '999px',
                           backgroundColor: isLight ? '#D1FAE5' : 'rgba(5, 150, 105, 0.15)',
                           color: colors.success,
-                          display: 'inline-block',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '5px',
+                          maxWidth: '100%',
                         }}>
-                          {ctr.approvedByName || 'Gerência'}
+                          <ShieldCheck size={12} style={{ flexShrink: 0 }} />
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ctr.approvedByName || 'Gerência'}</span>
                         </span>
                         {ctr.approvedAt && (
                           <span style={{ display: 'block', fontSize: '0.68rem', color: colors.textMuted, marginTop: '2px' }}>
@@ -818,17 +866,18 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
                             handleOpenContract(ctr);
                           }}
                           style={{
-                            padding: '4px 10px',
-                            borderRadius: '4px',
+                            padding: '6px 12px',
+                            borderRadius: '8px',
                             border: `1px solid ${colors.border}`,
                             backgroundColor: colors.bgCard,
                             color: colors.textTitle,
-                            fontSize: '0.74rem',
-                            fontWeight: 600,
+                            fontSize: '0.76rem',
+                            fontWeight: 700,
                             cursor: 'pointer',
+                            whiteSpace: 'nowrap',
                           }}
                         >
-                          Ver Detalhes
+                          Ver detalhes
                         </button>
                       </td>
                     </tr>
@@ -1876,6 +1925,21 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {formModal && (
+        <ContractFormModal
+          mode="create"
+          masterId={scopedMasterId || ''}
+          onClose={() => setFormModal(null)}
+          onSaved={(created) => {
+            setFormModal(null);
+            contractsListCache.clear();
+            setClosingId(created.id);
+            if (activeTab === 'pending') void loadContracts();
+            else setActiveTab('pending');
+          }}
+        />
       )}
 
       {teamModalIds && (
