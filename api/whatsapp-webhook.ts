@@ -698,8 +698,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             .select('*')
             .or(`whatsapp_instance_id.eq.${candidateToken},configuration->>token.eq.${candidateToken},configuration->>instanceToken.eq.${candidateToken},configuration->>instanceKey.eq.${candidateToken}`)
             .order('created_at', { ascending: true })
-            .limit(1);
-          matchedSource = srcs?.[0] || null;
+            .limit(10);
+          // Prioridade: token canônico (whatsapp_instance_id, gravado ao conectar) > origem ativa > mais antiga.
+          // Token velho esquecido em `configuration` de outra origem não pode desviar a mensagem para outro funil.
+          const list = srcs || [];
+          matchedSource =
+            list.find((s: any) => s.whatsapp_instance_id === candidateToken && s.status === 'active') ||
+            list.find((s: any) => s.whatsapp_instance_id === candidateToken) ||
+            list.find((s: any) => s.status === 'active') ||
+            list[0] || null;
+          if (list.length > 1) {
+            console.warn(`[Webhook] ${list.length} origens com o mesmo token (***${candidateToken.slice(-4)}): ${list.map((s: any) => s.id).join(', ')}. Usando ${matchedSource?.id}.`);
+          }
         }
 
         if (!matchedSource && candidateOwner) {
@@ -929,6 +939,55 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 whatsapp_lid: cleanPhone,
               };
               await supabase.from('leads').update({ custom_field_values: updatedCustom }).eq('id', existingLead.id);
+            }
+          }
+        }
+
+        // 3c. Lead que saiu do funil desta origem para um funil SEM WhatsApp próprio (ex.: follow-up) e continua
+        // conversando por esta instância: a mensagem segue o card onde a conversa está, em vez de abrir lead novo.
+        // Funil com origem própria continua estrito (mesmo número em funis com origens diferentes não é duplicidade).
+        if (!existingLead && tenantMasterId && (last8 || isLid) && matchedSource?.id) {
+          let carrierQuery = supabase
+            .from('leads')
+            .select('id, name, phone, unread_count, venue_id, funnel_id, custom_field_values, master_id, is_client, last_message_at, source_id')
+            .eq('master_id', tenantMasterId)
+            .neq('funnel_id', targetFunnelId);
+          if (last8 && isLid) {
+            carrierQuery = carrierQuery.or(`phone.ilike.%${last8}%,custom_field_values->>whatsappLid.eq.${cleanPhone},custom_field_values->>whatsapp_lid.eq.${cleanPhone}`);
+          } else if (last8) {
+            carrierQuery = carrierQuery.or(`phone.ilike.%${last8}%`);
+          } else {
+            carrierQuery = carrierQuery.or(`custom_field_values->>whatsappLid.eq.${cleanPhone},custom_field_values->>whatsapp_lid.eq.${cleanPhone}`);
+          }
+          const { data: carrierCandidates } = await carrierQuery
+            .order('last_interaction_at', { ascending: false, nullsFirst: false })
+            .limit(20);
+
+          const withFunnel = (carrierCandidates || []).filter((l: any) => l.funnel_id);
+          if (withFunnel.length > 0) {
+            const candFunnelIds = Array.from(new Set(withFunnel.map((l: any) => l.funnel_id)));
+            const { data: originRows } = await supabase
+              .from('sources')
+              .select('funnel_id')
+              .eq('type', 'whatsapp_api')
+              .in('funnel_id', candFunnelIds);
+            const funnelsWithOrigin = new Set((originRows || []).map((r: any) => r.funnel_id));
+            const originless = withFunnel.filter((l: any) => !funnelsWithOrigin.has(l.funnel_id));
+
+            let carrier: any = originless.find((l: any) => l.source_id === matchedSource.id) || null;
+            if (!carrier && originless.length > 0) {
+              const { data: usedRows } = await supabase
+                .from('lead_activities')
+                .select('lead_id')
+                .in('lead_id', originless.map((l: any) => l.id))
+                .or(`metadata->>senderSourceId.eq.${matchedSource.id},metadata->>instanceId.eq.${matchedSource.id},metadata->>sourceId.eq.${matchedSource.id}`)
+                .limit(20);
+              const usedIds = new Set((usedRows || []).map((r: any) => r.lead_id));
+              carrier = originless.find((l: any) => usedIds.has(l.id)) || null;
+            }
+            if (carrier) {
+              existingLead = carrier;
+              console.log(`[Webhook] Mensagem roteada para o card ${carrier.id} (funil sem WhatsApp próprio que já conversa por esta origem).`);
             }
           }
         }

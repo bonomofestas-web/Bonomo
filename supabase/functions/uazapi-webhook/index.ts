@@ -292,11 +292,19 @@ serve(async (req) => {
         // Identifica a origem vinculada a esta instância
         const { data: matchedSources } = await supabase
           .from("sources")
-          .select("id, name, funnel_id, venue_id, master_id, configuration")
+          .select("id, name, funnel_id, venue_id, master_id, configuration, whatsapp_instance_id")
           .or(`whatsapp_instance_id.eq.${instanceToken},configuration->>token.eq.${instanceToken}`)
-          .limit(1);
-        const sourceRow = matchedSources?.[0];
+          .order("created_at", { ascending: true })
+          .limit(10);
+        // Token canônico (whatsapp_instance_id) vence token velho esquecido em `configuration` de outra origem
+        const sourceRow = (matchedSources || []).find((s: any) => s.whatsapp_instance_id === instanceToken) || matchedSources?.[0];
         const targetFunnelId = sourceRow?.funnel_id;
+
+        // Isolamento: instância sem origem/funil nunca procura nem cria lead no sistema inteiro
+        if (!sourceRow || !targetFunnelId) {
+          console.warn("[uazapi-webhook] Instância sem origem/funil cadastrado. Mensagem ignorada.");
+          return;
+        }
 
         // Procura lead correspondente pelo telefone ESTRITAMENTE NO FUNIL DA ORIGEM
         let leadQuery = supabase

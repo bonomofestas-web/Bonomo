@@ -106,8 +106,9 @@ export const normalizeWhatsAppNumber = (phone?: string | null): string => {
     return `${clean}@lid`;
   }
   
-  // Número brasileiro com 10 ou 11 dígitos (DDD + número, sem 55) -> adiciona 55
-  if ((clean.length === 10 || clean.length === 11) && !clean.startsWith('55')) {
+  // Número brasileiro com 10 ou 11 dígitos (DDD + número, sem 55) -> adiciona 55.
+  // Inclui o DDD 55 (RS): com o código do país teria no mínimo 12 dígitos, então 10/11 dígitos nunca já trazem o 55.
+  if (clean.length === 10 || clean.length === 11) {
     return `55${clean}`;
   }
   

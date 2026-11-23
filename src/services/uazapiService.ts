@@ -16,6 +16,28 @@ import type {
   UazapiGlobalWebhookConfig,
 } from '../types/uazapi';
 
+/** Erro de rede no envio: o servidor do WhatsApp não respondeu, então a mensagem PODE ter saído. */
+export class UazapiNetworkError extends Error {
+  readonly isNetworkError = true;
+  constructor() {
+    super('Sem resposta do servidor do WhatsApp. Confira se a mensagem chegou antes de reenviar.');
+    this.name = 'UazapiNetworkError';
+  }
+}
+
+export const isUazapiNetworkError = (err: unknown): err is UazapiNetworkError =>
+  Boolean(err && (err as any).isNetworkError === true);
+
+/** fetch de envio: troca o "Failed to fetch" cru (queda de rede, timeout, 5xx sem CORS) por erro tipado em português. */
+async function sendFetch(url: string, init: RequestInit): Promise<Response> {
+  try {
+    return await fetch(url, init);
+  } catch (err) {
+    if (err instanceof TypeError) throw new UazapiNetworkError();
+    throw err;
+  }
+}
+
 const STORAGE_KEYS = {
   SERVER_URL: 'f5_uazapi_server_url',
   ADMIN_TOKEN: 'f5_uazapi_admin_token',
@@ -500,7 +522,7 @@ export const uazapiService = {
     if (payload.track_source) body.track_source = payload.track_source;
     if (payload.track_id) body.track_id = payload.track_id;
 
-    const res = await fetch(`${baseUrl}/send/text`, {
+    const res = await sendFetch(`${baseUrl}/send/text`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -546,7 +568,7 @@ export const uazapiService = {
     }
 
     const captionText = payload.text || payload.caption || undefined;
-    const res = await fetch(`${baseUrl}/send/media`, {
+    const res = await sendFetch(`${baseUrl}/send/media`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
