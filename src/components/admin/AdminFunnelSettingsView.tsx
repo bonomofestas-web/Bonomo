@@ -241,6 +241,13 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
   });
   const [stages, setStages] = useState<FunnelStageConfig[]>([]);
   const [activeEditingHintStageId, setActiveEditingHintStageId] = useState<string | null>(null);
+  // Etapas com o detalhe (orientações, acesso, automações) aberto; o padrão é recolhido para a tela ficar limpa
+  const [expandedStageIds, setExpandedStageIds] = useState<Set<string>>(() => new Set());
+  const toggleStageExpanded = (id: string) => setExpandedStageIds(prev => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
   const [activeIconPickerStageId, setActiveIconPickerStageId] = useState<string | null>(null);
 
   // Estados de Gatilhos / Automação da Etapa
@@ -2612,7 +2619,32 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                       </div>
                     </div>
 
+                    {/* Resumo da etapa: abre e recolhe orientações, acesso e automações */}
+                    <button
+                      type="button"
+                      onClick={() => toggleStageExpanded(stage.id)}
+                      aria-expanded={expandedStageIds.has(stage.id)}
+                      style={{
+                        margin: '12px 12px 0', padding: '9px 10px', borderRadius: '8px', cursor: 'pointer', textAlign: 'left',
+                        background: 'var(--adm-bg-card)', border: '1px solid var(--adm-border)', color: 'var(--adm-text-title)',
+                        display: 'flex', alignItems: 'center', gap: '8px',
+                      }}
+                    >
+                      <ChevronDown size={14} style={{ flexShrink: 0, transform: expandedStageIds.has(stage.id) ? 'none' : 'rotate(-90deg)', transition: 'transform .15s' }} />
+                      <span style={{ display: 'flex', flexDirection: 'column', gap: '1px', minWidth: 0 }}>
+                        <span style={{ fontSize: '0.74rem', fontWeight: 800 }}>Configurar etapa</span>
+                        <span style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {stage.hints ? 'Com orientação' : 'Sem orientação'}
+                          {' · '}
+                          {stage.allowedCollaboratorIds && stage.allowedCollaboratorIds.length > 0 ? `Acesso: ${stage.allowedCollaboratorIds.length} pessoa(s)` : 'Acesso: todos'}
+                          {' · '}
+                          {(stage.triggers || []).length} automação(ões)
+                        </span>
+                      </span>
+                    </button>
+
                     {/* Stage Body (Hints & Triggers) */}
+                    {expandedStageIds.has(stage.id) && (
                     <div style={{ padding: '12px', display: 'flex', flexDirection: 'column', gap: '10px', flex: 1 }}>
                       {/* Hints Card */}
                       <div style={{
@@ -3615,6 +3647,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                         })()}
                       </div>
                     </div>
+                    )}
 
                     {/* Intersection Plus (+) Button directly on the column right border */}
                     {index < displayedStages.length - 1 && (
