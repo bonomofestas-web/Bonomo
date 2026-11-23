@@ -1,4 +1,4 @@
-import { Select } from '../ui';
+import { Select, Switch, Checkbox } from '../ui';
 import { toast } from 'sonner';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
@@ -1171,7 +1171,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
           {/* ── 1. CONFIGURAÇÕES OPERACIONAIS ── */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             <div style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase', letterSpacing: '0.6px' }}>
-              1. CONFIGURAÇÕES OPERACIONAIS
+              ENTRADA, GANHO E DUPLICADOS
             </div>
 
             {/* Etapa de leads / clientes de entrada Toggle */}
@@ -1180,16 +1180,11 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                 <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--adm-text-title)' }}>
                   {isPostSale ? 'Etapa de Entrada do Cliente' : 'Etapa de leads de entrada'}
                 </span>
-                <input 
-                  type="checkbox" 
-                  checked={isEntryStageActive} 
-                  onChange={(e) => handleToggleEntryStage(e.target.checked)} 
-                  style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: 'var(--adm-accent, #3B82F6)' }} 
-                />
+                <Switch size="sm" checked={isEntryStageActive} onChange={(e) => handleToggleEntryStage(e.target.checked)} />
               </div>
               <p style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)', margin: 0, lineHeight: 1.4 }}>
                 {isPostSale 
-                  ? 'No Sucesso do Cliente, o funil inicia com a Caixa de Entrada desativada por padrão. Ao vincular uma origem de WhatsApp, ela é ativada automaticamente. Se desativada, mensagens de números desconhecidos são ignoradas para proteção do pós-venda.'
+                  ? 'No Pós-Venda, o funil inicia com a Caixa de Entrada desativada por padrão. Ao vincular uma origem de WhatsApp, ela é ativada automaticamente. Se desativada, mensagens de números desconhecidos são ignoradas para proteção do pós-venda.'
                   : 'A Caixa de Entrada deixa o fluxo mais organizado. Ao desativá-la, novos leads entrarão diretamente na 1ª etapa disponível deste funil comercial.'}
               </p>
               {leadsInEntryStage.length > 0 && !isEntryStageActive && (
@@ -1203,12 +1198,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
             <div style={{ background: 'var(--adm-bg-input)', border: '1px solid var(--adm-border)', borderRadius: '10px', padding: '12px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
                 <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--adm-text-title)' }}>Habilitar Etapa de Ganho</span>
-                <input 
-                  type="checkbox" 
-                  checked={isWonStageEnabled} 
-                  onChange={(e) => setIsWonStageEnabled(e.target.checked)} 
-                  style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: 'var(--adm-accent, #3B82F6)' }} 
-                />
+                <Switch size="sm" checked={isWonStageEnabled} onChange={(e) => setIsWonStageEnabled(e.target.checked)} />
               </div>
               <p style={{ fontSize: '0.7rem', color: 'var(--adm-text-muted)', margin: 0, lineHeight: 1.35 }}>
                 {isWonStageEnabled 
@@ -1221,12 +1211,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
             <div style={{ background: 'var(--adm-bg-input)', border: '1px solid var(--adm-border)', borderRadius: '10px', padding: '12px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
                 <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--adm-text-title)' }}>Controle duplicado</span>
-                <input 
-                  type="checkbox" 
-                  checked={detectDuplicates} 
-                  onChange={(e) => setDetectDuplicates(e.target.checked)} 
-                  style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: 'var(--adm-accent, #3B82F6)' }} 
-                />
+                <Switch size="sm" checked={detectDuplicates} onChange={(e) => setDetectDuplicates(e.target.checked)} />
               </div>
               <p style={{ fontSize: '0.7rem', color: 'var(--adm-text-muted)', margin: 0, lineHeight: 1.35 }}>
                 Identifica automaticamente leads com mesmo telefone ou e-mail.
@@ -1245,7 +1230,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
           {/* ── 2. QUALIFICAÇÃO / ICP & CAMPOS ── */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', borderTop: '1px solid var(--adm-border)', paddingTop: '16px' }}>
             <div style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase', letterSpacing: '0.6px' }}>
-              2. QUALIFICAÇÃO & CAMPOS
+              QUALIFICAÇÃO E CAMPOS
             </div>
 
             {/* Qualificação / ICP */}
@@ -1354,7 +1339,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <Building2 size={14} style={{ color: 'var(--adm-accent, #3B82F6)' }} />
                 <span style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase', letterSpacing: '0.6px' }}>
-                  3. UNIDADES & CASAS
+                  UNIDADES E DISTRIBUIÇÃO
                 </span>
               </div>
               <span style={{
@@ -1793,11 +1778,10 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                                               title="Desmarque para este número não responder clientes neste funil (as mensagens que ele recebe continuam entrando)"
                                               style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', cursor: 'pointer', fontSize: '0.58rem', fontWeight: 700, color: canSend ? '#10B981' : '#F59E0B' }}
                                             >
-                                              <input
-                                                type="checkbox"
+                                              <Checkbox
+                                                size={13}
                                                 checked={canSend}
                                                 onChange={(e) => setSendDisabledSourceIds(prev => (e.target.checked ? prev.filter(id => id !== src.id) : [...new Set([...prev, src.id])]))}
-                                                style={{ width: '13px', height: '13px', accentColor: '#10B981', cursor: 'pointer' }}
                                               />
                                               {canSend ? 'Envia mensagens' : 'Só recebe'}
                                             </label>
@@ -1943,7 +1927,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                                         }}
                                       >
                                         <Plus size={12} strokeWidth={2.5} />
-                                        <span>Adicionar Vendedor</span>
+                                        <span>Adicionar especialista</span>
                                       </button>
 
                                       {/* Dropdown / Popover de Seleção de Vendedor */}
@@ -1968,7 +1952,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                                         >
                                           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '4px', borderBottom: '1px solid var(--adm-border)' }}>
                                             <span style={{ fontSize: '0.68rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
-                                              Selecionar Vendedor
+                                              Selecionar especialista
                                             </span>
                                             <button
                                               type="button"
@@ -2075,7 +2059,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                                             <SafeAvatar name={collab?.name || 'Colaborador'} src={collab?.avatarUrl} size={20} />
                                             <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
                                               <span style={{ fontSize: '0.70rem', fontWeight: 700, color: 'var(--adm-text-title)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                                {collab?.name || 'Vendedor'}
+                                                {collab?.name || 'Especialista'}
                                               </span>
                                               <span style={{ fontSize: '0.58rem', color: 'var(--adm-text-muted)' }}>
                                                 {getCollabRoleTitle(collab)}
@@ -2210,7 +2194,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                                     })}
                                     {venueSdrIds.length === 0 && (
                                       <div style={{ fontSize: '0.64rem', color: 'var(--adm-text-muted)', textAlign: 'center', padding: '10px 0' }}>
-                                        Nenhum vendedor na fila. Clique em "+ Adicionar Vendedor" acima para montar a ordem de entrega.
+                                        Nenhum especialista na fila. Clique em "+ Adicionar especialista" acima para montar a ordem de entrega.
                                       </div>
                                     )}
                                   </div>
@@ -2274,7 +2258,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                     Equipe Atuante neste Funil
                   </div>
                   <div style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)', marginTop: '2px' }}>
-                    Define quem atua nas vendas deste funil e com qual papel (SDR, Closer ou ambos). Se vazio, usa a equipe comercial da unidade.
+                    Define quem atua nas vendas deste funil e com qual papel (SDR, Especialista ou ambos). Se vazio, usa a equipe comercial da unidade.
                   </div>
                 </div>
                 <button
@@ -2319,7 +2303,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
               <div style={{ maxHeight: '220px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '5px' }}>
                 {!isAddingTeamMember && teamMemberIds.length === 0 && funnelCloserIds.length === 0 && (
                   <span style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)' }}>
-                    Nenhum colaborador definido. Use "Adicionar colaborador" para escolher SDRs e Closers deste funil.
+                    Nenhum colaborador definido. Use "Adicionar colaborador" para escolher SDRs e especialistas deste funil.
                   </span>
                 )}
                 {funnelCollaborators
@@ -2389,7 +2373,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                               cursor: 'pointer',
                             }}
                           >
-                            Closer
+                            Especialista
                           </button>
                         </div>
                       </div>
@@ -2642,7 +2626,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                       }}>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                           <span style={{ fontSize: '0.68rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase' }}>
-                            DICAS / ORIENTAÇÕES
+                            Orientações da etapa
                           </span>
                           <button
                             type="button"
@@ -2674,7 +2658,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                           />
                         ) : (
                           <p style={{ fontSize: '0.72rem', color: stage.hints ? 'var(--adm-text-body)' : 'var(--adm-text-muted)', margin: 0, fontStyle: stage.hints ? 'normal' : 'italic', lineHeight: 1.35 }}>
-                            {stage.hints || 'Nenhuma orientação cadastrada para esta etapa.'}
+                            {stage.hints || 'Sem orientação. Use Editar para orientar a equipe nesta etapa.'}
                           </p>
                         )}
                       </div>
@@ -2686,13 +2670,13 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                             {
                               label: 'Quem é avisado',
                               value: stage.responsibility || 'both',
-                              options: [['both', 'SDR e Closer do lead'], ['sdr', 'Só o SDR do lead'], ['closer', 'Só o Closer do lead']],
+                              options: [['both', 'SDR e Especialista do lead'], ['sdr', 'Só o SDR do lead'], ['closer', 'Só o Especialista do lead']],
                               onChange: (v: string) => setStages(prev => prev.map(s => s.id === stage.id ? { ...s, responsibility: v as StageResponsibility } : s)),
                             },
                             {
                               label: 'Quem vê',
                               value: (stage.allowedCollaboratorIds && stage.allowedCollaboratorIds.length > 0) ? 'specific' : (stage.visibility && stage.visibility !== 'specific' ? stage.visibility : 'all'),
-                              options: [['all', 'Livre'], ['sdr', 'Só SDRs'], ['closer', 'Só Closers'], ['specific', 'Pessoas (abaixo)']],
+                              options: [['all', 'Livre'], ['sdr', 'Só SDRs'], ['closer', 'Só Especialistas'], ['specific', 'Pessoas (abaixo)']],
                               onChange: (v: string) => setStages(prev => prev.map(s => s.id === stage.id ? {
                                 ...s,
                                 visibility: v as StageVisibility,
@@ -2752,7 +2736,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '4px' }}>
                               <span style={{ fontSize: '0.68rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '4px' }}>
                                 <ShieldCheck size={12} color="var(--adm-accent)" />
-                                <span>Acesso à etapa</span>
+                                <span>Quem acessa a etapa</span>
                               </span>
 
                               <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -3136,7 +3120,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                           <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
                             <Zap size={12} color="#8B5CF6" />
                             <span style={{ fontSize: '0.68rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase' }}>
-                              GATILHOS / AUTOMAÇÃO
+                              Automações da etapa
                             </span>
                           </div>
                         </div>
@@ -3483,7 +3467,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                                 }}
                               >
                                 <Plus size={11} />
-                                Adicionar Gatilho
+                                Adicionar automação
                               </button>
 
                               {/* Dropdown Popup suspenso de tipos de gatilhos */}
@@ -3784,29 +3768,23 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                 </label>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.78rem', color: '#D3E0EA' }}>
-                    <input
-                      type="checkbox"
-                      checked={duplicateRuleConfig.matchPhone}
+                    <Checkbox
+                      checked={Boolean(duplicateRuleConfig.matchPhone)}
                       onChange={(e) => setDuplicateRuleConfig({ ...duplicateRuleConfig, matchPhone: e.target.checked })}
-                      style={{ width: '16px', height: '16px', accentColor: '#3B82F6' }}
                     />
                     <span>Mesmo Telefone / WhatsApp</span>
                   </label>
                   <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.78rem', color: '#D3E0EA' }}>
-                    <input
-                      type="checkbox"
-                      checked={duplicateRuleConfig.matchEmail}
+                    <Checkbox
+                      checked={Boolean(duplicateRuleConfig.matchEmail)}
                       onChange={(e) => setDuplicateRuleConfig({ ...duplicateRuleConfig, matchEmail: e.target.checked })}
-                      style={{ width: '16px', height: '16px', accentColor: '#3B82F6' }}
                     />
                     <span>Mesmo E-mail</span>
                   </label>
                   <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.78rem', color: '#D3E0EA' }}>
-                    <input
-                      type="checkbox"
-                      checked={duplicateRuleConfig.matchName}
+                    <Checkbox
+                      checked={Boolean(duplicateRuleConfig.matchName)}
                       onChange={(e) => setDuplicateRuleConfig({ ...duplicateRuleConfig, matchName: e.target.checked })}
-                      style={{ width: '16px', height: '16px', accentColor: '#3B82F6' }}
                     />
                     <span>Mesmo Nome do Lead / Aniversariante</span>
                   </label>
@@ -3824,36 +3802,11 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                       Quando ativado, o funil responde de forma automática aplicando a ação configurada abaixo.
                     </p>
                   </div>
-                  <label style={{ position: 'relative', display: 'inline-block', width: '38px', height: '20px', cursor: 'pointer' }}>
-                    <input
-                      type="checkbox"
-                      checked={Boolean(duplicateRuleConfig.autoResolve)}
-                      onChange={(e) => setDuplicateRuleConfig({ ...duplicateRuleConfig, autoResolve: e.target.checked })}
-                      style={{ opacity: 0, width: 0, height: 0 }}
-                    />
-                    <span
-                      style={{
-                        position: 'absolute',
-                        inset: 0,
-                        backgroundColor: duplicateRuleConfig.autoResolve ? '#3B82F6' : 'rgba(255, 255, 255, 0.15)',
-                        borderRadius: '20px',
-                        transition: '0.2s ease',
-                      }}
-                    >
-                      <span
-                        style={{
-                          position: 'absolute',
-                          left: duplicateRuleConfig.autoResolve ? '20px' : '3px',
-                          top: '3px',
-                          width: '14px',
-                          height: '14px',
-                          backgroundColor: '#FFFFFF',
-                          borderRadius: '50%',
-                          transition: '0.2s ease',
-                        }}
-                      />
-                    </span>
-                  </label>
+                  <Switch
+                    checked={Boolean(duplicateRuleConfig.autoResolve)}
+                    onChange={(e) => setDuplicateRuleConfig({ ...duplicateRuleConfig, autoResolve: e.target.checked })}
+                    color="#3B82F6"
+                  />
                 </div>
               </div>
 
@@ -4883,12 +4836,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                         Se desativado, os colaboradores só poderão vincular as tags cadastradas nesta lista de configuração.
                       </div>
                     </div>
-                    <input
-                      type="checkbox"
-                      checked={allowCollaboratorsCreateTags}
-                      onChange={(e) => setAllowCollaboratorsCreateTags(e.target.checked)}
-                      style={{ width: '16px', height: '16px', accentColor: '#10B981', cursor: 'pointer' }}
-                    />
+                    <Switch size="sm" checked={allowCollaboratorsCreateTags} onChange={(e) => setAllowCollaboratorsCreateTags(e.target.checked)} />
                   </div>
 
                   {/* Input de Adicionar Tag */}
