@@ -1,4 +1,5 @@
-import { DateField, Select } from '../ui';
+import { DateField, Select, Checkbox } from '../ui';
+import { getAppointmentTheme } from '../../utils/appointmentTheme';
 import { usePresenceContext } from '../../hooks/usePresence';
 import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { 
@@ -60,7 +61,6 @@ import { MqlScoreBar } from './MqlScoreBar';
 
 interface AdminLeadInspectorProps {
   lead: Lead;
-  onWhatsApp?: (lead: Lead) => void;
   onStageChange: (stage: CrmStage) => void;
   onToggleCollapse?: () => void;
   isCollapsed?: boolean;
@@ -718,7 +718,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
 
 
   const [isTransferVenueModalOpen, setIsTransferVenueModalOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'principal' | 'origem' | 'jornada' | 'mql' | 'comercial' | 'tasks'>('principal');
+  const [activeTab, setActiveTab] = useState<'principal' | 'origem' | 'jornada' | 'mql' | 'comercial'>('principal');
   const [copiedCode, setCopiedCode] = useState(false);
   const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
   const [deletePermanently, setDeletePermanently] = useState(false);
@@ -755,7 +755,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
       id: commitment.id,
       leadId: lead.id,
       type,
-      code: commitment.id ? `#AG${type === 'visit' ? 'V' : 'D'}-${commitment.id.slice(0, 5).toUpperCase()}` : '#AGV-10294',
+      code: `#AG${type === 'visit' ? 'V' : 'D'}-${(commitment.id || lead.id).slice(0, 5).toUpperCase()}`,
       leadName: lead.name,
       leadPhone: lead.phone,
       leadEmail: lead.email,
@@ -1903,15 +1903,14 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
           <span style={cardLabelStyle}>{field.label}</span>
           <div style={cardValueStyle}>
             {field.type === 'todo' ? (
-              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.8rem', color: 'var(--adm-text-title)' }}>
-                <input
-                  type="checkbox"
-                  checked={Boolean(currentValue)}
-                  onChange={(e) => {
-                    const updatedCustom = { ...(lead.customFieldValues || {}), [field.id]: e.target.checked };
-                    handleUpdate({ customFieldValues: updatedCustom });
-                  }}
-                />
+              <label
+                style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.8rem', color: 'var(--adm-text-title)' }}
+                onClick={() => {
+                  const updatedCustom = { ...(lead.customFieldValues || {}), [field.id]: !currentValue };
+                  handleUpdate({ customFieldValues: updatedCustom });
+                }}
+              >
+                <Checkbox checked={Boolean(currentValue)} />
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '0.76rem', color: Boolean(currentValue) ? '#10B981' : 'var(--adm-text-muted)' }}>
                   {Boolean(currentValue) ? (
                     <>
@@ -2054,6 +2053,19 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
     paddingTop: '2px',
     paddingBottom: '2px',
   };
+
+  // Título de grupo dentro do card de Dados Prioritários (Responsáveis, Negócio, Evento, Perfil)
+  const fieldGroupStyle: React.CSSProperties = {
+    fontSize: '0.64rem',
+    fontWeight: 800,
+    textTransform: 'uppercase',
+    letterSpacing: '0.6px',
+    color: 'var(--adm-text-muted)',
+    padding: '10px 0 4px',
+    borderTop: '1px solid var(--adm-border)',
+    marginTop: '6px',
+  };
+  const fieldGroupFirstStyle: React.CSSProperties = { ...fieldGroupStyle, borderTop: 'none', marginTop: 0, paddingTop: '2px' };
 
   const cardLabelStyle: React.CSSProperties = {
     width: '108px',
@@ -3439,7 +3451,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
               }}
             >
               <Shield size={12} color={activeTab === 'comercial' ? '#14A9D7' : 'rgba(255,255,255,0.6)'} />
-              <span>Comercial (Lead)</span>
+              <span>Origem</span>
             </button>
           </div>
         ) : (
@@ -3811,6 +3823,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
             </div>
 
             <div style={cardStyle}>
+              <div style={fieldGroupFirstStyle}>Responsáveis</div>
               {/* 1. SDR (Responsável Pré-Vendas) */}
               <div data-inspector-dropdown style={{ ...cardRowStyle, ...getMissingHighlightStyle('sdrId'), position: 'relative' }}>
                 <span style={cardLabelStyle}>
@@ -4002,7 +4015,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
               {!isPostSale && (
                 <div data-inspector-dropdown style={{ ...cardRowStyle, ...getMissingHighlightStyle('closerId'), position: 'relative' }}>
                   <span style={cardLabelStyle}>
-                    Closer {isFieldMissing('closerId') && <span style={{ color: '#EF4444' }}>*</span>}
+                    Especialista {isFieldMissing('closerId') && <span style={{ color: '#EF4444' }}>*</span>}
                   </span>
                   <div style={cardValueStyle}>
                     <div
@@ -4016,7 +4029,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                       }}
                       title={
                         isCloserLockedBySplit
-                          ? 'Split Automático Ativo: O Closer deste lead é atribuído de forma sequencial pelo rodízio. Apenas Gerentes ou Master podem alterar manualmente.'
+                          ? 'Split Automático Ativo: O especialista deste lead é atribuído de forma sequencial pelo rodízio. Apenas Gerentes ou Master podem alterar manualmente.'
                           : (isSplitActiveForLead ? 'Split Automático Ativo nesta unidade (Liberado para Gerência)' : undefined)
                       }
                       style={{
@@ -4058,12 +4071,12 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                             )}
                           </div>
                           <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--adm-text-title)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                            {closerList.find(c => c.id === lead.closerId)?.name || lead.closerName || 'Closer'}
+                            {closerList.find(c => c.id === lead.closerId)?.name || lead.closerName || 'Especialista'}
                           </span>
                         </div>
                       ) : (
                         <span style={{ fontSize: '0.76rem', color: 'var(--adm-text-muted)', fontStyle: 'italic' }}>
-                          {isSplitActiveForLead ? 'Aguardando Split Automático' : 'Atribuir Closer...'}
+                          {isSplitActiveForLead ? 'Aguardando Split Automático' : 'Atribuir especialista...'}
                         </span>
                       )}
 
@@ -4100,7 +4113,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                               e.stopPropagation();
                               removeLeadCloser(lead.id);
                             }}
-                            title="Desatribuir Closer"
+                            title="Desatribuir especialista"
                             style={{
                               background: 'transparent',
                               border: 'none',
@@ -4219,6 +4232,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                 </div>
               )}
 
+              <div style={fieldGroupStyle}>Negócio</div>
               {/* 3. Temperatura */}
               {!isPostSale && (
                 <div data-inspector-dropdown style={{ ...cardRowStyle, position: 'relative' }}>
@@ -4469,6 +4483,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                 </div>
               </div>
 
+              <div style={fieldGroupStyle}>Evento</div>
               {/* 8. Tipo de Evento (Dropdown Popover Integrado) */}
               <div data-inspector-dropdown style={{ ...cardRowStyle, ...getMissingHighlightStyle('eventType'), position: 'relative' }}>
                 <span style={cardLabelStyle}>
@@ -4743,6 +4758,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                 </div>
               </div>
 
+              <div style={fieldGroupStyle}>Perfil do contratante</div>
               {/* 14. Decisores */}
               <div style={cardRowStyle}>
                 <span style={cardLabelStyle}>Decisores</span>
@@ -5726,369 +5742,120 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              {/* CARD 1: VISITA */}
-              <div style={{
-                background: 'var(--adm-bg-card)',
-                border: `1px solid ${lead.visitCommitment ? (lead.visitCommitment.status === 'completed' ? 'rgba(16, 185, 129, 0.35)' : lead.visitCommitment.status === 'no_show' || lead.visitCommitment.status === 'cancelled' ? 'rgba(239, 68, 68, 0.35)' : 'rgba(56, 189, 248, 0.35)') : 'var(--adm-border)'}`,
-                borderRadius: '10px',
-                padding: '10px 12px',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '8px',
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <CalendarIcon size={14} color="#38BDF8" />
-                    <span style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
-                      Visita
-                    </span>
-                  </div>
-
-                  {lead.visitCommitment ? (
-                    <span style={{
-                      fontSize: '0.62rem',
-                      fontWeight: 800,
-                      padding: '2px 6px',
-                      borderRadius: '4px',
-                      background: lead.visitCommitment.status === 'completed'
-                        ? 'rgba(16, 185, 129, 0.15)'
-                        : lead.visitCommitment.status === 'scheduled'
-                        ? 'rgba(56, 189, 248, 0.15)'
-                        : 'rgba(239, 68, 68, 0.15)',
-                      color: lead.visitCommitment.status === 'completed'
-                        ? '#10B981'
-                        : lead.visitCommitment.status === 'scheduled'
-                        ? '#38BDF8'
-                        : '#EF4444',
-                      border: `1px solid ${lead.visitCommitment.status === 'completed' ? '#10B981' : lead.visitCommitment.status === 'scheduled' ? '#38BDF8' : '#EF4444'}`,
-                      textTransform: 'uppercase',
-                    }}>
-                      {lead.visitCommitment.status === 'completed' ? '✓ Realizada com Sucesso' : lead.visitCommitment.status === 'scheduled' ? 'Agendada' : lead.visitCommitment.status === 'no_show' ? 'Não Compareceu (No-Show)' : 'Cancelada'}
-                    </span>
-                  ) : (
-                    <span style={{ fontSize: '0.62rem', color: 'var(--adm-text-muted)', fontStyle: 'italic' }}>
-                      Não agendada
-                    </span>
-                  )}
-                </div>
-
-                {lead.visitCommitment ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', fontSize: '0.72rem' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ color: 'var(--adm-text-muted)' }}>Data & Horário:</span>
-                      <strong style={{ color: 'var(--adm-text-title)' }}>
-                        {new Date(lead.visitCommitment.date + 'T12:00:00').toLocaleDateString('pt-BR')} às {lead.visitCommitment.time}
-                      </strong>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ color: 'var(--adm-text-muted)' }}>Pessoas:</span>
-                      <span style={{
-                        fontWeight: 900,
-                        color: '#D4AF37',
-                        background: 'rgba(212, 175, 55, 0.15)',
-                        padding: '1px 6px',
-                        borderRadius: '4px',
-                      }}>
-                        {lead.visitCommitment.pax} PAX
-                      </span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ color: 'var(--adm-text-muted)' }}>Responsável:</span>
-                      <span style={{ color: 'var(--adm-text-body)', fontWeight: 600 }}>
-                        {lead.visitCommitment.responsibleName || 'Equipe Comercial'}
-                      </span>
-                    </div>
-
-                    {!effectiveReadOnly && lead.visitCommitment.status === 'scheduled' && (
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginTop: '6px', paddingTop: '6px', borderTop: '1px solid var(--adm-border)' }}>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleOpenReceipt('visit');
-                          }}
-                          style={{
-                            padding: '5px 10px',
-                            borderRadius: '6px',
-                            background: 'rgba(2, 132, 199, 0.08)',
-                            border: '1px solid rgba(2, 132, 199, 0.25)',
-                            color: 'var(--adm-accent, #0284C7)',
-                            fontSize: '0.68rem',
-                            fontWeight: 700,
-                            cursor: 'pointer',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                          }}
-                          title="Visualizar comprovante oficial deste agendamento"
-                        >
-                          <FileText size={11} />
-                          <span>Ver Comprovante</span>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleRequestSchedule('visit');
-                          }}
-                          style={{
-                            padding: '5px 12px',
-                            borderRadius: '6px',
-                            background: 'rgba(56, 189, 248, 0.12)',
-                            border: '1px solid rgba(56, 189, 248, 0.4)',
-                            color: '#38BDF8',
-                            fontSize: '0.68rem',
-                            fontWeight: 800,
-                            cursor: 'pointer',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                          }}
-                          title="Remarcar esta visita para outra data ou horário"
-                        >
-                          <Repeat size={11} />
-                          <span>Remarcar Visita</span>
-                        </button>
+              {(['visit', 'tasting'] as const).map(kind => {
+                const kindTheme = getAppointmentTheme(kind);
+                const commitment = kind === 'visit' ? lead.visitCommitment : lead.tastingCommitment;
+                const status = commitment?.status;
+                const statusColor = status === 'completed' ? '#10B981' : status === 'scheduled' ? kindTheme.color : '#EF4444';
+                const statusLabel = status === 'completed' ? 'Realizada' : status === 'scheduled' ? 'Agendada' : status === 'no_show' ? 'Não compareceu' : 'Cancelada';
+                const canReschedule = status === 'no_show' || status === 'cancelled';
+                const KindIcon = kind === 'visit' ? CalendarIcon : Utensils;
+                const actionBtn: React.CSSProperties = {
+                  padding: '5px 10px', borderRadius: '6px', fontSize: '0.7rem', fontWeight: 700, cursor: 'pointer',
+                  display: 'inline-flex', alignItems: 'center', gap: '5px',
+                };
+                return (
+                  <div
+                    key={kind}
+                    style={{
+                      background: 'var(--adm-bg-card)',
+                      border: `1px solid ${commitment ? `${statusColor}55` : 'var(--adm-border)'}`,
+                      borderLeft: `3px solid ${commitment ? statusColor : kindTheme.color}`,
+                      borderRadius: '10px',
+                      padding: '10px 12px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '8px',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                        <span style={{
+                          width: '26px', height: '26px', borderRadius: '8px', background: kindTheme.soft, color: kindTheme.color,
+                          display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                        }}>
+                          <KindIcon size={14} />
+                        </span>
+                        <span style={{ fontSize: '0.8rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>{kindTheme.label}</span>
                       </div>
-                    )}
 
-                    {!effectiveReadOnly && (lead.visitCommitment.status === 'no_show' || lead.visitCommitment.status === 'cancelled') && (
-                      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '4px', paddingTop: '6px', borderTop: '1px solid var(--adm-border)' }}>
+                      {commitment ? (
+                        <span style={{
+                          fontSize: '0.64rem', fontWeight: 800, padding: '2px 8px', borderRadius: '999px', textTransform: 'uppercase',
+                          letterSpacing: '0.3px', background: `${statusColor}1f`, color: statusColor, border: `1px solid ${statusColor}66`,
+                        }}>
+                          {statusLabel}
+                        </span>
+                      ) : (
+                        <span style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)' }}>Não agendada</span>
+                      )}
+                    </div>
+
+                    {commitment ? (
+                      <>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                          <span style={{ fontSize: '0.92rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
+                            {new Date(commitment.date + 'T12:00:00').toLocaleDateString('pt-BR')} às {commitment.time}
+                          </span>
+                          <span style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)' }}>
+                            {commitment.pax} {commitment.pax === 1 ? 'pessoa' : 'pessoas'} · Especialista: {commitment.responsibleName || 'a definir'}
+                          </span>
+                        </div>
+
+                        {!effectiveReadOnly && status === 'scheduled' && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); handleRequestSchedule(kind); }}
+                              style={{ ...actionBtn, background: kindTheme.soft, border: `1px solid ${kindTheme.border}`, color: kindTheme.text, fontWeight: 800 }}
+                              title={`Remarcar ${kindTheme.label.toLowerCase()} para outra data ou horário`}
+                            >
+                              <Repeat size={12} />
+                              <span>Remarcar</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); handleOpenReceipt(kind); }}
+                              style={{ ...actionBtn, background: 'transparent', border: '1px solid var(--adm-border)', color: 'var(--adm-text-body)' }}
+                              title="Ver o comprovante deste agendamento"
+                            >
+                              <FileText size={12} />
+                              <span>Comprovante</span>
+                            </button>
+                          </div>
+                        )}
+
+                        {!effectiveReadOnly && canReschedule && (
+                          <div>
+                            <button
+                              type="button"
+                              onClick={() => handleRequestSchedule(kind)}
+                              style={{ ...actionBtn, background: kindTheme.soft, border: `1px solid ${kindTheme.border}`, color: kindTheme.text, fontWeight: 800 }}
+                            >
+                              <Plus size={12} />
+                              <span>Reagendar</span>
+                            </button>
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      !effectiveReadOnly && (
                         <button
                           type="button"
-                          onClick={() => handleRequestSchedule('visit')}
+                          onClick={() => handleRequestSchedule(kind)}
                           style={{
-                            padding: '5px 12px',
-                            borderRadius: '6px',
-                            background: 'rgba(56, 189, 248, 0.12)',
-                            border: '1px solid rgba(56, 189, 248, 0.4)',
-                            color: '#38BDF8',
-                            fontSize: '0.70rem',
-                            fontWeight: 800,
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '4px',
+                            ...actionBtn, width: '100%', justifyContent: 'center', padding: '8px 10px', fontSize: '0.74rem',
+                            background: kindTheme.soft, border: `1px dashed ${kindTheme.border}`, color: kindTheme.text, fontWeight: 800,
                           }}
                         >
-                          <Plus size={11} /> Reagendar Visita
+                          <Plus size={13} />
+                          <span>Agendar {kindTheme.label.toLowerCase()}</span>
                         </button>
-                      </div>
+                      )
                     )}
                   </div>
-                ) : (
-                  !effectiveReadOnly && (
-                    <button
-                      type="button"
-                      onClick={() => handleRequestSchedule('visit')}
-                      style={{
-                        background: 'rgba(56, 189, 248, 0.1)',
-                        border: '1px dashed rgba(56, 189, 248, 0.4)',
-                        color: '#38BDF8',
-                        borderRadius: '6px',
-                        padding: '6px 10px',
-                        fontSize: '0.72rem',
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '6px',
-                        width: 'fit-content',
-                        transition: 'all 0.15s ease',
-                      }}
-                      onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(56, 189, 248, 0.2)'; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(56, 189, 248, 0.1)'; }}
-                    >
-                      <Plus size={12} />
-                      <span>Agendar Visita</span>
-                    </button>
-                  )
-                )}
-              </div>
-
-              {/* CARD 2: DEGUSTAÇÃO */}
-              <div style={{
-                background: 'var(--adm-bg-card)',
-                border: `1px solid ${lead.tastingCommitment ? (lead.tastingCommitment.status === 'completed' ? 'rgba(16, 185, 129, 0.35)' : lead.tastingCommitment.status === 'no_show' || lead.tastingCommitment.status === 'cancelled' ? 'rgba(239, 68, 68, 0.35)' : 'rgba(212, 175, 55, 0.35)') : 'var(--adm-border)'}`,
-                borderRadius: '10px',
-                padding: '10px 12px',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '8px',
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <Utensils size={14} color="#D4AF37" />
-                    <span style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
-                      Degustação
-                    </span>
-                  </div>
-
-                  {lead.tastingCommitment ? (
-                    <span style={{
-                      fontSize: '0.62rem',
-                      fontWeight: 800,
-                      padding: '2px 6px',
-                      borderRadius: '4px',
-                      background: lead.tastingCommitment.status === 'completed'
-                        ? 'rgba(16, 185, 129, 0.15)'
-                        : lead.tastingCommitment.status === 'scheduled'
-                        ? 'rgba(212, 175, 55, 0.15)'
-                        : 'rgba(239, 68, 68, 0.15)',
-                      color: lead.tastingCommitment.status === 'completed'
-                        ? '#10B981'
-                        : lead.tastingCommitment.status === 'scheduled'
-                        ? '#D4AF37'
-                        : '#EF4444',
-                      border: `1px solid ${lead.tastingCommitment.status === 'completed' ? '#10B981' : lead.tastingCommitment.status === 'scheduled' ? '#D4AF37' : '#EF4444'}`,
-                      textTransform: 'uppercase',
-                    }}>
-                      {lead.tastingCommitment.status === 'completed' ? '✓ Realizada com Sucesso' : lead.tastingCommitment.status === 'scheduled' ? 'Agendada' : lead.tastingCommitment.status === 'no_show' ? 'Não Compareceu (No-Show)' : 'Cancelada'}
-                    </span>
-                  ) : (
-                    <span style={{ fontSize: '0.62rem', color: 'var(--adm-text-muted)', fontStyle: 'italic' }}>
-                      Não agendada
-                    </span>
-                  )}
-                </div>
-
-                {lead.tastingCommitment ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', fontSize: '0.72rem' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ color: 'var(--adm-text-muted)' }}>Data & Horário:</span>
-                      <strong style={{ color: 'var(--adm-text-title)' }}>
-                        {new Date(lead.tastingCommitment.date + 'T12:00:00').toLocaleDateString('pt-BR')} às {lead.tastingCommitment.time}
-                      </strong>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ color: 'var(--adm-text-muted)' }}>Pessoas:</span>
-                      <span style={{
-                        fontWeight: 900,
-                        color: '#D4AF37',
-                        background: 'rgba(212, 175, 55, 0.15)',
-                        padding: '1px 6px',
-                        borderRadius: '4px',
-                      }}>
-                        {lead.tastingCommitment.pax} PAX
-                      </span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ color: 'var(--adm-text-muted)' }}>Responsável:</span>
-                      <span style={{ color: 'var(--adm-text-body)', fontWeight: 600 }}>
-                        {lead.tastingCommitment.responsibleName || 'Equipe de Degustação'}
-                      </span>
-                    </div>
-
-                    {!effectiveReadOnly && lead.tastingCommitment.status === 'scheduled' && (
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginTop: '6px', paddingTop: '6px', borderTop: '1px solid var(--adm-border)' }}>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleOpenReceipt('tasting');
-                          }}
-                          style={{
-                            padding: '5px 10px',
-                            borderRadius: '6px',
-                            background: 'rgba(217, 119, 6, 0.08)',
-                            border: '1px solid rgba(217, 119, 6, 0.25)',
-                            color: '#D97706',
-                            fontSize: '0.68rem',
-                            fontWeight: 700,
-                            cursor: 'pointer',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                          }}
-                          title="Visualizar comprovante oficial desta degustação"
-                        >
-                          <FileText size={11} />
-                          <span>Ver Comprovante</span>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleRequestSchedule('tasting');
-                          }}
-                          style={{
-                            padding: '5px 12px',
-                            borderRadius: '6px',
-                            background: 'rgba(217, 119, 6, 0.12)',
-                            border: '1px solid rgba(217, 119, 6, 0.4)',
-                            color: '#D97706',
-                            fontSize: '0.68rem',
-                            fontWeight: 800,
-                            cursor: 'pointer',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                          }}
-                          title="Remarcar esta degustação para outra data ou horário"
-                        >
-                          <Repeat size={11} />
-                          <span>Remarcar Degustação</span>
-                        </button>
-                      </div>
-                    )}
-
-                    {!effectiveReadOnly && (lead.tastingCommitment.status === 'no_show' || lead.tastingCommitment.status === 'cancelled') && (
-                      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '4px', paddingTop: '6px', borderTop: '1px solid var(--adm-border)' }}>
-                        <button
-                          type="button"
-                          onClick={() => handleRequestSchedule('tasting')}
-                          style={{
-                            padding: '5px 12px',
-                            borderRadius: '6px',
-                            background: 'rgba(212, 175, 55, 0.12)',
-                            border: '1px solid rgba(212, 175, 55, 0.4)',
-                            color: '#D4AF37',
-                            fontSize: '0.70rem',
-                            fontWeight: 800,
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                          }}
-                        >
-                          <Plus size={11} /> Reagendar Degustação
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  !effectiveReadOnly && (
-                    <button
-                      type="button"
-                      onClick={() => handleRequestSchedule('tasting')}
-                      style={{
-                        background: 'rgba(212, 175, 55, 0.1)',
-                        border: '1px dashed rgba(212, 175, 55, 0.4)',
-                        color: '#D4AF37',
-                        borderRadius: '6px',
-                        padding: '6px 10px',
-                        fontSize: '0.72rem',
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '6px',
-                        width: 'fit-content',
-                        transition: 'all 0.15s ease',
-                      }}
-                      onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(212, 175, 55, 0.2)'; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(212, 175, 55, 0.1)'; }}
-                    >
-                      <Plus size={12} />
-                      <span>Agendar Degustação</span>
-                    </button>
-                  )
-                )}
-              </div>
+                );
+              })}
             </div>
           </div>
         )}
@@ -7315,7 +7082,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                 </div>
               </div>
               <div style={rowStyle}>
-                <span style={rowLabelStyle}>Closer (Vendas)</span>
+                <span style={rowLabelStyle}>Especialista</span>
                 <div style={rowValueStyle}>
                   {lead.closerName || 'Venda Direta / Balcão'}
                 </div>
@@ -7825,7 +7592,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
 
             {/* Checkbox para Master e Gerente */}
             {isManagerOrMaster && (
-              <label style={{
+              <label onClick={() => setDeletePermanently(prev => !prev)} style={{
                 display: 'flex',
                 alignItems: 'center',
                 gap: '8px',
@@ -7836,12 +7603,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                 cursor: 'pointer',
                 userSelect: 'none',
               }}>
-                <input
-                  type="checkbox"
-                  checked={deletePermanently}
-                  onChange={(e) => setDeletePermanently(e.target.checked)}
-                  style={{ cursor: 'pointer' }}
-                />
+                <Checkbox checked={deletePermanently} />
                 <span style={{ fontSize: '0.76rem', fontWeight: 700, color: deletePermanently ? '#EF4444' : 'var(--adm-text-title)' }}>
                   Excluir permanentemente do sistema (apaga todos os dados)
                 </span>

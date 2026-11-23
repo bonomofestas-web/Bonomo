@@ -1,4 +1,4 @@
-import { Select } from '../ui';
+import { Select, Checkbox } from '../ui';
 import { usePresenceContext } from '../../hooks/usePresence';
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { 
@@ -1822,13 +1822,13 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
             {/* ── SEÇÃO: GESTÃO DO PÓS-VENDA & VALORES ── */}
             <div style={sectionTitleStyle}>
               <Shield size={12} color="#06B6D4" />
-              <span>Responsável</span>
+              <span>Gestão do Pós-Venda</span>
             </div>
 
             <div style={cardStyle}>
               {/* Gestor de Sucesso Responsável */}
               <div style={{ ...cardRowStyle, position: 'relative' }}>
-                <span style={cardLabelStyle}>Gestor Sucesso</span>
+                <span style={cardLabelStyle}>Responsável</span>
                 <div style={cardValueStyle}>
                   <div
                     onClick={() => !readOnly && setIsSuccessManagerDropdownOpen(!isSuccessManagerDropdownOpen)}
@@ -2299,13 +2299,11 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.68rem', color: 'var(--adm-text-title)', cursor: 'pointer' }}>
-                    <input
-                      type="checkbox"
-                      checked={newContactIsDecisor}
-                      onChange={(e) => setNewContactIsDecisor(e.target.checked)}
-                      style={{ accentColor: '#10B981' }}
-                    />
+                  <label
+                    onClick={() => setNewContactIsDecisor(prev => !prev)}
+                    style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.68rem', color: 'var(--adm-text-title)', cursor: 'pointer' }}
+                  >
+                    <Checkbox checked={newContactIsDecisor} size={14} />
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
                       <Star size={12} color="#F59E0B" fill="#F59E0B" /> É Decisor Financeiro (Copagante)
                     </span>
@@ -3108,7 +3106,7 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
                   }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.72rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
                       <FileText size={12} color="#6366F1" />
-                      <span>Relatório do Closer (Passagem de Bastão)</span>
+                      <span>Relatório do especialista (passagem de bastão)</span>
                     </div>
                     <div style={{ fontSize: '0.76rem', color: 'var(--adm-text-title)', lineHeight: 1.45, whiteSpace: 'pre-wrap' }}>
                       {client?.commercialHistory?.closerReport || (commercialLead as any)?.closerReport}

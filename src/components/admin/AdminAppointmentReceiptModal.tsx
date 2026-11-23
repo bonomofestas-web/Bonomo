@@ -1,13 +1,14 @@
 import React, { useRef, useState, useEffect, useMemo } from 'react';
 import { 
-  X, Check, Download, Share2, Calendar, 
-  MapPin, Users, Building2, ShieldCheck, Loader2,
+  X, Check, Download, Share2, 
+  MapPin, Users, Building2, Loader2,
   Bell, ChevronDown, ChevronUp, Clock, CheckCircle2, XCircle, Sparkles
 } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import { useAdminState } from '../../context/AdminStateContext';
 import { isPhoneMatch } from '../../services/leadService';
 import { formatPhone } from '../../utils/phoneFormatter';
+import { getAppointmentTheme } from '../../utils/appointmentTheme';
 import type { CommercialCommitmentType, AdminTask } from '../../types/admin';
 import { toast } from 'sonner';
 
@@ -45,18 +46,32 @@ interface AdminAppointmentReceiptModalProps {
 export const AdminAppointmentReceiptModal: React.FC<AdminAppointmentReceiptModalProps> = ({
   receipt,
   onClose,
-  tasks = [],
+  tasks: tasksProp,
 }) => {
   const printableCardRef = useRef<HTMLDivElement>(null);
   const [isDownloading, setIsDownloading] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
 
-  const { leads, venues, collaborators, currentUser } = useAdminState();
+  const { leads, venues, collaborators, currentUser, tasks: contextTasks } = useAdminState();
+  // Quem abre o comprovante sem passar `tasks` (ficha, agendamento) também enxerga as confirmações 1 e 2
+  const tasks = tasksProp && tasksProp.length > 0 ? tasksProp : (contextTasks || []);
 
-  const isVisit = receipt.type === 'visit';
-  const themeColor = isVisit ? '#10B981' : '#D97706';
-  const typeLabel = isVisit ? 'Visita Comercial' : 'Degustação Gastronômica';
+  const theme = getAppointmentTheme(receipt.type);
+  const themeColor = theme.color;
+  const typeLabel = theme.fullLabel;
   const formattedCode = receipt.code.startsWith('#') ? receipt.code : `#${receipt.code}`;
+
+  // Data em destaque do cartão (dia grande, mês, dia da semana)
+  const receiptDay = useMemo(() => {
+    const [y, m, d] = (receipt.dateStr || '').split('-').map(Number);
+    const dt = new Date(y || 1970, (m || 1) - 1, d || 1);
+    return {
+      day: String(d || '').padStart(2, '0'),
+      monthShort: dt.toLocaleDateString('pt-BR', { month: 'short' }).replace('.', ''),
+      weekday: dt.toLocaleDateString('pt-BR', { weekday: 'long' }),
+      fullDate: dt.toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' }),
+    };
+  }, [receipt.dateStr]);
 
   // Localização inteligente com fallback nos dados globais caso a URL venha ausente no payload
   const effectiveVenueLogo = useMemo(() => {
@@ -320,23 +335,6 @@ export const AdminAppointmentReceiptModal: React.FC<AdminAppointmentReceiptModal
     };
   }, [effectiveCloserPhoto, effectiveVenueLogo]);
 
-  // Formata a data por extenso
-  const formattedDate = useMemo(() => {
-    if (!receipt.dateStr) return '';
-    try {
-      const [y, m, d] = receipt.dateStr.split('-').map(Number);
-      const date = new Date(y, m - 1, d);
-      return date.toLocaleDateString('pt-BR', {
-        weekday: 'long',
-        day: '2-digit',
-        month: 'long',
-        year: 'numeric'
-      });
-    } catch {
-      return receipt.dateStr;
-    }
-  }, [receipt.dateStr]);
-
   // Localiza o lead correspondente com fallback inteligente por telefone ou nome
   const targetLeadId = useMemo(() => {
     if (receipt.leadId) return receipt.leadId;
@@ -499,9 +497,9 @@ export const AdminAppointmentReceiptModal: React.FC<AdminAppointmentReceiptModal
         </button>
 
         {/* ═══════════════════════════════════════════════════════════════════
-            ÁREA IMPRIMÍVEL DO COMPROVANTE (CAPTURA EXATA VIA HTML2CANVAS)
+            CARTÃO DO COMPROVANTE (captura exata via html2canvas)
             ═══════════════════════════════════════════════════════════════════ */}
-        <div 
+        <div
           ref={printableCardRef}
           style={{
             background: '#FFFFFF',
@@ -511,273 +509,139 @@ export const AdminAppointmentReceiptModal: React.FC<AdminAppointmentReceiptModal
             boxSizing: 'border-box',
           }}
         >
-          {/* Top Accent Stripe */}
-          <div style={{ height: '8px', background: themeColor, width: '100%' }} />
-
-          {/* Conteúdo Central do Cartão */}
-          <div style={{ padding: '32px 32px 24px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-            {/* Círculo com Ícone de Confirmação */}
-            <div style={{
-              width: '64px',
-              height: '64px',
-              borderRadius: '50%',
-              background: isVisit ? 'rgba(16,185,129,0.12)' : 'rgba(217,119,6,0.12)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: themeColor,
-              marginBottom: '16px',
-              border: `2px solid ${isVisit ? 'rgba(16,185,129,0.3)' : 'rgba(217,119,6,0.3)'}`,
-              boxShadow: `0 8px 20px ${themeColor}22`,
-            }}>
-              <Check size={32} strokeWidth={3} />
-            </div>
-
-            <h2 style={{ margin: '0 0 4px', fontSize: '1.35rem', fontWeight: 900, color: '#0F172A', textAlign: 'center' }}>
-              Agendamento de {typeLabel} Confirmado
-            </h2>
-
-            <div style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              background: '#F1F5F9',
-              padding: '4px 12px',
-              borderRadius: '20px',
-              fontSize: '0.78rem',
-              fontWeight: 800,
-              color: '#475569',
-              marginTop: '6px',
-            }}>
-              <span>CÓDIGO:</span>
-              <span style={{ color: themeColor, letterSpacing: '0.5px' }}>{formattedCode}</span>
-            </div>
-
-            {/* Cartão de Detalhes Estilo Ticket */}
-            <div style={{
-              width: '100%',
-              marginTop: '24px',
-              borderRadius: '16px',
-              border: '1px solid #E2E8F0',
-              background: '#F8FAFC',
-              overflow: 'hidden',
-            }}>
-              {/* Header do Local com Logo */}
+          {/* Cabeçalho escuro: unidade, tipo e confirmação */}
+          <div style={{ background: '#0F172A', padding: '26px 30px 56px', color: '#FFFFFF', position: 'relative' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
+                <div style={{
+                  width: '48px', height: '48px', borderRadius: '12px', background: '#FFFFFF', padding: '5px',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0,
+                }}>
+                  {!venueLogoFailed && (venueLogoDataUrl || effectiveVenueLogo) ? (
+                    <img
+                      src={venueLogoDataUrl || effectiveVenueLogo}
+                      alt={receipt.venueName || 'Unidade'}
+                      crossOrigin={(venueLogoDataUrl || effectiveVenueLogo || '').startsWith('data:') ? undefined : 'anonymous'}
+                      onError={() => setVenueLogoFailed(true)}
+                      style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
+                    />
+                  ) : (
+                    <Building2 size={24} color="#0F172A" />
+                  )}
+                </div>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: '1rem', fontWeight: 800, color: '#FFFFFF' }}>{receipt.venueName}</div>
+                  {receipt.venueAddress && (
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '4px', fontSize: '0.72rem', color: '#94A3B8', marginTop: '3px', lineHeight: 1.35 }}>
+                      <MapPin size={11} color="#94A3B8" style={{ marginTop: '2px', flexShrink: 0 }} />
+                      <span>{receipt.venueAddress}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
               <div style={{
-                padding: '14px 18px',
-                background: '#FFFFFF',
-                borderBottom: '1px solid #E2E8F0',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: '12px',
+                flexShrink: 0, fontSize: '0.70rem', fontWeight: 800, letterSpacing: '0.8px', textTransform: 'uppercase',
+                color: '#FFFFFF', background: themeColor, padding: '5px 10px', borderRadius: '999px',
               }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <div style={{
-                    width: '46px',
-                    height: '46px',
-                    borderRadius: '12px',
-                    background: '#0F172A',
-                    padding: '4px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    overflow: 'hidden',
-                    flexShrink: 0,
-                    border: '1.5px solid #1E293B',
-                    boxShadow: '0 2px 8px rgba(0,0,0,0.18)',
-                  }}>
-                    {!venueLogoFailed && (venueLogoDataUrl || effectiveVenueLogo) ? (
-                      <img 
-                        src={venueLogoDataUrl || effectiveVenueLogo} 
-                        alt={receipt.venueName || 'Unidade'} 
-                        crossOrigin={(venueLogoDataUrl || effectiveVenueLogo || '').startsWith('data:') ? undefined : 'anonymous'}
-                        onError={() => setVenueLogoFailed(true)}
-                        style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} 
-                      />
-                    ) : (
-                      <Building2 size={24} color="#F8FAFC" />
-                    )}
-                  </div>
-                  <div>
-                    <h4 style={{ margin: 0, fontSize: '0.96rem', fontWeight: 800, color: '#0F172A' }}>
-                      {receipt.venueName}
-                    </h4>
-                    {receipt.venueAddress && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.72rem', color: '#64748B', marginTop: '2px' }}>
-                        <MapPin size={11} color="#94A3B8" />
-                        <span>{receipt.venueAddress}</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                <div style={{
-                  fontSize: '0.72rem',
-                  fontWeight: 800,
-                  color: themeColor,
-                  background: isVisit ? 'rgba(16,185,129,0.1)' : 'rgba(217,119,6,0.1)',
-                  padding: '4px 8px',
-                  borderRadius: '6px',
-                }}>
-                  {isVisit ? 'VISITA' : 'DEGUSTAÇÃO'}
-                </div>
-              </div>
-
-              {/* Grid de Informações Chave */}
-              <div style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                {/* Data e Horário em Destaque */}
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '12px',
-                  padding: '10px 14px',
-                  borderRadius: '10px',
-                  background: '#FFFFFF',
-                  border: '1px solid #E2E8F0',
-                }}>
-                  <div style={{
-                    width: '38px',
-                    height: '38px',
-                    borderRadius: '8px',
-                    background: `${themeColor}14`,
-                    color: themeColor,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexShrink: 0,
-                  }}>
-                    <Calendar size={20} />
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: '0.70rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>
-                      Data & Horário Confirmado
-                    </div>
-                    <div style={{ fontSize: '0.95rem', fontWeight: 900, color: '#0F172A', marginTop: '2px' }}>
-                      {receipt.timeStr} • <span style={{ textTransform: 'capitalize' }}>{formattedDate}</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Informações do Cliente e Acompanhantes */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                  <div style={{ padding: '10px 12px', borderRadius: '8px', background: '#FFFFFF', border: '1px solid #E2E8F0' }}>
-                    <span style={{ display: 'block', fontSize: '0.68rem', fontWeight: 700, color: '#64748B' }}>
-                      CLIENTE
-                    </span>
-                    <strong style={{ display: 'block', fontSize: '0.85rem', color: '#0F172A', marginTop: '2px' }}>
-                      {receipt.leadName}
-                    </strong>
-                    {receipt.leadPhone && (
-                      <span style={{ fontSize: '0.72rem', color: '#64748B' }}>{formatPhone(receipt.leadPhone) || receipt.leadPhone}</span>
-                    )}
-                  </div>
-
-                  <div style={{ padding: '10px 12px', borderRadius: '8px', background: '#FFFFFF', border: '1px solid #E2E8F0' }}>
-                    <span style={{ display: 'block', fontSize: '0.68rem', fontWeight: 700, color: '#64748B' }}>
-                      ACOMPANHANTES (PAX)
-                    </span>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px' }}>
-                      <Users size={16} color={themeColor} />
-                      <strong style={{ fontSize: '0.85rem', color: '#0F172A' }}>
-                        {receipt.pax} {receipt.pax === 1 ? 'convidado' : 'convidados'}
-                      </strong>
-                    </div>
-                    <span style={{ fontSize: '0.70rem', color: '#94A3B8' }}>Confirmados na reserva</span>
-                  </div>
-                </div>
-
-                {/* Closer / Anfitrião com Foto Real e Cargo entre Parênteses */}
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '12px',
-                  padding: '10px 14px',
-                  borderRadius: '10px',
-                  background: '#FFFFFF',
-                  border: '1px solid #E2E8F0',
-                }}>
-                  <div style={{
-                    width: '46px',
-                    height: '46px',
-                    borderRadius: '50%',
-                    background: 'linear-gradient(135deg, #1E293B 0%, #0F172A 100%)',
-                    overflow: 'hidden',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    color: '#FFFFFF',
-                    fontWeight: 800,
-                    fontSize: '0.92rem',
-                    letterSpacing: '0.5px',
-                    flexShrink: 0,
-                    border: '2px solid #E2E8F0',
-                    boxShadow: '0 2px 6px rgba(0,0,0,0.08)',
-                  }}>
-                    {!closerPhotoFailed && (closerPhotoDataUrl || effectiveCloserPhoto) ? (
-                      <img 
-                        src={closerPhotoDataUrl || effectiveCloserPhoto} 
-                        alt={receipt.closerName || 'Anfitrião'} 
-                        crossOrigin={(closerPhotoDataUrl || effectiveCloserPhoto || '').startsWith('data:') ? undefined : 'anonymous'}
-                        onError={() => setCloserPhotoFailed(true)}
-                        style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} 
-                      />
-                    ) : (
-                      (() => {
-                        const nameParts = (receipt.closerName || '')
-                          .replace(/\s*\([^)]*\)/g, '')
-                          .replace(/\s*[-–—]\s*(closer|anfitrião|anfitriao|sdr|consultor|anfitriã).*/i, '')
-                          .trim()
-                          .split(/\s+/)
-                          .filter(Boolean);
-                        const initials = nameParts.length >= 2 
-                          ? `${nameParts[0][0]}${nameParts[nameParts.length - 1][0]}`.toUpperCase()
-                          : (nameParts[0] ? nameParts[0].slice(0, 2).toUpperCase() : 'AF');
-                        return (
-                          <span style={{ color: '#F8FAFC', textShadow: '0 1px 2px rgba(0,0,0,0.4)', fontWeight: 900 }}>{initials}</span>
-                        );
-                      })()
-                    )}
-                  </div>
-                  <div>
-                    <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>
-                      Anfitrião da Recepção
-                    </div>
-                    <div style={{ fontSize: '0.90rem', fontWeight: 800, color: '#0F172A', marginTop: '1px' }}>
-                      {receipt.closerName}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Rodapé Interno com Emissão */}
-              <div style={{
-                padding: '10px 18px',
-                borderTop: '1px solid #E2E8F0',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                fontSize: '0.70rem',
-                color: '#94A3B8',
-              }}>
-                <span>Agendado por: {receipt.createdByName || 'Equipe Comercial'}</span>
-                <span>{receipt.createdAtStr ? `Criado em: ${receipt.createdAtStr}` : 'F5 System Oficial'}</span>
+                {theme.fullLabel}
               </div>
             </div>
 
-            {/* Selo Oficial de Autenticidade F5 System no Comprovante */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '26px' }}>
+              <div style={{
+                width: '34px', height: '34px', borderRadius: '50%', background: themeColor, color: '#FFFFFF',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+              }}>
+                <Check size={18} strokeWidth={3} />
+              </div>
+              <div style={{ fontSize: '1.4rem', fontWeight: 900, letterSpacing: '-0.3px' }}>Agendamento confirmado</div>
+            </div>
+          </div>
+
+          {/* Bloco de data sobreposto ao cabeçalho */}
+          <div style={{ padding: '0 24px', marginTop: '-34px' }}>
             <div style={{
-              marginTop: '16px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              fontSize: '0.68rem',
-              fontWeight: 700,
-              color: '#94A3B8',
-              letterSpacing: '0.3px',
+              background: '#FFFFFF', borderRadius: '16px', border: '1px solid #E2E8F0', boxShadow: '0 8px 24px rgba(15,23,42,0.12)',
+              padding: '16px 20px', display: 'flex', alignItems: 'center', gap: '18px',
             }}>
-              <ShieldCheck size={14} color={themeColor} />
-              <span>Documento Oficial de Confirmação • F5 System</span>
+              <div style={{
+                minWidth: '72px', textAlign: 'center', borderRadius: '12px', background: theme.soft, border: `1px solid ${theme.border}`, padding: '8px 10px',
+              }}>
+                <div style={{ fontSize: '2.1rem', fontWeight: 900, lineHeight: 1, color: theme.text }}>{receiptDay.day}</div>
+                <div style={{ fontSize: '0.7rem', fontWeight: 800, textTransform: 'uppercase', color: theme.text, marginTop: '4px', letterSpacing: '0.6px' }}>{receiptDay.monthShort}</div>
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: '0.74rem', fontWeight: 700, color: '#64748B', textTransform: 'capitalize' }}>{receiptDay.weekday}, {receiptDay.fullDate}</div>
+                <div style={{ fontSize: '1.9rem', fontWeight: 900, color: '#0F172A', lineHeight: 1.15, marginTop: '2px' }}>{receipt.timeStr}</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Detalhes */}
+          <div style={{ padding: '20px 30px 8px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: '#F1F5F9', color: '#475569', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <Users size={18} />
+              </div>
+              <div>
+                <div style={{ fontSize: '0.66rem', fontWeight: 800, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Cliente</div>
+                <div style={{ fontSize: '0.98rem', fontWeight: 800, color: '#0F172A' }}>{receipt.leadName}</div>
+                <div style={{ fontSize: '0.76rem', color: '#64748B' }}>
+                  {receipt.pax} {receipt.pax === 1 ? 'pessoa' : 'pessoas'}{receipt.leadPhone ? ` • ${formatPhone(receipt.leadPhone) || receipt.leadPhone}` : ''}
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div style={{
+                width: '38px', height: '38px', borderRadius: '50%', background: '#1E293B', overflow: 'hidden', flexShrink: 0,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#FFFFFF', fontWeight: 800, fontSize: '0.82rem',
+              }}>
+                {!closerPhotoFailed && (closerPhotoDataUrl || effectiveCloserPhoto) ? (
+                  <img
+                    src={closerPhotoDataUrl || effectiveCloserPhoto}
+                    alt={receipt.closerName || 'Especialista'}
+                    crossOrigin={(closerPhotoDataUrl || effectiveCloserPhoto || '').startsWith('data:') ? undefined : 'anonymous'}
+                    onError={() => setCloserPhotoFailed(true)}
+                    style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                  />
+                ) : (
+                  (() => {
+                    const nameParts = (receipt.closerName || '')
+                      .replace(/\s*\([^)]*\)/g, '')
+                      .replace(/\s*[-–—]\s*(closer|anfitrião|anfitriao|sdr|consultor|anfitriã|especialista).*/i, '')
+                      .trim()
+                      .split(/\s+/)
+                      .filter(Boolean);
+                    const initials = nameParts.length >= 2
+                      ? `${nameParts[0][0]}${nameParts[nameParts.length - 1][0]}`.toUpperCase()
+                      : (nameParts[0] ? nameParts[0].slice(0, 2).toUpperCase() : 'ES');
+                    return <span>{initials}</span>;
+                  })()
+                )}
+              </div>
+              <div>
+                <div style={{ fontSize: '0.66rem', fontWeight: 800, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Seu especialista</div>
+                <div style={{ fontSize: '0.98rem', fontWeight: 800, color: '#0F172A' }}>{receipt.closerName}</div>
+                {receipt.closerRoleTitle && <div style={{ fontSize: '0.76rem', color: '#64748B' }}>{receipt.closerRoleTitle}</div>}
+              </div>
+            </div>
+          </div>
+
+          {/* Picote do ticket + rodapé */}
+          <div style={{ position: 'relative', height: '22px', marginTop: '10px', overflow: 'hidden' }}>
+            <div style={{ position: 'absolute', top: '10px', left: '22px', right: '22px', borderTop: '2px dashed #E2E8F0' }} />
+            <div style={{ position: 'absolute', left: '-11px', top: 0, width: '22px', height: '22px', borderRadius: '50%', background: '#F1F5F9' }} />
+            <div style={{ position: 'absolute', right: '-11px', top: 0, width: '22px', height: '22px', borderRadius: '50%', background: '#F1F5F9' }} />
+          </div>
+          <div style={{ padding: '14px 30px 22px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+            <div>
+              <div style={{ fontSize: '0.64rem', fontWeight: 800, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Código</div>
+              <div style={{ fontSize: '1.05rem', fontWeight: 900, color: theme.text, letterSpacing: '1px' }}>{formattedCode}</div>
+            </div>
+            <div style={{ textAlign: 'right', fontSize: '0.7rem', color: '#94A3B8', lineHeight: 1.5 }}>
+              <div>Agendado por {receipt.createdByName || 'Equipe Comercial'}</div>
+              <div>{receipt.createdAtStr ? receipt.createdAtStr : 'F5 System'}</div>
             </div>
           </div>
         </div>
