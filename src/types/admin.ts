@@ -24,6 +24,41 @@ export type AdminRole =
 
 export type ContractFillStage = 'pendente' | 'aguardando_assinatura' | 'juntando_documentos' | 'preenchido';
 
+export type ProposalStatus = 'active' | 'converted' | 'lost';
+
+/**
+ * Proposta comercial (orcamento da degustacao): ativo documental ligado ao lead/contato. Nao conta como contrato fechado;
+ * ao evoluir vira contrato (status 'converted') e deixa de ficar ativa.
+ */
+export interface Proposal {
+  id: string;
+  masterId: string;
+  proposalCode: string;
+  venueId?: string | null;
+  leadId?: string | null;
+  contactId?: string | null;
+  title: string;
+  eventType: string;
+  eventDate?: string | null;
+  guestCount?: number | null;
+  packageName?: string | null;
+  totalAmount: number;
+  paymentSummary?: string | null;
+  clientSnapshot: Record<string, any>;
+  fileUrl?: string | null;
+  attachments: Array<{ name: string; url: string; type?: string }>;
+  notes?: string | null;
+  status: ProposalStatus;
+  lostReason?: string | null;
+  convertedContractId?: string | null;
+  convertedAt?: string | null;
+  source: string;
+  proposalDate?: string | null;
+  createdByName?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export type FeatureFlagId =
   | 'master_dashboard'
   | 'commercial_dashboard'

@@ -1,11 +1,13 @@
 import React, { useMemo, useState } from 'react';
-import { X, Building2, User, PartyPopper, Wallet, Users, FileText, Loader2, Save } from 'lucide-react';
+import { X, Building2, User, PartyPopper, Wallet, Users, FileText, Loader2, Save, Paperclip } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAdminState } from '../../../context/AdminStateContext';
 import { contractService } from '../../../services/contractService';
+import { proposalService } from '../../../services/proposalService';
+import { cloudflareR2Service } from '../../../lib/cloudflareR2';
 import { DateField, Select } from '../../ui';
 import { maskPhoneInput } from '../../../utils/phoneFormatter';
-import type { Contract } from '../../../types/admin';
+import type { Contract, Proposal } from '../../../types/admin';
 
 const EVENT_TYPES: Array<{ value: string; label: string; person: string; personPlaceholder: string }> = [
   { value: '15_anos', label: '15 Anos', person: 'Nome da debutante', personPlaceholder: 'Quem vai ser homenageada' },
@@ -32,6 +34,15 @@ interface Props {
   masterId: string;
   onClose: () => void;
   onSaved: (contract: Contract) => void;
+  /**
+   * Proposta comercial. Com `proposalMode` o formulario cria/edita a proposta (nao conta como contrato fechado);
+   * sem `proposalMode`, a proposta informada vira contrato (ela e encerrada e fica ligada ao contrato que nasceu dela).
+   */
+  proposalMode?: boolean;
+  proposal?: Proposal | null;
+  /** Lead (e contato) a que a nova proposta fica vinculada */
+  leadRef?: { leadId?: string | null; contactId?: string | null; name?: string; phone?: string; venueId?: string | null };
+  onSavedProposal?: (proposal: Proposal) => void;
 }
 
 const labelStyle: React.CSSProperties = { display: 'block', fontSize: '0.7rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: 5 };
@@ -60,10 +71,18 @@ const Field: React.FC<{ label: string; required?: boolean; error?: string; child
  * Registro manual de contrato (e edição dos dados básicos enquanto ele está em fechamento).
  * Só unidade, contratante, telefone, homenageada, tipo de evento e valor são obrigatórios; o resto se completa depois.
  */
-export const ContractFormModal: React.FC<Props> = ({ mode, contract, masterId, onClose, onSaved }) => {
+export const ContractFormModal: React.FC<Props> = ({ mode, contract, masterId, onClose, onSaved, proposalMode, proposal, leadRef, onSavedProposal }) => {
   const { venues, collaborators, currentUser } = useAdminState();
-  const snap = (contract?.clientSnapshot || {}) as Record<string, any>;
+  // Valores iniciais: do contrato (edicao) ou da proposta (edicao da proposta / conversao em contrato)
+  const base: Partial<Contract> | null = contract ?? (proposal ? {
+    venueId: proposal.venueId || '', eventType: proposal.eventType, eventDate: proposal.eventDate || undefined, guestCount: proposal.guestCount || undefined,
+    packageName: proposal.packageName || undefined, totalAmount: proposal.totalAmount, notes: proposal.notes || undefined,
+  } : null);
+  const snap = (contract?.clientSnapshot || proposal?.clientSnapshot || (leadRef ? { name: leadRef.name, phone: leadRef.phone } : {})) as Record<string, any>;
   const isEdit = mode === 'edit' && Boolean(contract);
+  const editingProposal = Boolean(proposalMode && proposal);
+  const converting = Boolean(!proposalMode && proposal);
+  const [proposalFile, setProposalFile] = useState<File | null>(null);
 
   const allowedVenues = useMemo(() => {
     const real = venues.filter(v => v.id && v.id !== 'all');
@@ -79,12 +98,12 @@ export const ContractFormModal: React.FC<Props> = ({ mode, contract, masterId, o
 
   const selfIsCandidate = currentUser ? people.some(p => p.id === currentUser.id) : false;
 
-  const [venueId, setVenueId] = useState(contract?.venueId || (allowedVenues.length === 1 ? allowedVenues[0].id : ''));
-  const [eventType, setEventType] = useState(contract?.eventType || '15_anos');
-  const [eventDate, setEventDate] = useState((contract?.eventDate || '').split('T')[0]);
+  const [venueId, setVenueId] = useState(base?.venueId || (leadRef?.venueId && leadRef.venueId !== 'all' ? leadRef.venueId : '') || (allowedVenues.length === 1 ? allowedVenues[0].id : ''));
+  const [eventType, setEventType] = useState(base?.eventType || '15_anos');
+  const [eventDate, setEventDate] = useState((base?.eventDate || '').split('T')[0]);
   const [eventTime, setEventTime] = useState(contract?.eventTime || '');
-  const [guestCount, setGuestCount] = useState(contract?.guestCount ? String(contract.guestCount) : '');
-  const [packageName, setPackageName] = useState(contract?.packageName || '');
+  const [guestCount, setGuestCount] = useState(base?.guestCount ? String(base.guestCount) : '');
+  const [packageName, setPackageName] = useState(base?.packageName || '');
   const [closedAt, setClosedAt] = useState((contract?.closedAt || '').split('T')[0] || today());
   const [payerName, setPayerName] = useState(snap.payerName || snap.name || '');
   const [phone, setPhone] = useState(snap.phone || '');
@@ -92,10 +111,10 @@ export const ContractFormModal: React.FC<Props> = ({ mode, contract, masterId, o
   const [email, setEmail] = useState(snap.email || '');
   const [address, setAddress] = useState(snap.address || '');
   const [honoreeName, setHonoreeName] = useState(snap.birthdayPersonName || '');
-  const [total, setTotal] = useState(toCurrencyInput(contract?.totalAmount));
+  const [total, setTotal] = useState(toCurrencyInput(base?.totalAmount));
   const [sdrId, setSdrId] = useState(contract?.sdrId || '');
   const [closerId, setCloserId] = useState(contract?.closerId || (!isEdit && selfIsCandidate ? currentUser!.id : ''));
-  const [notes, setNotes] = useState(contract?.notes || '');
+  const [notes, setNotes] = useState(base?.notes || '');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
 
@@ -106,7 +125,7 @@ export const ContractFormModal: React.FC<Props> = ({ mode, contract, masterId, o
     if (!venueId) e.venueId = 'Escolha a unidade.';
     if (!payerName.trim()) e.payerName = 'Informe o nome do contratante.';
     if (phone.replace(/\D/g, '').length < 10) e.phone = 'Informe o telefone com DDD.';
-    if (!honoreeName.trim()) e.honoreeName = 'Informe o nome.';
+    if (!proposalMode && !honoreeName.trim()) e.honoreeName = 'Informe o nome.';
     if (!eventType) e.eventType = 'Escolha o tipo de evento.';
     if (!(parseCurrencyInput(total) > 0)) e.total = 'Informe o valor da venda.';
     setErrors(e);
@@ -130,6 +149,26 @@ export const ContractFormModal: React.FC<Props> = ({ mode, contract, masterId, o
         birthdayPersonName: honoreeName.trim(),
         payerRelationship: snap.payerRelationship || 'Titular',
       };
+
+      if (proposalMode) {
+        // Proposta: ativo documental do comercial (nao conta como contrato fechado). O arquivo vai para o R2.
+        let fileUrl: string | undefined;
+        if (proposalFile) fileUrl = await cloudflareR2Service.uploadFile(proposalFile, 'propostas');
+        const title = `${honoreeName.trim() || payerName.trim()} · ${typeMeta.label}`;
+        const common = {
+          title, eventType, eventDate: eventDate || null, guestCount: Number(guestCount) || null, packageName: packageName.trim() || null,
+          totalAmount, clientSnapshot, notes: notes.trim() || null,
+        };
+        const saved = editingProposal && proposal
+          ? await proposalService.update(proposal.id, masterId, { ...common, venueId, ...(fileUrl ? { fileUrl } : {}) })
+          : await proposalService.create({
+            ...common, masterId, venueId, fileUrl, leadId: leadRef?.leadId, contactId: leadRef?.contactId, source: leadRef?.leadId ? 'lead' : 'manual',
+            createdByName: currentUser?.name, createdById: currentUser?.id,
+          });
+        toast.success(editingProposal ? 'Proposta atualizada.' : 'Proposta registrada.');
+        onSavedProposal?.(saved);
+        return;
+      }
 
       if (isEdit && contract) {
         const res = await contractService.updateContractBasics({
@@ -172,7 +211,13 @@ export const ContractFormModal: React.FC<Props> = ({ mode, contract, masterId, o
         packageName: packageName.trim() || undefined,
         totalAmount,
         clientSnapshot,
-        commercialFieldsSnapshot: { registroManual: true, registradoPorId: currentUser?.id, registradoPorNome: currentUser?.name, registradoEm: new Date().toISOString() },
+        contactId: proposal?.contactId || undefined,
+        leadId: proposal?.leadId || undefined,
+        originLeadId: proposal?.leadId || undefined,
+        commercialFieldsSnapshot: {
+          registroManual: !converting, registradoPorId: currentUser?.id, registradoPorNome: currentUser?.name, registradoEm: new Date().toISOString(),
+          ...(proposal ? { propostaOrigem: { id: proposal.id, codigo: proposal.proposalCode, arquivo: proposal.fileUrl || null, criadaEm: proposal.proposalDate || proposal.createdAt } } : {}),
+        },
         sdrId: sdrId || null,
         sdrName: nameOf(sdrId),
         closerId: closerId || null,
@@ -181,7 +226,9 @@ export const ContractFormModal: React.FC<Props> = ({ mode, contract, masterId, o
         notes,
       });
       if (!created) throw new Error('Não foi possível registrar o contrato.');
-      toast.success('Contrato registrado. Complete os dados e os documentos no fechamento.');
+      // A proposta morre ao virar contrato: fica convertida e ligada ao contrato que nasceu dela
+      if (proposal) await proposalService.markConverted(proposal.id, masterId, created.id);
+      toast.success(converting ? 'Proposta virou contrato. Complete os dados e os documentos no fechamento.' : 'Contrato registrado. Complete os dados e os documentos no fechamento.');
       onSaved(created);
     } catch (err: any) {
       console.error('[ContractFormModal]', err);
@@ -203,9 +250,14 @@ export const ContractFormModal: React.FC<Props> = ({ mode, contract, masterId, o
         <header style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '16px 22px', borderBottom: '1px solid var(--adm-border)', background: 'var(--adm-bg-surface, #F8FAFC)' }}>
           <span style={{ width: 38, height: 38, borderRadius: 10, background: 'rgba(2,132,199,0.12)', color: '#0284C7', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><FileText size={19} /></span>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <h2 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>{isEdit ? 'Editar dados do contrato' : 'Registrar contrato'}</h2>
+            <h2 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
+              {proposalMode ? (editingProposal ? 'Editar proposta' : 'Nova proposta') : converting ? 'Transformar proposta em contrato' : isEdit ? 'Editar dados do contrato' : 'Registrar contrato'}
+            </h2>
             <p style={{ margin: '2px 0 0', fontSize: '0.74rem', color: 'var(--adm-text-muted)' }}>
-              {isEdit ? `${contract?.contractCode} · só enquanto está em fechamento` : 'Só o essencial para começar. O restante você completa durante o fechamento.'}
+              {proposalMode
+                ? 'A proposta fica no lead e na etapa Proposta do quadro. Ela não conta como contrato fechado.'
+                : converting ? `${proposal?.proposalCode} · revise os dados. Ao salvar, a proposta é encerrada e o contrato nasce no fechamento.`
+                : isEdit ? `${contract?.contractCode} · só enquanto está em fechamento` : 'Só o essencial para começar. O restante você completa durante o fechamento.'}
             </p>
           </div>
           <button type="button" onClick={onClose} disabled={saving} aria-label="Fechar" style={{ background: 'none', border: '1px solid var(--adm-border)', borderRadius: 8, padding: 6, cursor: 'pointer', color: 'var(--adm-text-muted)', display: 'inline-flex' }}><X size={18} /></button>
@@ -241,9 +293,19 @@ export const ContractFormModal: React.FC<Props> = ({ mode, contract, masterId, o
               <Field label="Pacote">
                 <input value={packageName} onChange={e => setPackageName(e.target.value)} placeholder="Ex.: Pacote Completo" style={inputStyle} />
               </Field>
-              <Field label="Contrato fechado em">
-                <DateField value={closedAt} onChange={e => setClosedAt(e.target.value)} className="adm-input" style={inputStyle} />
-              </Field>
+              {proposalMode ? (
+                <Field label="Arquivo da proposta (PDF ou imagem)">
+                  <label style={{ ...inputStyle, display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                    <Paperclip size={14} />
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{proposalFile ? proposalFile.name : proposal?.fileUrl ? 'Substituir o arquivo atual' : 'Anexar arquivo'}</span>
+                    <input type="file" accept="application/pdf,image/*" style={{ display: 'none' }} onChange={e => setProposalFile(e.target.files?.[0] || null)} />
+                  </label>
+                </Field>
+              ) : (
+                <Field label="Contrato fechado em">
+                  <DateField value={closedAt} onChange={e => setClosedAt(e.target.value)} className="adm-input" style={inputStyle} />
+                </Field>
+              )}
             </div>
           </Section>
 
@@ -268,7 +330,7 @@ export const ContractFormModal: React.FC<Props> = ({ mode, contract, masterId, o
           </Section>
 
           <Section icon={<PartyPopper size={15} />} title="Homenageada">
-            <Field label={typeMeta.person} required error={errors.honoreeName}>
+            <Field label={typeMeta.person} required={!proposalMode} error={errors.honoreeName}>
               <input value={honoreeName} onChange={e => setHonoreeName(e.target.value)} placeholder={typeMeta.personPlaceholder} style={inputStyle} />
             </Field>
           </Section>
@@ -281,8 +343,8 @@ export const ContractFormModal: React.FC<Props> = ({ mode, contract, masterId, o
             </div>
           </Section>
 
-          <Section icon={<Users size={15} />} title="Equipe da venda">
-            <div style={grid2}>
+          <Section icon={<Users size={15} />} title={proposalMode ? 'Observações' : 'Equipe da venda'}>
+            {!proposalMode && <div style={grid2}>
               <Field label="Especialista (quem fechou)">
                 <Select value={closerId} onChange={e => setCloserId(e.target.value)} style={inputStyle}>
                   <option value="">Sem especialista</option>
@@ -295,7 +357,7 @@ export const ContractFormModal: React.FC<Props> = ({ mode, contract, masterId, o
                   {people.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </Select>
               </Field>
-            </div>
+            </div>}
             <Field label="Observações">
               <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3} placeholder="Combinados com o cliente, detalhes da negociação..." style={{ ...inputStyle, resize: 'vertical', fontFamily: 'inherit' }} />
             </Field>
@@ -308,7 +370,7 @@ export const ContractFormModal: React.FC<Props> = ({ mode, contract, masterId, o
             <button type="button" onClick={onClose} disabled={saving} style={{ padding: '9px 16px', borderRadius: 9, border: '1px solid var(--adm-border)', background: 'transparent', color: 'var(--adm-text-title)', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer' }}>Cancelar</button>
             <button type="button" onClick={submit} disabled={saving} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '9px 20px', borderRadius: 9, border: 'none', background: '#0284C7', color: '#fff', fontWeight: 800, fontSize: '0.84rem', cursor: saving ? 'wait' : 'pointer', opacity: saving ? 0.7 : 1 }}>
               {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-              {isEdit ? 'Salvar dados' : 'Registrar contrato'}
+              {proposalMode ? 'Salvar proposta' : converting ? 'Criar contrato' : isEdit ? 'Salvar dados' : 'Registrar contrato'}
             </button>
           </div>
         </footer>

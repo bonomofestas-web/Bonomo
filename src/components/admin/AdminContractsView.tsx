@@ -19,10 +19,12 @@ import { ContractFormModal } from './contracts/ContractFormModal';
 import { paymentTextLines } from '../../utils/paymentPlan';
 import { PaymentTextList } from './contracts/PaymentTextList';
 import { ContractBoard, type BoardCard } from './contracts/ContractBoard';
+import { ProposalDetailModal } from './contracts/ProposalDetailModal';
+import { proposalService } from '../../services/proposalService';
 import { leadService } from '../../services/leadService';
 import { formatPhone } from '../../utils/phoneFormatter';
 import { SafeAvatar } from './SafeAvatar';
-import type { Contract, AdminTabType, ContractFunnelPlacement } from '../../types/admin';
+import type { Contract, AdminTabType, ContractFunnelPlacement, Proposal } from '../../types/admin';
 
 
 // Cache em memoria por (master|aba|unidade|busca): evita lista vazia ao voltar para a tela
@@ -72,6 +74,10 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
   const [closingId, setClosingId] = useState<string | null>(null);
   // Registro manual de contrato (comercial que ainda vende fora do WhatsApp do F5 System)
   const [formModal, setFormModal] = useState<{ mode: 'create' } | null>(null);
+  // Propostas ativas (primeira etapa do quadro; nao contam como contrato fechado)
+  const [proposals, setProposals] = useState<Proposal[]>([]);
+  const [proposalDetail, setProposalDetail] = useState<Proposal | null>(null);
+  const [proposalForm, setProposalForm] = useState<{ kind: 'new' | 'edit' | 'convert'; proposal?: Proposal } | null>(null);
   // A busca vem da barra do topo (filtra ao vivo); nao ha barra propria aqui
   const screenSearch = useScreenSearch();
   const searchQuery = screenQueryTerm(screenSearch);
@@ -177,6 +183,18 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
   useEffect(() => {
     loadContracts();
   }, [loadContracts]);
+
+  const loadProposals = useCallback(async () => {
+    if (!scopedMasterId) return;
+    const all = await proposalService.list({ masterId: scopedMasterId, status: 'active' });
+    // Mesmo escopo de unidades da lista de contratos
+    const venueIds = selectedVenueFilter === 'all'
+      ? (currentUser?.role === 'master' ? undefined : currentUser?.venueIds)
+      : [selectedVenueFilter];
+    setProposals(venueIds && venueIds.length ? all.filter(p => !p.venueId || venueIds.includes(p.venueId)) : all);
+  }, [scopedMasterId, selectedVenueFilter, currentUser]);
+
+  useEffect(() => { void loadProposals(); }, [loadProposals]);
 
   const activeTotal = tabTotals[activeTab];
   const hasMoreContracts = activeTotal !== null && contracts.length < activeTotal;
@@ -482,6 +500,16 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
               <span>Novo contrato</span>
             </button>
           )}
+          {canEditClosing && (
+            <button
+              type="button"
+              onClick={() => setProposalForm({ kind: 'new' })}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '10px 18px', borderRadius: '10px', border: `1px solid ${colors.border}`, backgroundColor: 'transparent', color: colors.textTitle, fontSize: '0.84rem', fontWeight: 800, cursor: 'pointer' }}
+            >
+              <FileText size={16} />
+              <span>Nova proposta</span>
+            </button>
+          )}
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
@@ -632,7 +660,7 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
             <RefreshCw size={24} className="animate-spin" color={colors.primary} />
             <span style={{ fontSize: '0.82rem', color: colors.textMuted }}>Carregando contratos...</span>
           </div>
-        ) : contracts.length === 0 ? (
+        ) : contracts.length === 0 && !(activeTab === 'pending' && proposals.length > 0) ? (
           <div style={{
             display: 'flex',
             flexDirection: 'column',
@@ -682,7 +710,17 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
             ) : (
               <div>
                 <ContractBoard height="calc(100vh - 235px)"
-                  cards={contracts.map<BoardCard>(c => ({
+                  showProposals
+                  cards={[...proposals.map<BoardCard>(p => ({
+                    id: p.id,
+                    stage: 'proposta',
+                    title: p.title,
+                    payer: p.clientSnapshot?.payerName || p.clientSnapshot?.name,
+                    venueId: p.venueId || '',
+                    total: p.totalAmount,
+                    eventDate: p.eventDate,
+                    tag: p.source === 'importacao' ? 'Proposta histórica' : 'Proposta',
+                  })), ...contracts.map<BoardCard>(c => ({
                     id: c.id,
                     stage: (c.fillStage || 'pendente'),
                     title: c.contractTitle || c.title || c.clientSnapshot?.name || c.contractCode,
@@ -695,9 +733,9 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
                     closer: c.closerName,
                     message: c.financeMessage ? `Financeiro: ${c.financeMessage}` : undefined,
                     missing: contractService.getFillMissing(c).length,
-                    tag: (c.commercialFieldsSnapshot as any)?.registroManual ? 'Registro manual' : undefined,
-                  }))}
-                  onOpen={setClosingId}
+                    tag: (c.commercialFieldsSnapshot as any)?.registroManual ? 'Registro manual' : (c.commercialFieldsSnapshot as any)?.propostaOrigem ? 'Veio de proposta' : undefined,
+                  }))]}
+                  onOpen={(id) => { const p = proposals.find(x => x.id === id); if (p) setProposalDetail(p); else setClosingId(id); }}
                   emptyText="Nenhuma venda"
                 />
               </div>
@@ -1938,6 +1976,37 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
             setClosingId(created.id);
             if (activeTab === 'pending') void loadContracts();
             else setActiveTab('pending');
+          }}
+        />
+      )}
+
+      {proposalDetail && (
+        <ProposalDetailModal
+          proposal={proposalDetail}
+          masterId={scopedMasterId || ''}
+          canEdit={canEditClosing}
+          onClose={() => setProposalDetail(null)}
+          onEdit={(p) => { setProposalDetail(null); setProposalForm({ kind: 'edit', proposal: p }); }}
+          onConvert={(p) => { setProposalDetail(null); setProposalForm({ kind: 'convert', proposal: p }); }}
+          onChanged={() => { setProposalDetail(null); void loadProposals(); }}
+        />
+      )}
+
+      {proposalForm && (
+        <ContractFormModal
+          mode="create"
+          masterId={scopedMasterId || ''}
+          proposalMode={proposalForm.kind !== 'convert'}
+          proposal={proposalForm.proposal}
+          onClose={() => setProposalForm(null)}
+          onSavedProposal={() => { setProposalForm(null); setActiveTab('pending'); void loadProposals(); }}
+          onSaved={(created) => {
+            setProposalForm(null);
+            contractsListCache.clear();
+            void loadProposals();
+            setActiveTab('pending');
+            setClosingId(created.id);
+            void loadContracts();
           }}
         />
       )}

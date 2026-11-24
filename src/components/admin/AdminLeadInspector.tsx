@@ -14,6 +14,7 @@ import {
   ArrowRightLeft, GitBranch, UserX, Repeat,
   Route, MapPin, Trophy, History, Crown, MoreVertical, Truck
 } from 'lucide-react';
+import { LeadProposalsSection } from './contracts/LeadProposalsSection';
 import { AdminConvertToSupplierModal } from './AdminConvertToSupplierModal';
 import { WhatsAppBrandIcon } from './WhatsAppBrandIcon';
 import { CRM_STAGE_LABELS } from '../../utils/leadUtils';
@@ -5734,6 +5735,9 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
               {/* Campos Personalizados: Seção Contatos */}
               {renderCustomFieldsForSection('contact')}
             </div>
+
+            {/* ── PROPOSTAS DO LEAD (ativo documental; ao evoluir vira contrato) ── */}
+            <LeadProposalsSection lead={{ id: lead.id, name: lead.name, phone: lead.phone, venueId: (lead as any).venueId, contactId: (lead as any).contactId || (lead as any).contact_id }} />
 
             {/* ── SEÇÃO 3: COMPROMISSOS COMERCIAIS (VISITA & DEGUSTAÇÃO) ── */}
             <div style={{ ...sectionTitleStyle, marginTop: '6px' }}>

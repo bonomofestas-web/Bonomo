@@ -4,6 +4,9 @@ import { useAdminState } from '../../../context/AdminStateContext';
 import { buildVenueAccentMap } from '../../../utils/venueColors';
 import type { ContractFillStage } from '../../../types/admin';
 
+/** Etapa do quadro: a proposta vem antes do contrato e nao conta como venda fechada */
+export type BoardStage = 'proposta' | ContractFillStage;
+
 const money = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v || 0);
 const fmtDate = (d?: string | null) => { if (!d) return 'sem data'; const [y, m, day] = d.split('T')[0].split('-'); return `${day}/${m}/${y}`; };
 
@@ -15,9 +18,12 @@ export const FILL_STAGES: Array<{ id: ContractFillStage; label: string; hint: st
   { id: 'preenchido', label: 'Preenchido', hint: 'Pronto: o financeiro já pode abrir', color: '#10B981' },
 ];
 
+/** Primeira coluna do quadro (so quando ha propostas habilitadas) */
+export const PROPOSAL_STAGE = { id: 'proposta' as const, label: 'Proposta', hint: 'Orçamento enviado, ainda não é venda fechada', color: '#64748B' };
+
 export interface BoardCard {
   id: string;
-  stage: ContractFillStage;
+  stage: BoardStage;
   title: string;
   payer?: string;
   venueId: string;
@@ -39,6 +45,8 @@ export interface BoardCard {
 interface Props {
   cards: BoardCard[];
   onOpen: (id: string) => void;
+  /** Mostra a coluna Proposta antes das etapas do contrato */
+  showProposals?: boolean;
   /** Mensagem quando nao ha nenhum card */
   emptyText?: string;
   /** Altura do quadro; cada etapa rola por dentro (a tela nao rola) */
@@ -46,13 +54,14 @@ interface Props {
 }
 
 /** Quadro de contratos por etapa de fechamento (kanban sem arrastar: a etapa muda dentro da ficha). */
-export const ContractBoard: React.FC<Props> = ({ cards, onOpen, emptyText, height }) => {
+export const ContractBoard: React.FC<Props> = ({ cards, onOpen, emptyText, height, showProposals }) => {
+  const columns = showProposals ? [PROPOSAL_STAGE, ...FILL_STAGES] : FILL_STAGES;
   const { venues } = useAdminState();
   const accents = React.useMemo(() => buildVenueAccentMap(venues), [venues]);
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(250px, 1fr))', gap: 12, alignItems: 'stretch', height: height || 'calc(100vh - 200px)', minHeight: 360, overflowX: 'auto' }}>
-      {FILL_STAGES.map(col => {
+    <div style={{ display: 'grid', gridTemplateColumns: `repeat(${columns.length}, minmax(250px, 1fr))`, gap: 12, alignItems: 'stretch', height: height || 'calc(100vh - 200px)', minHeight: 360, overflowX: 'auto' }}>
+      {columns.map(col => {
         const items = cards.filter(c => c.stage === col.id);
         const sum = items.reduce((a, c) => a + c.total, 0);
         return (
