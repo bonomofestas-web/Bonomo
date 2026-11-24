@@ -24,6 +24,7 @@ import { AdminLoginView } from './AdminLoginView';
 import { AdminVenueModal } from './AdminVenueModal';
 import { AdminDebutanteModal } from './AdminDebutanteModal';
 import { AdminVenueGoalsView } from './AdminVenueGoalsView';
+import { AdminSurveysView } from './AdminSurveysView';
 import { AdminMasterDashboardView } from './AdminMasterDashboardView';
 import { AdminSourcesView } from './AdminSourcesView';
 import { AdminWhatsAppWorkspaceView } from './AdminWhatsAppWorkspaceView';
@@ -395,6 +396,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       'followups',
       'dashboard',
       'venue-goals',
+      'surveys',
       'sources',
       'mql',
       'master-dashboard',
@@ -410,7 +412,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       if (['post-sale-crm', 'debutantes'].includes(tab)) {
         if (!effectiveSectors.includes('pos_venda')) continue;
       }
-      if (tab === 'master-dashboard' || tab === 'collaborators' || tab === 'venues' || tab === 'sources' || tab === 'mql' || tab === 'venue-goals') {
+      if (tab === 'master-dashboard' || tab === 'collaborators' || tab === 'venues' || tab === 'sources' || tab === 'mql' || tab === 'venue-goals' || tab === 'surveys') {
         if (effectiveRole !== 'master' && !effectiveSectors.includes('gerencia')) continue;
       }
 
@@ -437,7 +439,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       : (effectiveRole === 'admin' ? ['gerencia', 'comercial', 'pos_venda'] : effectiveRole === 'pos_venda' ? ['pos_venda'] : ['comercial']);
 
     const commercialTabs: AdminTabType[] = ['dashboard', 'whatsapp', 'crm', 'leads', 'followups'];
-    const gerenciaTabs: AdminTabType[] = ['system-settings', 'collaborators', 'venues', 'master-dashboard', 'sources', 'mql', 'venue-goals', 'templates', 'dev-features', 'dev-users', 'dev-announcements', 'dev-support'];
+    const gerenciaTabs: AdminTabType[] = ['system-settings', 'collaborators', 'venues', 'master-dashboard', 'sources', 'mql', 'venue-goals', 'surveys', 'templates', 'dev-features', 'dev-users', 'dev-announcements', 'dev-support'];
     const posVendaTabs: AdminTabType[] = ['post-sale-crm', 'debutantes'];
 
     if (commercialTabs.includes(activeTab) && !effectiveSectors.includes('comercial')) {
@@ -911,6 +913,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         return <AdminFinanceView section="soon" soonTitle="Configurações do financeiro" soonText="Categorias, contas bancárias, maquininhas e tabelas de taxa de cartão." />;
       case 'venue-goals':
         return <AdminVenueGoalsView />;
+      case 'surveys':
+        return <AdminSurveysView />;
       case 'master-dashboard':
         return <AdminMasterDashboardView />;
       case 'sla-settings':
@@ -1122,6 +1126,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               else if (activeTab === 'collaborators') { category = 'Configurações'; title = 'Colaboradores'; }
               else if (activeTab === 'venues') { category = 'Configurações'; title = 'Unidades'; }
               else if (activeTab === 'venue-goals') { category = 'Gerência'; title = 'Metas'; }
+              else if (activeTab === 'surveys') { category = 'Gerência'; title = 'Pesquisa'; }
               else if (activeTab === 'finance') { category = 'Financeiro'; title = 'Visão geral'; }
               else if (activeTab === 'finance-approval') { category = 'Financeiro'; title = 'Aprovação'; }
               else if (activeTab === 'finance-calendar') { category = 'Financeiro'; title = 'Calendário'; }

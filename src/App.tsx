@@ -20,6 +20,7 @@ import { WelcomeVideoIntroView } from './components/journey/WelcomeVideoIntroVie
 import { InactiveDebutanteView } from './components/common/InactiveDebutanteView';
 import { PublicTrackingRedirectView } from './components/public/PublicTrackingRedirectView';
 import { PublicFormLandingView } from './components/public/PublicFormLandingView';
+import { PublicSurveyView } from './components/public/PublicSurveyView';
 import { PublicChangelogView } from './components/public/PublicChangelogView';
 import { debutanteService } from './services/debutanteService';
 import { venueService } from './services/venueService';
@@ -222,7 +223,7 @@ export const AppContent: React.FC = () => {
 };
 
 const parseRouteFromLocation = (): { 
-  mode: 'debutante' | 'admin' | 'tracking_link' | 'form' | 'convite' | 'collab_invite' | 'atualizacoes'; 
+  mode: 'debutante' | 'admin' | 'tracking_link' | 'form' | 'convite' | 'collab_invite' | 'atualizacoes' | 'survey'; 
   slug?: string;
   guestId?: string;
   inviteToken?: string;
@@ -285,6 +286,12 @@ const parseRouteFromLocation = (): {
   if (pathname.startsWith('f/')) {
     const fSlug = pathname.replace(/^f\//, '').trim();
     return { mode: 'form', slug: decodeURIComponent(fSlug).trim() };
+  }
+
+  // 2b. Pesquisa publica (/p/:slug, link pessoal com ?t=token)
+  if (pathname.startsWith('p/')) {
+    const pSlug = pathname.replace(/^p\//, '').replace(/\/+$/, '').trim();
+    return { mode: 'survey', slug: decodeURIComponent(pSlug).trim() };
   }
 
   // 3. Debutante App
@@ -513,6 +520,10 @@ const RootAppRouter: React.FC = () => {
 
   if (viewMode === 'tracking_link' && currentDebutanteSlug) {
     return <PublicTrackingRedirectView slug={currentDebutanteSlug} />;
+  }
+
+  if (viewMode === 'survey' && currentDebutanteSlug) {
+    return <PublicSurveyView slug={currentDebutanteSlug} />;
   }
 
   if (viewMode === 'form' && currentDebutanteSlug) {

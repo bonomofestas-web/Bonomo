@@ -536,6 +536,22 @@ const WhatsAppMessageInputBox: React.FC<WhatsAppMessageInputBoxProps> = React.me
     setShowFormatBar(false);
   }, [leadId, pendingAttachmentCaption]);
 
+  // Outras partes da tela (ex.: seção Pesquisas da ficha do lead) colocam um texto pronto no campo de mensagem deste lead
+  useEffect(() => {
+    const onInsert = (e: Event) => {
+      const d = (e as CustomEvent<{ leadId?: string; text?: string; handled?: boolean }>).detail;
+      if (!d?.text || d.leadId !== leadId || !editorRef.current) return;
+      const current = editorRef.current.innerText || '';
+      editorRef.current.innerHTML = whatsappTextToHtml(current.trim() ? `${current.trim()}
+${d.text}` : d.text);
+      setHasText(true);
+      editorRef.current.focus();
+      d.handled = true;
+    };
+    window.addEventListener('f5:composer-insert', onInsert);
+    return () => window.removeEventListener('f5:composer-insert', onInsert);
+  }, [leadId]);
+
   // Filtra no máximo 3 sugestões de mensagens rápidas ativas baseadas no slashQuery
   const matchingQuickMessages = useMemo(() => {
     if (!isSlashActive) return [];

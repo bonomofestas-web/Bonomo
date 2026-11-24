@@ -58,6 +58,38 @@ function r2DevUploadPlugin() {
         });
       });
 
+      // 0b. Endpoint /api/survey (pesquisas publicas) em desenvolvimento: mesmo handler serverless de api/survey.ts
+      server.middlewares.use('/api/survey', async (req: any, res: any) => {
+        const env = loadEnv('development', process.cwd(), '');
+        for (const k of ['VITE_SUPABASE_URL', 'VITE_SUPABASE_ANON_KEY', 'SUPABASE_SERVICE_ROLE_KEY']) {
+          if (env[k]) process.env[k] = env[k];
+        }
+        let raw = '';
+        req.on('data', (chunk: any) => { raw += chunk; });
+        req.on('end', async () => {
+          const send = (status: number, payload: unknown) => {
+            res.statusCode = status;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify(payload));
+          };
+          try {
+            let body: any = {};
+            try { body = raw ? JSON.parse(raw) : {}; } catch { return send(400, { ok: false, error: 'JSON inválido.' }); }
+            const query = Object.fromEntries(new URL(req.url || '', 'http://localhost').searchParams.entries());
+            const vres: any = {
+              setHeader: (k: string, v: string) => res.setHeader(k, v),
+              status: (code: number) => { res.statusCode = code; return vres; },
+              json: (payload: unknown) => { send(res.statusCode || 200, payload); return vres; },
+              end: () => { res.end(); return vres; },
+            };
+            const mod = await server.ssrLoadModule('/api/survey.ts');
+            await mod.default({ method: req.method, body, query, headers: req.headers, socket: req.socket }, vres);
+          } catch (err: any) {
+            send(500, { ok: false, error: err?.message || 'Erro no endpoint de pesquisa.' });
+          }
+        });
+      });
+
       // 1. Endpoint /api/presign para desenvolvimento local com isolamento local_dev/
       server.middlewares.use('/api/presign', async (req: any, res: any) => {
         if (req.method === 'OPTIONS') {

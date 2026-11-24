@@ -1673,6 +1673,7 @@ export type AdminTabType =
   | 'sla-settings'
   | 'debutantes'
   | 'venue-goals'
+  | 'surveys'
   | 'finance'
   | 'finance-approval'
   | 'finance-payables'

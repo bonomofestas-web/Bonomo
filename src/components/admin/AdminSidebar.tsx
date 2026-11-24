@@ -7,7 +7,7 @@ import {
   CheckSquare, Home, DollarSign, SlidersHorizontal,
   ChevronRight, ChevronLeft,
   ChevronDown, Globe,
-  Sparkles, Radio, Compass,
+  Sparkles, Radio, Compass, ClipboardList,
   ShieldCheck, Star, X, AlertTriangle, Sliders, Headset, Settings,
   Gift, Calendar, CalendarCheck2, GripVertical, UserCheck, Zap,
   Contact as ContactIcon, FileCheck2, LogOut, MessageSquare, Wallet, ArrowDownCircle, TrendingUp, BarChart3,
@@ -45,6 +45,7 @@ export type AdminTabType =
   | 'sla-settings'
   | 'debutantes'
   | 'venue-goals'
+  | 'surveys'
   | 'finance'
   | 'finance-approval'
   | 'finance-payables'
@@ -307,6 +308,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
     { id: 'mql', label: 'Qualificação', icon: <IcpTargetUserIcon size={15} />, roles: ['master', 'admin'] },
     { id: 'sources', label: 'Origens', icon: <Compass size={15} />, roles: ['master', 'admin'], alertBadge: hasUnconfiguredSources },
     { id: 'venue-goals', label: 'Metas', icon: <Star size={15} />, roles: ['master', 'admin'] },
+    { id: 'surveys', label: 'Pesquisa', icon: <ClipboardList size={15} />, roles: ['master', 'admin'] },
     { id: 'master-dashboard', label: 'Dashboard Gerência', icon: <LayoutDashboard size={15} />, roles: ['master', 'admin'] },
   ];
 
@@ -668,7 +670,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
       }
     } else if (sector === 'gerencia') {
       accentColor = '#14A9D7';
-      isSectorActive = ['mql', 'sources', 'venue-goals', 'master-dashboard', 'collaborators', 'venues'].includes(activeTab);
+      isSectorActive = ['mql', 'sources', 'venue-goals', 'surveys', 'master-dashboard', 'collaborators', 'venues'].includes(activeTab);
       // Ícone dinâmico da Gerência
       switch (activeTab) {
         case 'mql':
@@ -679,6 +681,9 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
           break;
         case 'venue-goals':
           icon = <Star size={18} />;
+          break;
+        case 'surveys':
+          icon = <ClipboardList size={18} />;
           break;
         case 'master-dashboard':
           icon = <LayoutDashboard size={18} />;
