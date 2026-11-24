@@ -42,6 +42,18 @@ Grande reestruturação de governança, experiência do usuário, banco de dados
 
 ### Recursos e Melhorias em Staging
 
+- **Ciclo de Vida do Cliente: Suporte Completo a Clientes que Voltam a Ser Leads (Novas Oportunidades):**
+  * **Criação de Nova Oportunidade Comercial para Clientes Existentes:**
+    - Clientes com contrato prévio na rede que entram em contato via WhatsApp comercial agora abrem legitimamente uma nova oportunidade comercial (lead fresco) na esteira de vendas, sem serem sequestrados para o Pós-Venda ou amarrados ao contrato anterior.
+    - Se o cliente já teve uma negociação passada com contrato ganho/fechado (`deal_closed` / `contract_signed`), mensagens em canais comerciais não poluem o contrato fechado; geram automaticamente um novo card comercial no funil de vendas.
+    - Leads comerciais perdidos (`lost` / `cancelado`) que voltam a enviar mensagens são reativados automaticamente para `new_lead`, garantindo atenção imediata do SDR.
+  * **Realocação Segura de Funil (`reassignLeadFunnel`):**
+    - Ao transferir um contato do Pós-Venda para um funil Comercial, o sistema agora limpa automaticamente a tag `'Cliente'`, remove o prefixo `CLI-` restaurando para `LEAD-`, redefine `group = 'Comercial'` e `isClient = false`, persistindo as alterações no Supabase.
+  * **Visibilidade Garantida e Badge no Kanban:**
+    - Os cálculos de contadores e colunas do Kanban (`AdminCrmKanbanView.tsx`) agora incluem leads atribuídos ao funil comercial mesmo que possuam histórico anterior de cliente.
+    - Adicionado o badge visual elegante `Cliente c/ Contrato` no card do Kanban, sinalizando prontamente ao SDR que o lead já possui contrato na rede (cliente recorrente).
+
+
 - **Atribuição Automática ao Yuri para o Funil VI KOMMO & Matching Resiliente de Colaboradores:**
   * **Roteamento e Auto-Cura de Leads para VI KOMMO (Ex: `LEAD-TSNVPP`):**
     - Leads com código ou identificação `LEAD-TSNVPP` (ou mensagens recebidas em origens do funil `VI KOMMO`) agora são direcionados com precisão para o funil comercial `VI KOMMO` (e não para funis genéricos ou de pós-venda).

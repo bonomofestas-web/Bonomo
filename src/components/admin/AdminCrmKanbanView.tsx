@@ -1088,14 +1088,15 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
       // Calculate dynamic metrics per funnel strictly for this funnel (filtered by activeVenueId if set)
       const isFunnelPostSale = Boolean(funnel.isPostSale || funnel.category === 'Pós-Venda' || funnel.category === 'pos_venda' || funnel.id === 'post_sale_default');
       const funnelLeads = leads.filter(l => {
-        const isClient = Boolean(l.isClient === true || l.group === 'Pós-Venda' || (Array.isArray(l.tags) && l.tags.some(t => t.toLowerCase() === 'cliente')));
-        if (isFunnelPostSale && !isClient) return false;
-        if (!isFunnelPostSale && isClient) return false;
         const matchesFunnel = l.funnelId 
           ? (l.funnelId === funnel.id || l.funnelId.toLowerCase().trim() === funnel.name.toLowerCase().trim()) 
           : funnel.isPrimary;
         if (!matchesFunnel) return false;
         if (activeVenueId && activeVenueId !== 'all' && l.venueId !== activeVenueId) return false;
+        const isClient = Boolean(l.isClient === true || l.group === 'Pós-Venda' || (Array.isArray(l.tags) && l.tags.some(t => t.toLowerCase() === 'cliente')));
+        // Se o lead pertence expressamente a este funil (matchesFunnel), respeita o vínculo com o funil
+        if (isFunnelPostSale && !isClient && l.funnelId !== funnel.id) return false;
+        if (!isFunnelPostSale && isClient && l.funnelId !== funnel.id) return false;
         return true;
       });
 
@@ -4223,6 +4224,19 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                     color: '#2563EB',
                                     border: 'rgba(59, 130, 246, 0.22)',
                                     title: `Ano do Evento: ${eventYearVal}`,
+                                  });
+                                }
+
+                                // Chip especial de cliente com contrato prévio (recorrência / reengajamento comercial)
+                                if (!isPostSaleView && (lead.contractId || (lead as any).associated_contract_id)) {
+                                  chips.push({
+                                    id: 'recurring_client',
+                                    label: 'Cliente c/ Contrato',
+                                    icon: <Sparkles size={8.5} style={{ flexShrink: 0 }} />,
+                                    bg: 'rgba(14, 165, 233, 0.10)',
+                                    color: '#0284C7',
+                                    border: 'rgba(14, 165, 233, 0.25)',
+                                    title: 'Este lead já possui contrato na rede (Cliente Recorrente / Nova Oportunidade)',
                                   });
                                 }
 

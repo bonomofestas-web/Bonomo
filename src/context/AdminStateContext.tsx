@@ -5311,6 +5311,17 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       destFunnel.name?.toLowerCase().includes('sucesso do cliente')
     );
 
+    const cleanTags = isDestPostSale
+      ? (targetLead.tags || [])
+      : (targetLead.tags || []).filter(t => t.toLowerCase() !== 'cliente');
+
+    let fixedCode = targetLead.code;
+    if (!isDestPostSale && fixedCode?.startsWith('CLI-')) {
+      fixedCode = fixedCode.replace('CLI-', 'LEAD-');
+    } else if (isDestPostSale && fixedCode?.startsWith('LEAD-')) {
+      fixedCode = fixedCode.replace('LEAD-', 'CLI-');
+    }
+
     setLeads(prev => {
       const updated = prev.map(l => l.id === leadId ? {
         ...l,
@@ -5319,6 +5330,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         venueId: destFunnel.venueId !== 'all' ? destFunnel.venueId : l.venueId,
         group: isDestPostSale ? 'Pós-Venda' : 'Comercial',
         isClient: isDestPostSale ? true : false,
+        tags: cleanTags,
+        code: fixedCode,
         activities: [activity, ...(l.activities || [])],
         updatedAt: today,
       } : l);
@@ -5377,6 +5390,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         venueId: destFunnel.venueId !== 'all' ? destFunnel.venueId : undefined,
         group: isDestPostSale ? 'Pós-Venda' : 'Comercial',
         isClient: isDestPostSale ? true : false,
+        tags: cleanTags,
+        code: fixedCode,
       }).catch(err => console.error('Erro ao realocar lead no Supabase:', err));
 
       leadService.addActivity(leadId, activity).catch(err => console.error('Erro ao registrar atividade:', err));
@@ -7058,6 +7073,15 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       const isClient = Boolean(l.isClient || l.group === 'Pós-Venda' || (Array.isArray(l.tags) && l.tags.some(t => t.toLowerCase() === 'cliente')));
       if (isPostSaleTarget ? !isClient : isClient) return false;
       if ((l as any).isDeleted) return false;
+      // Regra de Ciclo de Vida (Cliente pode voltar a ser Lead a qualquer momento):
+      // Em canais comerciais, se o lead anterior já teve o contrato fechado/ganho (deal_closed / contract_signed),
+      // a nova mensagem em canal comercial representa uma NOVA oportunidade (cliente voltando a ser lead), gerando um novo card no funil comercial!
+      if (!isPostSaleTarget) {
+        const s = (l.stage || '').toLowerCase();
+        if (s === 'deal_closed' || s === 'contract_signed' || s === 'contrato_fechado') {
+          return false;
+        }
+      }
       const lp = (l.phone || '').replace(/\D/g, '');
       if (!lp || !cleanPhoneDigits) return false;
       if (lp === cleanPhoneDigits) return true;
@@ -7090,7 +7114,16 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
         if (dbMatches && dbMatches.length > 0) {
           const mappedMatches = dbMatches.map(row => formatLeadFromDb(row));
-          const tenantMatches = mappedMatches.filter(l => !scopedMasterId || !l.masterId || l.masterId === scopedMasterId);
+          const tenantMatches = mappedMatches.filter(l => {
+            if (scopedMasterId && l.masterId && l.masterId !== scopedMasterId) return false;
+            const isClient = Boolean(l.isClient || l.group === 'Pós-Venda' || (Array.isArray(l.tags) && l.tags.some(t => t.toLowerCase() === 'cliente')));
+            if (isPostSaleTarget ? !isClient : isClient) return false;
+            if (!isPostSaleTarget) {
+              const s = (l.stage || '').toLowerCase();
+              if (s === 'deal_closed' || s === 'contract_signed' || s === 'contrato_fechado') return false;
+            }
+            return true;
+          });
           if (tenantMatches.length > 0) {
             const found = incomingFunnelId
               ? tenantMatches.find(l => l.funnelId === incomingFunnelId)
@@ -7172,6 +7205,13 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           updatedAt: new Date().toISOString().split('T')[0],
           unreadCount: data.fromMe ? existing.unreadCount : (existing.unreadCount || 0) + 1,
         };
+        // Reativação Automática: se o lead comercial estava perdido ou cancelado e enviou nova mensagem, reabre na esteira
+        if (!isPostSaleTarget && !data.fromMe) {
+          const s = (existing.stage || '').toLowerCase();
+          if (s === 'lost' || s === 'cancelado') {
+            updates.stage = 'new_lead';
+          }
+        }
         // Hora/prévia da conversa só avançam se a mensagem for MAIS NOVA que a última conhecida (hora real da mensagem)
         const knownLast = new Date(existing.lastMessageAt || existing.lastInteractionAt || 0).getTime() || 0;
         if (new Date(msgIso).getTime() >= knownLast) {
