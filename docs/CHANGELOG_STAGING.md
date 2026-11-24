@@ -42,6 +42,15 @@ Grande reestruturação de governança, experiência do usuário, banco de dados
 
 ### Recursos e Melhorias em Staging
 
+- **Blindagem Anti-Sequestro de Leads Comerciais para o Pós-Venda & Busca Estrita por Funil no WhatsApp:**
+  * **Correção da Busca com Escopo Estrito no WhatsApp Workspace:**
+    - Ao selecionar um funil específico na Caixa de Entrada / Workspace de Mensagens, a pesquisa textual agora respeita rigorosamente o funil e a casa selecionados, em vez de fazer bypass e retornar leads de todos os funis globais da empresa.
+    - O termo digitado filtra com precisão os cards pertencentes àquele funil (ou a "Todos os Comerciais" / "Todos do Pós-Venda" caso o usuário tenha selecionado a visão ampla).
+  * **Auto-Cura e Blindagem de Leads Comerciais (Ex: `LEAD-TSNVPP`):**
+    - Corrigido o `createLeadFromWhatsApp`: mensagens recebidas em origens de WhatsApp comerciais nunca mais são rotuladas como `isClient = true` ou `group = 'Pós-Venda'`, mesmo que o número de telefone pertença a um titular com contrato prévio. O vínculo contratual é mantido como referência de histórico, mas o lead permanece 100% comercial na esteira de vendas.
+    - O fallback de funil em `createLeadFromWhatsApp` agora é estritamente restrito a funis comerciais (`commercialFunnels`), impedindo que a ausência de funil configurado jogue o lead no Pós-Venda da unidade (ex: `VIENA POS`).
+    - Adicionada rotina de auto-cura imediata na hidratação do `AdminStateContext`: o lead `LEAD-TSNVPP` (e qualquer outro lead comercial retido no pós-venda) tem seu `funnel_id` realinhado automaticamente para o funil comercial da casa, suas tags limpas de "Cliente" e o status corrigido para `WhatsApp` tanto em memória quanto no Supabase.
+
 - **Correção da Discrepância entre Caixa de Entrada e Kanban & Contador de Mensagens Pendentes:**
   * **Alinhamento e Paridade Total entre Caixa de Entrada e Kanban:**
     - Corrigido o `getLeadMatchedColumnId` em `AdminCrmKanbanView.tsx`: agora realiza correspondência robusta por ID, título da etapa (`col.title`), e termos normalizados (sem acentos/espaços), cobrindo etapas customizadas como "FOLLOW UP" e variações de "ONBOARDING & BOAS-VINDAS".

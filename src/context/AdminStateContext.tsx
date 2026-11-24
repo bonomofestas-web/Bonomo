@@ -1513,9 +1513,12 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
             // ── Auto-Alinhamento de Leads com o Funil de Destino de sua Origem ──
             const sourceFunnelMap = new Map<string, string>();
+            const sourceIsPostSaleMap = new Map<string, boolean>();
             (syncedSources || []).forEach((s: Source) => {
               if (s.funnelId && isUuid(s.funnelId)) {
                 sourceFunnelMap.set(s.id, s.funnelId);
+                const f = syncedFunnels.find(fn => fn.id === s.funnelId);
+                sourceIsPostSaleMap.set(s.id, Boolean(f?.isPostSale || f?.category === 'Pós-Venda' || f?.category === 'pos_venda'));
               }
             });
 
@@ -1525,15 +1528,65 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                 ? code
                 : l.name;
               let funnelId = l.funnelId;
+              let isClient = l.isClient;
+              let group = l.group;
+              let tags = Array.isArray(l.tags) ? [...l.tags] : [];
 
               // Se a origem do lead estiver vinculada a um funil e o lead estiver com outro funil ou sem funil,
               // alinha o lead imediatamente para o funil da sua origem de WhatsApp!
               if (l.sourceId && sourceFunnelMap.has(l.sourceId)) {
                 const targetFId = sourceFunnelMap.get(l.sourceId)!;
-                if (funnelId !== targetFId) {
+                const isTargetPostSale = Boolean(sourceIsPostSaleMap.get(l.sourceId));
+                if (funnelId !== targetFId || (!isTargetPostSale && (isClient || group === 'Pós-Venda'))) {
                   funnelId = targetFId;
+                  const updates: Partial<Lead> = { funnelId: targetFId };
+                  if (!isTargetPostSale) {
+                    isClient = false;
+                    group = 'WhatsApp';
+                    tags = tags.filter(t => t.toLowerCase() !== 'cliente');
+                    updates.isClient = false;
+                    updates.group = 'WhatsApp';
+                    updates.tags = tags;
+                  }
                   if (isSupabaseConfigured) {
-                    leadService.update(l.id, { funnelId: targetFId }).catch(() => {});
+                    leadService.update(l.id, updates).catch(() => {});
+                  }
+                }
+              }
+
+              // AUTO-CURA ESPECÍFICA PARA LEADS QUE CAÍRAM NO PÓS-VENDA POR ENGANO (Ex: LEAD-TSNVPP)
+              const leadCodeStr = String(l.code || l.name || '').toUpperCase();
+              const isLeadTs = leadCodeStr.includes('TSNVPP');
+              const isCommercialCodeStuckInPostSale = (leadCodeStr.startsWith('LEAD-') || isLeadTs) && (group === 'Pós-Venda' || isClient);
+
+              if (isLeadTs || isCommercialCodeStuckInPostSale) {
+                const currentF = syncedFunnels.find(f => f.id === funnelId);
+                const isCurrentFPostSale = Boolean(currentF && (currentF.isPostSale || currentF.category === 'Pós-Venda' || currentF.category === 'pos_venda'));
+                
+                if (isLeadTs || isCurrentFPostSale) {
+                  const commFunnels = syncedFunnels.filter(f => !f.isPostSale && f.category !== 'Pós-Venda' && f.category !== 'pos_venda');
+                  const targetCommFunnel = commFunnels.find(f => f.venueId === l.venueId || (Array.isArray(f.sharedVenueIds) && f.sharedVenueIds.includes(l.venueId)))
+                    || commFunnels[0]
+                    || syncedFunnels[0];
+
+                  if (targetCommFunnel) {
+                    funnelId = targetCommFunnel.id;
+                    isClient = false;
+                    group = 'WhatsApp';
+                    tags = tags.filter(t => t.toLowerCase() !== 'cliente');
+                    let fixedCode = l.code;
+                    if (fixedCode?.startsWith('CLI-')) {
+                      fixedCode = fixedCode.replace('CLI-', 'LEAD-');
+                    }
+                    if (isSupabaseConfigured) {
+                      leadService.update(l.id, {
+                        funnelId: targetCommFunnel.id,
+                        isClient: false,
+                        group: 'WhatsApp',
+                        tags,
+                        code: fixedCode
+                      }).catch(() => {});
+                    }
                   }
                 }
               }
@@ -1548,7 +1601,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
               if (code === 'LEAD-N4K9HT' || phone === '157221941944479') {
                 phone = '5521999723215';
               }
-              return { ...l, code, name, funnelId, phone, avatarUrl };
+              return { ...l, code, name, funnelId, phone, avatarUrl, isClient, group, tags };
             });
 
             // Auto-cura e consolidação de duplicados no Supabase e em memória
@@ -7187,25 +7240,26 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const resolvedMasterId = scopedMasterId || currentUser?.id;
 
     // Garante que o funil padrão para leads de entrada seja comercial (e não pós-venda) e pertença ao tenant
-    const commercialFunnelForVenue = scopedFunnels.find(f => 
-      !f.isPostSale && f.category !== 'Pós-Venda' && f.category !== 'pos_venda' &&
-      (f.venueId === targetVenueId || f.venueId === 'all' || (Array.isArray(f.sharedVenueIds) && f.sharedVenueIds.includes(targetVenueId)))
+    const commercialFunnels = scopedFunnels.filter(f => !f.isPostSale && f.category !== 'Pós-Venda' && f.category !== 'pos_venda');
+    const commercialFunnelForVenue = commercialFunnels.find(f => 
+      f.venueId === targetVenueId || f.venueId === 'all' || (Array.isArray(f.sharedVenueIds) && f.sharedVenueIds.includes(targetVenueId))
     );
 
-    const matchedFunnel = (data.initialFunnelId && isUuid(data.initialFunnelId) ? scopedFunnels.find(f => f.id === data.initialFunnelId) : null)
-      || scopedFunnels.find(f => (f.id === targetFunnelId || f.name === targetFunnelId) && isUuid(f.id))
-      || commercialFunnelForVenue
-      || scopedFunnels.find(f => f.venueId === targetVenueId && isUuid(f.id))
-      || (scopedFunnels.length > 0 ? scopedFunnels[0] : null);
-
-    const isTargetPostSale = Boolean(
-      targetFunnelId === 'post_sale_default' ||
-      matchedFunnel?.isPostSale ||
-      matchedFunnel?.category === 'Pós-Venda' ||
-      matchedFunnel?.category === 'pos_venda' ||
+    const targetSourceFunnel = data.initialFunnelId ? scopedFunnels.find(f => f.id === data.initialFunnelId) : (waSource?.funnelId ? scopedFunnels.find(f => f.id === waSource.funnelId) : null);
+    const isExplicitPostSaleTarget = data.initialFunnelId === 'post_sale_default' ||
       waSource?.funnelId === 'post_sale_default' ||
-      scopedFunnels.some(f => f.id === waSource?.funnelId && (f.isPostSale || f.category === 'Pós-Venda' || f.category === 'pos_venda'))
-    );
+      Boolean(targetSourceFunnel && (targetSourceFunnel.isPostSale || targetSourceFunnel.category === 'Pós-Venda' || targetSourceFunnel.category === 'pos_venda'));
+
+    const matchedFunnel = isExplicitPostSaleTarget
+      ? (targetSourceFunnel || scopedFunnels.find(f => f.isPostSale || f.category === 'Pós-Venda') || scopedFunnels[0])
+      : ((data.initialFunnelId && isUuid(data.initialFunnelId) ? commercialFunnels.find(f => f.id === data.initialFunnelId) : null)
+        || commercialFunnels.find(f => (f.id === targetFunnelId || f.name === targetFunnelId) && isUuid(f.id))
+        || commercialFunnelForVenue
+        || commercialFunnels.find(f => f.venueId === targetVenueId && isUuid(f.id))
+        || commercialFunnels[0]
+        || scopedFunnels[0]);
+
+    const isTargetPostSale = isExplicitPostSaleTarget;
 
     let validFunnelId: string | undefined = undefined;
     if (isTargetPostSale) {
@@ -7220,7 +7274,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       } else if (matchedFunnel && !matchedFunnel.isPostSale && matchedFunnel.category !== 'Pós-Venda') {
         validFunnelId = matchedFunnel.id;
       } else {
-        validFunnelId = commercialFunnelForVenue?.id;
+        validFunnelId = commercialFunnelForVenue?.id || commercialFunnels[0]?.id;
       }
     }
 
@@ -7257,7 +7311,11 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           inheritedContractId = found.contract.id;
           inheritedContactId = found.contract.contactId;
           inheritedRole = found.kinship || (isTargetPostSale ? 'cliente' : undefined);
-          inheritedIsClient = true;
+          // IMPORTANTE: Só marca como cliente de pós-venda se a mensagem entrou em um canal/funil de Pós-Venda!
+          // Se entrou em um funil comercial, permanece como lead comercial para não poluir a esteira de vendas nem ser sequestrado pelo pós-venda.
+          if (isTargetPostSale) {
+            inheritedIsClient = true;
+          }
         }
       } catch (err) {
         console.warn('[createLeadFromWhatsApp] Falha ao verificar contrato por telefone:', err);

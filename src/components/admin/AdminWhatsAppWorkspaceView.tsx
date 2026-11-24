@@ -2164,7 +2164,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
         }
       }
 
-      // 0. Se houver busca explícita digitada pelo usuário, ela tem precedência total na localização do lead:
+      // 0. Busca textual digitada pelo usuário: filtra pelo termo respeitando o funil e a casa selecionados
       if (hasSearch) {
         const matchesName = (lead.name || '').toLowerCase().includes(cleanSearch);
         const leadDigits = (lead.phone || '').replace(/\D/g, '');
@@ -2180,19 +2180,21 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
         if (!isMatched) {
           return false;
         }
-        return true;
+        // Se casou com o termo de busca, prossegue para validar estritamente o funil, unidade e escopo selecionados!
       }
 
       // 1. Funnel Matching (Filtro Estrito por Funil)
       if (selectedFunnelId === 'all' || selectedFunnelId === 'all_commercial') {
         const lFunnel = lead.funnelId ? funnels.find(f => f.id === lead.funnelId) : null;
-        const isLeadPostSale = lead.isClient || lead.group === 'Pós-Venda' || Boolean(lFunnel && (lFunnel.isPostSale || lFunnel.category === 'Pós-Venda' || lFunnel.category === 'pos_venda'));
+        const isFunnelPostSale = Boolean(lFunnel && (lFunnel.isPostSale || lFunnel.category === 'Pós-Venda' || lFunnel.category === 'pos_venda'));
+        const isLeadPostSale = isFunnelPostSale || (!lFunnel && (lead.isClient || lead.group === 'Pós-Venda'));
         if (isLeadPostSale) {
           return false;
         }
       } else if (selectedFunnelId === 'all_post_sale') {
         const lFunnel = lead.funnelId ? funnels.find(f => f.id === lead.funnelId) : null;
-        const isLeadPostSale = lead.isClient || lead.group === 'Pós-Venda' || Boolean(lFunnel && (lFunnel.isPostSale || lFunnel.category === 'Pós-Venda' || lFunnel.category === 'pos_venda'));
+        const isFunnelPostSale = Boolean(lFunnel && (lFunnel.isPostSale || lFunnel.category === 'Pós-Venda' || lFunnel.category === 'pos_venda'));
+        const isLeadPostSale = isFunnelPostSale || (!lFunnel && (lead.isClient || lead.group === 'Pós-Venda'));
         if (!isLeadPostSale) {
           return false;
         }
