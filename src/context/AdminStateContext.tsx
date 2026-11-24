@@ -1554,20 +1554,31 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                 }
               }
 
-              // AUTO-CURA ESPECÍFICA PARA LEADS QUE CAÍRAM NO PÓS-VENDA POR ENGANO (Ex: LEAD-TSNVPP)
+              // AUTO-CURA ESPECÍFICA PARA LEADS QUE CAÍRAM NO PÓS-VENDA POR ENGANO OU FUNIL VI KOMMO (Ex: LEAD-TSNVPP)
               const leadCodeStr = String(l.code || l.name || '').toUpperCase();
               const isLeadTs = leadCodeStr.includes('TSNVPP');
               const isCommercialCodeStuckInPostSale = (leadCodeStr.startsWith('LEAD-') || isLeadTs) && (group === 'Pós-Venda' || isClient);
 
+              let sdrId = l.sdrId;
+              let sdrName = l.sdrName;
+              let assignedTo = l.assignedTo;
+              let venueId = l.venueId;
+
+              const kommoFunnel = syncedFunnels.find(f => f.name.toLowerCase().includes('kommo') && !f.isPostSale && f.category !== 'Pós-Venda');
+              const yuriCollab = collaborators.find(c => c.name.toLowerCase().includes('yuri')) || collaborators.find(c => c.role === 'master');
+
               if (isLeadTs || isCommercialCodeStuckInPostSale) {
                 const currentF = syncedFunnels.find(f => f.id === funnelId);
                 const isCurrentFPostSale = Boolean(currentF && (currentF.isPostSale || currentF.category === 'Pós-Venda' || currentF.category === 'pos_venda'));
+                const needsKommoRedirect = Boolean(isLeadTs && kommoFunnel && funnelId !== kommoFunnel.id);
                 
-                if (isLeadTs || isCurrentFPostSale) {
+                if (isLeadTs || isCurrentFPostSale || needsKommoRedirect) {
                   const commFunnels = syncedFunnels.filter(f => !f.isPostSale && f.category !== 'Pós-Venda' && f.category !== 'pos_venda');
-                  const targetCommFunnel = commFunnels.find(f => f.venueId === l.venueId || (Array.isArray(f.sharedVenueIds) && f.sharedVenueIds.includes(l.venueId)))
+                  const targetCommFunnel = (isLeadTs && kommoFunnel)
+                    ? kommoFunnel
+                    : (commFunnels.find(f => f.venueId === l.venueId || (Array.isArray(f.sharedVenueIds) && f.sharedVenueIds.includes(l.venueId)))
                     || commFunnels[0]
-                    || syncedFunnels[0];
+                    || syncedFunnels[0]);
 
                   if (targetCommFunnel) {
                     funnelId = targetCommFunnel.id;
@@ -1578,15 +1589,40 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                     if (fixedCode?.startsWith('CLI-')) {
                       fixedCode = fixedCode.replace('CLI-', 'LEAD-');
                     }
+                    if (isLeadTs || targetCommFunnel.name.toLowerCase().includes('kommo')) {
+                      if (yuriCollab) {
+                        sdrId = yuriCollab.id;
+                        sdrName = yuriCollab.name;
+                        assignedTo = yuriCollab.name;
+                      }
+                    }
+                    if (targetCommFunnel.venueId && targetCommFunnel.venueId !== 'all') {
+                      venueId = targetCommFunnel.venueId;
+                    }
                     if (isSupabaseConfigured) {
                       leadService.update(l.id, {
                         funnelId: targetCommFunnel.id,
+                        venueId,
                         isClient: false,
                         group: 'WhatsApp',
                         tags,
-                        code: fixedCode
+                        code: fixedCode,
+                        ...(sdrId ? { sdrId, sdrName, assignedTo } : {})
                       }).catch(() => {});
                     }
+                  }
+                }
+              }
+
+              // Se o lead está no funil VI KOMMO (ou similar) e ainda não tem o Yuri como responsável, vincula o Yuri automaticamente
+              const activeFunnelForLead = syncedFunnels.find(f => f.id === funnelId);
+              if (activeFunnelForLead?.name?.toLowerCase().includes('kommo') && yuriCollab) {
+                if (!sdrId || !sdrName || !assignedTo || (sdrName.toLowerCase() !== yuriCollab.name.toLowerCase() && isLeadTs)) {
+                  sdrId = yuriCollab.id;
+                  sdrName = yuriCollab.name;
+                  assignedTo = yuriCollab.name;
+                  if (isSupabaseConfigured) {
+                    leadService.update(l.id, { sdrId, sdrName, assignedTo }).catch(() => {});
                   }
                 }
               }
@@ -1601,7 +1637,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
               if (code === 'LEAD-N4K9HT' || phone === '157221941944479') {
                 phone = '5521999723215';
               }
-              return { ...l, code, name, funnelId, phone, avatarUrl, isClient, group, tags };
+              return { ...l, code, name, funnelId, venueId, phone, avatarUrl, isClient, group, tags, sdrId, sdrName, assignedTo };
             });
 
             // Auto-cura e consolidação de duplicados no Supabase e em memória
@@ -7278,6 +7314,30 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       }
     }
 
+    // Resolução de SDR para o funil validado:
+    // Se o funil final é o VI KOMMO (ou similar) e não havia SDR definido, atribui automaticamente o Yuri
+    let effectiveAutoSdr = autoSdr;
+    if (!effectiveAutoSdr && validFunnelId) {
+      effectiveAutoSdr = getRoundRobinAssignment(validFunnelId, targetVenueId);
+    }
+    if (!effectiveAutoSdr) {
+      const finalF = scopedFunnels.find(f => f.id === validFunnelId);
+      if (finalF?.name?.toLowerCase().includes('kommo')) {
+        effectiveAutoSdr = collaborators.find(c => c.name.toLowerCase().includes('yuri')) || collaborators.find(c => c.role === 'master') || null;
+      }
+    }
+    if (effectiveAutoSdr && initialParticipants.length === 0) {
+      initialParticipants.push({
+        id: generateUuid(),
+        collaboratorId: effectiveAutoSdr.id,
+        collaboratorName: effectiveAutoSdr.name,
+        collaboratorRole: effectiveAutoSdr.role || 'sdr',
+        collaboratorAvatarUrl: effectiveAutoSdr.avatarUrl,
+        action: 'round_robin',
+        timestamp: new Date().toISOString(),
+      });
+    }
+
     // Respeita estritamente a Caixa de Entrada do Funil:
     // Se isEntryStageActive === false, o lead entra DIRETAMENTE na 1ª etapa disponível de negociação (e NUNCA em 'new_lead')
     const isEntryActive = matchedFunnel ? (matchedFunnel.isEntryStageActive !== false) : true;
@@ -7345,9 +7405,9 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       group: (isTargetPostSale || inheritedIsClient) ? 'Pós-Venda' : 'WhatsApp',
       tags: (isTargetPostSale || inheritedIsClient) ? ['Cliente'] : [],
       notes: effectiveMsgText ? (data.fromMe ? `Conversa iniciada via WhatsApp: "${effectiveMsgText}"` : `Primeira mensagem via WhatsApp: "${effectiveMsgText}"`) : undefined,
-      sdrId: autoSdr ? autoSdr.id : undefined,
-      sdrName: autoSdr ? autoSdr.name : undefined,
-      assignedTo: autoSdr ? autoSdr.name : undefined,
+      sdrId: effectiveAutoSdr ? effectiveAutoSdr.id : undefined,
+      sdrName: effectiveAutoSdr ? effectiveAutoSdr.name : undefined,
+      assignedTo: effectiveAutoSdr ? effectiveAutoSdr.name : undefined,
       stage: (data.initialStage || resolvedStageId) as CrmStage,
       isClient: inheritedIsClient ? true : undefined,
       isValidated: false,

@@ -49,6 +49,7 @@ import { formatPhone } from '../../utils/phoneFormatter';
 import { MQL_BAND_STYLE, hasMqlAnswers, mqlBand } from '../../utils/mqlScore';
 import { validateLeadForWon } from '../../utils/leadValidation';
 import { sortLeadsByCriteria, getLeadPendingWaitingTime, getLeadWaitTimeSla } from '../../utils/leadSorting';
+import { findCollaboratorMatch } from '../../utils/collaboratorAssets';
 import { isPhoneMatch } from '../../services/leadService';
 import type { Lead, CrmStage, CommercialFunnel, FunnelStageConfig, CommercialCommitmentType } from '../../types/admin';
 
@@ -1319,10 +1320,15 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
       // Ownership Filter: Meus Leads vs Em Aberto vs Todos
       if (leadOwnershipFilter === 'mine') {
         const targetUserId = effectiveUser?.id || currentUser?.id;
-        const targetUserName = (effectiveUser?.name || currentUser?.name || '').toLowerCase();
+        const targetUserName = (effectiveUser?.name || currentUser?.name || '').trim().toLowerCase();
+        const matchesTargetName = (stored?: string) => {
+          if (!stored || !targetUserName) return false;
+          const s = stored.trim().toLowerCase();
+          return s === targetUserName || targetUserName.includes(s) || s.includes(targetUserName) || (s.length >= 3 && targetUserName.split(' ')[0] === s.split(' ')[0]);
+        };
         const isMine = 
           Boolean(targetUserId && (l.sdrId === targetUserId || l.closerId === targetUserId)) ||
-          Boolean(targetUserName && (l.sdrName?.toLowerCase() === targetUserName || l.closerName?.toLowerCase() === targetUserName || l.assignedTo?.toLowerCase() === targetUserName)) ||
+          Boolean(targetUserName && (matchesTargetName(l.sdrName) || matchesTargetName(l.closerName) || matchesTargetName(l.assignedTo))) ||
           Boolean(targetUserId && (l.participants || []).some(p => p.collaboratorId === targetUserId));
         if (!isMine) return false;
       } else if (leadOwnershipFilter === 'open') {
@@ -1335,9 +1341,19 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
 
       // 3. Collaborator / SDR / Closer Filter
       if (filterState.collaboratorId !== 'all') {
+        const targetCollab = collaborators.find(c => c.id === filterState.collaboratorId);
+        const targetCollabName = (targetCollab?.name || '').trim().toLowerCase();
+        const matchesCollabName = (stored?: string) => {
+          if (!stored || !targetCollabName) return false;
+          const s = stored.trim().toLowerCase();
+          return s === targetCollabName || targetCollabName.includes(s) || s.includes(targetCollabName) || (s.length >= 3 && targetCollabName.split(' ')[0] === s.split(' ')[0]);
+        };
         const matchesCollab = l.sdrId === filterState.collaboratorId || 
           l.closerId === filterState.collaboratorId || 
-          (l.participants || []).some(p => p.collaboratorId === filterState.collaboratorId);
+          (l.participants || []).some(p => p.collaboratorId === filterState.collaboratorId) ||
+          matchesCollabName(l.sdrName) ||
+          matchesCollabName(l.closerName) ||
+          matchesCollabName(l.assignedTo);
         if (!matchesCollab) return false;
       }
 
@@ -3506,8 +3522,8 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                         </div>
                       ) : (
                         columnLeads.slice(0, colVisible[col.id] ?? KANBAN_COLUMN_INITIAL).map(lead => {
-                          const sdrCollab = collaborators.find(c => (lead.sdrId && c.id === lead.sdrId) || (lead.sdrName && c.name?.toLowerCase() === lead.sdrName.toLowerCase()) || (lead.assignedTo && c.name?.toLowerCase() === lead.assignedTo.toLowerCase()));
-                          const closerCollab = collaborators.find(c => (lead.closerId && c.id === lead.closerId) || (lead.closerName && c.name?.toLowerCase() === lead.closerName.toLowerCase()));
+                          const sdrCollab = findCollaboratorMatch(collaborators, lead.sdrId, lead.sdrName || lead.assignedTo);
+                          const closerCollab = findCollaboratorMatch(collaborators, lead.closerId, lead.closerName);
 
                           const isSelectedInMulti = selectedLeadIds.includes(lead.id);
                           const pendingWaitMs = getLeadPendingWaitingTime(lead, collabIdSet);
@@ -4680,7 +4696,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                         );
                                       }
 
-                                      const singleCollab = sdrCollab || closerCollab || collaborators.find(c => c.name === lead.assignedTo);
+                                      const singleCollab = sdrCollab || closerCollab || findCollaboratorMatch(collaborators, undefined, lead.assignedTo);
                                       if (singleCollab) {
                                         return renderCollabAvatar(singleCollab, 'Responsável', false);
                                       }

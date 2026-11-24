@@ -42,6 +42,16 @@ Grande reestruturação de governança, experiência do usuário, banco de dados
 
 ### Recursos e Melhorias em Staging
 
+- **Atribuição Automática ao Yuri para o Funil VI KOMMO & Matching Resiliente de Colaboradores:**
+  * **Roteamento e Auto-Cura de Leads para VI KOMMO (Ex: `LEAD-TSNVPP`):**
+    - Leads com código ou identificação `LEAD-TSNVPP` (ou mensagens recebidas em origens do funil `VI KOMMO`) agora são direcionados com precisão para o funil comercial `VI KOMMO` (e não para funis genéricos ou de pós-venda).
+    - O Yuri (`YURI BONOMO`) é atribuído automaticamente como SDR e responsável direto do lead (`sdrId`, `sdrName`, `assignedTo`) tanto na criação em tempo real via WhatsApp quanto na rotina de auto-cura da hidratação do `AdminStateContext`.
+  * **Matching Resiliente de Colaboradores nos Cards do Kanban e Caixa de Entrada do WhatsApp:**
+    - Criada a função utilitária `findCollaboratorMatch` em `src/utils/collaboratorAssets.ts`, capaz de resolver colaboradores tanto por ID quanto por correspondência flexível de nome (exato, primeiro nome ou parcial, ex: `"Yuri"` encontrando com sucesso `"YURI BONOMO"`).
+    - Eliminado o problema onde o avatar de Yuri aparecia como "Sem responsável comercial / Sem responsável atribuído" (círculo pontilhado cinza) quando o lead continha apenas o primeiro nome ou variação de maiúsculas/minúsculas.
+    - Sincronizados os filtros de posse ("Meus Leads" e filtro por colaborador específico) no `AdminWhatsAppWorkspaceView.tsx` e `AdminCrmKanbanView.tsx` com a mesma lógica resiliente, garantindo que o usuário visualize seus leads sem falsos negativos.
+
+
 - **Blindagem Anti-Sequestro de Leads Comerciais para o Pós-Venda & Busca Estrita por Funil no WhatsApp:**
   * **Correção da Busca com Escopo Estrito no WhatsApp Workspace:**
     - Ao selecionar um funil específico na Caixa de Entrada / Workspace de Mensagens, a pesquisa textual agora respeita rigorosamente o funil e a casa selecionados, em vez de fazer bypass e retornar leads de todos os funis globais da empresa.

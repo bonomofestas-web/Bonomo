@@ -90,6 +90,7 @@ import {
 } from './AdminLeadActionModals';
 import { formatPhone, maskPhoneInput, normalizeWhatsAppNumber } from '../../utils/phoneFormatter';
 import { generateUuid } from '../../utils/uuid';
+import { findCollaboratorMatch } from '../../utils/collaboratorAssets';
 import { getLeadPendingWaitingTime, getLeadWaitTimeSla, getLeadConversationTime } from '../../utils/leadSorting';
 import { renderFunnelOrStageIcon } from '../../utils/funnelIconLibrary';
 import { getDefaultPostSaleFunnelId, filterExtraPostSaleLeads } from '../../utils/funnelUtils';
@@ -2269,40 +2270,53 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       } else if (effectiveOwnership === 'my' || effectiveOwnership === 'mine') {
         const targetUserId = effectiveUser?.id || currentUser?.id;
         const targetUserName = (effectiveUser?.name || currentUser?.name || '').trim().toLowerCase();
+        const collabMatchesTarget = (storedId?: string, storedName?: string) => {
+          if (targetUserId && storedId === targetUserId) return true;
+          if (targetUserName && storedName) {
+            const s = storedName.trim().toLowerCase();
+            if (s === targetUserName || targetUserName.includes(s) || s.includes(targetUserName) || (s.length >= 3 && targetUserName.split(' ')[0] === s.split(' ')[0])) {
+              return true;
+            }
+          }
+          return false;
+        };
+
         if (isPostSaleFunnel) {
           const isMyClient =
-            Boolean(targetUserId && (lead.sdrId === targetUserId || lead.closerId === targetUserId || lead.assignedTo === targetUserId)) ||
-            Boolean(targetUserName && (
-              (lead.assignedTo && lead.assignedTo.trim().toLowerCase() === targetUserName) ||
-              (lead.sdrName && lead.sdrName.trim().toLowerCase() === targetUserName)
-            ));
+            collabMatchesTarget(lead.sdrId, lead.sdrName) ||
+            collabMatchesTarget(lead.closerId, lead.closerName) ||
+            collabMatchesTarget(undefined, lead.assignedTo);
           if (!isMyClient && lead.id !== selectedLeadId && lead.id !== initialLeadId) return false;
         } else {
           // Estritamente leads atribuídos ao usuário logado (NUNCA trazer leads de terceiros)
           const isMyLead =
-            Boolean(targetUserId && (lead.sdrId === targetUserId || lead.closerId === targetUserId || lead.assignedTo === targetUserId)) ||
-            Boolean(targetUserName && (
-              (lead.assignedTo && lead.assignedTo.trim().toLowerCase() === targetUserName) ||
-              (lead.sdrName && lead.sdrName.trim().toLowerCase() === targetUserName) ||
-              (lead.closerName && lead.closerName.trim().toLowerCase() === targetUserName)
-            ));
+            collabMatchesTarget(lead.sdrId, lead.sdrName) ||
+            collabMatchesTarget(lead.closerId, lead.closerName) ||
+            collabMatchesTarget(undefined, lead.assignedTo);
           if (!isMyLead && lead.id !== selectedLeadId && lead.id !== initialLeadId) return false;
         }
       } else if (!canSeeAllConversations) {
         // "Todos" para usuario comum: apenas leads proprios ou ainda sem responsavel
         const targetUserId = effectiveUser?.id || currentUser?.id;
         const targetUserName = (effectiveUser?.name || currentUser?.name || '').trim().toLowerCase();
+        const collabMatchesTarget = (storedId?: string, storedName?: string) => {
+          if (targetUserId && storedId === targetUserId) return true;
+          if (targetUserName && storedName) {
+            const s = storedName.trim().toLowerCase();
+            if (s === targetUserName || targetUserName.includes(s) || s.includes(targetUserName) || (s.length >= 3 && targetUserName.split(' ')[0] === s.split(' ')[0])) {
+              return true;
+            }
+          }
+          return false;
+        };
         const hasAssignee = Boolean(
           lead.assignedTo || lead.sdrId || lead.closerId ||
           (lead.sdrName && lead.sdrName.trim()) || (lead.closerName && lead.closerName.trim())
         );
         const isMine =
-          Boolean(targetUserId && (lead.sdrId === targetUserId || lead.closerId === targetUserId || lead.assignedTo === targetUserId)) ||
-          Boolean(targetUserName && (
-            (lead.assignedTo && lead.assignedTo.trim().toLowerCase() === targetUserName) ||
-            (lead.sdrName && lead.sdrName.trim().toLowerCase() === targetUserName) ||
-            (lead.closerName && lead.closerName.trim().toLowerCase() === targetUserName)
-          ));
+          collabMatchesTarget(lead.sdrId, lead.sdrName) ||
+          collabMatchesTarget(lead.closerId, lead.closerName) ||
+          collabMatchesTarget(undefined, lead.assignedTo);
         if (hasAssignee && !isMine && lead.id !== selectedLeadId && lead.id !== initialLeadId) return false;
       }
 
@@ -2318,10 +2332,18 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
 
       // 5. Collaborator filter
       if (filterCollaboratorId !== 'all') {
-        const matchesSdr = lead.sdrId === filterCollaboratorId;
-        const matchesCloser = lead.closerId === filterCollaboratorId;
-        const matchesAssigned = lead.assignedTo === filterCollaboratorId;
-        if (!matchesSdr && !matchesCloser && !matchesAssigned && lead.id !== selectedLeadId && lead.id !== initialLeadId) return false;
+        const targetCollab = collaborators.find(c => c.id === filterCollaboratorId);
+        const targetCollabName = (targetCollab?.name || '').trim().toLowerCase();
+        const matchesCollab = (id?: string, name?: string) => {
+          if (id === filterCollaboratorId) return true;
+          if (targetCollabName && name) {
+            const s = name.trim().toLowerCase();
+            return s === targetCollabName || targetCollabName.includes(s) || s.includes(targetCollabName) || (s.length >= 3 && targetCollabName.split(' ')[0] === s.split(' ')[0]);
+          }
+          return false;
+        };
+        const matchesAny = matchesCollab(lead.sdrId, lead.sdrName) || matchesCollab(lead.closerId, lead.closerName) || matchesCollab(undefined, lead.assignedTo);
+        if (!matchesAny && lead.id !== selectedLeadId && lead.id !== initialLeadId) return false;
       }
 
       // 6. Temperature filter (only for commercial leads)
@@ -6965,10 +6987,10 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
               })();
               const linkedContractTitle = linkedContract ? formatContractHonoreeTitle(linkedContract) : null;
 
-              const sdrCollab = lead.sdrId ? collaborators.find(c => c.id === lead.sdrId) : (lead.assignedTo ? collaborators.find(c => c.name === lead.assignedTo) : undefined);
-              const closerCollab = lead.closerId ? collaborators.find(c => c.id === lead.closerId) : undefined;
+              const sdrCollab = findCollaboratorMatch(collaborators, lead.sdrId, lead.sdrName || lead.assignedTo);
+              const closerCollab = findCollaboratorMatch(collaborators, lead.closerId, lead.closerName);
               const hasTwoDistinct = Boolean(sdrCollab && closerCollab && sdrCollab.id !== closerCollab.id);
-              const singleCollab = sdrCollab || closerCollab;
+              const singleCollab = sdrCollab || closerCollab || findCollaboratorMatch(collaborators, undefined, lead.assignedTo);
 
               const isLeadSelectedInMulti = selectedLeadIds.includes(lead.id);
               const hasSlaAlert = sla.level !== 'none' && sla.level !== 'recent';

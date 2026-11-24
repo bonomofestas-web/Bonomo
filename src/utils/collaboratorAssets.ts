@@ -273,3 +273,40 @@ export const summarizeAssetsTotal = (list: (AssetSummary | undefined)[]): AssetS
     leads: acc.leads + s.leads, contracts: acc.contracts + s.contracts, tasks: acc.tasks + s.tasks,
     overdueTasks: acc.overdueTasks + s.overdueTasks, appointments: acc.appointments + s.appointments,
   } : acc), blank());
+
+/**
+ * Localiza de forma flexível e resiliente um colaborador por ID ou Nome (exato, primeiro nome ou parcial).
+ * Evita que 'Yuri' não encontre 'YURI BONOMO' ou que divergências de case/sobrenome impeçam a exibição do avatar.
+ */
+export const findCollaboratorMatch = (
+  collaborators: Collaborator[],
+  id?: string,
+  name?: string
+): Collaborator | undefined => {
+  if (id) {
+    const byId = collaborators.find(c => c.id === id);
+    if (byId) return byId;
+  }
+  if (!name || typeof name !== 'string') return undefined;
+  const clean = name.trim().toLowerCase();
+  if (!clean || clean === 'sem responsável' || clean === 'não atribuído' || clean === 'sem sdr' || clean === 'sem closer' || clean === 'outro colaborador') {
+    return undefined;
+  }
+  // 1. Match exato por nome
+  const exact = collaborators.find(c => c.name?.trim().toLowerCase() === clean);
+  if (exact) return exact;
+
+  // 2. Match parcial / Primeiro nome (Ex: 'Yuri' -> 'YURI BONOMO', ou 'Yuri Bonomo' -> 'Yuri')
+  const cleanFirst = clean.split(' ')[0];
+  return collaborators.find(c => {
+    if (!c.name) return false;
+    const cClean = c.name.trim().toLowerCase();
+    const cFirst = cClean.split(' ')[0];
+    return (
+      cClean.includes(clean) ||
+      clean.includes(cClean) ||
+      (cleanFirst.length >= 3 && cFirst === cleanFirst)
+    );
+  });
+};
+
