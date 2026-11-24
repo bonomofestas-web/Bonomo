@@ -472,6 +472,22 @@ export const AdminSourcesView: React.FC = () => {
                                   {funnel ? (
                                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontWeight: 700, fontSize: '0.78rem', color: fColor }}>
                                       <FunnelKindIcon postSale={isPostSaleFunnel(funnel)} size={13} /> {funnel.name}
+                                      <span
+                                        title={`ID do funil: ${funnel.id}`}
+                                        style={{
+                                          fontSize: '0.58rem',
+                                          fontWeight: 700,
+                                          fontFamily: 'monospace',
+                                          padding: '1px 5px',
+                                          borderRadius: '4px',
+                                          background: 'var(--adm-bg-input)',
+                                          color: 'var(--adm-text-muted)',
+                                          border: '1px solid var(--adm-border)',
+                                          flexShrink: 0,
+                                        }}
+                                      >
+                                        ID: {funnel.id.slice(0, 8)}
+                                      </span>
                                     </span>
                                   ) : isFinanceSource(source) ? (
                                     <span style={{ fontSize: '0.76rem', fontWeight: 700, color: '#0369A1' }}>Fixo do Financeiro</span>

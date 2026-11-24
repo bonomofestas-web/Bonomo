@@ -130,15 +130,10 @@ export const AdminSourceEditorView: React.FC<AdminSourceEditorViewProps> = ({
       const isReferral = sourceToEdit.type === 'referral' || sourceToEdit.name?.startsWith('Indicações • ') || Boolean((sourceToEdit.configuration as any)?.systemManaged);
       setType(isReferral ? 'referral' : (sourceToEdit.type === 'form' ? 'form' : 'whatsapp_api'));
 
-      // Verifica se o funil vinculado possui caixa de entrada ativa
+      // Carrega o funil de destino salvo sem nunca sobrescrever com base em configurações internas do funil.
+      // O funnelId da origem é uma escolha manual do gestor e deve ser preservada integralmente.
       const initialFunnelId = sourceToEdit.funnelId || '';
-      const matchedFunnel = funnels.find(f => f.id === initialFunnelId);
-      if (matchedFunnel && matchedFunnel.isEntryStageActive === false) {
-        // Se o funil não tem caixa de entrada ativa, a origem vem desvinculada por padrão
-        setFunnelId('');
-      } else {
-        setFunnelId(initialFunnelId);
-      }
+      setFunnelId(initialFunnelId);
 
       setWhatsappInstanceId(sourceToEdit.whatsappInstanceId || '');
       setSlug(sourceToEdit.slug || '');
@@ -1024,6 +1019,24 @@ export const AdminSourceEditorView: React.FC<AdminSourceEditorViewProps> = ({
                           <span style={{ fontWeight: 800, color: funnelColor, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             {selectedF?.name || 'Sucesso do Cliente (Pós-Venda)'}
                           </span>
+                          {selectedF?.id && (
+                            <span
+                              title={`ID do funil: ${selectedF.id}`}
+                              style={{
+                                fontSize: '0.62rem',
+                                fontWeight: 700,
+                                fontFamily: 'monospace',
+                                padding: '1px 6px',
+                                borderRadius: '4px',
+                                background: 'var(--adm-bg-card)',
+                                color: 'var(--adm-text-muted)',
+                                border: '1px solid var(--adm-border)',
+                                flexShrink: 0,
+                              }}
+                            >
+                              ID: {selectedF.id.slice(0, 8)}
+                            </span>
+                          )}
                         </>
                       ) : (
                         <>
@@ -1043,6 +1056,24 @@ export const AdminSourceEditorView: React.FC<AdminSourceEditorViewProps> = ({
                           <span style={{ fontWeight: 800, color: funnelColor, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             {selectedF?.name || 'Funil Comercial'}
                           </span>
+                          {selectedF?.id && (
+                            <span
+                              title={`ID do funil: ${selectedF.id}`}
+                              style={{
+                                fontSize: '0.62rem',
+                                fontWeight: 700,
+                                fontFamily: 'monospace',
+                                padding: '1px 6px',
+                                borderRadius: '4px',
+                                background: 'var(--adm-bg-card)',
+                                color: 'var(--adm-text-muted)',
+                                border: '1px solid var(--adm-border)',
+                                flexShrink: 0,
+                              }}
+                            >
+                              ID: {selectedF.id.slice(0, 8)}
+                            </span>
+                          )}
                         </>
                       )}
                     </div>
@@ -1156,7 +1187,7 @@ export const AdminSourceEditorView: React.FC<AdminSourceEditorViewProps> = ({
                               if (!isSelected) e.currentTarget.style.background = 'transparent';
                             }}
                           >
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
                               <div style={{
                                 width: '22px',
                                 height: '22px',
@@ -1171,6 +1202,24 @@ export const AdminSourceEditorView: React.FC<AdminSourceEditorViewProps> = ({
                               </div>
                               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                 {f.name}
+                              </span>
+                              <span
+                                title={`ID do funil: ${f.id}`}
+                                style={{
+                                  fontSize: '0.58rem',
+                                  fontWeight: 700,
+                                  fontFamily: 'monospace',
+                                  padding: '1px 5px',
+                                  borderRadius: '4px',
+                                  background: 'var(--adm-bg-input)',
+                                  color: 'var(--adm-text-muted)',
+                                  border: '1px solid var(--adm-border)',
+                                  marginLeft: 'auto',
+                                  marginRight: '6px',
+                                  flexShrink: 0,
+                                }}
+                              >
+                                ID: {f.id.slice(0, 8)}
                               </span>
                             </div>
                             {isSelected && <Check size={14} color={fColor} />}
@@ -1236,7 +1285,7 @@ export const AdminSourceEditorView: React.FC<AdminSourceEditorViewProps> = ({
                                 if (!isSelected) e.currentTarget.style.background = 'transparent';
                               }}
                             >
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
                                 <div style={{
                                   width: '22px',
                                   height: '22px',
@@ -1252,6 +1301,26 @@ export const AdminSourceEditorView: React.FC<AdminSourceEditorViewProps> = ({
                                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                   {f.name}
                                 </span>
+                                {f.id && f.id !== 'post_sale_default' && (
+                                  <span
+                                    title={`ID do funil: ${f.id}`}
+                                    style={{
+                                      fontSize: '0.58rem',
+                                      fontWeight: 700,
+                                      fontFamily: 'monospace',
+                                      padding: '1px 5px',
+                                      borderRadius: '4px',
+                                      background: 'var(--adm-bg-input)',
+                                      color: 'var(--adm-text-muted)',
+                                      border: '1px solid var(--adm-border)',
+                                      marginLeft: 'auto',
+                                      marginRight: '6px',
+                                      flexShrink: 0,
+                                    }}
+                                  >
+                                    ID: {f.id.slice(0, 8)}
+                                  </span>
+                                )}
                               </div>
                               {isSelected && <Check size={14} color={fColor} />}
                             </button>

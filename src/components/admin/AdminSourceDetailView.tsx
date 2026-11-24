@@ -182,6 +182,23 @@ export const AdminSourceDetailView: React.FC<Props> = ({
               )}
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '0.74rem', fontWeight: 700, color: originFunnel ? 'var(--adm-text-title)' : '#F59E0B' }}>
                 <FunnelKindIcon postSale={Boolean(originFunnel?.isPostSale)} size={13} /> {originFunnel ? `Origem: ${originFunnel.name}` : 'Sem funil de origem'}
+                {originFunnel?.id && (
+                  <span
+                    title={`ID do funil: ${originFunnel.id}`}
+                    style={{
+                      fontSize: '0.58rem',
+                      fontWeight: 700,
+                      fontFamily: 'monospace',
+                      padding: '1px 5px',
+                      borderRadius: '4px',
+                      background: 'var(--adm-bg-input)',
+                      color: 'var(--adm-text-muted)',
+                      border: '1px solid var(--adm-border)',
+                    }}
+                  >
+                    ID: {originFunnel.id.slice(0, 8)}
+                  </span>
+                )}
               </span>
             </div>
           </div>

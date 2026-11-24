@@ -400,8 +400,12 @@ export const sourceService = {
           ? venueFunnels[0].id 
           : (primaryFunnel?.id && isUuid(primaryFunnel.id) ? primaryFunnel.id : '');
 
-        const venueSources = existingSources.filter(s => 
-          s.venueId === venue.id && (
+        // BLINDAGEM: apenas origens do tipo 'referral' / systemManaged são gerenciadas por esta função.
+        // Origens de WhatsApp (whatsapp_api) com funnelId configurado manualmente pelo gestor NUNCA são tocadas aqui.
+        const venueSources = existingSources.filter(s =>
+          s.venueId === venue.id &&
+          s.type !== 'whatsapp_api' &&
+          (
             s.type === 'referral' ||
             (s.name && s.name.startsWith('Indicações • ')) ||
             (s.configuration as any)?.systemManaged
@@ -424,11 +428,20 @@ export const sourceService = {
         } else {
           // Mantém a primeira e auto-cura status, tipo, nome e funil
           const primarySource = venueSources[0];
-          const isCurrentFunnelValid = primarySource.funnelId && venueFunnels.some(f => f.id === primarySource.funnelId);
+
+          // CORREÇÃO CRÍTICA: valida contra TODOS os funis do sistema (não apenas da casa),
+          // para que funis duplicados (que têm novo ID) sejam reconhecidos como válidos.
+          const allFunnelIds = new Set(funnels.map(f => f.id));
+          const isCurrentFunnelValid = Boolean(
+            primarySource.funnelId &&
+            primarySource.funnelId.trim() !== '' &&
+            allFunnelIds.has(primarySource.funnelId)
+          );
+          // Só sobrescreve se o funil atual realmente não existe mais (foi deletado do sistema)
           const finalFunnelId = isCurrentFunnelValid ? primarySource.funnelId : autoFunnelId;
 
-          const needsHeal = 
-            primarySource.name !== expectedName || 
+          const needsHeal =
+            primarySource.name !== expectedName ||
             primarySource.funnelId !== finalFunnelId ||
             primarySource.type !== 'referral' ||
             primarySource.status !== 'active' ||

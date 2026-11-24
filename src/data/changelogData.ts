@@ -15,6 +15,37 @@ export interface ChangelogItem {
 
 export const CHANGELOG_DATA: ChangelogItem[] = [
   {
+    id: 'deploy-2026-11-24-funis-duplicados-roteamento-links-whatsapp',
+    version: 'v2.9.1',
+    date: '24 de Novembro de 2026',
+    title: 'Roteamento em Funis Duplicados, Código Único de Funil, Auto-Alinhamento de Leads e Links Automáticos no WhatsApp',
+    type: 'feature',
+    badge: 'Atualização Oficial',
+    summary: 'Correção crítica no roteamento de instâncias de WhatsApp conectadas a funis clonados/duplicados, introdução de identificadores únicos visíveis (ID: xxxxxxxx) em todos os funis comerciais e seletores de origem, auto-recuperação de mensagens recentes na abertura do app e reconhecimento inteligente de links sem https:// nas mensagens do CRM.',
+    features: [
+      {
+        name: 'Roteamento Confiável para Funis Duplicados',
+        description: 'Eliminação do reset indevido de funnel_id em origens de WhatsApp e isolamento completo de configurações de instâncias em funis clonados, garantindo que novas mensagens entrem na esteira exata escolhida pelo gestor.',
+        status: 'improved',
+      },
+      {
+        name: 'Código Único Legível (ID: xxxxxxxx) em Todos os Funis',
+        description: 'Padronização visual idêntica ao pós-venda: exibição de badge com ID curto exclusivo no seletor de Funil de Destino das Origens, na listagem do CRM Kanban e nos detalhes da origem, eliminando dúvidas entre esteiras com nomes similares.',
+        status: 'new',
+      },
+      {
+        name: 'Auto-Alinhamento de Leads e Recuperação de Gap',
+        description: 'Reconciliação automática na hidratação do app que alinha leads ao funil de sua origem de WhatsApp e varredura de gap das últimas 24h na inicialização para captar mensagens recebidas durante transições operacionais.',
+        status: 'improved',
+      },
+      {
+        name: 'Incorporação Inteligente de Links sem Protocolo no WhatsApp',
+        description: 'Reconhecimento automático de links digitados sem https:// (wa.me/..., instagram.com/..., domínios .com, .com.br, etc.) tornando-os clicáveis com segurança e ativando link preview na conversa.',
+        status: 'improved',
+      },
+    ],
+  },
+  {
     id: 'deploy-2026-11-21-central-contatos-contratos-financeiro-r2',
     version: 'v2.9.0',
     date: '21 de Novembro de 2026',

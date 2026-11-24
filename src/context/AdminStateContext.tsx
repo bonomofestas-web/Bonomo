@@ -1474,6 +1474,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
         if (isMounted) {
           let syncedFunnels = dbFunnels;
+          let syncedSources: Source[] = dbSources;
           if (results[0].status === 'fulfilled' && dbVenues.length > 0) {
             setVenues(dbVenues);
             safeLocalStorageSet(STORAGE_KEY_VENUES, JSON.stringify(dbVenues));
@@ -1489,6 +1490,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             await sourceService.ensureFinanceSources(dbVenues);
             const freshSources = await sourceService.getAll();
             if (freshSources.length > 0) {
+              syncedSources = freshSources;
               setSources(freshSources);
               safeLocalStorageSet(STORAGE_KEY_SOURCES, JSON.stringify(freshSources));
             }
@@ -1509,12 +1511,33 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
               funnelNameMap.set(f.name.toLowerCase().trim(), f.id);
             });
 
+            // ── Auto-Alinhamento de Leads com o Funil de Destino de sua Origem ──
+            const sourceFunnelMap = new Map<string, string>();
+            (syncedSources || []).forEach((s: Source) => {
+              if (s.funnelId && isUuid(s.funnelId)) {
+                sourceFunnelMap.set(s.id, s.funnelId);
+              }
+            });
+
             const enrichedLeads = dbLeads.map(l => {
               const code = l.code || generateLeadCode();
               const name = (!l.name || l.name.trim() === '' || l.name === 'Sem nome' || l.name === 'Lead Sem Nome')
                 ? code
                 : l.name;
               let funnelId = l.funnelId;
+
+              // Se a origem do lead estiver vinculada a um funil e o lead estiver com outro funil ou sem funil,
+              // alinha o lead imediatamente para o funil da sua origem de WhatsApp!
+              if (l.sourceId && sourceFunnelMap.has(l.sourceId)) {
+                const targetFId = sourceFunnelMap.get(l.sourceId)!;
+                if (funnelId !== targetFId) {
+                  funnelId = targetFId;
+                  if (isSupabaseConfigured) {
+                    leadService.update(l.id, { funnelId: targetFId }).catch(() => {});
+                  }
+                }
+              }
+
               // Reconciliação: se o lead tinha salvo o nome do funil ao invés do ID, remapeia para o ID oficial
               if (funnelId && funnelNameMap.has(funnelId.toLowerCase().trim())) {
                 funnelId = funnelNameMap.get(funnelId.toLowerCase().trim())!;
@@ -4752,7 +4775,11 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       allowedRoles: source.allowedRoles ? [...source.allowedRoles] : [],
       allowedCollaboratorIds: source.allowedCollaboratorIds ? [...source.allowedCollaboratorIds] : [],
       venueDistributionConfig: clonedVenueDistConfig,
-      priorityWhatsappPerVenue: source.priorityWhatsappPerVenue ? JSON.parse(JSON.stringify(source.priorityWhatsappPerVenue)) : undefined,
+      // CORREÇÃO: funil duplicado NÃO herda referências de origens WhatsApp do funil original.
+      // Cada instância de WhatsApp pertence à sua origem configurada pelo gestor (source.funnelId),
+      // e o gestor deve vincular a instância desejada a este novo funil manualmente.
+      defaultWhatsAppSourceId: undefined,
+      priorityWhatsappPerVenue: undefined,
       disabledVenueIds: source.disabledVenueIds ? [...source.disabledVenueIds] : [],
       icon: source.icon,
       badge: source.badge,
@@ -8099,6 +8126,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             fromMe: isFromMe,
             mediaUrl: msg.mediaUrl,
             mediaType: msg.mediaType,
+            initialFunnelId: targetSource?.funnelId,
             messageTimestamp: msg.timestamp,
           });
           if (newId) newLeadsCount++;
@@ -8112,6 +8140,35 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     console.log(`[Sync History Gap Concluído]: ${recovered.length} mensagens recuperadas (${newLeadsCount} novos leads, ${updatedLeadsCount} leads atualizados).`);
     return { recoveredCount: recovered.length, newLeadsCount, updatedLeadsCount };
   };
+
+  const hasAutoSyncedGapRef = React.useRef(false);
+
+  // Auto-recuperação de mensagens recentes (24h) ao recarregar a página:
+  // Garante que mensagens enviadas durante transições de funil ou instâncias duplicadas sejam ingeridas
+  // e posicionadas diretamente no funil configurado daquela instância de WhatsApp.
+  useEffect(() => {
+    if (hasAutoSyncedGapRef.current) return;
+    if (!currentUser || !scopedMasterId || sources.length === 0) return;
+
+    const activeFunnelsSources = sources.filter(s => s.type === 'whatsapp_api' && s.status === 'active' && s.funnelId && s.whatsappInstanceId);
+    if (activeFunnelsSources.length === 0) return;
+
+    hasAutoSyncedGapRef.current = true;
+    const timer = setTimeout(() => {
+      activeFunnelsSources.forEach(src => {
+        syncWhatsAppHistoryGap({
+          sourceId: src.id,
+          instanceToken: src.whatsappInstanceId,
+          createMissingLeads: true,
+          timeWindowMinutes: 1440, // 24 horas
+        }).catch(err => {
+          console.warn(`[Auto Gap Recovery] Falha ao recuperar histórico recente da origem ${src.name}:`, err);
+        });
+      });
+    }, 2500);
+
+    return () => clearTimeout(timer);
+  }, [currentUser, scopedMasterId, sources]);
 
   const createLead = async (data: {
     name: string;

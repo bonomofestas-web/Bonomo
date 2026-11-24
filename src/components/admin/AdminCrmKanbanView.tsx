@@ -2038,6 +2038,21 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                               <span style={{ fontSize: '0.86rem', fontWeight: 800, color: 'var(--adm-text-title)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                 {funnel.name}
                               </span>
+                              <span
+                                title={`ID do funil: ${funnel.id}`}
+                                style={{
+                                  fontSize: '0.58rem',
+                                  fontWeight: 700,
+                                  fontFamily: 'monospace',
+                                  padding: '1px 5px',
+                                  borderRadius: '4px',
+                                  background: 'var(--adm-bg-input)',
+                                  color: 'var(--adm-text-muted)',
+                                  border: '1px solid var(--adm-border)',
+                                }}
+                              >
+                                ID: {funnel.id.slice(0, 8)}
+                              </span>
                               {funnel.isPrimary && (
                                 <span style={{ fontSize: '0.58rem', fontWeight: 800, padding: '1px 5px', borderRadius: '4px', background: 'rgba(212, 175, 55, 0.18)', color: '#D4AF37', border: '1px solid rgba(212, 175, 55, 0.35)' }}>
                                   PADRÃO
@@ -2214,6 +2229,22 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                           }} title={funnel.name}>
                             {funnel.name}
                           </h3>
+                          <span
+                            title={`ID do funil: ${funnel.id}`}
+                            style={{
+                              fontSize: '0.58rem',
+                              fontWeight: 700,
+                              fontFamily: 'monospace',
+                              padding: '1px 5px',
+                              borderRadius: '4px',
+                              background: 'var(--adm-bg-input)',
+                              color: 'var(--adm-text-muted)',
+                              border: '1px solid var(--adm-border)',
+                              flexShrink: 0,
+                            }}
+                          >
+                            ID: {funnel.id.slice(0, 8)}
+                          </span>
 
                           {/* Post-Sale Badge discreto */}
                           {(funnel.isPostSale || funnel.category === 'Pós-Venda' || funnel.name?.toLowerCase().includes('pós-venda')) && (

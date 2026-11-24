@@ -42,6 +42,20 @@ Grande reestruturação de governança, experiência do usuário, banco de dados
 
 ### Recursos e Melhorias em Staging
 
+- **Identificação Única Legível de Funis e Correção de Roteamento de Origens:**
+  * **Incorporação e Reconhecimento Inteligente de Links sem Protocolo (`https://`):**
+    - O formatador oficial de mensagens (`src/utils/whatsappFormatter.tsx`) agora detecta automaticamente links mesmo que digitados sem `https://` ou `http://` (ex: `wa.me/...`, `instagram.com/...`, `bonomofestas.com.br`, `bit.ly/...`, links `www.` e domínios com extensões comuns como `.com`, `.com.br`, `.net`, etc.).
+    - Links sem protocolo são encapsulados com segurança para o destino externo (`https://`), com exclusão automática de pontuações de final de frase (ex: `site.com.br.`) e proteção contra falsos positivos em e-mails (`contato@empresa.com.br`).
+    - Ativação do gatilho de `linkPreview` no envio de mensagens do WhatsApp Workspace para URLs sem prefixo explícito.
+  * **Auto-Alinhamento de Leads e Recuperação de Gap ao Recarregar a Página:**
+    - Reconciliação automática na hidratação inicial do `AdminStateContext`: leads vinculados a uma origem de WhatsApp que estiverem com `funnel_id` desalinhado são corrigidos instantaneamente para o funil daquela origem no estado e no Supabase.
+    - Gatilho automático de recuperação de mensagens recentes (últimas 24h) com criação de leads perdidos (`createMissingLeads: true` e `initialFunnelId` explícito da origem), garantindo que mensagens recebidas via instâncias duplicadas (ex: número `(21) 99700-0188`) criem o card diretamente no funil correto ao recarregar a tela.
+  * **Badge de ID Único em Todos os Funis Comerciais e Origens:** Padronização visual idêntica ao pós-venda (`ID: <8-chars>`), exibida no seletor de funil ativo do CRM, nos cards do Kanban, na tabela de Origens (`AdminSourcesView`), no detalhe da origem (`AdminSourceDetailView`) e no dropdown de seleção de "Funil de Destino Automático" (`AdminSourceEditorView`). Elimina qualquer dúvida sobre qual funil está vinculado a cada chip ou instância de WhatsApp.
+  * **Correção do Bug de Funil de Destino Mudando Sozinho:**
+    - Em `sourceService.ensureDefaultReferralSources`: Blindagem para que apenas origens do tipo `referral` sejam sincronizadas e validação de `isCurrentFunnelValid` expandida para todo o conjunto de funis do tenant, impedindo que o carregamento do app zere o `funnel_id` de origens apontando para funis duplicados.
+    - Em `AdminSourceEditorView.tsx`: Removido o reset acidental de `funnelId` quando o funil possuía a caixa de entrada desativada.
+    - Em `duplicateFunnel`: Limpeza das propriedades `defaultWhatsAppSourceId` e `priorityWhatsappPerVenue` no funil clonado para não herdar referências do funil pai.
+
 - **Cartões de Contato WhatsApp Nativos e Ações Rápidas de Funil:**
   * **Design Idêntico ao WhatsApp Web (Solto sem Bolha de Texto):** Cartões de contato vCard recebidos agora são renderizados de forma limpa e isolada fora do balão de texto em `WhatsAppContactMessage.tsx`, exibindo avatar com iniciais do contato, nome completo, telefone formatado em padrão internacional/nacional e linha divisória elegante.
   * **Ação 'Salvar contato':** Salva o contato diretamente na tabela `contacts` (com verificação de duplicidade por telefone e dados completos) e redireciona instantaneamente o operador para a Central de Contatos (`admin_switch_tab` para `contacts`).

@@ -4017,7 +4017,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
         const sendRes = await uazapiService.sendText(effectiveToken, {
           number: targetPhone,
           text: textToSend,
-          linkPreview: textToSend.includes('http://') || textToSend.includes('https://'),
+          linkPreview: /(?:https?:\/\/|www\.|\bwa\.me\/|(?:[a-zA-Z0-9-]+\.)+(?:com\.br|com|br|net|org|io|app|co|me|ai|ly|gl))\b/i.test(textToSend),
           readchat: true,
           track_source: 'f5_system',
           track_id: `msg_${Date.now()}`,
@@ -4179,7 +4179,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
         const res = await uazapiService.sendText(retryToken, {
           number: targetPhone,
           text: textContent,
-          linkPreview: textContent.includes('http://') || textContent.includes('https://'),
+          linkPreview: /(?:https?:\/\/|www\.|\bwa\.me\/|(?:[a-zA-Z0-9-]+\.)+(?:com\.br|com|br|net|org|io|app|co|me|ai|ly|gl))\b/i.test(textContent),
           readchat: true,
           track_source: 'f5_system',
           track_id: `retry_${Date.now()}`,

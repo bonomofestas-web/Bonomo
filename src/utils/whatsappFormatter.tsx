@@ -49,12 +49,29 @@ function tokenizeProtectedSpans(text: string): { template: string; tokens: Token
     return id;
   });
 
-  // 3. URLs: http:// or https://
-  const urlPattern = /(https?:\/\/[^\s<>"'()]+(?:\([^\s<>"']+\)|[^\s`!()\[\]{};:'".,<>?«»“”‘’]))/g;
-  processed = processed.replace(urlPattern, (_match) => {
+  // 3. URLs: com ou sem protocolo (http:// ou https://)
+  // Suporta links completos, links www., links wa.me/ e domínios comuns sem protocolo
+  const urlPattern = /(?:https?:\/\/[^\s<>"'()]+|\b(?:www\.|wa\.me\/|(?:[a-zA-Z0-9-]+\.)+(?:com\.br|com|br|net|org|io|app|co|me|ai|ly|gl|tv|dev|cloud|live|site|online|store|tech|pro|page|link|space))\b(?:\/[^\s<>"'()]*|\?[^\s<>"'()]*|#[^\s<>"'()]*)?)/gi;
+
+  processed = processed.replace(urlPattern, (fullMatch, offset, fullString) => {
+    // Evita falsos positivos como e-mails (ex: contato@empresa.com.br)
+    if (offset > 0 && fullString[offset - 1] === '@') {
+      return fullMatch;
+    }
+
+    // Remove pontuação de final de frase (ex: "Acesse site.com.br.", "Veja em wa.me/123!")
+    let cleanUrl = fullMatch;
+    let trailingPunctuation = '';
+    while (cleanUrl.length > 0 && /[.,;:!?)>"'«»“”‘’]$/.test(cleanUrl)) {
+      trailingPunctuation = cleanUrl.slice(-1) + trailingPunctuation;
+      cleanUrl = cleanUrl.slice(0, -1);
+    }
+
+    if (!cleanUrl) return fullMatch;
+
     const id = `__F5_TK_URL_${tokenIndex++}__`;
-    tokens.push({ type: 'URL', content: _match, raw: _match });
-    return id;
+    tokens.push({ type: 'URL', content: cleanUrl, raw: cleanUrl });
+    return `${id}${trailingPunctuation}`;
   });
 
   return { template: processed, tokens };
@@ -214,10 +231,15 @@ function restoreTokensInNode(node: React.ReactNode, tokensMap: Map<string, Token
     }
 
     if (token.type === 'URL') {
+      const cleanUrl = token.content.trim();
+      const href = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//i.test(cleanUrl)
+        ? cleanUrl
+        : `https://${cleanUrl}`;
+
       return (
         <a
           key={key}
-          href={token.content}
+          href={href}
           target="_blank"
           rel="noopener noreferrer"
           style={{
