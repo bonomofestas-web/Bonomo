@@ -208,49 +208,84 @@ const getLeadMatchedColumnId = (
 ): string => {
   if (!cols || cols.length === 0) return '';
   const rawStage = String((lead as { stage?: string }).stage || '').toLowerCase().trim();
+  const cleanRawStage = rawStage.replace(/[^a-z0-9]/g, '');
 
-  // 1. Direct match:
-  const direct = cols.find(c => (c.id as string).toLowerCase().trim() === rawStage);
+  // 1. Direct match por ID ou Título da Coluna:
+  const direct = cols.find(c => {
+    const cId = (c.id as string).toLowerCase().trim();
+    const cTitle = (c.title || '').toLowerCase().trim();
+    const cleanId = cId.replace(/[^a-z0-9]/g, '');
+    const cleanTitle = cTitle.replace(/[^a-z0-9]/g, '');
+    return cId === rawStage || cTitle === rawStage || (cleanRawStage && (cleanId === cleanRawStage || cleanTitle === cleanRawStage));
+  });
   if (direct) return direct.id;
 
-  // 2. Semantic matching:
-  if (!rawStage || rawStage === 'new_lead' || rawStage === 'onboarding' || rawStage.includes('entrada') || rawStage.includes('novo lead')) {
-    const entryCol = cols.find(c => (c.id as string) === 'new_lead' || (c.id as string) === 'onboarding' || c.title.toLowerCase().includes('entrada') || c.title.toLowerCase().includes('novo lead'));
+  // 2. Semantic matching resiliente:
+  // Entrada / Boas-Vindas / Novo Lead / Onboarding
+  if (!rawStage || rawStage === 'new_lead' || rawStage === 'onboarding' || rawStage.includes('onboard') || rawStage.includes('entrada') || rawStage.includes('novo') || rawStage.includes('boas')) {
+    const entryCol = cols.find(c => {
+      const t = (c.title || '').toLowerCase();
+      const id = (c.id as string).toLowerCase();
+      return id === 'new_lead' || id === 'onboarding' || t.includes('entrada') || t.includes('novo') || t.includes('onboard') || t.includes('boas');
+    });
     if (entryCol) return entryCol.id;
-    return '';
   }
 
-  if (rawStage === 'in_negotiation' || rawStage === 'in_analysis' || rawStage === 'qualificacao' || rawStage === 'em_negociacao' || rawStage.includes('conectad') || rawStage.includes('negocia')) {
-    const negCol = cols.find(c => (c.id as string) === 'in_negotiation' || (c.id as string) === 'in_analysis' || (c.id as string) === 'qualificacao' || c.title.toLowerCase().includes('negocia') || c.title.toLowerCase().includes('conectad') || c.title.toLowerCase().includes('qualifica'));
+  // Follow Up / Retorno / Contato
+  if (rawStage.includes('follow') || rawStage.includes('retorno') || rawStage.includes('contato')) {
+    const followCol = cols.find(c => {
+      const t = (c.title || '').toLowerCase();
+      const id = (c.id as string).toLowerCase();
+      return t.includes('follow') || id.includes('follow') || t.includes('retorno');
+    });
+    if (followCol) return followCol.id;
+  }
+
+  // Conectado / Negociação / Qualificação
+  if (rawStage === 'in_negotiation' || rawStage === 'in_analysis' || rawStage === 'qualificacao' || rawStage === 'em_negociacao' || rawStage.includes('conectad') || rawStage.includes('negocia') || rawStage.includes('qualifica')) {
+    const negCol = cols.find(c => {
+      const t = (c.title || '').toLowerCase();
+      const id = (c.id as string).toLowerCase();
+      return id === 'in_negotiation' || id === 'in_analysis' || id === 'qualificacao' || t.includes('negocia') || t.includes('conectad') || t.includes('qualifica');
+    });
     if (negCol) return negCol.id;
-    return '';
   }
 
-  if (rawStage === 'scheduled' || rawStage === 'meeting_scheduled' || rawStage === 'visita_agendada' || rawStage === 'agendado' || rawStage.includes('agendad') || rawStage.includes('visita')) {
-    const schCol = cols.find(c => (c.id as string) === 'scheduled' || (c.id as string) === 'meeting_scheduled' || (c.id as string) === 'visita_agendada' || c.title.toLowerCase().includes('agendad') || c.title.toLowerCase().includes('visita'));
+  // Agendado / Visita / Reunião
+  if (rawStage === 'scheduled' || rawStage === 'meeting_scheduled' || rawStage === 'visita_agendada' || rawStage === 'agendado' || rawStage.includes('agendad') || rawStage.includes('visita') || rawStage.includes('reuniao') || rawStage.includes('reunião')) {
+    const schCol = cols.find(c => {
+      const t = (c.title || '').toLowerCase();
+      const id = (c.id as string).toLowerCase();
+      return id === 'scheduled' || id === 'meeting_scheduled' || id === 'visita_agendada' || t.includes('agendad') || t.includes('visita') || t.includes('reuniao');
+    });
     if (schCol) return schCol.id;
-    return '';
   }
 
+  // Degustação / Decisão
   if (rawStage === 'decision' || rawStage === 'degustacao' || rawStage.includes('degusta') || rawStage.includes('decis')) {
-    const decCol = cols.find(c => (c.id as string) === 'decision' || (c.id as string) === 'degustacao' || c.title.toLowerCase().includes('degusta') || c.title.toLowerCase().includes('decis'));
+    const decCol = cols.find(c => {
+      const t = (c.title || '').toLowerCase();
+      const id = (c.id as string).toLowerCase();
+      return id === 'decision' || id === 'degustacao' || t.includes('degusta') || t.includes('decis');
+    });
     if (decCol) return decCol.id;
-    return '';
   }
 
-  if (rawStage === 'deal_closed' || rawStage === 'contract_signed' || rawStage === 'contrato_fechado' || rawStage === 'ganho' || rawStage.includes('fechad') || rawStage.includes('ganho')) {
+  // Contrato Fechado / Ganho / Venda
+  if (rawStage === 'deal_closed' || rawStage === 'contract_signed' || rawStage === 'contrato_fechado' || rawStage === 'ganho' || rawStage.includes('fechad') || rawStage.includes('ganho') || rawStage.includes('assinado')) {
     const wonCol = cols.find(c => c.isWon || (c.id as string) === 'deal_closed' || (c.id as string) === 'contract_signed' || (c.id as string) === 'contrato_fechado' || c.title.toLowerCase().includes('fechado') || c.title.toLowerCase().includes('ganho'));
     if (wonCol) return wonCol.id;
-    return '';
   }
 
+  // Perdido / Recusado / Cancelado
   if (rawStage === 'lost' || rawStage === 'perdido' || rawStage.includes('perdid') || rawStage.includes('recusad') || rawStage.includes('cancelad')) {
     const lossCol = cols.find(c => c.isLoss || (c.id as string) === 'lost' || c.title.toLowerCase().includes('perdid') || c.title.toLowerCase().includes('recusad') || c.title.toLowerCase().includes('cancelad'));
     if (lossCol) return lossCol.id;
-    return '';
   }
 
-  return '';
+  // 3. Fallback Seguro: Se o lead pertence a este funil, ele NUNCA deve sumir do Kanban.
+  // Aloca na 1ª coluna disponível.
+  return cols[0]?.id || '';
 };
 
 /** Exibe no máximo as duas primeiras palavras do nome no card comercial para manter o visual limpo */
@@ -343,10 +378,6 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
   } | null>(null);
 
   const [showRemovedLeads, setShowRemovedLeads] = useState(false);
-
-  const totalUnreadMessages = useMemo(() => {
-    return leads.reduce((acc, l) => acc + (l.unreadCount || 0), 0);
-  }, [leads]);
 
   const getLinkedVenuesForFunnel = (targetFunnel: CommercialFunnel) => {
     const disabledSet = new Set<string>(targetFunnel.disabledVenueIds || []);
@@ -1252,7 +1283,13 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
         if (!isClientRecord) return false;
       } else {
         // Nos Funis Comerciais normais, clientes pós-venda não devem poluir a esteira de vendas.
-        if (isClientRecord) return false;
+        // EXCEÇÃO CRÍTICA: Se o lead foi explicitamente indexado neste funil comercial (l.funnelId === currentFunnel.id),
+        // ele pertence legitimamente a esta esteira (ex: contato reengajado via WhatsApp da unidade ou triagem).
+        if (isClientRecord) {
+          if (!currentFunnel || l.funnelId !== currentFunnel.id) {
+            return false;
+          }
+        }
       }
 
       // Filtro de Leads Removidos do Funil
@@ -1337,6 +1374,14 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
 
     return sortLeadsByCriteria(matching, filterState.sortBy || 'waiting_time', collabIdSet);
   }, [leads, currentFunnel, activeVenueId, filterState, search, leadOwnershipFilter, currentUser, effectiveUser, isManagerOrMaster, columns, collabIdSet, showRemovedLeads]);
+
+  // Mensagens pendentes/não lidas estritamente escopadas para os leads visíveis no funil/filtros ativos
+  const totalUnreadMessages = useMemo(() => {
+    return (filteredLeads || []).reduce((acc, l) => {
+      const unread = Number((l as any).unreadMessagesCount ?? (l as any).unreadCount ?? (l as any).pendingMessagesCount ?? 0);
+      return acc + (unread > 0 ? unread : 0);
+    }, 0);
+  }, [filteredLeads]);
 
   // Cards visiveis por etapa (20 de inicio; +20 ao rolar). O total da coluna continua sendo o de TODOS os leads da etapa.
   const [colVisible, setColVisible] = useState<Record<string, number>>({});

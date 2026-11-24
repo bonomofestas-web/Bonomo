@@ -2112,6 +2112,11 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
         }
       }
 
+      // Leads removidos do funil não devem aparecer na caixa de entrada
+      if (lead.isRemovedFromFunnel) {
+        return false;
+      }
+
       // Blindagem Estrita de Acesso por Etapa (Áudios 4 & 5):
       // Gerente e Master sempre têm acesso irrestrito a todas as etapas e funis.
       // Usuários normais só visualizam leads da etapa se ela não for restrita OU se o usuário estiver explicitamente em allowedCollaboratorIds.

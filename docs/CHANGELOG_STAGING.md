@@ -42,6 +42,16 @@ Grande reestruturação de governança, experiência do usuário, banco de dados
 
 ### Recursos e Melhorias em Staging
 
+- **Correção da Discrepância entre Caixa de Entrada e Kanban & Contador de Mensagens Pendentes:**
+  * **Alinhamento e Paridade Total entre Caixa de Entrada e Kanban:**
+    - Corrigido o `getLeadMatchedColumnId` em `AdminCrmKanbanView.tsx`: agora realiza correspondência robusta por ID, título da etapa (`col.title`), e termos normalizados (sem acentos/espaços), cobrindo etapas customizadas como "FOLLOW UP" e variações de "ONBOARDING & BOAS-VINDAS".
+    - Adicionado fallback automático para a primeira coluna ativa do funil, garantindo que leads pertencentes ao funil selecionado nunca desapareçam do Kanban nem fiquem invisíveis para o operador.
+    - Removido bloqueio indevido de `isClientRecord` em funis comerciais quando o lead está explicitamente atribuído ao funil ativo (`l.funnelId === currentFunnel.id`), permitindo que contatos com histórico ou vínculos prévios reengajados pelo WhatsApp apareçam de forma consistente em ambas as visualizações.
+    - Sincronizado o filtro de leads removidos (`lead.isRemovedFromFunnel`) no `AdminWhatsAppWorkspaceView.tsx`, impedindo que leads excluídos apareçam na gaveta de entrada.
+  * **Correção do Badge de Mensagens Pendentes (Ex: Badge com 572 Mensagens):**
+    - O badge do botão de alternância para a Caixa de Entrada (`MessageSquare`) agora é estritamente calculado com base nos leads filtrados do funil ativo (`filteredLeads`), e não mais no array global de leads de todo o sistema.
+    - Se o funil ativo tiver apenas 2 mensagens não lidas (ou 0), o badge refletirá com exatidão a quantidade real daquele funil, eliminando contadores inflados com histórico antigo de outras unidades e funis.
+
 - **Identificação Única Legível de Funis e Correção de Roteamento de Origens:**
   * **Incorporação e Reconhecimento Inteligente de Links sem Protocolo (`https://`):**
     - O formatador oficial de mensagens (`src/utils/whatsappFormatter.tsx`) agora detecta automaticamente links mesmo que digitados sem `https://` ou `http://` (ex: `wa.me/...`, `instagram.com/...`, `bonomofestas.com.br`, `bit.ly/...`, links `www.` e domínios com extensões comuns como `.com`, `.com.br`, `.net`, etc.).
