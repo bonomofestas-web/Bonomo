@@ -14,9 +14,28 @@ export interface GetContractsParams {
   masterId: string;
   venueIds?: string[];
   approvalStatus?: ContractApprovalStatus | 'all';
+  /** Varios status de uma vez (ex.: ativos = approved + completed); tem prioridade sobre approvalStatus */
+  statuses?: ContractApprovalStatus[];
+  /** Especialista (closer) OU SDR responsavel pelo contrato */
+  responsibleId?: string;
+  eventType?: string;
+  /** Periodo da data da festa (YYYY-MM-DD) */
+  eventFrom?: string;
+  eventTo?: string;
   search?: string;
   limit?: number;
   offset?: number;
+}
+
+/** Filtros comuns da lista e da contagem de contratos (sempre dentro do master_id ja aplicado pelo chamador). */
+function applyContractFilters<T extends { in: any; or: any; eq: any; gte: any; lte: any }>(query: T, f: Pick<GetContractsParams, 'statuses' | 'responsibleId' | 'eventType' | 'eventFrom' | 'eventTo'>): T {
+  let q: any = query;
+  if (f.statuses && f.statuses.length) q = q.in('approval_status', f.statuses);
+  if (f.responsibleId) q = q.or(`closer_id.eq.${f.responsibleId},sdr_id.eq.${f.responsibleId}`);
+  if (f.eventType) q = q.eq('event_type', f.eventType);
+  if (f.eventFrom) q = q.gte('event_date', f.eventFrom);
+  if (f.eventTo) q = q.lte('event_date', f.eventTo);
+  return q;
 }
 
 /**
@@ -153,6 +172,7 @@ export const contractService = {
     search,
     limit = 50,
     offset = 0,
+    ...filters
   }: GetContractsParams): Promise<Contract[]> {
     if (!isSupabaseConfigured || !masterId) return [];
 
@@ -169,9 +189,12 @@ export const contractService = {
         .range(offset, offset + limit - 1);
 
       // Filtro de Status de Aprovação
-      if (approvalStatus !== 'all') {
+      if (filters.statuses && filters.statuses.length) {
+        query = applyContractFilters(query, { statuses: filters.statuses });
+      } else if (approvalStatus !== 'all') {
         query = query.eq('approval_status', approvalStatus);
       }
+      query = applyContractFilters(query, { responsibleId: filters.responsibleId, eventType: filters.eventType, eventFrom: filters.eventFrom, eventTo: filters.eventTo });
 
       // Filtro de Unidades (Multi-Venues: cada contrato pertence a uma única unidade)
       if (venueIds && venueIds.length > 0) {
@@ -204,6 +227,7 @@ export const contractService = {
     venueIds,
     approvalStatus = 'all',
     search,
+    ...filters
   }: Omit<GetContractsParams, 'limit' | 'offset'>): Promise<number> {
     if (!isSupabaseConfigured || !masterId) return 0;
 
@@ -213,7 +237,9 @@ export const contractService = {
         .select('id', { count: 'exact', head: true })
         .eq('master_id', masterId);
 
-      if (approvalStatus !== 'all') query = query.eq('approval_status', approvalStatus);
+      if (filters.statuses && filters.statuses.length) query = applyContractFilters(query, { statuses: filters.statuses });
+      else if (approvalStatus !== 'all') query = query.eq('approval_status', approvalStatus);
+      query = applyContractFilters(query, { responsibleId: filters.responsibleId, eventType: filters.eventType, eventFrom: filters.eventFrom, eventTo: filters.eventTo });
       if (venueIds && venueIds.length > 0) query = query.in('venue_id', venueIds);
 
       const searchFilter = await buildContractSearchFilter(masterId, search);

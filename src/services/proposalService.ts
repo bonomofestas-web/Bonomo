@@ -2,7 +2,7 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { generateBase36Code } from './contactService';
 import type { Proposal, ProposalStatus } from '../types/admin';
 
-const COLUMNS = 'id, master_id, proposal_code, venue_id, lead_id, contact_id, title, event_type, event_date, guest_count, package_name, total_amount, payment_summary, client_snapshot, file_url, attachments, notes, status, lost_reason, converted_contract_id, converted_at, source, proposal_date, created_by_name, created_at, updated_at';
+const COLUMNS = 'id, master_id, proposal_code, venue_id, lead_id, contact_id, title, event_type, event_date, guest_count, package_name, total_amount, payment_summary, client_snapshot, file_url, attachments, notes, closer_id, closer_name, sdr_id, sdr_name, status, lost_reason, converted_contract_id, converted_at, source, proposal_date, created_by_name, created_at, updated_at';
 
 const mapRow = (r: any): Proposal => ({
   id: r.id,
@@ -22,6 +22,10 @@ const mapRow = (r: any): Proposal => ({
   fileUrl: r.file_url,
   attachments: Array.isArray(r.attachments) ? r.attachments : [],
   notes: r.notes,
+  closerId: r.closer_id,
+  closerName: r.closer_name,
+  sdrId: r.sdr_id,
+  sdrName: r.sdr_name,
   status: r.status as ProposalStatus,
   lostReason: r.lost_reason,
   convertedContractId: r.converted_contract_id,
@@ -48,6 +52,10 @@ export interface CreateProposalParams {
   clientSnapshot?: Record<string, any>;
   fileUrl?: string | null;
   notes?: string | null;
+  closerId?: string | null;
+  closerName?: string | null;
+  sdrId?: string | null;
+  sdrName?: string | null;
   source?: string;
   proposalDate?: string | null;
   createdByName?: string | null;
@@ -87,6 +95,10 @@ export const proposalService = {
         client_snapshot: params.clientSnapshot || {},
         file_url: params.fileUrl || null,
         notes: params.notes || null,
+        closer_id: params.closerId || null,
+        closer_name: params.closerName || null,
+        sdr_id: params.sdrId || null,
+        sdr_name: params.sdrName || null,
         source: params.source || 'manual',
         proposal_date: params.proposalDate || new Date().toLocaleDateString('en-CA'),
         created_by_id: params.createdById || null,
@@ -99,7 +111,7 @@ export const proposalService = {
     throw new Error(lastError?.message || 'Não foi possível salvar a proposta.');
   },
 
-  async update(id: string, masterId: string, patch: Partial<Pick<CreateProposalParams, 'venueId' | 'title' | 'eventType' | 'eventDate' | 'guestCount' | 'packageName' | 'totalAmount' | 'paymentSummary' | 'clientSnapshot' | 'fileUrl' | 'notes'>>): Promise<Proposal> {
+  async update(id: string, masterId: string, patch: Partial<Pick<CreateProposalParams, 'venueId' | 'title' | 'eventType' | 'eventDate' | 'guestCount' | 'packageName' | 'totalAmount' | 'paymentSummary' | 'clientSnapshot' | 'fileUrl' | 'notes' | 'closerId' | 'closerName' | 'sdrId' | 'sdrName'>>): Promise<Proposal> {
     const row: Record<string, any> = { updated_at: new Date().toISOString() };
     if (patch.venueId !== undefined) row.venue_id = patch.venueId;
     if (patch.title !== undefined) row.title = patch.title;
@@ -112,6 +124,8 @@ export const proposalService = {
     if (patch.clientSnapshot !== undefined) row.client_snapshot = patch.clientSnapshot;
     if (patch.fileUrl !== undefined) row.file_url = patch.fileUrl || null;
     if (patch.notes !== undefined) row.notes = patch.notes || null;
+    if (patch.closerId !== undefined) { row.closer_id = patch.closerId || null; row.closer_name = patch.closerName || null; }
+    if (patch.sdrId !== undefined) { row.sdr_id = patch.sdrId || null; row.sdr_name = patch.sdrName || null; }
     const { data, error } = await supabase.from('proposals').update(row).eq('id', id).eq('master_id', masterId).eq('status', 'active').select(COLUMNS).single();
     if (error || !data) throw new Error(error?.message || 'Proposta não encontrada ou já encerrada.');
     return mapRow(data);

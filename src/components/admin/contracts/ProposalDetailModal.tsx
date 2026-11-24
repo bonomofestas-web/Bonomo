@@ -67,6 +67,8 @@ export const ProposalDetailModal: React.FC<Props> = ({ proposal, masterId, canEd
           <Row label="Data da festa" value={fmtDate(proposal.eventDate)} />
           <Row label="Convidados" value={proposal.guestCount || undefined} />
           <Row label="Pacote" value={proposal.packageName} />
+          <Row label="Especialista" value={proposal.closerName} />
+          <Row label="SDR" value={proposal.sdrName} />
           <Row label="Valor da proposta" value={<strong>{money(proposal.totalAmount)}</strong>} />
           {proposal.paymentSummary && <Row label="Pagamento" value={<span style={{ whiteSpace: 'pre-line' }}>{proposal.paymentSummary}</span>} />}
           {proposal.notes && <Row label="Observações" value={<span style={{ whiteSpace: 'pre-line' }}>{proposal.notes}</span>} />}

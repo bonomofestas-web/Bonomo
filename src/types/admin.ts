@@ -48,6 +48,11 @@ export interface Proposal {
   fileUrl?: string | null;
   attachments: Array<{ name: string; url: string; type?: string }>;
   notes?: string | null;
+  /** Responsáveis da proposta: passam para o contrato quando ela evolui */
+  closerId?: string | null;
+  closerName?: string | null;
+  sdrId?: string | null;
+  sdrName?: string | null;
   status: ProposalStatus;
   lostReason?: string | null;
   convertedContractId?: string | null;

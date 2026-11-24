@@ -72,11 +72,12 @@ const Field: React.FC<{ label: string; required?: boolean; error?: string; child
  * Só unidade, contratante, telefone, homenageada, tipo de evento e valor são obrigatórios; o resto se completa depois.
  */
 export const ContractFormModal: React.FC<Props> = ({ mode, contract, masterId, onClose, onSaved, proposalMode, proposal, leadRef, onSavedProposal }) => {
-  const { venues, collaborators, currentUser } = useAdminState();
+  const { venues, collaborators, currentUser, addTask } = useAdminState();
   // Valores iniciais: do contrato (edicao) ou da proposta (edicao da proposta / conversao em contrato)
   const base: Partial<Contract> | null = contract ?? (proposal ? {
     venueId: proposal.venueId || '', eventType: proposal.eventType, eventDate: proposal.eventDate || undefined, guestCount: proposal.guestCount || undefined,
     packageName: proposal.packageName || undefined, totalAmount: proposal.totalAmount, notes: proposal.notes || undefined,
+    sdrId: proposal.sdrId || undefined, closerId: proposal.closerId || undefined,
   } : null);
   const snap = (contract?.clientSnapshot || proposal?.clientSnapshot || (leadRef ? { name: leadRef.name, phone: leadRef.phone } : {})) as Record<string, any>;
   const isEdit = mode === 'edit' && Boolean(contract);
@@ -112,9 +113,11 @@ export const ContractFormModal: React.FC<Props> = ({ mode, contract, masterId, o
   const [address, setAddress] = useState(snap.address || '');
   const [honoreeName, setHonoreeName] = useState(snap.birthdayPersonName || '');
   const [total, setTotal] = useState(toCurrencyInput(base?.totalAmount));
-  const [sdrId, setSdrId] = useState(contract?.sdrId || '');
-  const [closerId, setCloserId] = useState(contract?.closerId || (!isEdit && selfIsCandidate ? currentUser!.id : ''));
+  const [sdrId, setSdrId] = useState(base?.sdrId || '');
+  const [closerId, setCloserId] = useState(base?.closerId || (!isEdit && selfIsCandidate ? currentUser!.id : ''));
   const [notes, setNotes] = useState(base?.notes || '');
+  // Lembrete de retomada da proposta (vira tarefa de follow-up do responsavel)
+  const [reminderDays, setReminderDays] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
 
@@ -158,6 +161,7 @@ export const ContractFormModal: React.FC<Props> = ({ mode, contract, masterId, o
         const common = {
           title, eventType, eventDate: eventDate || null, guestCount: Number(guestCount) || null, packageName: packageName.trim() || null,
           totalAmount, clientSnapshot, notes: notes.trim() || null,
+          closerId: closerId || null, closerName: nameOf(closerId), sdrId: sdrId || null, sdrName: nameOf(sdrId),
         };
         const saved = editingProposal && proposal
           ? await proposalService.update(proposal.id, masterId, { ...common, venueId, ...(fileUrl ? { fileUrl } : {}) })
@@ -165,6 +169,25 @@ export const ContractFormModal: React.FC<Props> = ({ mode, contract, masterId, o
             ...common, masterId, venueId, fileUrl, leadId: leadRef?.leadId, contactId: leadRef?.contactId, source: leadRef?.leadId ? 'lead' : 'manual',
             createdByName: currentUser?.name, createdById: currentUser?.id,
           });
+        if (!editingProposal && Number(reminderDays) > 0) {
+          const due = new Date(); due.setDate(due.getDate() + Number(reminderDays));
+          addTask({
+            title: `Retomar proposta: ${title}`,
+            description: `Proposta ${saved.proposalCode} de ${payerName.trim()}. Retomar o contato com o cliente e saber se vai fechar.`,
+            dueDate: due.toLocaleDateString('en-CA'),
+            venueId,
+            assignedToIds: [closerId || currentUser?.id || ''].filter(Boolean),
+            databaseId: 'db_follow_ups',
+            leadId: leadRef?.leadId || undefined,
+            leadName: payerName.trim(),
+            createdById: currentUser?.id || 'admin',
+            createdByName: currentUser?.name || 'Administrador',
+            type: 'followup',
+            status: 'todo',
+            priority: 'medium',
+            customProperties: { isFollowUp: true, proposalId: saved.id, proposalCode: saved.proposalCode, leadPhone: phone },
+          } as any);
+        }
         toast.success(editingProposal ? 'Proposta atualizada.' : 'Proposta registrada.');
         onSavedProposal?.(saved);
         return;
@@ -343,8 +366,8 @@ export const ContractFormModal: React.FC<Props> = ({ mode, contract, masterId, o
             </div>
           </Section>
 
-          <Section icon={<Users size={15} />} title={proposalMode ? 'Observações' : 'Equipe da venda'}>
-            {!proposalMode && <div style={grid2}>
+          <Section icon={<Users size={15} />} title={proposalMode ? 'Responsáveis e lembrete' : 'Equipe da venda'}>
+            <div style={grid2}>
               <Field label="Especialista (quem fechou)">
                 <Select value={closerId} onChange={e => setCloserId(e.target.value)} style={inputStyle}>
                   <option value="">Sem especialista</option>
@@ -357,7 +380,15 @@ export const ContractFormModal: React.FC<Props> = ({ mode, contract, masterId, o
                   {people.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </Select>
               </Field>
-            </div>}
+            </div>
+            {proposalMode && !editingProposal && (
+              <Field label="Lembrar de retomar esta proposta">
+                <Select value={reminderDays} onChange={e => setReminderDays(e.target.value)} style={inputStyle}>
+                  <option value="">Sem lembrete</option>
+                  {[1, 2, 3, 5, 7, 10, 15, 30].map(d => <option key={d} value={String(d)}>{d === 1 ? 'Em 1 dia' : `Em ${d} dias`}</option>)}
+                </Select>
+              </Field>
+            )}
             <Field label="Observações">
               <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3} placeholder="Combinados com o cliente, detalhes da negociação..." style={{ ...inputStyle, resize: 'vertical', fontFamily: 'inherit' }} />
             </Field>

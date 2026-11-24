@@ -32,6 +32,8 @@ export interface BoardCard {
   signal?: number;
   entry?: number;
   closer?: string;
+  /** SDR responsavel (quem atendeu primeiro) */
+  sdr?: string;
   /** Recado do financeiro devolvendo o contrato */
   message?: string;
   /** Quantos itens ainda faltam para "Preenchido" */
@@ -97,7 +99,7 @@ export const ContractBoard: React.FC<Props> = ({ cards, onOpen, emptyText, heigh
                         </div>
                       )}
                     </div>
-                    {c.closer && <div style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)' }}>Closer: <strong style={{ color: '#0284C7' }}>{c.closer}</strong></div>}
+                    {(c.closer || c.sdr) && <div style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)', display: 'flex', flexDirection: 'column', gap: 1 }}>{c.closer && <span>Especialista: <strong style={{ color: '#0284C7' }}>{c.closer}</strong></span>}{c.sdr && <span>SDR: <strong style={{ color: 'var(--adm-text-title)' }}>{c.sdr}</strong></span>}</div>}
                     {c.message && (
                       <div style={{ fontSize: '0.68rem', color: '#E11D48', fontWeight: 700, display: 'flex', gap: 4, alignItems: 'flex-start' }}>
                         <AlertTriangle size={12} style={{ flexShrink: 0, marginTop: 1 }} /> {c.message}

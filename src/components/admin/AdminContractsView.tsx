@@ -1,4 +1,5 @@
-import { Select, Checkbox } from '../ui';
+import { Select, Checkbox, DateRangeField } from '../ui';
+import { HeaderActions, headerPrimaryButtonStyle } from './HeaderActions';
 import { useScreenSearch, screenQueryTerm } from '../../utils/screenSearch';
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
@@ -24,12 +25,13 @@ import { proposalService } from '../../services/proposalService';
 import { leadService } from '../../services/leadService';
 import { formatPhone } from '../../utils/phoneFormatter';
 import { SafeAvatar } from './SafeAvatar';
-import type { Contract, AdminTabType, ContractFunnelPlacement, Proposal } from '../../types/admin';
+import type { Contract, AdminTabType, ContractFunnelPlacement, Proposal, ContractApprovalStatus } from '../../types/admin';
 
 
 // Cache em memoria por (master|aba|unidade|busca): evita lista vazia ao voltar para a tela
 const contractsListCache = new Map<string, Contract[]>();
 const CONTRACTS_PAGE_SIZE = 100;
+const EVENT_TYPE_FILTERS = [{ value: '15_anos', label: '15 Anos' }, { value: 'casamento', label: 'Casamento' }, { value: 'aniversario', label: 'Aniversário' }, { value: 'bodas', label: 'Bodas' }, { value: 'corporativo', label: 'Corporativo' }, { value: 'outro', label: 'Outro' }];
 
 interface AdminContractsViewProps {
   onNavigateTab?: (tab: AdminTabType, params?: any) => void;
@@ -61,6 +63,12 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
   const canEditClosing = (currentUser?.role || '').toLowerCase() !== 'financeiro';
 
   const isLight = theme === 'light';
+  // Responsaveis para o filtro: quem pode ser Especialista ou SDR (equipe comercial; se ninguem marcado, todos os ativos)
+  const responsibleOptions = useMemo(() => {
+    const active = collaborators.filter(c => c.active !== false);
+    const commercial = active.filter(c => (c.sectors || []).includes('comercial') || (c.jobRoles || []).some(j => j.startsWith('comercial:')));
+    return (commercial.length ? commercial : active).slice().sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+  }, [collaborators]);
 
   // Foto do colaborador (SDR/Closer) pelo id; fallback por nome quando o contrato nao guarda o id
   const collabAvatar = (id?: string | null, name?: string | null): string | undefined => {
@@ -83,7 +91,21 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
   const searchQuery = screenQueryTerm(screenSearch);
   const [venueFilterLocal, setSelectedVenueFilter] = useState<string>('all');
   const selectedVenueFilter = venueFilterLocal !== 'all' ? venueFilterLocal : screenSearch.venueId;
-  const cacheKey = `${currentUser?.masterId || currentUser?.id || ''}|${activeTab}|${selectedVenueFilter}|${searchQuery.trim()}`;
+  // Filtros da lista: situacao (so em Contratos aprovados), responsavel (especialista ou SDR), tipo de evento e periodo da festa
+  const [statusFilter, setStatusFilter] = useState<'active' | 'canceled' | 'all'>('active');
+  const [responsibleFilter, setResponsibleFilter] = useState('');
+  const [eventTypeFilter, setEventTypeFilter] = useState('');
+  const [eventRange, setEventRange] = useState<{ start: string; end: string }>({ start: '', end: '' });
+  const approvedStatuses: ContractApprovalStatus[] = statusFilter === 'active' ? ['approved', 'completed'] : statusFilter === 'canceled' ? ['canceled'] : ['approved', 'completed', 'canceled'];
+  const listFilters = {
+    responsibleId: responsibleFilter || undefined,
+    eventType: eventTypeFilter || undefined,
+    eventFrom: eventRange.start || undefined,
+    eventTo: eventRange.end || undefined,
+  };
+  const hasListFilters = Boolean(responsibleFilter || eventTypeFilter || eventRange.start || eventRange.end || (activeTab === 'approved' && statusFilter !== 'active'));
+  const clearListFilters = () => { setResponsibleFilter(''); setEventTypeFilter(''); setEventRange({ start: '', end: '' }); setStatusFilter('active'); };
+  const cacheKey = `${currentUser?.masterId || currentUser?.id || ''}|${activeTab}|${selectedVenueFilter}|${searchQuery.trim()}|${statusFilter}|${responsibleFilter}|${eventTypeFilter}|${eventRange.start}|${eventRange.end}`;
   // Lista inicial vem do cache (stale-while-revalidate): trocar de aba e voltar nao zera a tela
   const [contracts, setContracts] = useState<Contract[]>(() => contractsListCache.get(cacheKey) || []);
   const [loading, setLoading] = useState(() => !contractsListCache.has(cacheKey));
@@ -159,13 +181,14 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
         contractService.getContracts({
           masterId: scopedMasterId,
           venueIds,
-          approvalStatus: activeTab === 'pending' ? 'pending_approval' : 'approved',
+          ...(activeTab === 'pending' ? { approvalStatus: 'pending_approval' as const } : { statuses: approvedStatuses }),
+          ...listFilters,
           search,
           limit: CONTRACTS_PAGE_SIZE,
         }),
         // Totais REAIS do banco para as duas abas (mesmos filtros de unidade e busca)
-        contractService.countContracts({ masterId: scopedMasterId, venueIds, approvalStatus: 'pending_approval', search }),
-        contractService.countContracts({ masterId: scopedMasterId, venueIds, approvalStatus: 'approved', search }),
+        contractService.countContracts({ masterId: scopedMasterId, venueIds, approvalStatus: 'pending_approval', ...listFilters, search }),
+        contractService.countContracts({ masterId: scopedMasterId, venueIds, statuses: approvedStatuses, ...listFilters, search }),
       ]);
 
       contractsListCache.set(cacheKey, res);
@@ -178,7 +201,7 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [scopedMasterId, activeTab, selectedVenueFilter, searchQuery, currentUser, cacheKey]);
+  }, [scopedMasterId, activeTab, selectedVenueFilter, searchQuery, currentUser, cacheKey]); // cacheKey inclui todos os filtros da lista
 
   useEffect(() => {
     loadContracts();
@@ -210,7 +233,8 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
       const next = await contractService.getContracts({
         masterId: scopedMasterId,
         venueIds,
-        approvalStatus: activeTab === 'pending' ? 'pending_approval' : 'approved',
+        ...(activeTab === 'pending' ? { approvalStatus: 'pending_approval' as const } : { statuses: approvedStatuses }),
+        ...listFilters,
         search: searchQuery.trim() || undefined,
         limit: CONTRACTS_PAGE_SIZE,
         offset: contracts.length,
@@ -447,6 +471,7 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
     danger: '#DC2626',
     warning: '#D97706',
   };
+  const filterSelectStyle: React.CSSProperties = { padding: '7px 10px', borderRadius: '8px', border: `1px solid ${colors.border}`, backgroundColor: colors.bgCard, color: colors.textTitle, fontSize: '0.8rem', outline: 'none' };
 
   return (
     <div style={{
@@ -478,37 +503,14 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
           </div>
 
           {canEditClosing && (
-            <button
-              type="button"
-              onClick={() => setFormModal({ mode: 'create' })}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '10px 18px',
-                borderRadius: '10px',
-                border: 'none',
-                backgroundColor: colors.primary,
-                color: '#FFFFFF',
-                fontSize: '0.84rem',
-                fontWeight: 800,
-                cursor: 'pointer',
-                boxShadow: '0 4px 14px rgba(2, 132, 199, 0.28)',
-              }}
-            >
-              <Plus size={16} />
-              <span>Novo contrato</span>
-            </button>
-          )}
-          {canEditClosing && (
-            <button
-              type="button"
-              onClick={() => setProposalForm({ kind: 'new' })}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '10px 18px', borderRadius: '10px', border: `1px solid ${colors.border}`, backgroundColor: 'transparent', color: colors.textTitle, fontSize: '0.84rem', fontWeight: 800, cursor: 'pointer' }}
-            >
-              <FileText size={16} />
-              <span>Nova proposta</span>
-            </button>
+            <HeaderActions>
+              <button type="button" onClick={() => setProposalForm({ kind: 'new' })} style={{ ...headerPrimaryButtonStyle, background: 'transparent', color: 'var(--adm-text-title)', border: '1px solid var(--adm-border)' }}>
+                <FileText size={15} /> Nova proposta
+              </button>
+              <button type="button" onClick={() => setFormModal({ mode: 'create' })} style={headerPrimaryButtonStyle}>
+                <Plus size={15} /> Novo contrato
+              </button>
+            </HeaderActions>
           )}
         </div>
 
@@ -626,25 +628,27 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
               </div>
             )}
 
-            <button
-              onClick={() => loadContracts()}
-              disabled={loading}
-              title="Recarregar contratos"
-              aria-label="Recarregar contratos"
-              style={{
-                padding: '8px 10px',
-                borderRadius: '8px',
-                border: `1px solid ${colors.border}`,
-                backgroundColor: colors.bgCard,
-                color: colors.textTitle,
-                cursor: loading ? 'wait' : 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-            </button>
+            {activeTab === 'approved' && (
+              <Select value={statusFilter} onChange={e => setStatusFilter(e.target.value as 'active' | 'canceled' | 'all')} style={filterSelectStyle} title="Situação do contrato">
+                <option value="active">Ativos</option>
+                <option value="canceled">Cancelados</option>
+                <option value="all">Todos (ativos e cancelados)</option>
+              </Select>
+            )}
+            <Select value={responsibleFilter} onChange={e => setResponsibleFilter(e.target.value)} style={filterSelectStyle} title="Especialista ou SDR responsável">
+              <option value="">Todos os responsáveis</option>
+              {responsibleOptions.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </Select>
+            <Select value={eventTypeFilter} onChange={e => setEventTypeFilter(e.target.value)} style={filterSelectStyle} title="Tipo de evento">
+              <option value="">Todos os tipos</option>
+              {EVENT_TYPE_FILTERS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+            </Select>
+            <DateRangeField className="adm-input" start={eventRange.start} end={eventRange.end} onChange={(x, y) => setEventRange({ start: x, end: y })} placeholder="Data da festa" />
+            {hasListFilters && (
+              <button type="button" onClick={clearListFilters} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '7px 10px', borderRadius: 8, border: `1px solid ${colors.border}`, background: 'transparent', color: colors.textMuted, fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer' }}>
+                <X size={12} /> Limpar filtros
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -719,6 +723,8 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
                     venueId: p.venueId || '',
                     total: p.totalAmount,
                     eventDate: p.eventDate,
+                    closer: p.closerName || undefined,
+                    sdr: p.sdrName || undefined,
                     tag: p.source === 'importacao' ? 'Proposta histórica' : 'Proposta',
                   })), ...contracts.map<BoardCard>(c => ({
                     id: c.id,
@@ -731,6 +737,7 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
                     signal: c.signalAmount,
                     entry: c.entryAmount,
                     closer: c.closerName,
+                    sdr: c.sdrName,
                     message: c.financeMessage ? `Financeiro: ${c.financeMessage}` : undefined,
                     missing: contractService.getFillMissing(c).length,
                     tag: (c.commercialFieldsSnapshot as any)?.registroManual ? 'Registro manual' : (c.commercialFieldsSnapshot as any)?.propostaOrigem ? 'Veio de proposta' : undefined,
@@ -833,6 +840,9 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
                         }}>
                           {ctr.contractCode}
                         </span>
+                        {ctr.approvalStatus === 'canceled' && (
+                          <span style={{ display: 'block', marginTop: 4, width: 'fit-content', fontSize: '0.62rem', fontWeight: 800, padding: '2px 8px', borderRadius: 999, background: 'rgba(220,38,38,0.12)', color: '#DC2626', textTransform: 'uppercase' }}>Cancelado</span>
+                        )}
                       </td>
 
                       <td style={{ padding: '14px 16px', verticalAlign: 'middle' }}>
