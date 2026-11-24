@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { AdminTaskDetailModal } from './AdminTaskDetailModal';
+import { LeadWorkspaceModal, type WorkspaceItem } from './LeadWorkspaceModal';
 import { AdminConfirmModal } from './AdminConfirmModal';
 import { MessagingPausedBanner } from './MessagingPausedBanner';
 import type { AdminTask } from '../../types/admin';
@@ -84,19 +85,37 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
   const [selectedTaskForDetail, setSelectedTaskForDetail] = useState<AdminTask | null>(null);
   const [taskToDelete, setTaskToDelete] = useState<AdminTask | null>(null);
 
+  // Painel "ficha + WhatsApp" aberto sobre a tela inicial (sem sair dela); a fila segue a ordem da lista de tarefas
+  const [workspace, setWorkspace] = useState<{ items: WorkspaceItem[]; index: number } | null>(null);
+
+  /** Lead da tarefa: ligado direto, pela propriedade da tarefa ou pelo lead da debutante */
+  const resolveTaskLeadId = (task: AdminTask): string | undefined => {
+    const direct = task.leadId || task.customProperties?.leadId;
+    if (direct) return direct;
+    if (task.debutanteId) return leads.find(l => l.debutanteId === task.debutanteId || l.id === task.debutanteId)?.id;
+    return undefined;
+  };
+
   const handleTaskClick = (task: AdminTask) => {
     if (openClientFromTask(task, clients || [])) return;
-    const targetLeadId = task.leadId || task.customProperties?.leadId;
-    if (targetLeadId && onOpenLead) {
-      onOpenLead(targetLeadId);
+    const targetLeadId = resolveTaskLeadId(task);
+    if (targetLeadId) {
+      // Fila: tarefas em aberto da lista atual que tem lead (atrasadas primeiro); a clicada sempre entra
+      const open = filteredTasks.filter(t => (t.status !== 'completed' || t.id === task.id) && resolveTaskLeadId(t) && !(t.clientId || t.customProperties?.clientId));
+      const queue = [...open.filter(t => isTaskOverdue(t)), ...open.filter(t => !isTaskOverdue(t))];
+      const list = queue.some(t => t.id === task.id) ? queue : [task];
+      const items: WorkspaceItem[] = list.map(t => {
+        const lid = resolveTaskLeadId(t)!;
+        const lead = leads.find(l => l.id === lid);
+        return {
+          key: t.id, leadId: lid, funnelId: lead?.funnelId,
+          title: t.title,
+          subtitle: [lead?.name, t.dueDate ? `prazo ${t.dueDate.split('-').reverse().join('/')}${t.dueTime ? ` às ${t.dueTime}` : ''}` : '', t.description].filter(Boolean).join(' · '),
+          done: t.status === 'completed',
+        };
+      });
+      setWorkspace({ items, index: Math.max(items.findIndex(i => i.key === task.id), 0) });
       return;
-    }
-    if (task.debutanteId && onOpenLead) {
-      const debLead = leads.find(l => l.debutanteId === task.debutanteId || l.id === task.debutanteId);
-      if (debLead) {
-        onOpenLead(debLead.id);
-        return;
-      }
     }
     setSelectedTaskForDetail(task);
     setIsTaskDetailModalOpen(true);
@@ -1466,6 +1485,15 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
           </div>
         </div>
       </div>
+
+      {workspace && (
+        <LeadWorkspaceModal
+          items={workspace.items}
+          startIndex={workspace.index}
+          onClose={() => setWorkspace(null)}
+          onComplete={(item) => { const t = tasks.find(x => x.id === item.key); if (t && t.status !== 'completed') toggleTaskStatus(t.id); }}
+        />
+      )}
 
       {/* ── MODAL: NOTION-STYLE TASK (CREATE & EDIT) ── */}
       <AdminTaskDetailModal

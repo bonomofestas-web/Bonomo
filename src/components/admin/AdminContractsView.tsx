@@ -21,6 +21,7 @@ import { paymentTextLines } from '../../utils/paymentPlan';
 import { PaymentTextList } from './contracts/PaymentTextList';
 import { ContractBoard, type BoardCard } from './contracts/ContractBoard';
 import { ProposalDetailModal } from './contracts/ProposalDetailModal';
+import { LeadWorkspaceModal } from './LeadWorkspaceModal';
 import { proposalService } from '../../services/proposalService';
 import { leadService } from '../../services/leadService';
 import { formatPhone } from '../../utils/phoneFormatter';
@@ -54,6 +55,7 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
     funnels,
     theme,
     collaborators,
+    leads,
     getFeatureStatus,
   } = useAdminState();
   // Com o Financeiro ligado, a aprovacao e dele; desligado (producao inicial), a gerencia homologa como antes
@@ -85,6 +87,8 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
   // Propostas ativas (primeira etapa do quadro; nao contam como contrato fechado)
   const [proposals, setProposals] = useState<Proposal[]>([]);
   const [proposalDetail, setProposalDetail] = useState<Proposal | null>(null);
+  // Proposta com lead: abre o painel ficha + WhatsApp para conversar com o cliente sem sair do quadro
+  const [proposalWorkspace, setProposalWorkspace] = useState<Proposal | null>(null);
   const [proposalForm, setProposalForm] = useState<{ kind: 'new' | 'edit' | 'convert'; proposal?: Proposal } | null>(null);
   // A busca vem da barra do topo (filtra ao vivo); nao ha barra propria aqui
   const screenSearch = useScreenSearch();
@@ -742,7 +746,7 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
                     missing: contractService.getFillMissing(c).length,
                     tag: (c.commercialFieldsSnapshot as any)?.registroManual ? 'Registro manual' : (c.commercialFieldsSnapshot as any)?.propostaOrigem ? 'Veio de proposta' : undefined,
                   }))]}
-                  onOpen={(id) => { const p = proposals.find(x => x.id === id); if (p) setProposalDetail(p); else setClosingId(id); }}
+                  onOpen={(id) => { const p = proposals.find(x => x.id === id); if (!p) { setClosingId(id); return; } if (p.leadId && leads.some(l => l.id === p.leadId)) setProposalWorkspace(p); else setProposalDetail(p); }}
                   emptyText="Nenhuma venda"
                 />
               </div>
@@ -1986,6 +1990,31 @@ export const AdminContractsView: React.FC<AdminContractsViewProps> = ({
             setClosingId(created.id);
             if (activeTab === 'pending') void loadContracts();
             else setActiveTab('pending');
+          }}
+        />
+      )}
+
+      {proposalWorkspace && (
+        <LeadWorkspaceModal
+          items={[{ key: proposalWorkspace.id, leadId: proposalWorkspace.leadId as string, funnelId: leads.find(l => l.id === proposalWorkspace.leadId)?.funnelId, title: proposalWorkspace.title, subtitle: proposalWorkspace.proposalCode }]}
+          onClose={() => setProposalWorkspace(null)}
+          headerExtra={() => {
+            const pr = proposalWorkspace;
+            const fact = (label: string, value?: string | number | null) => value ? <span key={label} style={{ fontSize: '0.76rem', color: colors.textMuted }}>{label}: <strong style={{ color: colors.textTitle }}>{value}</strong></span> : null;
+            return (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap', padding: '8px 16px' }}>
+                {fact('Valor', `R$ ${(pr.totalAmount || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`)}
+                {fact('Festa', pr.eventDate ? pr.eventDate.split('T')[0].split('-').reverse().join('/') : null)}
+                {fact('Convidados', pr.guestCount)}
+                {fact('Pacote', pr.packageName)}
+                {fact('Especialista', pr.closerName)}
+                {fact('SDR', pr.sdrName)}
+                {pr.fileUrl && <a href={pr.fileUrl} target="_blank" rel="noreferrer" style={{ fontSize: '0.76rem', fontWeight: 800, color: colors.primary, textDecoration: 'none' }}>Abrir a proposta</a>}
+                <button type="button" onClick={() => { setProposalDetail(pr); setProposalWorkspace(null); }} style={{ marginLeft: 'auto', padding: '5px 12px', borderRadius: 8, border: `1px solid ${colors.border}`, background: 'transparent', color: colors.textTitle, fontSize: '0.76rem', fontWeight: 800, cursor: 'pointer' }}>
+                  Editar, virar contrato ou marcar como perdida
+                </button>
+              </div>
+            );
           }}
         />
       )}

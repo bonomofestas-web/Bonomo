@@ -140,6 +140,8 @@ interface AdminWhatsAppWorkspaceViewProps {
   isEmbeddedInFunnel?: boolean;
   /** Mostra so a conversa (sem lista de conversas e sem ficha): usado dentro de modais que ja trazem os dados do cliente */
   chatOnly?: boolean;
+  /** Esconde a lista de conversas (e nao grava o lead na URL), mantendo chat e ficha: usado no painel de tarefa/proposta aberto sobre outra tela */
+  hideConversationList?: boolean;
   /** Numero obrigatorio de envio e de leitura (ex.: conexao fixa do Financeiro): so ele aparece e so ele envia */
   forcedSourceId?: string;
   initialComposerTab?: 'whatsapp' | 'notes' | 'tasks' | 'appointments' | 'upsell' | 'documents';
@@ -962,6 +964,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   onClose,
   isEmbeddedInFunnel = false,
   chatOnly = false,
+  hideConversationList = false,
   forcedSourceId,
   initialComposerTab,
   isPostSale = false,
@@ -1149,6 +1152,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
 
   // Sincroniza persistência do lead aberto no WhatsApp para reload (F5) e URL
   useEffect(() => {
+    if (hideConversationList) return; // painel sobre outra tela: nao mexe na URL nem no lead lembrado pelo WhatsApp
     try {
       const key = `f5_wa_selected_lead_${currentUser?.id || 'default'}`;
       if (selectedLeadId) {
@@ -1169,7 +1173,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
         }
       }
     } catch {}
-  }, [selectedLeadId, currentUser?.id]);
+  }, [selectedLeadId, currentUser?.id, hideConversationList]);
 
   // Audio 1: Sincroniza busca com o nome do lead selecionado e permite destravar ao limpar
   useEffect(() => {
@@ -6023,7 +6027,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
 
   return (
     <div style={{
-      height: chatOnly ? '100%' : isEmbeddedInFunnel ? 'calc(100vh - 100px)' : '100%',
+      height: chatOnly || hideConversationList ? '100%' : isEmbeddedInFunnel ? 'calc(100vh - 100px)' : '100%',
       display: 'flex',
       flex: 1,
       width: '100%',
@@ -6039,7 +6043,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     }}>
 
       {/* ── COLUNA 1: TRILHO COMPACTO OU LISTA DE CONVERSAS ─────────────── */}
-      {chatOnly ? null : isConversationsCollapsed ? (
+      {chatOnly || hideConversationList ? null : isConversationsCollapsed ? (
         <div 
           onClick={() => setIsConversationsCollapsed(false)}
           title="Expandir Conversas / Contratos"
