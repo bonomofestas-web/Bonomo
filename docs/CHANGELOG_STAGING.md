@@ -697,4 +697,8 @@ Grande reestruturação de governança, experiência do usuário, banco de dados
   - **Regra Oficial de Identidade por Cliente + Contrato (`leadService.ts`, `AdminWhatsAppWorkspaceView.tsx`):**
     * Um mesmo telefone pode existir legitimamente como Lead em múltiplos funis comerciais e como Cliente em múltiplos contratos distintos dentro do mesmo funil (ex.: mãe com duas festas/contratos diferentes).
     * A deduplicação (`consolidateDuplicatesInDatabase`, lista da Caixa de Entrada e badge de duplicidade) agora respeita a chave `cliente + contrato` (`contractId`), impedindo apenas duplicidade de cards vinculados ao mesmo contrato.
+  - **Busca Exata por Telefone na Central de Contatos (`contactService.ts`):**
+    * Corrigido `buildContactSearchFilter`: quando a busca é numérica/telefone (ex.: `(21) 99700-6525`), o filtro não divide mais o DDD `(21)` como palavra para buscar em `name`, `email` e `code`, filtrando estritamente pelos dígitos de telefone/CPF.
+  - **Remoção Completa de Regras Pontuais / Hardcoded (`AdminStateContext.tsx`):**
+    * Removidas as regras pontuais de teste (`LEAD-N4K9HT`, `157221941944479`, `TSNVPP`, `kommoFunnel` e `yuriCollab`) e alinhada a consolidação inicial do cache local à regra oficial de **Cliente + Contrato**.
 

@@ -865,11 +865,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       const name = (!lead.name || lead.name.trim() === '' || lead.name === 'Sem nome' || lead.name === 'Lead Sem Nome')
         ? code
         : lead.name;
-      let phone = lead.phone;
-      let avatarUrl = lead.avatarUrl;
-      if (code === 'LEAD-N4K9HT' || phone === '157221941944479') {
-        phone = '5521999723215';
-      }
+      const phone = lead.phone;
+      const avatarUrl = lead.avatarUrl;
       return { ...lead, code, name, phone, avatarUrl };
     });
 
@@ -887,6 +884,13 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         if (existing.funnelId && lead.funnelId && existing.funnelId !== lead.funnelId) return false;
         // REGRA DE OURO: Um Lead do CRM e um Cliente de Pós-Venda nunca devem ser mesclados
         if (Boolean(existing.isClient) !== Boolean(lead.isClient)) return false;
+        // REGRA DE CLIENTE + CONTRATO: clientes com contratos distintos permanecem separados
+        if (existing.isClient || lead.isClient) {
+          const cA = existing.contractId || existing.associated_contract_id || (existing as any).migratedToContractId || '';
+          const cB = lead.contractId || lead.associated_contract_id || (lead as any).migratedToContractId || '';
+          if (cA && cB && cA !== cB) return false;
+          if ((cA && !cB) || (!cA && cB)) return false;
+        }
         return isPhoneMatch(existing.phone, lead.phone);
       }));
       if (matchedGroup) {
@@ -1556,46 +1560,31 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                 }
               }
 
-              // AUTO-CURA ESPECÍFICA PARA LEADS QUE CAÍRAM NO PÓS-VENDA POR ENGANO OU FUNIL VI KOMMO (Ex: LEAD-TSNVPP)
+              // Proteção genérica: lead com código comercial (LEAD-) preso em funil de Pós-Venda retorna ao funil comercial da unidade
               const leadCodeStr = String(l.code || l.name || '').toUpperCase();
-              const isLeadTs = leadCodeStr.includes('TSNVPP');
-              const isCommercialCodeStuckInPostSale = (leadCodeStr.startsWith('LEAD-') || isLeadTs) && (group === 'Pós-Venda' || isClient);
+              const isCommercialCodeStuckInPostSale = leadCodeStr.startsWith('LEAD-') && (group === 'Pós-Venda' || isClient);
 
-              let sdrId = l.sdrId;
-              let sdrName = l.sdrName;
-              let assignedTo = l.assignedTo;
+              const sdrId = l.sdrId;
+              const sdrName = l.sdrName;
+              const assignedTo = l.assignedTo;
               let venueId = l.venueId;
 
-              const kommoFunnel = syncedFunnels.find(f => f.name.toLowerCase().includes('kommo') && !f.isPostSale && f.category !== 'Pós-Venda');
-              const yuriCollab = collaborators.find(c => c.name.toLowerCase().includes('yuri')) || collaborators.find(c => c.role === 'master');
-
-              if (isLeadTs || isCommercialCodeStuckInPostSale) {
+              if (isCommercialCodeStuckInPostSale) {
                 const currentF = syncedFunnels.find(f => f.id === funnelId);
                 const isCurrentFPostSale = Boolean(currentF && (currentF.isPostSale || currentF.category === 'Pós-Venda' || currentF.category === 'pos_venda'));
-                const needsKommoRedirect = Boolean(isLeadTs && kommoFunnel && funnelId !== kommoFunnel.id);
 
-                if (isLeadTs || isCurrentFPostSale || needsKommoRedirect) {
+                if (isCurrentFPostSale) {
                   const commFunnels = syncedFunnels.filter(f => !f.isPostSale && f.category !== 'Pós-Venda' && f.category !== 'pos_venda');
-                  const targetCommFunnel = (isLeadTs && kommoFunnel)
-                    ? kommoFunnel
-                    : (commFunnels.find(f => f.venueId === l.venueId || (Array.isArray(f.sharedVenueIds) && f.sharedVenueIds.includes(l.venueId)))
-                      || commFunnels[0]
-                      || syncedFunnels[0]);
+                  const targetCommFunnel = commFunnels.find(f => f.venueId === l.venueId || (Array.isArray(f.sharedVenueIds) && f.sharedVenueIds.includes(l.venueId)))
+                    || commFunnels[0]
+                    || syncedFunnels[0];
 
                   if (targetCommFunnel) {
                     funnelId = targetCommFunnel.id;
                     isClient = false;
                     group = 'WhatsApp';
                     tags = tags.filter(t => t.toLowerCase() !== 'cliente');
-                    let fixedCode = l.code;
-                    if (fixedCode?.startsWith('CLI-')) {
-                      fixedCode = fixedCode.replace('CLI-', 'LEAD-');
-                    }
-                    if (isLeadTs && yuriCollab) {
-                      sdrId = yuriCollab.id;
-                      sdrName = yuriCollab.name;
-                      assignedTo = yuriCollab.name;
-                    }
+                    const fixedCode = l.code?.startsWith('CLI-') ? l.code.replace('CLI-', 'LEAD-') : l.code;
                     if (targetCommFunnel.venueId && targetCommFunnel.venueId !== 'all') {
                       venueId = targetCommFunnel.venueId;
                     }
@@ -1607,7 +1596,6 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                         group: 'WhatsApp',
                         tags,
                         code: fixedCode,
-                        ...(sdrId ? { sdrId, sdrName, assignedTo } : {})
                       }).catch(() => { });
                     }
                   }
@@ -1619,11 +1607,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                 funnelId = funnelNameMap.get(funnelId.toLowerCase().trim())!;
               }
               const localMatch = leads.find(prev => prev.id === l.id || prev.code === code);
-              let phone = l.phone || localMatch?.phone || '';
-              let avatarUrl = l.avatarUrl || (l.customFieldValues as any)?.avatarUrl || localMatch?.avatarUrl;
-              if (code === 'LEAD-N4K9HT' || phone === '157221941944479') {
-                phone = '5521999723215';
-              }
+              const phone = l.phone || localMatch?.phone || '';
+              const avatarUrl = l.avatarUrl || (l.customFieldValues as any)?.avatarUrl || localMatch?.avatarUrl;
               return { ...l, code, name, funnelId, venueId, phone, avatarUrl, isClient, group, tags, sdrId, sdrName, assignedTo };
             });
 

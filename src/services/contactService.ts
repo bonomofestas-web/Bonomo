@@ -37,17 +37,21 @@ export function buildContactSearchFilter(search?: string): string | undefined {
   const raw = (search || '').trim();
   if (!raw) return undefined;
   const digits = raw.replace(/\D/g, '');
-  const variants = generateSearchTermVariants(raw);
+  const isPhoneOrNumericQuery = /^[\d\s()+\-.]+$/.test(raw) && digits.length >= 3;
   const parts: string[] = [];
 
-  for (const v of variants) {
-    parts.push(`name.ilike.%${v}%`, `email.ilike.%${v}%`, `code.ilike.%${v}%`);
+  if (!isPhoneOrNumericQuery) {
+    const variants = generateSearchTermVariants(raw);
+    for (const v of variants) {
+      parts.push(`name.ilike.%${v}%`, `email.ilike.%${v}%`, `code.ilike.%${v}%`);
+    }
   }
 
   if (digits.length >= 3) {
+    const phoneDigits = digits.startsWith('55') && digits.length >= 12 ? digits.slice(2) : digits;
     parts.push(
-      `primary_phone_digits.ilike.%${digits}%`,
-      `secondary_phone_digits.ilike.%${digits}%`,
+      `primary_phone_digits.ilike.%${phoneDigits}%`,
+      `secondary_phone_digits.ilike.%${phoneDigits}%`,
       `cpf_digits.ilike.%${digits}%`
     );
   }
