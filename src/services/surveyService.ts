@@ -24,9 +24,25 @@ const slugify = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, ''
 const randomChars = (n: number) => Array.from({ length: n }, () => 'abcdefghjkmnpqrstuvwxyz23456789'[Math.floor(Math.random() * 31)]).join('');
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-const friendlySurveyError = (err: any, fallback: string): string => {
+const friendlySurveyError = async (err: any, fallback: string, expectedMasterId?: string): Promise<string> => {
   const msg = String(err?.message || '');
   if (err?.code === '42501' || msg.toLowerCase().includes('row-level security') || msg.toLowerCase().includes('permission denied')) {
+    try {
+      const [{ data: authData }, { data: dbMaster }] = await Promise.all([
+        supabase.auth.getUser(),
+        supabase.rpc('f5_current_master_id'),
+      ]);
+      const authEmail = authData?.user?.email || 'nenhum (anônimo)';
+      if (!authData?.user) {
+        return 'Sessão de autenticação expirada ou ausente. Saia e entre novamente no sistema para criar pesquisas.';
+      }
+      if (expectedMasterId && dbMaster && dbMaster !== expectedMasterId) {
+        return `Sessão autenticada (${authEmail}) pertence a outra conta master. Saia e entre novamente com seu e-mail atual.`;
+      }
+      if (!dbMaster) {
+        return `E-mail autenticado (${authEmail}) não vinculado a um colaborador ativo no banco. Saia e entre novamente.`;
+      }
+    } catch { /* ignore */ }
     return 'Sessão sem permissão no banco. Saia e entre novamente no sistema para renovar sua sessão.';
   }
   return msg || fallback;
@@ -85,7 +101,7 @@ export const surveyService = {
       lastError = error;
       if (error?.code !== '23505') break;
     }
-    throw new Error(friendlySurveyError(lastError, 'Não foi possível criar a pesquisa.'));
+    throw new Error(await friendlySurveyError(lastError, 'Não foi possível criar a pesquisa.', params.masterId));
   },
 
   async update(id: string, masterId: string, patch: Partial<Pick<Survey, 'title' | 'description' | 'venueId' | 'welcome' | 'thanks' | 'theme' | 'status'>>): Promise<void> {
@@ -98,7 +114,7 @@ export const surveyService = {
     if (patch.theme !== undefined) row.theme = patch.theme;
     if (patch.status !== undefined) row.status = patch.status;
     const { error } = await supabase.from('surveys').update(row).eq('id', id).eq('master_id', masterId);
-    if (error) throw new Error(friendlySurveyError(error, 'Não foi possível salvar a pesquisa.'));
+    if (error) throw new Error(await friendlySurveyError(error, 'Não foi possível salvar a pesquisa.', masterId));
   },
 
   /** Grava a lista inteira de perguntas (ordem, edicao e remocao). Perguntas ja respondidas podem ser editadas, nao apagadas se houver resposta. */

@@ -4,10 +4,10 @@ import { canSeeTask } from '../utils/taskSector';
 import { buildContractTitle } from '../utils/contractTitle';
 import { ShieldAlert } from 'lucide-react';
 import React, { createContext, useContext, useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import type { 
-  AdminUser, 
+import type {
+  AdminUser,
   Collaborator,
-  Venue, 
+  Venue,
   DebutanteAccount,
   Lead,
   CrmStage,
@@ -45,14 +45,14 @@ import type {
   VenueEvent,
 } from '../types/admin';
 import type { Source } from '../types/sources';
-import type { 
-  Milestone, 
-  VipReward, 
-  Appointment 
+import type {
+  Milestone,
+  VipReward,
+  Appointment
 } from '../types';
-import { 
-  mockMilestones, 
-  mockVipRewards 
+import {
+  mockMilestones,
+  mockVipRewards
 } from '../data/mockData';
 import { safeLocalStorageSet, safeLocalStorageGet } from '../utils/mediaStorage';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
@@ -174,7 +174,7 @@ export const purgeAllTenantStorage = () => {
     localStorage.removeItem(STORAGE_KEY_MQL_QUESTIONS);
     localStorage.removeItem(STORAGE_KEY_SUPPORT_TICKETS);
     sessionStorage.clear();
-  } catch {}
+  } catch { }
   void chatCache.clearAll(); // cache local de conversas (IndexedDB) tambem sai no logout/troca de Master
 };
 
@@ -682,9 +682,9 @@ export interface AdminContextType {
   toggleMasterAccountStatus: (masterId: string, active: boolean) => void;
   isInitialSyncComplete: boolean;
   sendCollaboratorInvite: (
-    email: string, 
-    name?: string, 
-    role?: string, 
+    email: string,
+    name?: string,
+    role?: string,
     extra?: {
       masterId?: string;
       venueId?: string;
@@ -710,7 +710,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           const isUserDev = Boolean(u.isDev || u.email?.toLowerCase() === 'patrickcouto.oficial@gmail.com');
           return { ...u, isDev: isUserDev };
         }
-      } catch {}
+      } catch { }
     }
     return DEFAULT_ADMIN_USER;
   });
@@ -736,7 +736,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       try {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      } catch {}
+      } catch { }
     }
     return [];
   });
@@ -748,7 +748,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         const parsed = JSON.parse(saved);
         if (parsed && typeof parsed.idealMinutes === 'number') return parsed;
       }
-    } catch {}
+    } catch { }
     return DEFAULT_SYSTEM_SLA_CONFIG;
   });
 
@@ -757,7 +757,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       const updated = { ...prev, ...newConfig };
       try {
         localStorage.setItem(STORAGE_KEY_SLA_CONFIG, JSON.stringify(updated));
-      } catch {}
+      } catch { }
       return updated;
     });
   }, []);
@@ -856,7 +856,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     try {
       localStorage.removeItem('bonomo_admin_leads_v7');
       localStorage.removeItem('f5_admin_leads_v8');
-    } catch {}
+    } catch { }
     const saved = localStorage.getItem(STORAGE_KEY_LEADS);
     const parsed: Lead[] = saved ? JSON.parse(saved) : DEFAULT_LEADS;
     const mapped = parsed.map(lead => {
@@ -1002,9 +1002,9 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     if (!saved) return [];
     try {
       const parsed: CommercialFunnel[] = JSON.parse(saved);
-      return parsed.filter(f => 
-        f.id !== 'indicacao' && 
-        f.id !== 'trafego' && 
+      return parsed.filter(f =>
+        f.id !== 'indicacao' &&
+        f.id !== 'trafego' &&
         f.id !== 'parcerias'
       );
     } catch {
@@ -1020,7 +1020,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const [leadGoal, setLeadGoalState] = useState<import('../types/admin').LeadGoal>(() => {
     const saved = localStorage.getItem(STORAGE_KEY_LEAD_GOAL);
     if (saved) {
-      try { return JSON.parse(saved); } catch {}
+      try { return JSON.parse(saved); } catch { }
     }
     const endOfMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toISOString().split('T')[0];
     return { target: 30, deadline: endOfMonth, title: 'Meta Mensal de Leads' };
@@ -1034,7 +1034,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const [featureFlags, setFeatureFlags] = useState<Record<FeatureFlagId, FeatureFlagStatus>>(() => {
     const saved = localStorage.getItem(STORAGE_KEY_FEATURE_FLAGS);
     if (saved) {
-      try { return { ...DEFAULT_FEATURE_FLAGS, ...JSON.parse(saved) }; } catch {}
+      try { return { ...DEFAULT_FEATURE_FLAGS, ...JSON.parse(saved) }; } catch { }
     }
     return DEFAULT_FEATURE_FLAGS;
   });
@@ -1091,7 +1091,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const [featureDescriptions, setFeatureDescriptions] = useState<Record<FeatureFlagId, string>>(() => {
     const saved = localStorage.getItem(STORAGE_KEY_FEATURE_DESCRIPTIONS);
     if (saved) {
-      try { return JSON.parse(saved); } catch {}
+      try { return JSON.parse(saved); } catch { }
     }
     return {} as Record<FeatureFlagId, string>;
   });
@@ -1102,7 +1102,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const [supportTickets, setSupportTickets] = useState<SupportTicket[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEY_SUPPORT_TICKETS);
     if (saved) {
-      try { return JSON.parse(saved); } catch {}
+      try { return JSON.parse(saved); } catch { }
     }
     return [];
   });
@@ -1118,7 +1118,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       window.dispatchEvent(new CustomEvent('bonomo_feature_flag_changed', {
         detail: { featureId: flagId, status: featureFlags[flagId] || 'coming_soon', comingSoonMessage: message }
       }));
-    } catch {}
+    } catch { }
 
     featureFlagService.update(flagId, featureFlags[flagId] || 'coming_soon', message);
   };
@@ -1182,7 +1182,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const [announcements, setAnnouncements] = useState<SystemAnnouncement[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEY_ANNOUNCEMENTS);
     if (saved) {
-      try { return JSON.parse(saved); } catch {}
+      try { return JSON.parse(saved); } catch { }
     }
     return [];
   });
@@ -1264,9 +1264,9 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             supabase.from('system_broadcast_announcements')
               .update({ read_receipts: [...receipts, newReceipt] })
               .eq('id', announcementId)
-              .then(() => {}, (err: any) => console.warn('Falha ao atualizar recibo de leitura:', err));
+              .then(() => { }, (err: any) => console.warn('Falha ao atualizar recibo de leitura:', err));
           }
-        }, () => {});
+        }, () => { });
     }
   };
 
@@ -1286,7 +1286,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       window.dispatchEvent(new CustomEvent('bonomo_feature_flag_changed', {
         detail: { featureId, status, comingSoonMessage }
       }));
-    } catch {}
+    } catch { }
 
     const msg = comingSoonMessage !== undefined ? comingSoonMessage : featureDescriptions[featureId];
     featureFlagService.update(featureId, status, msg);
@@ -1375,7 +1375,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const [sources, setSources] = useState<Source[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEY_SOURCES);
     if (saved) {
-      try { return JSON.parse(saved); } catch {}
+      try { return JSON.parse(saved); } catch { }
     }
     return [];
   });
@@ -1549,7 +1549,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                     updates.tags = tags;
                   }
                   if (isSupabaseConfigured) {
-                    leadService.update(l.id, updates).catch(() => {});
+                    leadService.update(l.id, updates).catch(() => { });
                   }
                 }
               }
@@ -1571,14 +1571,14 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                 const currentF = syncedFunnels.find(f => f.id === funnelId);
                 const isCurrentFPostSale = Boolean(currentF && (currentF.isPostSale || currentF.category === 'Pós-Venda' || currentF.category === 'pos_venda'));
                 const needsKommoRedirect = Boolean(isLeadTs && kommoFunnel && funnelId !== kommoFunnel.id);
-                
+
                 if (isLeadTs || isCurrentFPostSale || needsKommoRedirect) {
                   const commFunnels = syncedFunnels.filter(f => !f.isPostSale && f.category !== 'Pós-Venda' && f.category !== 'pos_venda');
                   const targetCommFunnel = (isLeadTs && kommoFunnel)
                     ? kommoFunnel
                     : (commFunnels.find(f => f.venueId === l.venueId || (Array.isArray(f.sharedVenueIds) && f.sharedVenueIds.includes(l.venueId)))
-                    || commFunnels[0]
-                    || syncedFunnels[0]);
+                      || commFunnels[0]
+                      || syncedFunnels[0]);
 
                   if (targetCommFunnel) {
                     funnelId = targetCommFunnel.id;
@@ -1608,7 +1608,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                         tags,
                         code: fixedCode,
                         ...(sdrId ? { sdrId, sdrName, assignedTo } : {})
-                      }).catch(() => {});
+                      }).catch(() => { });
                     }
                   }
                 }
@@ -1622,7 +1622,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                   sdrName = yuriCollab.name;
                   assignedTo = yuriCollab.name;
                   if (isSupabaseConfigured) {
-                    leadService.update(l.id, { sdrId, sdrName, assignedTo }).catch(() => {});
+                    leadService.update(l.id, { sdrId, sdrName, assignedTo }).catch(() => { });
                   }
                 }
               }
@@ -1687,11 +1687,11 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                           avatarUrl: lead.avatarUrl || resolved.avatarUrl,
                         });
                         if (isSupabaseConfigured) {
-                          leadService.update(lead.id, { phone: cleanReal, whatsappLid: lidClean }).catch(() => {});
+                          leadService.update(lead.id, { phone: cleanReal, whatsappLid: lidClean }).catch(() => { });
                         }
                       }
                     }
-                  }).catch(() => {});
+                  }).catch(() => { });
                 }
               }
             }, 3000);
@@ -1831,7 +1831,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
     // Checa se a navegação atual é um retorno de link de recuperação/convite do Supabase
     const isRecoveryNavigation = typeof window !== 'undefined' && (
-      window.location.hash.includes('type=recovery') || 
+      window.location.hash.includes('type=recovery') ||
       window.location.search.includes('type=recovery') ||
       window.location.hash.includes('type=invite') ||
       window.location.search.includes('type=invite')
@@ -1862,7 +1862,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
               setActiveVenueIdState(null);
             }
           }
-        } catch {}
+        } catch { }
       };
 
       // 1. Tenta localizar na lista local de colaboradores já carregada
@@ -2184,9 +2184,9 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                   const fMsgId = normalizeMessageId(formatted.messageId || (formatted.metadata as any)?.messageId);
                   if (aMsgId && fMsgId) return aMsgId === fMsgId;
                   const actBothAudio = (formatted.mediaType === 'audio' || formatted.text?.includes('🎵')) &&
-                                       (a.mediaType === 'audio' || a.text?.includes('🎵'));
+                    (a.mediaType === 'audio' || a.text?.includes('🎵'));
                   if ((a.text === formatted.text || actBothAudio) &&
-                      Math.abs(new Date(a.timestamp).getTime() - new Date(formatted.timestamp).getTime()) < 8000) {
+                    Math.abs(new Date(a.timestamp).getTime() - new Date(formatted.timestamp).getTime()) < 8000) {
                     return true;
                   }
                   return false;
@@ -2195,14 +2195,14 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                 const exists = currentActs.some(isMatchingAct);
                 const acts = exists
                   ? currentActs.map(a => {
-                      if (!isMatchingAct(a)) return a;
-                      return {
-                        ...formatted,
-                        mediaUrl: formatted.mediaUrl || a.mediaUrl,
-                        mediaType: formatted.mediaType || a.mediaType,
-                        text: (a.text && a.text.includes('(')) ? a.text : formatted.text,
-                      };
-                    })
+                    if (!isMatchingAct(a)) return a;
+                    return {
+                      ...formatted,
+                      mediaUrl: formatted.mediaUrl || a.mediaUrl,
+                      mediaType: formatted.mediaType || a.mediaType,
+                      text: (a.text && a.text.includes('(')) ? a.text : formatted.text,
+                    };
+                  })
                   : [...currentActs, formatted];
                 return {
                   ...lead,
@@ -2257,9 +2257,9 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                   const fMsgId = normalizeMessageId(formatted.messageId || (formatted.metadata as any)?.messageId);
                   if (aMsgId && fMsgId) return aMsgId === fMsgId;
                   const actBothAudio = (formatted.mediaType === 'audio' || formatted.text?.includes('🎵')) &&
-                                       (a.mediaType === 'audio' || a.text?.includes('🎵'));
+                    (a.mediaType === 'audio' || a.text?.includes('🎵'));
                   if ((a.text === formatted.text || actBothAudio) &&
-                      Math.abs(new Date(a.timestamp).getTime() - new Date(formatted.timestamp).getTime()) < 8000) {
+                    Math.abs(new Date(a.timestamp).getTime() - new Date(formatted.timestamp).getTime()) < 8000) {
                     return true;
                   }
                   return false;
@@ -2312,14 +2312,14 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         const updated = (pending.size === 0 && chatPending.size === 0)
           ? fetched
           : fetched.map(c => {
-              let next = c;
-              if (pending.has(c.id)) next = { ...next, stage: pending.get(c.id) as ClientStage };
-              // Conversa ainda nao gravada: mantem as atividades locais (evita a mensagem enviada sumir)
-              if (chatPending.has(c.id) && localById?.get(c.id)) {
-                next = { ...next, activities: (localById.get(c.id) as Client).activities };
-              }
-              return next;
-            });
+            let next = c;
+            if (pending.has(c.id)) next = { ...next, stage: pending.get(c.id) as ClientStage };
+            // Conversa ainda nao gravada: mantem as atividades locais (evita a mensagem enviada sumir)
+            if (chatPending.has(c.id) && localById?.get(c.id)) {
+              next = { ...next, activities: (localById.get(c.id) as Client).activities };
+            }
+            return next;
+          });
         if (isMounted) {
           setClients(updated);
           safeLocalStorageSet(STORAGE_KEY_CLIENTS, JSON.stringify(updated));
@@ -2479,7 +2479,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
               });
             }
           }
-        }).catch(() => {});
+        }).catch(() => { });
       }
     };
     window.addEventListener('focus', handleWindowFocus);
@@ -2499,10 +2499,10 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   useEffect(() => {
     setFunnels(prev => {
       const validVenueIds = new Set(venues.map(v => v.id));
-      const filtered = prev.filter(f => 
-        f.id !== 'indicacao' && 
-        f.id !== 'trafego' && 
-        f.id !== 'parcerias' && 
+      const filtered = prev.filter(f =>
+        f.id !== 'indicacao' &&
+        f.id !== 'trafego' &&
+        f.id !== 'parcerias' &&
         (f.venueId === 'all' || validVenueIds.has(f.venueId))
       );
 
@@ -2611,10 +2611,17 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     // Se a senha confere, sincroniza sessão no Supabase Auth em segundo plano
     if (isSupabaseConfigured) {
       try {
-        await supabase.auth.signInWithPassword({
+        const { error: authSignErr } = await supabase.auth.signInWithPassword({
           email: cleanEmail,
           password: cleanPass,
         });
+        if (authSignErr) {
+          // Evita manter sessão antiga de outro usuário/master no localStorage
+          const { data: curAuth } = await supabase.auth.getUser().catch(() => ({ data: { user: null } }));
+          if (curAuth?.user?.email && curAuth.user.email.toLowerCase() !== cleanEmail) {
+            await supabase.auth.signOut().catch(() => {});
+          }
+        }
       } catch (authErr) {
         console.warn('[Login] Sessão Supabase Auth paralela:', authErr);
       }
@@ -2667,7 +2674,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           setTasks([]);
           setActiveVenueIdState(null);
         }
-      } catch {}
+      } catch { }
     }
 
     setCurrentUser(user);
@@ -2701,7 +2708,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     setTasks([]);
     setActiveVenueIdState(null);
     if (isSupabaseConfigured) {
-      supabase.auth.signOut().catch(() => {});
+      supabase.auth.signOut().catch(() => { });
     }
     window.location.href = window.location.origin + '/?admin=true';
   };
@@ -2715,7 +2722,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const [viewingAsCollaborator, setViewingAsCollaboratorState] = useState<Collaborator | null>(() => {
     const saved = sessionStorage.getItem('f5_viewing_as_collaborator');
     if (saved) {
-      try { return JSON.parse(saved); } catch {}
+      try { return JSON.parse(saved); } catch { }
     }
     return null;
   });
@@ -2758,7 +2765,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         if (window.location.hash) {
           try {
             window.history.replaceState(null, '', window.location.pathname + window.location.search);
-          } catch {}
+          } catch { }
         }
         window.dispatchEvent(new CustomEvent('f5_spectator_mode_changed', { detail: { isSpectator: false } }));
       }
@@ -2787,7 +2794,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         localStorage.removeItem('bonomo_impersonating_master');
         safeLocalStorageSet(STORAGE_KEY_USER, JSON.stringify(parsed));
         return null;
-      } catch {}
+      } catch { }
     }
     return null;
   });
@@ -2915,10 +2922,10 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   // Casas de Festa do Tenant Ativo (Estritamente isoladas por masterId e respeitando a role do usuário efetivo)
   const scopedVenues = useMemo(() => {
     if (!effectiveUser || !scopedMasterId) return [];
-    
+
     // Filtra as casas pertencentes ao tenant do master ativo
     const masterVenues = venues.filter(v => v.masterId === scopedMasterId);
-    
+
     // Se for o próprio master nativo (e NÃO estiver no modo de olhar com olhos de colaborador), vê todas as casas do seu tenant
     const isMasterNative = effectiveUser.role === 'master' && !effectiveViewingAsCollaborator;
     if (isMasterNative || (!effectiveUser.masterId && !effectiveViewingAsCollaborator)) {
@@ -3015,7 +3022,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   // Leads do Tenant Ativo (pertencem estritamente às casas ou master do tenant)
   const scopedLeads = useMemo(() => {
     if (!effectiveUser || !scopedMasterId) return [];
-    
+
     // Todas as casas físicas pertencentes à rede do Master
     const tenantVenues = venues.filter(v => !v.masterId || v.masterId === scopedMasterId);
     const tenantVenueIds = new Set(tenantVenues.map(v => v.id));
@@ -3071,37 +3078,37 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         const leadFunnel = rawFunnelId
           ? funnels.find(f => f.id === l.funnelId || f.name.toLowerCase().trim() === rawFunnelId)
           : funnels[0];
-        
+
         if (leadFunnel && Array.isArray(leadFunnel.stages) && leadFunnel.stages.length > 0) {
           const rawStage = String(l.stage || '').trim().toLowerCase();
-          
+
           const matchedStage = leadFunnel.stages.find(st => {
             const sId = String(st.id || '').trim().toLowerCase();
             const sKey = String((st as any).key || '').trim().toLowerCase();
             const sName = String(st.name || '').trim().toLowerCase();
             if (sId === rawStage || sKey === rawStage || sName === rawStage) return true;
             if ((!rawStage || rawStage === 'new_lead' || rawStage === 'onboarding' || rawStage.includes('entrada') || rawStage.includes('novo lead')) &&
-                (sId === 'new_lead' || sId === 'onboarding' || sName.includes('entrada') || sName.includes('novo lead') || (st as any).isFixed)) {
+              (sId === 'new_lead' || sId === 'onboarding' || sName.includes('entrada') || sName.includes('novo lead') || (st as any).isFixed)) {
               return true;
             }
             if ((rawStage.includes('conectad') || rawStage.includes('negocia') || rawStage === 'in_negotiation' || rawStage === 'qualificacao') &&
-                (sId === 'in_negotiation' || sId === 'qualificacao' || sName.includes('conectad') || sName.includes('negocia'))) {
+              (sId === 'in_negotiation' || sId === 'qualificacao' || sName.includes('conectad') || sName.includes('negocia'))) {
               return true;
             }
             if ((rawStage.includes('agendad') || rawStage.includes('visita') || rawStage === 'scheduled' || rawStage === 'meeting_scheduled') &&
-                (sId === 'scheduled' || sId === 'meeting_scheduled' || Boolean(st.isMeetingStage) || sName.includes('agendad') || sName.includes('visita'))) {
+              (sId === 'scheduled' || sId === 'meeting_scheduled' || Boolean(st.isMeetingStage) || sName.includes('agendad') || sName.includes('visita'))) {
               return true;
             }
             if ((rawStage.includes('degusta') || rawStage.includes('decis') || rawStage === 'decision' || rawStage === 'degustacao') &&
-                (sId === 'decision' || sId === 'degustacao' || sName.includes('degusta') || sName.includes('decis'))) {
+              (sId === 'decision' || sId === 'degustacao' || sName.includes('degusta') || sName.includes('decis'))) {
               return true;
             }
             if ((rawStage.includes('fechad') || rawStage.includes('ganho') || rawStage === 'deal_closed' || rawStage === 'contract_signed') &&
-                (Boolean(st.isWon) || sId === 'deal_closed' || sId === 'contract_signed' || sName.includes('fechad') || sName.includes('ganho'))) {
+              (Boolean(st.isWon) || sId === 'deal_closed' || sId === 'contract_signed' || sName.includes('fechad') || sName.includes('ganho'))) {
               return true;
             }
             if ((rawStage.includes('perdid') || rawStage.includes('recusad') || rawStage.includes('cancelad') || rawStage === 'lost') &&
-                (Boolean(st.isLoss) || sId === 'lost' || sName.includes('perdid') || sName.includes('recusad') || sName.includes('cancelad'))) {
+              (Boolean(st.isLoss) || sId === 'lost' || sName.includes('perdid') || sName.includes('recusad') || sName.includes('cancelad'))) {
               return true;
             }
             return false;
@@ -3678,8 +3685,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             setCollaborators(freshList);
             safeLocalStorageSet(STORAGE_KEY_COLLABORATORS, JSON.stringify(freshList));
 
-            const activated = freshList.find(c => 
-              c.id === json.collabId || 
+            const activated = freshList.find(c =>
+              c.id === json.collabId ||
               c.email.toLowerCase().trim() === effEmail
             );
 
@@ -3715,16 +3722,16 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       }
 
       // 2. Fallback direto (Client-Side)
-      let target = collaborators.find(c => 
-        c.id === collabIdOrEmail || 
+      let target = collaborators.find(c =>
+        c.id === collabIdOrEmail ||
         c.email.toLowerCase().trim() === cleanTarget ||
         (cleanFallback && c.email.toLowerCase().trim() === cleanFallback)
       );
 
       if (!target && isSupabaseConfigured) {
         const freshList = await collaboratorService.getAll();
-        target = freshList.find(c => 
-          c.id === collabIdOrEmail || 
+        target = freshList.find(c =>
+          c.id === collabIdOrEmail ||
           c.email.toLowerCase().trim() === cleanTarget ||
           (cleanFallback && c.email.toLowerCase().trim() === cleanFallback)
         );
@@ -3959,8 +3966,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
       for (const task of prev) {
         const isParticularTask = (task.createdById === id || (targetName && task.createdByName === targetName))
-          && !task.leadId 
-          && !task.debutanteId 
+          && !task.leadId
+          && !task.debutanteId
           && (!task.assignedToIds || task.assignedToIds.length <= 1);
 
         if (isParticularTask) {
@@ -4246,7 +4253,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
 
     // REGRA DE SEGURANÇA 1: Não podem existir debutantes com jornadas ativas vinculadas a esta casa
-    const activeDebutantesWithJourneys = debutantes.filter(d => 
+    const activeDebutantesWithJourneys = debutantes.filter(d =>
       d.venueId === id &&
       d.status !== 'inactive' &&
       d.hasJourneyEnabled &&
@@ -4510,7 +4517,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       // Persistência direta no banco de dados (zero perda entre dispositivos)
       if (isSupabaseConfigured && currentUser?.id) {
         void supabase.from('collaborators').update({ pinned_funnel_ids: next }).eq('id', currentUser.id);
-        setCollaborators(prevCollabs => 
+        setCollaborators(prevCollabs =>
           prevCollabs.map(c => c.id === currentUser.id ? { ...c, pinnedFunnelIds: next } : c)
         );
       }
@@ -4526,7 +4533,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     safeLocalStorageSet(`f5_pinned_funnels_${userId}`, JSON.stringify(reorderedIds));
     if (isSupabaseConfigured && currentUser?.id) {
       void supabase.from('collaborators').update({ pinned_funnel_ids: reorderedIds }).eq('id', currentUser.id);
-      setCollaborators(prevCollabs => 
+      setCollaborators(prevCollabs =>
         prevCollabs.map(c => c.id === currentUser.id ? { ...c, pinnedFunnelIds: reorderedIds } : c)
       );
     }
@@ -4781,11 +4788,11 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       const updated = prev.map(s => {
         if (s.funnelId === funnelId) {
           updatedSourcesCount++;
-          const rerouted = { 
-            ...s, 
-            funnelId: isUnassigned ? '' : destinationFunnelId, 
+          const rerouted = {
+            ...s,
+            funnelId: isUnassigned ? '' : destinationFunnelId,
             status: isUnassigned ? ('inactive' as const) : s.status,
-            updatedAt: now 
+            updatedAt: now
           };
           if (isSupabaseConfigured) {
             sourceService.upsert(rerouted).catch(err => console.error('Erro ao re-rotear fonte:', err));
@@ -4819,21 +4826,21 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const source = funnels.find(f => f.id === funnelId);
     if (!source) return '';
     const newId = generateUuid();
-    
+
     // Clonagem profunda de estágios
     const clonedStages = source.stages ? JSON.parse(JSON.stringify(source.stages)) : undefined;
 
     // Clonagem profunda de regras e configurações
-    const clonedDuplicateRuleConfig = source.duplicateRuleConfig 
-      ? JSON.parse(JSON.stringify(source.duplicateRuleConfig)) 
+    const clonedDuplicateRuleConfig = source.duplicateRuleConfig
+      ? JSON.parse(JSON.stringify(source.duplicateRuleConfig))
       : undefined;
 
-    const clonedCustomFields = source.customFields 
-      ? JSON.parse(JSON.stringify(source.customFields)) 
+    const clonedCustomFields = source.customFields
+      ? JSON.parse(JSON.stringify(source.customFields))
       : [];
 
-    const clonedVenueDistConfig = source.venueDistributionConfig 
-      ? JSON.parse(JSON.stringify(source.venueDistributionConfig)) 
+    const clonedVenueDistConfig = source.venueDistributionConfig
+      ? JSON.parse(JSON.stringify(source.venueDistributionConfig))
       : undefined;
 
     const clonedFunnel: CommercialFunnel = {
@@ -4876,7 +4883,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     };
 
     // Clonar perguntas MQL específicas deste funil (se houver)
-    const sourceQuestions = mqlQuestions.filter(q => 
+    const sourceQuestions = mqlQuestions.filter(q =>
       q.funnelId === source.id || (q.funnelIds && q.funnelIds.includes(source.id))
     );
     if (sourceQuestions.length > 0) {
@@ -4946,7 +4953,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           return updated;
         });
         if (isSupabaseConfigured) {
-          leadService.update(leadId, { unreadCount: 0 }).catch(() => {});
+          leadService.update(leadId, { unreadCount: 0 }).catch(() => { });
         }
       }
       return;
@@ -4981,7 +4988,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           return updated;
         });
         if (isSupabaseConfigured) {
-          leadService.update(leadId, { unreadCount: 0 }).catch(() => {});
+          leadService.update(leadId, { unreadCount: 0 }).catch(() => { });
         }
       }
       return;
@@ -4996,7 +5003,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           safeLocalStorageSet(STORAGE_KEY_LEADS, JSON.stringify(updated));
           return updated;
         });
-        if (isSupabaseConfigured) leadService.update(leadId, { unreadCount: 0 }).catch(() => {});
+        if (isSupabaseConfigured) leadService.update(leadId, { unreadCount: 0 }).catch(() => { });
       }
       return;
     }
@@ -5378,7 +5385,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       });
       clientService.upsert(postSaleClient).catch(err => console.error('Erro ao sincronizar cliente pós-venda:', err));
       if (isSupabaseConfigured) {
-        leadService.addActivity(postSaleClient.id, handoverAct).catch(() => {});
+        leadService.addActivity(postSaleClient.id, handoverAct).catch(() => { });
       }
     }
 
@@ -5400,8 +5407,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   };
 
   const reassignMultipleLeadsFunnel = async (
-    leadIds: string[], 
-    destinationFunnelId: string, 
+    leadIds: string[],
+    destinationFunnelId: string,
     stageId?: string
   ): Promise<{ successCount: number; failedCount: number }> => {
     let successCount = 0;
@@ -5438,7 +5445,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const effectiveVenueId = (data.venueId && data.venueId !== 'all')
       ? data.venueId
       : (activeVenueId && activeVenueId !== 'all' ? activeVenueId : (scopedVenues[0]?.id || ''));
-    
+
     // Funil na Origem é OPCIONAL
     const isValidUuid = (v?: string | null) => Boolean(v && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v));
     const resolvedFunnelId = (data.funnelId && isValidUuid(data.funnelId)) ? data.funnelId : '';
@@ -5700,7 +5707,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           return next;
         });
         window.dispatchEvent(new Event('f5:contracts-changed'));
-      }).catch(() => {});
+      }).catch(() => { });
     }
     setClients(prev => {
       const updated = prev.map(c => {
@@ -5738,8 +5745,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       return updated;
     });
     clientService.delete(id);
-    debutanteService.delete(id).catch(() => {});
-    leadService.delete(id).catch(() => {});
+    debutanteService.delete(id).catch(() => { });
+    leadService.delete(id).catch(() => { });
   };
 
   const deleteMultipleClients = async (clientIds: string[]) => {
@@ -5769,8 +5776,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
     for (const id of clientIds) {
       clientService.delete(id);
-      debutanteService.delete(id).catch(() => {});
-      leadService.delete(id).catch(() => {});
+      debutanteService.delete(id).catch(() => { });
+      leadService.delete(id).catch(() => { });
     }
   };
 
@@ -5827,7 +5834,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                 console.error('[updateClientStage] Falha ao gravar etapa:', err);
                 toast.error('Nao foi possivel salvar a mudanca de etapa. O card sera restaurado.');
                 const activeMaster = currentUserRef.current?.masterId || currentUserRef.current?.id;
-                clientService.getAll(activeMaster || undefined).then(fresh => setClients(fresh)).catch(() => {});
+                clientService.getAll(activeMaster || undefined).then(fresh => setClients(fresh)).catch(() => { });
               });
           }
           return mod;
@@ -5924,7 +5931,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           const newActivity: ClientActivity = {
             id: generateUuid(),
             type: 'debutante_linked',
-            description: debutanteId 
+            description: debutanteId
               ? `Vinculado ao App de Lista de Convidados (/app/${debSlug || debutanteId}).`
               : 'Desvinculado do App de Lista de Convidados.',
             createdAt: new Date().toISOString(),
@@ -6099,14 +6106,14 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         const s = l.stage as string;
         return s === 'contract_signed' || s === 'deal_closed' || s === 'contrato_fechado';
       }).length;
-      const progress = d.totalTargetReferrals > 0 
+      const progress = d.totalTargetReferrals > 0
         ? Math.min(100, Math.round((validCount / d.totalTargetReferrals) * 100))
         : 0;
 
       // Update matching referrals inside the debutante account
       const updatedReferrals = (d.referrals || []).map(ref => {
-        const matchingLead = debLeads.find(l => 
-          l.id === ref.id || 
+        const matchingLead = debLeads.find(l =>
+          l.id === ref.id ||
           (l.phone && ref.phone && l.phone.replace(/\D/g, '') === ref.phone.replace(/\D/g, '')) ||
           (l.name && ref.name && l.name.toLowerCase() === ref.name.toLowerCase())
         );
@@ -6303,7 +6310,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
           // Verificar gatilho de pós-venda configurado na etapa de ganho
           const postSaleTrigger = (destStageConfig?.triggers || []).find(t => t.type === 'create_post_sale_client');
-          
+
           let targetPostSaleFunnelId = postSaleTrigger?.targetFunnelId;
           let targetPostSaleStageId = postSaleTrigger?.targetStageId;
 
@@ -6372,9 +6379,9 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
               updatedAt: new Date().toISOString().split('T')[0],
             };
             safeLocalStorageSet(STORAGE_KEY_CLIENTS, JSON.stringify([newClient, ...prevClients]));
-            clientService.upsert(newClient).catch(() => {});
+            clientService.upsert(newClient).catch(() => { });
             if (isSupabaseConfigured) {
-              leadService.addActivity(newCliId, handoverAct).catch(() => {});
+              leadService.addActivity(newCliId, handoverAct).catch(() => { });
             }
             return [newClient, ...prevClients];
           } else {
@@ -6389,7 +6396,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
               const updatedList = [...prevClients];
               updatedList[existingIdx] = updatedClient;
               safeLocalStorageSet(STORAGE_KEY_CLIENTS, JSON.stringify(updatedList));
-              clientService.upsert(updatedClient).catch(() => {});
+              clientService.upsert(updatedClient).catch(() => { });
               return updatedList;
             }
           }
@@ -6404,7 +6411,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       setClients(prev => prev.map(c => {
         if (c.id === leadId || c.commercialLeadId === leadId) {
           const mod: Client = { ...c, stage: finalStage as any, updatedAt: new Date().toISOString().split('T')[0] };
-          clientService.upsert(mod).catch(() => {});
+          clientService.upsert(mod).catch(() => { });
           return mod;
         }
         return c;
@@ -6438,7 +6445,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           stageName: destStageConfig?.name,
           movedById: authorId,
           movedByName: author,
-        }).catch(() => {});
+        }).catch(() => { });
       }
 
       leadService.addActivity(leadId, {
@@ -6898,7 +6905,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     notes?: string;
   }): string => {
     const newLeadId = generateUuid();
-    
+
     // Procura a Origem de Indicação da casa de festa para obter o funil configurado
     const venueReferralSource = sources.find(s => s.venueId === data.venueId && s.type === 'referral' && s.status === 'active');
     const destinationFunnelId = venueReferralSource?.funnelId || (funnels.find(f => f.venueId === data.venueId)?.id) || 'indicacao';
@@ -7018,7 +7025,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const enqueuePhoneAction = async (phone: string, action: () => Promise<void>) => {
     const clean = phone.replace(/\D/g, '');
     const lockKey = clean.slice(-8) || clean;
-    
+
     const previousPromise = phoneExecutionQueueRef.current.get(lockKey) || Promise.resolve();
     const currentPromise = previousPromise.then(async () => {
       try {
@@ -7153,12 +7160,12 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
       if (autoAction === 'merge_keep_oldest' || autoAction === 'keep_oldest_update') {
         for (let i = 1; i < sortedByAge.length; i++) {
-          mergeLeads(oldest.id, sortedByAge[i].id).catch(() => {});
+          mergeLeads(oldest.id, sortedByAge[i].id).catch(() => { });
         }
         existing = oldest;
       } else if (autoAction === 'merge_keep_newest' || autoAction === 'merge_keep_recent' || autoAction === 'keep_recent') {
         for (let i = 0; i < sortedByAge.length - 1; i++) {
-          mergeLeads(newest.id, sortedByAge[i].id).catch(() => {});
+          mergeLeads(newest.id, sortedByAge[i].id).catch(() => { });
         }
         existing = newest;
       } else if (autoAction === 'keep_oldest') {
@@ -7227,15 +7234,15 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         }
         updateLeadData(existing.id, updates);
         if (isSupabaseConfigured) {
-          leadService.addActivity(existing.id, newAct).catch(() => {});
-          leadService.update(existing.id, updates).catch(() => {});
+          leadService.addActivity(existing.id, newAct).catch(() => { });
+          leadService.update(existing.id, updates).catch(() => { });
         }
       }
       return existing.id;
     }
 
     const newLeadId = generateUuid();
-    
+
     let matchedSubSource: string | undefined = undefined;
     let targetFunnelId = data.initialFunnelId || waSource?.funnelId || (funnels.find(f => f.venueId === data.venueId && !f.isPostSale)?.id) || funnels.find(f => !f.isPostSale)?.id || 'comercial';
 
@@ -7317,7 +7324,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
     // Garante que o funil padrão para leads de entrada seja comercial (e não pós-venda) e pertença ao tenant
     const commercialFunnels = scopedFunnels.filter(f => !f.isPostSale && f.category !== 'Pós-Venda' && f.category !== 'pos_venda');
-    const commercialFunnelForVenue = commercialFunnels.find(f => 
+    const commercialFunnelForVenue = commercialFunnels.find(f =>
       f.venueId === targetVenueId || f.venueId === 'all' || (Array.isArray(f.sharedVenueIds) && f.sharedVenueIds.includes(targetVenueId))
     );
 
@@ -7478,7 +7485,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       await leadService.upsert(newLead);
       if (activities && activities.length > 0) {
         for (const act of activities) {
-          await leadService.addActivity(newLeadId, act).catch(() => {});
+          await leadService.addActivity(newLeadId, act).catch(() => { });
         }
       }
       if (waSource?.id) {
@@ -7552,7 +7559,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           url: webhookUrl,
           enabled: true,
           events: ['messages', 'messages_update', 'connection', 'presence'],
-        }).catch(() => {});
+        }).catch(() => { });
       });
     }
   }, [sources, scopedVenues, scopedMasterId, currentUser]);
@@ -7735,7 +7742,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                 clientService.upsert({
                   id: matchedClient.id,
                   updatedAt: new Date().toISOString(),
-                } as any).catch(() => {});
+                } as any).catch(() => { });
               }
             }
             return;
@@ -7818,7 +7825,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             leadId: existingLead.id,
             timestamp: incoming.timestamp || new Date().toISOString(),
             type: 'contact',
-            title: isFromMe 
+            title: isFromMe
               ? (isAudio ? 'Mensagem de voz enviada (Celular/Web)' : incoming.mediaType === 'image' ? 'Foto enviada (Celular/Web)' : incoming.mediaType === 'video' ? 'Vídeo enviado (Celular/Web)' : incoming.mediaType === 'document' ? 'Documento enviado (Celular/Web)' : 'Mensagem enviada via WhatsApp (Celular/Web)')
               : (isAudio ? 'Mensagem de voz recebida' : incoming.mediaType === 'image' ? 'Foto recebida' : incoming.mediaType === 'video' ? 'Vídeo recebido' : incoming.mediaType === 'document' ? 'Documento recebido' : 'Mensagem recebida no WhatsApp'),
             text: incoming.text,
@@ -7864,7 +7871,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           if (isSupabaseConfigured) {
             leadService.addActivity(existingLead.id, newAct)
               .catch(err => console.error('Erro ao salvar mensagem recebida no Supabase:', err));
-            leadService.update(existingLead.id, leadUpdates).catch(() => {});
+            leadService.update(existingLead.id, leadUpdates).catch(() => { });
           }
 
           // Ingestão assíncrona de mídia transitória recebida (áudios, imagens, docs) para o Cloudflare R2
@@ -7887,7 +7894,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                   };
                 }));
                 if (isSupabaseConfigured) {
-                  leadService.updateActivity(newActId, { mediaUrl: ingestRes.permanentR2Url, mediaType: incoming.mediaType }).catch(() => {});
+                  leadService.updateActivity(newActId, { mediaUrl: ingestRes.permanentR2Url, mediaType: incoming.mediaType }).catch(() => { });
                 }
                 mediaStorageService.register({
                   masterId: sseMasterId || '',
@@ -7933,7 +7940,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                   : a),
               }));
               if (isSupabaseConfigured) {
-                leadService.updateActivity(newActId, { metadata: { ...(newAct.metadata || {}), ...failMeta } }).catch(() => {});
+                leadService.updateActivity(newActId, { metadata: { ...(newAct.metadata || {}), ...failMeta } }).catch(() => { });
               }
             });
           }
@@ -7945,7 +7952,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                 if (!details) return;
                 const liveUpdates: Partial<Lead> = {};
                 const freshLeadState = leadsRef.current.find(l => l.id === existingLead.id) || existingLead;
-                
+
                 if (details.phone && !isLidIdentifier(details.phone) && isLidIdentifier(freshLeadState.phone)) {
                   liveUpdates.phone = details.phone.replace(/\D/g, '');
                 }
@@ -7958,7 +7965,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                 if (Object.keys(liveUpdates).length > 0) {
                   updateLeadData(existingLead.id, liveUpdates);
                   if (isSupabaseConfigured) {
-                    leadService.update(existingLead.id, liveUpdates).catch(() => {});
+                    leadService.update(existingLead.id, liveUpdates).catch(() => { });
                   }
                 }
                 const currentMasterId = scopedMasterId || currentUser?.masterId || currentUser?.id;
@@ -7969,10 +7976,10 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                         updateLeadData(existingLead.id, { avatarUrl: res.avatarUrl });
                       }
                     })
-                    .catch(() => {});
+                    .catch(() => { });
                 }
               })
-              .catch(() => {});
+              .catch(() => { });
           }
         } else {
           // Segurança Pós-Venda: Se a mensagem chegou em uma fonte vinculada ao Pós-Venda (Sucesso do Cliente),
@@ -7985,7 +7992,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
               funnels.find(f => f.id === matchedSource?.funnelId) ||
               funnels.find(f => f.isPostSale || f.category === 'Pós-Venda');
             const isEntryActive = Boolean(postSaleFunnelObj?.isEntryStageActive);
-            
+
             if (!isEntryActive) {
               console.info(`[WhatsApp Pós-Venda] Mensagem de número desconhecido (${cleanPhone}) ignorada pois a Etapa de Entrada do Cliente está desativada no funil.`);
               return;
@@ -8023,7 +8030,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                 if (Object.keys(liveUpdates).length > 0) {
                   updateLeadData(newId, liveUpdates);
                   if (isSupabaseConfigured) {
-                    leadService.update(newId, liveUpdates).catch(() => {});
+                    leadService.update(newId, liveUpdates).catch(() => { });
                   }
                 }
                 const currentMasterId = scopedMasterId || currentUser?.masterId || currentUser?.id;
@@ -8034,10 +8041,10 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                         updateLeadData(newId, { avatarUrl: res.avatarUrl });
                       }
                     })
-                    .catch(() => {});
+                    .catch(() => { });
                 }
               })
-              .catch(() => {});
+              .catch(() => { });
           }
         }
       });
@@ -8046,7 +8053,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     return () => {
       unsubscribe();
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const lastDisconnectTimestampRef = React.useRef<Map<string, number>>(new Map());
@@ -8094,7 +8101,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     });
 
     return () => unsubConn();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const syncWhatsAppHistoryGap = async (options?: {
@@ -8199,7 +8206,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             matchedLead = fallbackMatch.matchedLead;
           }
         }
-        
+
         let existingLead: Lead | null = matchedLead;
 
         if (existingLead?.isRemovedFromFunnel) {
@@ -8216,8 +8223,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           leadId: existingLead ? existingLead.id : '',
           timestamp: msg.timestamp || new Date().toISOString(),
           type: 'contact',
-          title: isFromMe 
-            ? (isAudio ? 'Mensagem de voz enviada (Celular/Web)' : 'Mensagem enviada via WhatsApp (Celular/Web)') 
+          title: isFromMe
+            ? (isAudio ? 'Mensagem de voz enviada (Celular/Web)' : 'Mensagem enviada via WhatsApp (Celular/Web)')
             : (isAudio ? 'Mensagem de voz recebida' : 'Mensagem recebida no WhatsApp'),
           text: msg.text,
           mediaUrl: msg.mediaUrl,
@@ -8267,8 +8274,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
           updateLeadData(existingLead.id, leadUpdates);
           if (isSupabaseConfigured) {
-            leadService.addActivity(existingLead.id, newAct).catch(() => {});
-            leadService.update(existingLead.id, leadUpdates).catch(() => {});
+            leadService.addActivity(existingLead.id, newAct).catch(() => { });
+            leadService.update(existingLead.id, leadUpdates).catch(() => { });
           }
           updatedLeadsCount++;
         } else if (options?.createMissingLeads === true) {
@@ -8359,13 +8366,13 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const newLeadId = generateUuid();
     const leadCode = generateLeadCode();
     const cleanName = data.name && data.name.trim() !== '' ? data.name.trim() : leadCode;
-    
+
     // Resolve o funil de destino: aceita tanto UUID quanto Nome do funil
     let resolvedFunnelId = '';
     if (data.funnelId) {
       const inputFunnelId = data.funnelId.toLowerCase().trim();
-      const matched = funnels.find(f => 
-        f.id === data.funnelId || 
+      const matched = funnels.find(f =>
+        f.id === data.funnelId ||
         f.name.toLowerCase().trim() === inputFunnelId
       );
       if (matched) {
@@ -8947,7 +8954,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         if (transferHistoryAndMessages) {
           await supabase.from('lead_activities').update({ lead_id: newClientId }).eq('lead_id', lead.id);
         }
-        await leadService.addActivity(newClientId, handoverAct).catch(() => {});
+        await leadService.addActivity(newClientId, handoverAct).catch(() => { });
         await supabase.from('admin_tasks').update({ client_id: newClientId, lead_id: null }).eq('lead_id', lead.id);
         await supabase.from('leads').delete().eq('id', lead.id);
       } catch (err) {
@@ -9227,10 +9234,10 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   };
 
   const closeLeadSaleWithValue = (
-    leadId: string, 
-    dealValue: number, 
-    packageSold: string, 
-    contractDate?: string, 
+    leadId: string,
+    dealValue: number,
+    packageSold: string,
+    contractDate?: string,
     closerNotes?: string,
     extraOptions?: {
       contractTitle?: string;
@@ -9339,7 +9346,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       const birthdayDate = extraOptions?.birthdayPersonBirthdate?.trim() || birthdayContact?.birthday || (currentLead as any).debutanteBirthDate || (currentLead as any).birthday || '';
 
       // Identificar o Decisor Legal do Contrato
-      const primaryDecisor = (currentLead.contacts || []).find(c => c.isPrimaryDecisionMaker) || 
+      const primaryDecisor = (currentLead.contacts || []).find(c => c.isPrimaryDecisionMaker) ||
         (currentLead.primaryContactRole !== 'debutante' ? {
           name: currentLead.name,
           phone: currentLead.phone,
@@ -9363,20 +9370,20 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       const venueObj = venues.find(v => v.id === targetVenueId);
       const venueName = venueObj?.name || 'Bonomo Festas';
 
-      const formattedDown = downPay > 0 
+      const formattedDown = downPay > 0
         ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(downPay)
         : 'Sem entrada';
       const parcelVal = installCount > 0 ? (dealValue - downPay) / installCount : 0;
-      const formattedParcel = parcelVal > 0 
+      const formattedParcel = parcelVal > 0
         ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(parcelVal)
         : 'R$ 0,00';
-      const eventTypeLabel = (currentLead.eventType as any) === 'casamento' 
-        ? 'Casamento' 
-        : (currentLead.eventType as any) === 'corporativo' 
-        ? 'Corporativo' 
-        : (currentLead.eventType as any) === 'infantil' 
-        ? 'Festa Infantil' 
-        : '15 Anos (Debutante)';
+      const eventTypeLabel = (currentLead.eventType as any) === 'casamento'
+        ? 'Casamento'
+        : (currentLead.eventType as any) === 'corporativo'
+          ? 'Corporativo'
+          : (currentLead.eventType as any) === 'infantil'
+            ? 'Festa Infantil'
+            : '15 Anos (Debutante)';
       const formattedPartyDate = currentLead.partyDate || currentLead.eventDate || cDate;
 
       // Novo Padrão Oficial: [Homenageados] [Evento] (Casamento: Noivo e Noiva / 15 anos: Nome Sobrenome 15 anos)
@@ -9901,7 +9908,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       timestamp: new Date().toISOString(),
       type: 'assignment',
       title: isUnassigning ? 'Responsável removido' : 'Responsável alterado',
-      text: isUnassigning 
+      text: isUnassigning
         ? `Responsável removido por ${author}.`
         : `Responsável alterado para "${assigneeName}" por ${author}.`,
       authorName: author,
@@ -10288,15 +10295,15 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             const actTime = new Date(a.timestamp || 0).getTime();
             return actTime >= twoMinutesAgo || actTime < oldestIncoming;
           });
-          currentActivities = preservedRecent.length > 0 
+          currentActivities = preservedRecent.length > 0
             ? [...data.activities, ...preservedRecent].sort((a, b) => new Date(a.timestamp || 0).getTime() - new Date(b.timestamp || 0).getTime())
             : data.activities;
         } else {
           currentActivities = lead.activities || [];
         }
 
-        const finalActivities = newAuditActivities.length > 0 
-          ? [...currentActivities, ...newAuditActivities] 
+        const finalActivities = newAuditActivities.length > 0
+          ? [...currentActivities, ...newAuditActivities]
           : currentActivities;
 
         return {
@@ -10763,7 +10770,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const addAppointmentForDebutante = async (debutanteId: string, appData: Omit<Appointment, 'id'>) => {
     const tempId = `app_${Date.now()}`;
     const newApp: Appointment = { ...appData, id: tempId };
-    
+
     // Atualização otimista local
     setDebutantes(prev => {
       const updated = prev.map(d => {
@@ -11143,8 +11150,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   };
 
   const scheduleCommercialCommitment = async (
-    leadId: string, 
-    type: 'visit' | 'tasting', 
+    leadId: string,
+    type: 'visit' | 'tasting',
     commitmentData: {
       date: string;
       time: string;
@@ -11178,7 +11185,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       createdAt: new Date().toISOString(),
     };
 
-    const isReschedule = Boolean((commitmentData as any).isReschedule) || 
+    const isReschedule = Boolean((commitmentData as any).isReschedule) ||
       (type === 'visit' ? Boolean(targetLead.visitCommitment && targetLead.visitCommitment.status !== 'completed') : Boolean(targetLead.tastingCommitment && targetLead.tastingCommitment.status !== 'completed'));
     const author = currentUser?.name || 'Administrador';
     const authorId = currentUser?.id;
@@ -11244,7 +11251,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     // Localiza debutante vinculada (seja por lead, por cliente de pós-venda ou por telefone)
     const associatedDebutanteId = (targetLead as any).debutanteId ||
       clients.find(c => c.commercialLeadId === targetLead.id)?.debutanteId ||
-      debutantes.find(d => 
+      debutantes.find(d =>
         (d.phone && targetLead.phone && d.phone.replace(/\D/g, '') === targetLead.phone.replace(/\D/g, '')) ||
         (d.name && targetLead.name && d.name.trim().toLowerCase() === targetLead.name.trim().toLowerCase())
       )?.id;
@@ -11344,8 +11351,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   };
 
   const completeCommercialCommitment = async (
-    leadId: string, 
-    type: 'visit' | 'tasting', 
+    leadId: string,
+    type: 'visit' | 'tasting',
     feedback?: string
   ): Promise<boolean> => {
     const targetLead = leads.find(l => l.id === leadId);
@@ -11422,8 +11429,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   };
 
   const cancelCommercialCommitment = async (
-    leadId: string, 
-    type: 'visit' | 'tasting', 
+    leadId: string,
+    type: 'visit' | 'tasting',
     reason?: string,
     statusOverride?: 'cancelled' | 'no_show'
   ): Promise<boolean> => {
@@ -11446,7 +11453,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     };
 
     const isNoShow = finalStatus === 'no_show';
-    const actTitle = isNoShow 
+    const actTitle = isNoShow
       ? (type === 'visit' ? 'Visita: Não Compareceu (No-Show)' : 'Degustação: Não Compareceu (No-Show)')
       : (type === 'visit' ? 'Visita Comercial Cancelada' : 'Degustação Gastronômica Cancelada');
     const actText = `${isNoShow ? 'Cliente/família não compareceu ao compromisso agendado (No-Show).' : 'Compromisso comercial cancelado.'}${reason ? ` Motivo informado: "${reason}".` : ''} Registrado por ${author}.`;
@@ -11509,10 +11516,10 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const getDebutanteBySlug = (slug: string): DebutanteAccount | undefined => {
     if (!slug) return undefined;
     const clean = decodeURIComponent(slug).toLowerCase().trim();
-    
+
     // 1. Check in-memory debutantes
-    const foundInState = debutantes.find(d => 
-      (d.slug && d.slug.toLowerCase().trim() === clean) || 
+    const foundInState = debutantes.find(d =>
+      (d.slug && d.slug.toLowerCase().trim() === clean) ||
       (d.id && d.id.toLowerCase().trim() === clean)
     );
     if (foundInState) return foundInState;
@@ -11522,8 +11529,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       const saved = localStorage.getItem(STORAGE_KEY_DEBUTANTES);
       if (saved) {
         const list: DebutanteAccount[] = JSON.parse(saved);
-        const foundInStorage = list.find(d => 
-          (d.slug && d.slug.toLowerCase().trim() === clean) || 
+        const foundInStorage = list.find(d =>
+          (d.slug && d.slug.toLowerCase().trim() === clean) ||
           (d.id && d.id.toLowerCase().trim() === clean)
         );
         if (foundInStorage) return foundInStorage;
@@ -11832,7 +11839,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         : 'Sem data';
       const isFollowUp = (targetTask as AdminTask).isFollowUp || (targetTask as AdminTask).type === 'followup' || (targetTask as AdminTask).type === 'call';
       const labelType = isFollowUp ? 'O follow-up previsto' : 'A tarefa prevista';
-      const summaryText = cleanFeedback 
+      const summaryText = cleanFeedback
         ? `${labelType} para ${dueDateStr} foi concluído(a) por ${author}, cujo resumo foi: "${cleanFeedback}".`
         : `${labelType} para ${dueDateStr} foi marcado(a) como concluído(a) por ${author}.`;
 
