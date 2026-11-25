@@ -1,6 +1,6 @@
 import { Select } from '../ui';
 import { animateList } from '../../utils/animateList';
-import { canCollaboratorSeeStage } from '../../utils/funnelResponsibility';
+import { canCollaboratorSeeStage, isCollaboratorAssignedToLead } from '../../utils/funnelResponsibility';
 import { HeaderActions, headerPrimaryButtonStyle } from './HeaderActions';
 import { toast } from 'sonner';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
@@ -1203,17 +1203,10 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
 
   const isReadOnlyForPosVenda = currentUser?.role === 'pos_venda' && !isPostSaleFunnel;
 
-  const isManager = currentUser?.role === 'master' || currentUser?.role === 'admin';
   const isLeadSpectator = (l: Lead) => {
-    if (isManager) return false;
+    if (isManagerOrMaster) return false;
     if (isReadOnlyForPosVenda) return true;
-    if (currentUser?.role === 'sdr' || currentUser?.role === 'closer') {
-      const isAssigned = (l.sdrId && l.sdrId === currentUser.id) ||
-        (l.closerId && l.closerId === currentUser.id) ||
-        (l.assignedTo && l.assignedTo === currentUser.name);
-      return !isAssigned;
-    }
-    return false;
+    return !isCollaboratorAssignedToLead(l, effectiveUser || currentUser);
   };
 
   const collabIdSet = useMemo(() => new Set((collaborators || []).map(c => c.id)), [collaborators]);

@@ -142,3 +142,31 @@ export function getLeadNotificationRecipientIds(
     })
     .map(c => c.id);
 }
+
+/**
+ * Verifica se um colaborador está explicitamente marcado/atribuído em um lead
+ * (como SDR, Closer, responsável direto ou participante).
+ * Usado para liberar visualização em modo somente leitura quando não está marcado.
+ */
+export function isCollaboratorAssignedToLead(
+  lead: Pick<Lead, 'sdrId' | 'closerId' | 'sdrName' | 'closerName' | 'assignedTo' | 'participants'> | null | undefined,
+  user: { id?: string; name?: string } | null | undefined,
+): boolean {
+  if (!lead || !user) return false;
+  if (user.id) {
+    if (lead.sdrId === user.id || lead.closerId === user.id) return true;
+    if (Array.isArray(lead.participants) && lead.participants.some(p => p.collaboratorId === user.id)) return true;
+  }
+  const userName = (user.name || '').trim().toLowerCase();
+  if (!userName) return false;
+  const userFirst = userName.split(/\s+/)[0];
+  const matchesName = (stored?: string) => {
+    if (!stored) return false;
+    const s = stored.trim().toLowerCase();
+    if (!s) return false;
+    if (s === userName || userName.includes(s) || s.includes(userName)) return true;
+    const sFirst = s.split(/\s+/)[0];
+    return userFirst.length >= 3 && sFirst === userFirst;
+  };
+  return matchesName(lead.sdrName) || matchesName(lead.closerName) || matchesName(lead.assignedTo);
+}

@@ -1342,6 +1342,68 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             }
           }
 
+          // Distribuição Automática (Roleta / Round Robin) do funil comercial na criação pelo webhook
+          let assignedSdrId: string | null = null;
+          let assignedSdrName: string | null = null;
+          let assignedParticipants: any[] = [];
+          if (!isPostSaleTarget && funnelId) {
+            try {
+              const { data: fRow } = await supabase
+                .from('commercial_funnels')
+                .select('id, distribution_mode, assigned_sdr_ids, round_robin_next_index, venue_distribution_config, duplicate_rule_config')
+                .eq('id', funnelId)
+                .maybeSingle();
+              if (fRow) {
+                const venueDistMap = fRow.venue_distribution_config || (fRow.duplicate_rule_config as any)?._venueDistributionConfig || {};
+                const venueCfg = venueId ? venueDistMap?.[venueId] : undefined;
+                let targetSdrIds: string[] = [];
+                let isRoundRobinActive = false;
+
+                if (venueCfg) {
+                  if (venueCfg.distributionMode === 'round_robin' && Array.isArray(venueCfg.assignedSdrIds) && venueCfg.assignedSdrIds.length > 0) {
+                    targetSdrIds = venueCfg.assignedSdrIds;
+                    isRoundRobinActive = true;
+                  } else if (venueCfg.distributionMode === 'manual') {
+                    isRoundRobinActive = false;
+                  }
+                }
+
+                if (!isRoundRobinActive && (!venueCfg || venueCfg.distributionMode === 'inherit') && fRow.distribution_mode === 'round_robin' && Array.isArray(fRow.assigned_sdr_ids) && fRow.assigned_sdr_ids.length > 0) {
+                  targetSdrIds = fRow.assigned_sdr_ids;
+                  isRoundRobinActive = true;
+                }
+
+                if (isRoundRobinActive && targetSdrIds.length > 0) {
+                  const { data: collabRows } = await supabase
+                    .from('collaborators')
+                    .select('id, name, role, avatar_url, active')
+                    .in('id', targetSdrIds);
+                  const activeById = new Map((collabRows || []).filter((c: any) => c.active !== false).map((c: any) => [c.id, c]));
+                  const eligibleSdrs = targetSdrIds.map(id => activeById.get(id)).filter(Boolean) as any[];
+                  if (eligibleSdrs.length > 0) {
+                    const currentIndex = typeof fRow.round_robin_next_index === 'number' ? fRow.round_robin_next_index : 0;
+                    const chosen = eligibleSdrs[currentIndex % eligibleSdrs.length];
+                    const nextIndex = (currentIndex + 1) % eligibleSdrs.length;
+                    assignedSdrId = chosen.id;
+                    assignedSdrName = chosen.name;
+                    assignedParticipants = [{
+                      id: crypto.randomUUID(),
+                      collaboratorId: chosen.id,
+                      collaboratorName: chosen.name,
+                      collaboratorRole: chosen.role || 'sdr',
+                      collaboratorAvatarUrl: chosen.avatar_url || undefined,
+                      action: 'round_robin',
+                      timestamp: new Date().toISOString(),
+                    }];
+                    await supabase.from('commercial_funnels').update({ round_robin_next_index: nextIndex }).eq('id', fRow.id);
+                  }
+                }
+              }
+            } catch (rrErr: any) {
+              console.warn('[Webhook] Erro na roleta automática de SDR:', rrErr?.message);
+            }
+          }
+
           const newLead: any = {
             id: leadId,
             code: isPostSaleTarget ? `CLI-${randomPart}` : leadCode,
@@ -1355,6 +1417,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             stage: targetStage,
             group: isPostSaleTarget ? 'Pós-Venda' : 'WhatsApp',
             is_client: isPostSaleTarget,
+            ...(assignedSdrId ? {
+              sdr_id: assignedSdrId,
+              sdr_name: assignedSdrName,
+              assigned_to: assignedSdrName,
+              participants: assignedParticipants,
+            } : {}),
             tags: [
               ...(isPostSaleTarget ? ['Cliente'] : []),
               ...(autoContractId ? ['Contrato Vinculado'] : []),

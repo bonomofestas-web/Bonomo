@@ -1815,6 +1815,16 @@ export const leadService = {
             return false;
           }
 
+          // REGRA DE CLIENTE + CONTRATO:
+          // Dois clientes com o mesmo telefone no mesmo funil são permitidos se tiverem contratos diferentes
+          // (ex.: mãe com 2 filhas / 2 festas). Só consolida se compartilharem o mesmo contrato.
+          if (existing.isClient || lead.isClient) {
+            const cA = existing.contractId || existing.associated_contract_id || (existing as any).migratedToContractId || '';
+            const cB = lead.contractId || lead.associated_contract_id || (lead as any).migratedToContractId || '';
+            if (cA && cB && cA !== cB) return false;
+            if ((cA && !cB) || (!cA && cB)) return false;
+          }
+
           // 1a. Casamento por telefone real
           if (isPhoneMatch(existing.phone, lead.phone)) return true;
           

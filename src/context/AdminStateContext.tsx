@@ -1591,12 +1591,10 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                     if (fixedCode?.startsWith('CLI-')) {
                       fixedCode = fixedCode.replace('CLI-', 'LEAD-');
                     }
-                    if (isLeadTs || targetCommFunnel.name.toLowerCase().includes('kommo')) {
-                      if (yuriCollab) {
-                        sdrId = yuriCollab.id;
-                        sdrName = yuriCollab.name;
-                        assignedTo = yuriCollab.name;
-                      }
+                    if (isLeadTs && yuriCollab) {
+                      sdrId = yuriCollab.id;
+                      sdrName = yuriCollab.name;
+                      assignedTo = yuriCollab.name;
                     }
                     if (targetCommFunnel.venueId && targetCommFunnel.venueId !== 'all') {
                       venueId = targetCommFunnel.venueId;
@@ -1612,19 +1610,6 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                         ...(sdrId ? { sdrId, sdrName, assignedTo } : {})
                       }).catch(() => { });
                     }
-                  }
-                }
-              }
-
-              // Se o lead está no funil VI KOMMO (ou similar) e ainda não tem o Yuri como responsável, vincula o Yuri automaticamente
-              const activeFunnelForLead = syncedFunnels.find(f => f.id === funnelId);
-              if (activeFunnelForLead?.name?.toLowerCase().includes('kommo') && yuriCollab) {
-                if (!sdrId || !sdrName || !assignedTo || (sdrName.toLowerCase() !== yuriCollab.name.toLowerCase() && isLeadTs)) {
-                  sdrId = yuriCollab.id;
-                  sdrName = yuriCollab.name;
-                  assignedTo = yuriCollab.name;
-                  if (isSupabaseConfigured) {
-                    leadService.update(l.id, { sdrId, sdrName, assignedTo }).catch(() => { });
                   }
                 }
               }
@@ -7436,17 +7421,10 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       }
     }
 
-    // Resolução de SDR para o funil validado:
-    // Se o funil final é o VI KOMMO (ou similar) e não havia SDR definido, atribui automaticamente o Yuri
+    // Resolução de SDR para o funil validado via roleta automática configurada no funil/unidade
     let effectiveAutoSdr = autoSdr;
     if (!effectiveAutoSdr && validFunnelId) {
       effectiveAutoSdr = getRoundRobinAssignment(validFunnelId, targetVenueId);
-    }
-    if (!effectiveAutoSdr) {
-      const finalF = scopedFunnels.find(f => f.id === validFunnelId);
-      if (finalF?.name?.toLowerCase().includes('kommo')) {
-        effectiveAutoSdr = collaborators.find(c => c.name.toLowerCase().includes('yuri')) || collaborators.find(c => c.role === 'master') || null;
-      }
     }
     if (effectiveAutoSdr && initialParticipants.length === 0) {
       initialParticipants.push({
@@ -7494,7 +7472,6 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     let inheritedContractId: string | undefined = undefined;
     let inheritedContactId: string | undefined = matchedExtraContact?.id;
     let inheritedRole: any = isTargetPostSale ? 'cliente' : undefined;
-    let inheritedIsClient = isTargetPostSale && !matchedExtraContact;
 
     if (!matchedExtraContact && cleanPhoneDigits && cleanPhoneDigits.length >= 8) {
       try {
@@ -7506,11 +7483,6 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           inheritedContractId = found.contract.id;
           inheritedContactId = found.contract.contactId;
           inheritedRole = found.kinship || (isTargetPostSale ? 'cliente' : undefined);
-          // IMPORTANTE: Só marca como cliente de pós-venda se a mensagem entrou em um canal/funil de Pós-Venda!
-          // Se entrou em um funil comercial, permanece como lead comercial para não poluir a esteira de vendas nem ser sequestrado pelo pós-venda.
-          if (isTargetPostSale) {
-            inheritedIsClient = true;
-          }
         }
       } catch (err) {
         console.warn('[createLeadFromWhatsApp] Falha ao verificar contrato por telefone:', err);
@@ -7524,7 +7496,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const newLead: Lead = {
       id: newLeadId,
       masterId: resolvedMasterId,
-      code: extraRoleLabel ? `${matchedExtraContact?.isCollaborator ? 'COL' : 'FORN'}-${leadCode.replace('LEAD-', '')}` : ((isTargetPostSale || inheritedIsClient) ? `CLI-${leadCode.replace('LEAD-', '')}` : leadCode),
+      code: extraRoleLabel ? `${matchedExtraContact?.isCollaborator ? 'COL' : 'FORN'}-${leadCode.replace('LEAD-', '')}` : (isTargetPostSale ? `CLI-${leadCode.replace('LEAD-', '')}` : leadCode),
       debutanteId: '',
       debutanteName: '',
       debutanteSlug: '',
@@ -7541,14 +7513,14 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       phone: data.phone,
       avatarUrl: data.avatarUrl,
       age: 15,
-      group: extraRoleLabel || ((isTargetPostSale || inheritedIsClient) ? 'Pós-Venda' : 'WhatsApp'),
-      tags: extraRoleLabel ? [extraRoleLabel] : ((isTargetPostSale || inheritedIsClient) ? ['Cliente'] : []),
+      group: extraRoleLabel || (isTargetPostSale ? 'Pós-Venda' : 'WhatsApp'),
+      tags: extraRoleLabel ? [extraRoleLabel] : (isTargetPostSale ? ['Cliente'] : (inheritedContractId ? ['Cliente c/ Contrato'] : [])),
       notes: effectiveMsgText ? (data.fromMe ? `Conversa iniciada via WhatsApp: "${effectiveMsgText}"` : `Primeira mensagem via WhatsApp: "${effectiveMsgText}"`) : undefined,
       sdrId: extraRoleLabel ? undefined : (effectiveAutoSdr ? effectiveAutoSdr.id : undefined),
       sdrName: extraRoleLabel ? undefined : (effectiveAutoSdr ? effectiveAutoSdr.name : undefined),
       assignedTo: extraRoleLabel ? undefined : (effectiveAutoSdr ? effectiveAutoSdr.name : undefined),
       stage: (data.initialStage || resolvedStageId) as CrmStage,
-      isClient: extraRoleLabel ? false : (inheritedIsClient ? true : undefined),
+      isClient: extraRoleLabel ? false : Boolean(isTargetPostSale),
       isValidated: false,
       pointsGranted: 0,
       participants: extraRoleLabel ? [] : initialParticipants,

@@ -20,6 +20,7 @@ import { stickerService, type WhatsappSticker } from '../../services/stickerServ
 import { IcpTargetUserIcon } from './IcpTargetUserIcon';
 import { isFinanceSource } from '../../utils/financeSource';
 import { getUserTaskSectors } from '../../utils/taskSector';
+import { isCollaboratorAssignedToLead } from '../../utils/funnelResponsibility';
 import { SupplierToggleButton } from './contacts/SupplierToggleButton';
 import { contactService } from '../../services/contactService';
 import { mqlBadge } from '../../utils/mqlScore';
@@ -2131,9 +2132,12 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     for (const lead of combined) {
       if (!lead || !lead.id) continue;
       const phoneDigits = (lead.phone || '').replace(/\D/g, '').slice(-8);
-      // Chave única de conversa: funil + últimos 8 dígitos do telefone (ou id se não tiver telefone)
+      const contractKey = (lead.isClient || lead.group === 'Pós-Venda')
+        ? (lead.contractId || (lead as any).associated_contract_id || (lead as any).migratedToContractId || (lead as any).contractNumber || '')
+        : '';
+      // Chave única de conversa: funil + contrato (quando cliente) + últimos 8 dígitos do telefone
       const chatKey = phoneDigits.length >= 8
-        ? `${lead.funnelId || 'default'}|${phoneDigits}`
+        ? `${lead.funnelId || 'default'}|${contractKey ? `ctr:${contractKey}|` : ''}${phoneDigits}`
         : `id_${lead.id}`;
 
       const existing = seenFunnelPhones.get(chatKey);
@@ -3729,18 +3733,11 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   }, [selectedLead?.id, activeSenderToken, targetContractClient?.id]);
 
   const messagingPaused = useMessagingPause(); // pausa geral: desabilita o compositor
-  const isManager = currentUser?.role === 'master' || currentUser?.role === 'admin';
   const isLeadSpectator = useMemo(() => {
-    if (!selectedLead || isManager) return false;
+    if (!selectedLead || isManagerOrMaster) return false;
     if (isReadOnlyForPosVenda) return true;
-    if (currentUser?.role === 'sdr' || currentUser?.role === 'closer') {
-      const isAssigned = (selectedLead.sdrId && selectedLead.sdrId === currentUser.id) ||
-        (selectedLead.closerId && selectedLead.closerId === currentUser.id) ||
-        (selectedLead.assignedTo && selectedLead.assignedTo === currentUser.name);
-      return !isAssigned;
-    }
-    return false;
-  }, [selectedLead, isManager, isReadOnlyForPosVenda, currentUser]);
+    return !isCollaboratorAssignedToLead(selectedLead, effectiveUser || currentUser);
+  }, [selectedLead, isManagerOrMaster, isReadOnlyForPosVenda, effectiveUser, currentUser]);
 
   // Controle de rolagem do chat para não prender o usuário quando ele sobe para ler mensagens antigas
   const isUserScrolledUpRef = useRef<boolean>(false);
@@ -8140,6 +8137,12 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                             if (l.funnelId !== selectedLead.funnelId) return false;
                             const isLClient = Boolean(l.isClient || l.group === 'Pós-Venda');
                             if (isTargetClient !== isLClient) return false;
+                            if (isTargetClient) {
+                              const cTarget = selectedLead.contractId || (selectedLead as any).associated_contract_id || (selectedLead as any).migratedToContractId || '';
+                              const cOther = l.contractId || (l as any).associated_contract_id || (l as any).migratedToContractId || '';
+                              if (cTarget && cOther && cTarget !== cOther) return false;
+                              if ((cTarget && !cOther) || (!cTarget && cOther)) return false;
+                            }
                             return isPhoneMatch(l.phone, selectedLead.phone);
                           });
                           if (!hasDup) return null;

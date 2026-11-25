@@ -684,3 +684,17 @@ Grande reestruturação de governança, experiência do usuário, banco de dados
     * Removido o lightbox ao clicar em figurinhas recebidas ou enviadas; o clique agora exibe a ação **Salvar figurinha na unidade**, persistindo a mídia no Cloudflare R2 e na tabela `public.whatsapp_stickers` (escopada por `master_id` e `venue_id`).
     * Todos os usuários com acesso àquela unidade (ou múltiplas unidades) passam a visualizar e enviar as figurinhas salvas diretamente na aba **Figurinhas** do chat.
 
+- **Correção da Distribuição Automática (Roleta) e Modo Somente Visualização para Colaboradores** (`improved` / `crm`):
+  - **Fim da Atribuição Forçada ao Yuri em Funis Kommo (`AdminStateContext.tsx`):**
+    * Removida a regra fixa que vinculava automaticamente o Yuri em qualquer lead sem SDR de funis com `"kommo"` no nome durante a hidratação e criação via WhatsApp.
+  - **Roleta Automática no Webhook (`api/whatsapp-webhook.ts`):**
+    * O webhook agora consulta `venue_distribution_config` / `distribution_mode` / `assigned_sdr_ids` do funil no Supabase e atribui o próximo SDR ativo da lista configurada, avançando `round_robin_next_index`.
+  - **Visualização Completa com Edição Bloqueada para Não-Marcados (`funnelResponsibility.ts`, `AdminCrmKanbanView.tsx`, `AdminWhatsAppWorkspaceView.tsx`):**
+    * Criado `isCollaboratorAssignedToLead` e unificado `isLeadSpectator` para todos os perfis não-gerenciais (`!isManagerOrMaster`), permitindo visualizar todos os leads do funil na aba `Todos` / `Em Aberto` e abrindo estritamente em modo somente leitura quando o colaborador não está marcado no lead.
+  - **Blindagem Contra Contaminação de Leads Comerciais por Histórico de Cliente (`AdminStateContext.tsx`, `contractService.ts`):**
+    * Em `createLeadFromWhatsApp`, novos leads criados em funis comerciais mantêm `code: LEAD-...`, `group: 'WhatsApp'` e `isClient: false` mesmo quando o telefone já possui contrato prévio na rede (mantendo apenas o vínculo histórico `contractId` e a tag `Cliente c/ Contrato`).
+    * Em `contractService.linkLooseLeadToContract`, a propagação automática de `is_client: true` por telefone passou a atingir estritamente cards já pertencentes a funis de Pós-Venda (`is_post_sale = true`), impedindo que leads comerciais sejam convertidos em `Pós-Venda`.
+  - **Regra Oficial de Identidade por Cliente + Contrato (`leadService.ts`, `AdminWhatsAppWorkspaceView.tsx`):**
+    * Um mesmo telefone pode existir legitimamente como Lead em múltiplos funis comerciais e como Cliente em múltiplos contratos distintos dentro do mesmo funil (ex.: mãe com duas festas/contratos diferentes).
+    * A deduplicação (`consolidateDuplicatesInDatabase`, lista da Caixa de Entrada e badge de duplicidade) agora respeita a chave `cliente + contrato` (`contractId`), impedindo apenas duplicidade de cards vinculados ao mesmo contrato.
+

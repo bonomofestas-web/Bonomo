@@ -1310,20 +1310,29 @@ export const contractService = {
           updated_at: new Date().toISOString()
         }).eq('id', params.looseLead.id).eq('master_id', params.masterId);
 
-        // Propagação Multi-Funil Instantânea:
-        // Se este mesmo contato já interage em outros funis do Master, vincula o contrato a todos eles!
+        // Propagação Multi-Funil Segura:
+        // Propaga o vínculo apenas para cards que já estejam em funis de Pós-Venda (nunca contamina leads comerciais!)
         const leadDigits = (params.looseLead.phone || '').replace(/\D/g, '');
         if (leadDigits.length >= 8) {
           const last8 = leadDigits.slice(-8);
-          await supabase.from('leads').update({
-            contract_id: c.id,
-            is_client: true,
-            primary_contact_role: params.kinship,
-            updated_at: new Date().toISOString()
-          })
-          .eq('master_id', params.masterId)
-          .ilike('phone', `%${last8}%`)
-          .is('contract_id', null);
+          const { data: postSaleFunnels } = await supabase
+            .from('commercial_funnels')
+            .select('id')
+            .eq('master_id', params.masterId)
+            .or('is_post_sale.eq.true,category.eq.Pós-Venda,category.eq.pos_venda');
+          const postSaleFunnelIds = (postSaleFunnels || []).map((f: any) => f.id).filter(Boolean);
+          if (postSaleFunnelIds.length > 0) {
+            await supabase.from('leads').update({
+              contract_id: c.id,
+              is_client: true,
+              primary_contact_role: params.kinship,
+              updated_at: new Date().toISOString()
+            })
+            .eq('master_id', params.masterId)
+            .ilike('phone', `%${last8}%`)
+            .in('funnel_id', postSaleFunnelIds)
+            .is('contract_id', null);
+          }
         }
 
         // Garante a colocação no funil em contract_funnel_placements sem alterar a etapa
