@@ -2,9 +2,9 @@ import { toast } from 'sonner';
 import { MonthYearSwitcher } from '../ui';
 import { formatMonthYear } from '../ui';
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { 
-  X, Check, Building2, Calendar, User, Phone, DollarSign, Clock, 
-  Users, ChevronDown, ChevronLeft, ChevronRight, FileText, 
+import {
+  X, Check, Building2, Calendar, User, Phone, DollarSign, Clock,
+  Users, ChevronDown, ChevronLeft, ChevronRight, FileText,
   Heart, Cake, Shield, CheckCircle2
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';

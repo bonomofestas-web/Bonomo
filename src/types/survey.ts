@@ -23,6 +23,9 @@ export interface SurveyQuestionOptions {
   /** Midia anexada na pergunta (URL no R2 ou link de video) */
   mediaUrl?: string;
   mediaType?: 'image' | 'video';
+  /** Topico / Secao estilo Google Forms (definido na primeira pergunta do topico) */
+  sectionTitle?: string;
+  sectionDescription?: string;
 }
 
 /** Operadores da logica condicional (a regra olha a resposta da propria pergunta) */
@@ -71,6 +74,8 @@ export interface SurveyThanks {
   linkUrl?: string;
   imageUrl?: string;
   videoUrl?: string;
+  layout?: 'centered' | 'split_left' | 'split_right';
+  showBadge?: boolean;
 }
 
 export interface SurveyTheme {

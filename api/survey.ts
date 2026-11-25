@@ -101,8 +101,9 @@ const buildPath = (ordered: Q[], answers: Answers): string[] => {
   return path;
 };
 
-const publicSurvey = (s: any, qs: Q[]) => ({
+const publicSurvey = (s: any, qs: Q[], venueName?: string | null) => ({
   title: s.title, description: s.description, welcome: s.welcome || {}, thanks: s.thanks || {}, theme: s.theme || {},
+  venueName: venueName || null,
   questions: qs.map(q => ({ id: q.id, type: q.type, title: q.title, description: q.description, required: q.required, options: q.options || {}, logic: q.logic || [] })),
 });
 
@@ -119,9 +120,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const token = String((req.method === 'GET' ? (req.query as any)?.t : body.token) || '').trim();
   if (!slug || slug.length > 80) return res.status(400).json({ ok: false, error: 'Pesquisa não encontrada.' });
 
-  const { data: survey } = await sb.from('surveys').select('id, master_id, title, description, status, welcome, thanks, theme').eq('slug', slug).maybeSingle();
+  const { data: survey } = await sb.from('surveys').select('id, master_id, venue_id, title, description, status, welcome, thanks, theme').eq('slug', slug).maybeSingle();
   if (!survey || survey.status === 'draft') return res.status(404).json({ ok: false, error: 'Pesquisa não encontrada.' });
   if (survey.status === 'closed') return res.status(200).json({ ok: true, closed: true, survey: { title: survey.title, theme: survey.theme || {}, thanks: survey.thanks || {} } });
+  let venueName: string | null = null;
+  if (survey.venue_id) {
+    const { data: v } = await sb.from('venues').select('name').eq('id', survey.venue_id).maybeSingle();
+    venueName = v?.name || null;
+  }
   const { data: qrows } = await sb.from('survey_questions').select('id, type, title, description, required, options, logic, position').eq('survey_id', survey.id).eq('master_id', survey.master_id).order('position', { ascending: true });
   const questions = (qrows || []) as Q[];
 
@@ -134,7 +140,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   if (req.method === 'GET') {
-    return res.status(200).json({ ok: true, survey: publicSurvey(survey, questions), progress: response ? { status: response.status, answers: response.status === 'completed' ? {} : response.answers || {} } : null });
+    return res.status(200).json({ ok: true, survey: publicSurvey(survey, questions, venueName), progress: response ? { status: response.status, answers: response.status === 'completed' ? {} : response.answers || {} } : null });
   }
   if (req.method !== 'POST') return res.status(405).json({ ok: false, error: 'Método não permitido.' });
 

@@ -446,12 +446,12 @@ export const AdminGlobalSearch: React.FC<AdminGlobalSearchProps> = ({
             committed
               ? 'Adicionar ao filtro...'
               : hasActiveFilters
-              ? ''
-              : activeTab === 'whatsapp'
-              ? 'Buscar conversas...'
-              : currentActiveFunnel
-              ? `Buscar em ${currentActiveFunnel.name}...`
-              : 'Buscar contatos, leads, contratos...'
+                ? ''
+                : activeTab === 'whatsapp'
+                  ? 'Buscar conversas...'
+                  : currentActiveFunnel
+                    ? `Buscar em ${currentActiveFunnel.name}...`
+                    : 'Buscar contatos, leads, contratos...'
           }
           style={{
             flex: 1,
@@ -604,591 +604,223 @@ export const AdminGlobalSearch: React.FC<AdminGlobalSearchProps> = ({
             alignItems: 'center',
             justifyContent: 'space-between',
             flexWrap: 'wrap',
-              gap: '10px',
-            }}>
-              {/* Chips de Categoria */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                {[
-                  { id: 'all', label: `Todos (${allLabelTotal})` },
-                  { id: 'contacts', label: `Contatos (${noExtraFilters ? Math.max(displayContacts.length, dbTotals.contacts) : displayContacts.length})`, icon: <Users size={12} /> },
-                  { id: 'clients', label: `Clientes Pós-Venda (${filteredPostSaleClients.length})`, icon: <ShieldCheck size={12} /> },
-                  { id: 'leads', label: `Leads Comerciais (${filteredCommercialLeads.length})`, icon: <Briefcase size={12} /> },
-                  { id: 'contracts', label: `Contratos (${noExtraFilters ? Math.max(displayContracts.length, dbTotals.contracts) : displayContracts.length})`, icon: <FileText size={12} /> },
-                ].map(cat => {
-                  const isSelected = activeCategory === cat.id;
-                  return (
-                    <button
-                      key={cat.id}
-                      type="button"
-                      onClick={() => setActiveCategory(cat.id as SearchCategoryFilter)}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '5px',
-                        padding: '4px 10px',
-                        borderRadius: '6px',
-                        border: `1px solid ${isSelected ? '#14A9D7' : isLight ? '#E2E8F0' : 'rgba(255, 255, 255, 0.08)'}`,
-                        backgroundColor: isSelected
-                          ? (isLight ? 'rgba(20, 169, 215, 0.12)' : 'rgba(20, 169, 215, 0.22)')
-                          : (isLight ? '#F8FAFC' : 'rgba(255, 255, 255, 0.02)'),
-                        color: isSelected ? '#14A9D7' : (isLight ? '#475569' : '#94A3B8'),
-                        fontSize: '0.76rem',
-                        fontWeight: isSelected ? 700 : 500,
-                        cursor: 'pointer',
-                      }}
-                    >
-                      {cat.icon}
-                      {cat.label}
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Filtros em Dropdowns (Unidade, Colaborador, Etiqueta) */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                {/* 1. Unidade */}
-                {venues.length > 1 && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <Building2 size={13} color={isLight ? '#64748B' : '#94A3B8'} />
-                    <Select
-                      value={selectedVenueFilter}
-                      onChange={e => setSelectedVenueFilter(e.target.value)}
-                      style={{
-                        backgroundColor: isLight ? '#F8FAFC' : '#162238',
-                        border: `1px solid ${selectedVenueFilter !== 'all' ? '#14A9D7' : isLight ? '#CBD5E1' : 'rgba(255, 255, 255, 0.1)'}`,
-                        borderRadius: '6px',
-                        color: isLight ? '#0F172A' : '#E2E8F0',
-                        fontSize: '0.74rem',
-                        padding: '4px 6px',
-                        outline: 'none',
-                        cursor: 'pointer',
-                      }}
-                    >
-                      <option value="all">Todas as Casas</option>
-                      {venues.map(v => (
-                        <option key={v.id} value={v.id}>{v.name}</option>
-                      ))}
-                    </Select>
-                  </div>
-                )}
-
-                {/* 2. Colaborador */}
-                {collaborators && collaborators.length > 0 && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <UserCheck size={13} color={isLight ? '#64748B' : '#94A3B8'} />
-                    <Select
-                      value={selectedCollaboratorFilter}
-                      onChange={e => setSelectedCollaboratorFilter(e.target.value)}
-                      style={{
-                        backgroundColor: isLight ? '#F8FAFC' : '#162238',
-                        border: `1px solid ${selectedCollaboratorFilter !== 'all' ? '#14A9D7' : isLight ? '#CBD5E1' : 'rgba(255, 255, 255, 0.1)'}`,
-                        borderRadius: '6px',
-                        color: isLight ? '#0F172A' : '#E2E8F0',
-                        fontSize: '0.74rem',
-                        padding: '4px 6px',
-                        outline: 'none',
-                        cursor: 'pointer',
-                      }}
-                    >
-                      <option value="all">Todos Colaboradores</option>
-                      {collaborators.map(c => (
-                        <option key={c.id} value={c.id}>{c.name}</option>
-                      ))}
-                    </Select>
-                  </div>
-                )}
-
-                {/* 3. Etiqueta / Tag */}
-                {availableTags.length > 0 && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <Tag size={13} color={isLight ? '#64748B' : '#94A3B8'} />
-                    <Select
-                      value={selectedTagFilter}
-                      onChange={e => setSelectedTagFilter(e.target.value)}
-                      style={{
-                        backgroundColor: isLight ? '#F8FAFC' : '#162238',
-                        border: `1px solid ${selectedTagFilter !== 'all' ? '#10B981' : isLight ? '#CBD5E1' : 'rgba(255, 255, 255, 0.1)'}`,
-                        borderRadius: '6px',
-                        color: isLight ? '#0F172A' : '#E2E8F0',
-                        fontSize: '0.74rem',
-                        padding: '4px 6px',
-                        outline: 'none',
-                        cursor: 'pointer',
-                      }}
-                    >
-                      <option value="all">Todas as Tags</option>
-                      {availableTags.map(t => (
-                        <option key={t} value={t}>{t}</option>
-                      ))}
-                    </Select>
-                  </div>
-                )}
-
-                {hasActiveFilters && (
+            gap: '10px',
+          }}>
+            {/* Chips de Categoria */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+              {[
+                { id: 'all', label: `Todos (${allLabelTotal})` },
+                { id: 'contacts', label: `Contatos (${noExtraFilters ? Math.max(displayContacts.length, dbTotals.contacts) : displayContacts.length})`, icon: <Users size={12} /> },
+                { id: 'clients', label: `Clientes Pós-Venda (${filteredPostSaleClients.length})`, icon: <ShieldCheck size={12} /> },
+                { id: 'leads', label: `Leads Comerciais (${filteredCommercialLeads.length})`, icon: <Briefcase size={12} /> },
+                { id: 'contracts', label: `Contratos (${noExtraFilters ? Math.max(displayContracts.length, dbTotals.contracts) : displayContracts.length})`, icon: <FileText size={12} /> },
+              ].map(cat => {
+                const isSelected = activeCategory === cat.id;
+                return (
                   <button
+                    key={cat.id}
                     type="button"
-                    onClick={clearAllFilters}
-                    title="Limpar todos os filtros"
+                    onClick={() => setActiveCategory(cat.id as SearchCategoryFilter)}
                     style={{
-                      background: 'transparent',
-                      border: 'none',
-                      color: '#EF4444',
-                      fontSize: '0.72rem',
-                      fontWeight: 700,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                      padding: '4px 10px',
+                      borderRadius: '6px',
+                      border: `1px solid ${isSelected ? '#14A9D7' : isLight ? '#E2E8F0' : 'rgba(255, 255, 255, 0.08)'}`,
+                      backgroundColor: isSelected
+                        ? (isLight ? 'rgba(20, 169, 215, 0.12)' : 'rgba(20, 169, 215, 0.22)')
+                        : (isLight ? '#F8FAFC' : 'rgba(255, 255, 255, 0.02)'),
+                      color: isSelected ? '#14A9D7' : (isLight ? '#475569' : '#94A3B8'),
+                      fontSize: '0.76rem',
+                      fontWeight: isSelected ? 700 : 500,
                       cursor: 'pointer',
-                      padding: '2px 6px',
                     }}
                   >
-                    Limpar
+                    {cat.icon}
+                    {cat.label}
                   </button>
-                )}
-              </div>
+                );
+              })}
             </div>
 
-            {/* Contexto do Funil Atual */}
-            {currentActiveFunnel && (
-              <div style={{
-                padding: '7px 20px',
-                backgroundColor: isLight ? 'rgba(20, 169, 215, 0.08)' : 'rgba(20, 169, 215, 0.12)',
-                borderBottom: `1px solid ${isLight ? 'rgba(20, 169, 215, 0.15)' : 'rgba(20, 169, 215, 0.2)'}`,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                fontSize: '0.75rem',
-                color: isLight ? '#0284C7' : '#38BDF8',
-              }}>
-                <span>
-                  Buscando em todo o sistema. Ao fechar, o filtro será mantido no funil <strong>{currentActiveFunnel.name}</strong>.
-                </span>
-                <span style={{ fontSize: '0.7rem', opacity: 0.8 }}>Pressione Enter para filtrar o Kanban</span>
+            {/* Filtros em Dropdowns (Unidade, Colaborador, Etiqueta) */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              {/* 1. Unidade */}
+              {venues.length > 1 && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <Building2 size={13} color={isLight ? '#64748B' : '#94A3B8'} />
+                  <Select
+                    value={selectedVenueFilter}
+                    onChange={e => setSelectedVenueFilter(e.target.value)}
+                    style={{
+                      backgroundColor: isLight ? '#F8FAFC' : '#162238',
+                      border: `1px solid ${selectedVenueFilter !== 'all' ? '#14A9D7' : isLight ? '#CBD5E1' : 'rgba(255, 255, 255, 0.1)'}`,
+                      borderRadius: '6px',
+                      color: isLight ? '#0F172A' : '#E2E8F0',
+                      fontSize: '0.74rem',
+                      padding: '4px 6px',
+                      outline: 'none',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <option value="all">Todas as Casas</option>
+                    {venues.map(v => (
+                      <option key={v.id} value={v.id}>{v.name}</option>
+                    ))}
+                  </Select>
+                </div>
+              )}
+
+              {/* 2. Colaborador */}
+              {collaborators && collaborators.length > 0 && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <UserCheck size={13} color={isLight ? '#64748B' : '#94A3B8'} />
+                  <Select
+                    value={selectedCollaboratorFilter}
+                    onChange={e => setSelectedCollaboratorFilter(e.target.value)}
+                    style={{
+                      backgroundColor: isLight ? '#F8FAFC' : '#162238',
+                      border: `1px solid ${selectedCollaboratorFilter !== 'all' ? '#14A9D7' : isLight ? '#CBD5E1' : 'rgba(255, 255, 255, 0.1)'}`,
+                      borderRadius: '6px',
+                      color: isLight ? '#0F172A' : '#E2E8F0',
+                      fontSize: '0.74rem',
+                      padding: '4px 6px',
+                      outline: 'none',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <option value="all">Todos Colaboradores</option>
+                    {collaborators.map(c => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </Select>
+                </div>
+              )}
+
+              {/* 3. Etiqueta / Tag */}
+              {availableTags.length > 0 && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <Tag size={13} color={isLight ? '#64748B' : '#94A3B8'} />
+                  <Select
+                    value={selectedTagFilter}
+                    onChange={e => setSelectedTagFilter(e.target.value)}
+                    style={{
+                      backgroundColor: isLight ? '#F8FAFC' : '#162238',
+                      border: `1px solid ${selectedTagFilter !== 'all' ? '#10B981' : isLight ? '#CBD5E1' : 'rgba(255, 255, 255, 0.1)'}`,
+                      borderRadius: '6px',
+                      color: isLight ? '#0F172A' : '#E2E8F0',
+                      fontSize: '0.74rem',
+                      padding: '4px 6px',
+                      outline: 'none',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <option value="all">Todas as Tags</option>
+                    {availableTags.map(t => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </Select>
+                </div>
+              )}
+
+              {hasActiveFilters && (
+                <button
+                  type="button"
+                  onClick={clearAllFilters}
+                  title="Limpar todos os filtros"
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: '#EF4444',
+                    fontSize: '0.72rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    padding: '2px 6px',
+                  }}
+                >
+                  Limpar
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Contexto do Funil Atual */}
+          {currentActiveFunnel && (
+            <div style={{
+              padding: '7px 20px',
+              backgroundColor: isLight ? 'rgba(20, 169, 215, 0.08)' : 'rgba(20, 169, 215, 0.12)',
+              borderBottom: `1px solid ${isLight ? 'rgba(20, 169, 215, 0.15)' : 'rgba(20, 169, 215, 0.2)'}`,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              fontSize: '0.75rem',
+              color: isLight ? '#0284C7' : '#38BDF8',
+            }}>
+              <span>
+                Buscando em todo o sistema. Ao fechar, o filtro será mantido no funil <strong>{currentActiveFunnel.name}</strong>.
+              </span>
+              <span style={{ fontSize: '0.7rem', opacity: 0.8 }}>Pressione Enter para filtrar o Kanban</span>
+            </div>
+          )}
+
+          {/* Área de Resultados com Scroll */}
+          <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            {!searchQuery.trim() && !hasActiveFilters ? (
+              <div style={{ padding: '36px 20px', textAlign: 'center', color: isLight ? '#64748B' : '#94A3B8' }}>
+                <Search size={32} style={{ margin: '0 auto 10px auto', opacity: 0.3 }} color="#14A9D7" />
+                <p style={{ margin: '0 0 6px 0', fontWeight: 700, color: isLight ? '#0F172A' : '#FFFFFF' }}>
+                  Central de Busca Integrada do F5 System
+                </p>
+                <p style={{ margin: 0, fontSize: '0.8rem' }}>
+                  Digite um nome, telefone, CPF, código CONT/LEAD/CTR ou utilize os filtros de Etiquetas e Colaboradores acima.
+                </p>
               </div>
-            )}
-
-            {/* Área de Resultados com Scroll */}
-            <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-              {!searchQuery.trim() && !hasActiveFilters ? (
-                <div style={{ padding: '36px 20px', textAlign: 'center', color: isLight ? '#64748B' : '#94A3B8' }}>
-                  <Search size={32} style={{ margin: '0 auto 10px auto', opacity: 0.3 }} color="#14A9D7" />
-                  <p style={{ margin: '0 0 6px 0', fontWeight: 700, color: isLight ? '#0F172A' : '#FFFFFF' }}>
-                    Central de Busca Integrada do F5 System
-                  </p>
-                  <p style={{ margin: 0, fontSize: '0.8rem' }}>
-                    Digite um nome, telefone, CPF, código CONT/LEAD/CTR ou utilize os filtros de Etiquetas e Colaboradores acima.
-                  </p>
-                </div>
-              ) : totalMatches === 0 && !loadingAsync ? (
-                <div style={{ padding: '36px 20px', textAlign: 'center', color: isLight ? '#64748B' : '#94A3B8' }}>
-                  <p style={{ margin: '0 0 6px 0', fontWeight: 700, color: isLight ? '#0F172A' : '#FFFFFF' }}>
-                    Nenhum resultado encontrado
-                  </p>
-                  <p style={{ margin: 0, fontSize: '0.8rem' }}>
-                    Tente buscar por outro termo ou limpe os filtros aplicados.
-                  </p>
-                </div>
-              ) : (
-                <>
-                  {/* 1. SEÇÃO DE CONTATOS */}
-                  {(activeCategory === 'all' || activeCategory === 'contacts') && displayContacts.length > 0 && (
-                    <div>
-                      <div style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        marginBottom: '10px',
-                        color: '#60A5FA',
-                        fontSize: '0.78rem',
-                        fontWeight: 700,
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.5px',
-                      }}>
-                        <Users size={14} />
-                        Contatos ({displayContacts.length})
-                      </div>
-
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '8px' }}>
-                        {displayContacts.map(c => {
-                          const initials = (c.name || 'C')
-                            .split(' ')
-                            .filter(Boolean)
-                            .slice(0, 2)
-                            .map(n => n[0].toUpperCase())
-                            .join('');
-
-                          const matchedLeads = leads.filter(l => l.contactId === c.id || (l.phone && c.primaryPhone && l.phone.replace(/\D/g, '') === c.primaryPhone.replace(/\D/g, '')));
-
-                          return (
-                            <div
-                              key={c.id}
-                              onClick={() => {
-                                onOpenContact(c.id);
-                                handleClose();
-                              }}
-                              style={{
-                                padding: '12px 14px',
-                                borderRadius: '8px',
-                                backgroundColor: isLight ? '#F8FAFC' : '#162238',
-                                border: `1px solid ${isLight ? '#E2E8F0' : 'rgba(255, 255, 255, 0.08)'}`,
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'space-between',
-                                gap: '12px',
-                                transition: 'all 0.15s ease',
-                              }}
-                              onMouseEnter={e => {
-                                e.currentTarget.style.backgroundColor = isLight ? '#EDF2F7' : 'rgba(59, 130, 246, 0.12)';
-                                e.currentTarget.style.borderColor = '#3B82F6';
-                              }}
-                              onMouseLeave={e => {
-                                e.currentTarget.style.backgroundColor = isLight ? '#F8FAFC' : '#162238';
-                                e.currentTarget.style.borderColor = isLight ? '#E2E8F0' : 'rgba(255, 255, 255, 0.08)';
-                              }}
-                            >
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
-                                <div style={{
-                                  width: '38px',
-                                  height: '38px',
-                                  borderRadius: '50%',
-                                  backgroundColor: '#3B82F6',
-                                  color: '#FFFFFF',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  fontSize: '0.85rem',
-                                  fontWeight: 700,
-                                  flexShrink: 0,
-                                }}>
-                                  {initials}
-                                </div>
-                                <div style={{ minWidth: 0 }}>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    <strong style={{ color: isLight ? '#0F172A' : '#FFFFFF', fontSize: '0.86rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                      {c.name}
-                                    </strong>
-                                    {c.code && (
-                                      <span style={{
-                                        fontSize: '0.66rem',
-                                        padding: '1px 5px',
-                                        borderRadius: '4px',
-                                        backgroundColor: 'rgba(59, 130, 246, 0.15)',
-                                        color: isLight ? '#1D4ED8' : '#60A5FA',
-                                        fontWeight: 700,
-                                      }}>
-                                        {c.code}
-                                      </span>
-                                    )}
-                                  </div>
-                                  <div style={{ fontSize: '0.74rem', color: isLight ? '#64748B' : '#94A3B8', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    <span>{formatPhone(c.primaryPhone) || c.primaryPhone}</span>
-                                    {c.cpf && <span>• CPF: {c.cpf}</span>}
-                                  </div>
-                                  {matchedLeads.length > 0 && (
-                                    <div style={{ marginTop: '4px', display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-                                      {matchedLeads.map(l => (
-                                        <span key={l.id}
-                                          role="button"
-                                          title="Abrir este lead no funil"
-                                          onClick={(e) => {
-                                            // O chip abre o LEAD no funil; o restante do card abre o contato
-                                            e.stopPropagation();
-                                            onOpenLead(l.id, l.funnelId);
-                                            handleClose();
-                                          }}
-                                          style={{
-                                          fontSize: '0.66rem',
-                                          padding: '1px 6px',
-                                          borderRadius: '4px',
-                                          backgroundColor: 'rgba(16, 185, 129, 0.15)',
-                                          color: '#34D399',
-                                          fontWeight: 600,
-                                          cursor: 'pointer',
-                                        }}>
-                                          Lead: {funnels.find(f => f.id === l.funnelId)?.name || 'Comercial'} ({getStageRealName(l)})
-                                        </span>
-                                      ))}
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-
-                              <ChevronRight size={16} color="#94A3B8" style={{ flexShrink: 0 }} />
-                            </div>
-                          );
-                        })}
-                      </div>
+            ) : totalMatches === 0 && !loadingAsync ? (
+              <div style={{ padding: '36px 20px', textAlign: 'center', color: isLight ? '#64748B' : '#94A3B8' }}>
+                <p style={{ margin: '0 0 6px 0', fontWeight: 700, color: isLight ? '#0F172A' : '#FFFFFF' }}>
+                  Nenhum resultado encontrado
+                </p>
+                <p style={{ margin: 0, fontSize: '0.8rem' }}>
+                  Tente buscar por outro termo ou limpe os filtros aplicados.
+                </p>
+              </div>
+            ) : (
+              <>
+                {/* 1. SEÇÃO DE CONTATOS */}
+                {(activeCategory === 'all' || activeCategory === 'contacts') && displayContacts.length > 0 && (
+                  <div>
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      marginBottom: '10px',
+                      color: '#60A5FA',
+                      fontSize: '0.78rem',
+                      fontWeight: 700,
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.5px',
+                    }}>
+                      <Users size={14} />
+                      Contatos ({displayContacts.length})
                     </div>
-                  )}
 
-                  {/* 2A. SEÇÃO DE CLIENTES NO PÓS-VENDA */}
-                  {(activeCategory === 'all' || activeCategory === 'clients') && filteredPostSaleClients.length > 0 && (
-                    <div>
-                      <div style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        marginBottom: '10px',
-                        color: '#10B981',
-                        fontSize: '0.78rem',
-                        fontWeight: 700,
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.5px',
-                      }}>
-                        <ShieldCheck size={14} />
-                        Clientes no Pós-Venda ({filteredPostSaleClients.length})
-                      </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '8px' }}>
+                      {displayContacts.map(c => {
+                        const initials = (c.name || 'C')
+                          .split(' ')
+                          .filter(Boolean)
+                          .slice(0, 2)
+                          .map(n => n[0].toUpperCase())
+                          .join('');
 
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '8px' }}>
-                        {filteredPostSaleClients.map(l => {
-                          const funnel = funnels.find(f => f.id === l.funnelId);
-                          const venue = venues.find(v => v.id === l.venueId);
+                        const matchedLeads = leads.filter(l => l.contactId === c.id || (l.phone && c.primaryPhone && l.phone.replace(/\D/g, '') === c.primaryPhone.replace(/\D/g, '')));
 
-                          return (
-                            <div
-                              key={l.id}
-                              onClick={() => {
-                                onOpenLead(l.id, l.funnelId);
-                                handleClose();
-                              }}
-                              style={{
-                                padding: '12px 14px',
-                                borderRadius: '8px',
-                                backgroundColor: isLight ? '#F8FAFC' : '#162238',
-                                border: `1px solid ${isLight ? '#E2E8F0' : 'rgba(255, 255, 255, 0.08)'}`,
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'space-between',
-                                gap: '12px',
-                                transition: 'all 0.15s ease',
-                              }}
-                              onMouseEnter={e => {
-                                e.currentTarget.style.backgroundColor = isLight ? '#EDF2F7' : 'rgba(16, 185, 129, 0.12)';
-                                e.currentTarget.style.borderColor = '#10B981';
-                              }}
-                              onMouseLeave={e => {
-                                e.currentTarget.style.backgroundColor = isLight ? '#F8FAFC' : '#162238';
-                                e.currentTarget.style.borderColor = isLight ? '#E2E8F0' : 'rgba(255, 255, 255, 0.08)';
-                              }}
-                            >
-                              <div style={{ minWidth: 0 }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                                  <strong style={{ color: isLight ? '#0F172A' : '#FFFFFF', fontSize: '0.86rem' }}>
-                                    {l.name}
-                                  </strong>
-                                  <span style={{
-                                    fontSize: '0.66rem',
-                                    padding: '1px 6px',
-                                    borderRadius: '4px',
-                                    backgroundColor: 'rgba(16, 185, 129, 0.2)',
-                                    color: '#059669',
-                                    fontWeight: 700,
-                                    letterSpacing: '0.5px',
-                                  }}>
-                                    CLIENTE
-                                  </span>
-                                  {l.code && (
-                                    <span style={{
-                                      fontSize: '0.66rem',
-                                      padding: '1px 5px',
-                                      borderRadius: '4px',
-                                      backgroundColor: 'rgba(212, 175, 55, 0.15)',
-                                      color: isLight ? '#B45309' : '#D4AF37',
-                                      fontWeight: 700,
-                                    }}>
-                                      {l.code}
-                                    </span>
-                                  )}
-                                  <span style={{
-                                    fontSize: '0.68rem',
-                                    padding: '1px 6px',
-                                    borderRadius: '4px',
-                                    backgroundColor: 'rgba(16, 185, 129, 0.15)',
-                                    color: isLight ? '#047857' : '#34D399',
-                                    fontWeight: 600,
-                                  }}>
-                                    {getStageRealName(l)}
-                                  </span>
-                                  {Array.isArray(l.tags) && l.tags.map(tag => (
-                                    <span
-                                      key={tag}
-                                      style={{
-                                        fontSize: '0.64rem',
-                                        padding: '1px 5px',
-                                        borderRadius: '3px',
-                                        backgroundColor: 'rgba(16, 185, 129, 0.15)',
-                                        color: '#34D399',
-                                        fontWeight: 600,
-                                      }}
-                                    >
-                                      #{tag}
-                                    </span>
-                                  ))}
-                                </div>
-
-                                <div style={{ fontSize: '0.74rem', color: isLight ? '#64748B' : '#94A3B8', marginTop: '3px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                                  <span>Funil: {funnel?.name || 'Pós-Venda'}</span>
-                                  {venue && <span>• {venue.name}</span>}
-                                  {l.phone && <span>• {formatPhone(l.phone)}</span>}
-                                  {l.partyDate && <span>• Festa: {new Date(l.partyDate + 'T12:00:00').toLocaleDateString('pt-BR')}</span>}
-                                  {l.dealValue ? <span>• R$ {l.dealValue.toLocaleString('pt-BR')}</span> : null}
-                                </div>
-                              </div>
-
-                              <ExternalLink size={14} color={isLight ? '#64748B' : '#94A3B8'} style={{ flexShrink: 0 }} />
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* 2B. SEÇÃO DE LEADS COMERCIAIS */}
-                  {(activeCategory === 'all' || activeCategory === 'leads') && filteredCommercialLeads.length > 0 && (
-                    <div>
-                      <div style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        marginBottom: '10px',
-                        color: isLight ? '#2563EB' : '#3B82F6',
-                        fontSize: '0.78rem',
-                        fontWeight: 700,
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.5px',
-                      }}>
-                        <Briefcase size={14} />
-                        Leads Comerciais ({filteredCommercialLeads.length})
-                      </div>
-
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '8px' }}>
-                        {filteredCommercialLeads.map(l => {
-                          const funnel = funnels.find(f => f.id === l.funnelId);
-                          const venue = venues.find(v => v.id === l.venueId);
-
-                          return (
-                            <div
-                              key={l.id}
-                              onClick={() => {
-                                onOpenLead(l.id, l.funnelId);
-                                handleClose();
-                              }}
-                              style={{
-                                padding: '12px 14px',
-                                borderRadius: '8px',
-                                backgroundColor: isLight ? '#F8FAFC' : '#162238',
-                                border: `1px solid ${isLight ? '#E2E8F0' : 'rgba(255, 255, 255, 0.08)'}`,
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'space-between',
-                                gap: '12px',
-                                transition: 'all 0.15s ease',
-                              }}
-                              onMouseEnter={e => {
-                                e.currentTarget.style.backgroundColor = isLight ? '#EDF2F7' : 'rgba(59, 130, 246, 0.12)';
-                                e.currentTarget.style.borderColor = '#3B82F6';
-                              }}
-                              onMouseLeave={e => {
-                                e.currentTarget.style.backgroundColor = isLight ? '#F8FAFC' : '#162238';
-                                e.currentTarget.style.borderColor = isLight ? '#E2E8F0' : 'rgba(255, 255, 255, 0.08)';
-                              }}
-                            >
-                              <div style={{ minWidth: 0 }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                                  <strong style={{ color: isLight ? '#0F172A' : '#FFFFFF', fontSize: '0.86rem' }}>
-                                    {l.name}
-                                  </strong>
-                                  <span style={{
-                                    fontSize: '0.66rem',
-                                    padding: '1px 6px',
-                                    borderRadius: '4px',
-                                    backgroundColor: 'rgba(59, 130, 246, 0.2)',
-                                    color: '#2563EB',
-                                    fontWeight: 700,
-                                    letterSpacing: '0.5px',
-                                  }}>
-                                    LEAD
-                                  </span>
-                                  {l.commercialCode && (
-                                    <span style={{
-                                      fontSize: '0.66rem',
-                                      padding: '1px 5px',
-                                      borderRadius: '4px',
-                                      backgroundColor: 'rgba(212, 175, 55, 0.15)',
-                                      color: isLight ? '#B45309' : '#D4AF37',
-                                      fontWeight: 700,
-                                    }}>
-                                      {l.commercialCode}
-                                    </span>
-                                  )}
-                                  <span style={{
-                                    fontSize: '0.68rem',
-                                    padding: '1px 6px',
-                                    borderRadius: '4px',
-                                    backgroundColor: 'rgba(59, 130, 246, 0.15)',
-                                    color: isLight ? '#1D4ED8' : '#60A5FA',
-                                    fontWeight: 600,
-                                  }}>
-                                    {getStageRealName(l)}
-                                  </span>
-                                  {Array.isArray(l.tags) && l.tags.map(tag => (
-                                    <span
-                                      key={tag}
-                                      style={{
-                                        fontSize: '0.64rem',
-                                        padding: '1px 5px',
-                                        borderRadius: '3px',
-                                        backgroundColor: 'rgba(16, 185, 129, 0.15)',
-                                        color: '#34D399',
-                                        fontWeight: 600,
-                                      }}
-                                    >
-                                      #{tag}
-                                    </span>
-                                  ))}
-                                </div>
-
-                                <div style={{ fontSize: '0.74rem', color: isLight ? '#64748B' : '#94A3B8', marginTop: '3px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                                  <span>Funil: {funnel?.name || 'Comercial'}</span>
-                                  {venue && <span>• {venue.name}</span>}
-                                  {l.phone && <span>• {formatPhone(l.phone)}</span>}
-                                  {l.dealValue ? <span>• R$ {l.dealValue.toLocaleString('pt-BR')}</span> : null}
-                                </div>
-                              </div>
-
-                              <ExternalLink size={14} color={isLight ? '#64748B' : '#94A3B8'} style={{ flexShrink: 0 }} />
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* 3. SEÇÃO DE CONTRATOS */}
-                  {(activeCategory === 'all' || activeCategory === 'contracts') && displayContracts.length > 0 && (
-                    <div>
-                      <div style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        marginBottom: '10px',
-                        color: '#D4AF37',
-                        fontSize: '0.78rem',
-                        fontWeight: 700,
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.5px',
-                      }}>
-                        <FileText size={14} />
-                        Contratos - documento ({displayContracts.length})
-                      </div>
-
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '8px' }}>
-                        {displayContracts.map(ctr => (
+                        return (
                           <div
-                            key={ctr.id}
+                            key={c.id}
                             onClick={() => {
-                              // Contrato (documento): abre o drawer do contrato na tela de Contratos
-                              onNavigateTab('contracts', undefined, { contractId: ctr.id });
+                              onOpenContact(c.id);
                               handleClose();
                             }}
                             style={{
@@ -1204,8 +836,134 @@ export const AdminGlobalSearch: React.FC<AdminGlobalSearchProps> = ({
                               transition: 'all 0.15s ease',
                             }}
                             onMouseEnter={e => {
-                              e.currentTarget.style.backgroundColor = isLight ? '#EDF2F7' : 'rgba(212, 175, 55, 0.12)';
-                              e.currentTarget.style.borderColor = '#D4AF37';
+                              e.currentTarget.style.backgroundColor = isLight ? '#EDF2F7' : 'rgba(59, 130, 246, 0.12)';
+                              e.currentTarget.style.borderColor = '#3B82F6';
+                            }}
+                            onMouseLeave={e => {
+                              e.currentTarget.style.backgroundColor = isLight ? '#F8FAFC' : '#162238';
+                              e.currentTarget.style.borderColor = isLight ? '#E2E8F0' : 'rgba(255, 255, 255, 0.08)';
+                            }}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
+                              <div style={{
+                                width: '38px',
+                                height: '38px',
+                                borderRadius: '50%',
+                                backgroundColor: '#3B82F6',
+                                color: '#FFFFFF',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                fontSize: '0.85rem',
+                                fontWeight: 700,
+                                flexShrink: 0,
+                              }}>
+                                {initials}
+                              </div>
+                              <div style={{ minWidth: 0 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  <strong style={{ color: isLight ? '#0F172A' : '#FFFFFF', fontSize: '0.86rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                    {c.name}
+                                  </strong>
+                                  {c.code && (
+                                    <span style={{
+                                      fontSize: '0.66rem',
+                                      padding: '1px 5px',
+                                      borderRadius: '4px',
+                                      backgroundColor: 'rgba(59, 130, 246, 0.15)',
+                                      color: isLight ? '#1D4ED8' : '#60A5FA',
+                                      fontWeight: 700,
+                                    }}>
+                                      {c.code}
+                                    </span>
+                                  )}
+                                </div>
+                                <div style={{ fontSize: '0.74rem', color: isLight ? '#64748B' : '#94A3B8', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  <span>{formatPhone(c.primaryPhone) || c.primaryPhone}</span>
+                                  {c.cpf && <span>• CPF: {c.cpf}</span>}
+                                </div>
+                                {matchedLeads.length > 0 && (
+                                  <div style={{ marginTop: '4px', display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                                    {matchedLeads.map(l => (
+                                      <span key={l.id}
+                                        role="button"
+                                        title="Abrir este lead no funil"
+                                        onClick={(e) => {
+                                          // O chip abre o LEAD no funil; o restante do card abre o contato
+                                          e.stopPropagation();
+                                          onOpenLead(l.id, l.funnelId);
+                                          handleClose();
+                                        }}
+                                        style={{
+                                          fontSize: '0.66rem',
+                                          padding: '1px 6px',
+                                          borderRadius: '4px',
+                                          backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                                          color: '#34D399',
+                                          fontWeight: 600,
+                                          cursor: 'pointer',
+                                        }}>
+                                        Lead: {funnels.find(f => f.id === l.funnelId)?.name || 'Comercial'} ({getStageRealName(l)})
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
+                            <ChevronRight size={16} color="#94A3B8" style={{ flexShrink: 0 }} />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* 2A. SEÇÃO DE CLIENTES NO PÓS-VENDA */}
+                {(activeCategory === 'all' || activeCategory === 'clients') && filteredPostSaleClients.length > 0 && (
+                  <div>
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      marginBottom: '10px',
+                      color: '#10B981',
+                      fontSize: '0.78rem',
+                      fontWeight: 700,
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.5px',
+                    }}>
+                      <ShieldCheck size={14} />
+                      Clientes no Pós-Venda ({filteredPostSaleClients.length})
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '8px' }}>
+                      {filteredPostSaleClients.map(l => {
+                        const funnel = funnels.find(f => f.id === l.funnelId);
+                        const venue = venues.find(v => v.id === l.venueId);
+
+                        return (
+                          <div
+                            key={l.id}
+                            onClick={() => {
+                              onOpenLead(l.id, l.funnelId);
+                              handleClose();
+                            }}
+                            style={{
+                              padding: '12px 14px',
+                              borderRadius: '8px',
+                              backgroundColor: isLight ? '#F8FAFC' : '#162238',
+                              border: `1px solid ${isLight ? '#E2E8F0' : 'rgba(255, 255, 255, 0.08)'}`,
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              gap: '12px',
+                              transition: 'all 0.15s ease',
+                            }}
+                            onMouseEnter={e => {
+                              e.currentTarget.style.backgroundColor = isLight ? '#EDF2F7' : 'rgba(16, 185, 129, 0.12)';
+                              e.currentTarget.style.borderColor = '#10B981';
                             }}
                             onMouseLeave={e => {
                               e.currentTarget.style.backgroundColor = isLight ? '#F8FAFC' : '#162238';
@@ -1213,136 +971,378 @@ export const AdminGlobalSearch: React.FC<AdminGlobalSearchProps> = ({
                             }}
                           >
                             <div style={{ minWidth: 0 }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <strong style={{ color: isLight ? '#B45309' : '#D4AF37', fontSize: '0.86rem', fontFamily: 'monospace' }}>
-                                  {ctr.contractCode}
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                <strong style={{ color: isLight ? '#0F172A' : '#FFFFFF', fontSize: '0.86rem' }}>
+                                  {l.name}
                                 </strong>
-                                <span style={{ color: isLight ? '#0F172A' : '#FFFFFF', fontSize: '0.84rem', fontWeight: 600 }}>
-                                  {ctr.clientSnapshot?.name || ctr.contact?.name || 'Cliente'}
+                                <span style={{
+                                  fontSize: '0.66rem',
+                                  padding: '1px 6px',
+                                  borderRadius: '4px',
+                                  backgroundColor: 'rgba(16, 185, 129, 0.2)',
+                                  color: '#059669',
+                                  fontWeight: 700,
+                                  letterSpacing: '0.5px',
+                                }}>
+                                  CLIENTE
                                 </span>
+                                {l.code && (
+                                  <span style={{
+                                    fontSize: '0.66rem',
+                                    padding: '1px 5px',
+                                    borderRadius: '4px',
+                                    backgroundColor: 'rgba(212, 175, 55, 0.15)',
+                                    color: isLight ? '#B45309' : '#D4AF37',
+                                    fontWeight: 700,
+                                  }}>
+                                    {l.code}
+                                  </span>
+                                )}
                                 <span style={{
                                   fontSize: '0.68rem',
                                   padding: '1px 6px',
                                   borderRadius: '4px',
-                                  backgroundColor: ctr.approvalStatus === 'approved' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(245, 158, 11, 0.15)',
-                                  color: ctr.approvalStatus === 'approved' ? (isLight ? '#059669' : '#34D399') : (isLight ? '#D97706' : '#FBBF24'),
+                                  backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                                  color: isLight ? '#047857' : '#34D399',
                                   fontWeight: 600,
                                 }}>
-                                  {ctr.approvalStatus === 'approved' ? 'Aprovado' : 'Aguardando Aprovação'}
+                                  {getStageRealName(l)}
                                 </span>
+                                {Array.isArray(l.tags) && l.tags.map(tag => (
+                                  <span
+                                    key={tag}
+                                    style={{
+                                      fontSize: '0.64rem',
+                                      padding: '1px 5px',
+                                      borderRadius: '3px',
+                                      backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                                      color: '#34D399',
+                                      fontWeight: 600,
+                                    }}
+                                  >
+                                    #{tag}
+                                  </span>
+                                ))}
                               </div>
 
-                              <div style={{ fontSize: '0.74rem', color: isLight ? '#64748B' : '#94A3B8', marginTop: '3px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <span>{ctr.venueName}</span>
-                                {ctr.eventDate && <span>• Festa: {new Date(ctr.eventDate + 'T12:00:00').toLocaleDateString('pt-BR')}</span>}
-                                {(ctr.totalAmount || ctr.contractValue) ? <span>• R$ {(ctr.totalAmount || ctr.contractValue || 0).toLocaleString('pt-BR')}</span> : null}
+                              <div style={{ fontSize: '0.74rem', color: isLight ? '#64748B' : '#94A3B8', marginTop: '3px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                <span>Funil: {funnel?.name || 'Pós-Venda'}</span>
+                                {venue && <span>• {venue.name}</span>}
+                                {l.phone && <span>• {formatPhone(l.phone)}</span>}
+                                {l.partyDate && <span>• Festa: {new Date(l.partyDate + 'T12:00:00').toLocaleDateString('pt-BR')}</span>}
+                                {l.dealValue ? <span>• R$ {l.dealValue.toLocaleString('pt-BR')}</span> : null}
                               </div>
                             </div>
 
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
-                              {ctr.clientId && ctr.approvalStatus === 'approved' && (
-                                <button
-                                  type="button"
-                                  title="Abrir este contrato na esteira do funil de pós-venda"
-                                  onClick={e => {
-                                    e.stopPropagation();
-                                    const fid = (ctr.targetPosSaleFunnelIds || ctr.targetPostSaleFunnelIds || [])[0];
-                                    onNavigateTab('post-sale-crm', fid, { clientId: ctr.clientId });
-                                    handleClose();
-                                  }}
-                                  style={{
-                                    padding: '3px 8px', borderRadius: '5px', cursor: 'pointer',
-                                    border: '1px solid #D4AF37', background: 'transparent',
-                                    color: isLight ? '#B45309' : '#D4AF37', fontSize: '0.68rem', fontWeight: 700,
-                                  }}
-                                >
-                                  Ver na esteira
-                                </button>
-                              )}
-                              <ExternalLink size={14} color="#D4AF37" />
+                            <ExternalLink size={14} color={isLight ? '#64748B' : '#94A3B8'} style={{ flexShrink: 0 }} />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* 2B. SEÇÃO DE LEADS COMERCIAIS */}
+                {(activeCategory === 'all' || activeCategory === 'leads') && filteredCommercialLeads.length > 0 && (
+                  <div>
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      marginBottom: '10px',
+                      color: isLight ? '#2563EB' : '#3B82F6',
+                      fontSize: '0.78rem',
+                      fontWeight: 700,
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.5px',
+                    }}>
+                      <Briefcase size={14} />
+                      Leads Comerciais ({filteredCommercialLeads.length})
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '8px' }}>
+                      {filteredCommercialLeads.map(l => {
+                        const funnel = funnels.find(f => f.id === l.funnelId);
+                        const venue = venues.find(v => v.id === l.venueId);
+
+                        return (
+                          <div
+                            key={l.id}
+                            onClick={() => {
+                              onOpenLead(l.id, l.funnelId);
+                              handleClose();
+                            }}
+                            style={{
+                              padding: '12px 14px',
+                              borderRadius: '8px',
+                              backgroundColor: isLight ? '#F8FAFC' : '#162238',
+                              border: `1px solid ${isLight ? '#E2E8F0' : 'rgba(255, 255, 255, 0.08)'}`,
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              gap: '12px',
+                              transition: 'all 0.15s ease',
+                            }}
+                            onMouseEnter={e => {
+                              e.currentTarget.style.backgroundColor = isLight ? '#EDF2F7' : 'rgba(59, 130, 246, 0.12)';
+                              e.currentTarget.style.borderColor = '#3B82F6';
+                            }}
+                            onMouseLeave={e => {
+                              e.currentTarget.style.backgroundColor = isLight ? '#F8FAFC' : '#162238';
+                              e.currentTarget.style.borderColor = isLight ? '#E2E8F0' : 'rgba(255, 255, 255, 0.08)';
+                            }}
+                          >
+                            <div style={{ minWidth: 0 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                <strong style={{ color: isLight ? '#0F172A' : '#FFFFFF', fontSize: '0.86rem' }}>
+                                  {l.name}
+                                </strong>
+                                <span style={{
+                                  fontSize: '0.66rem',
+                                  padding: '1px 6px',
+                                  borderRadius: '4px',
+                                  backgroundColor: 'rgba(59, 130, 246, 0.2)',
+                                  color: '#2563EB',
+                                  fontWeight: 700,
+                                  letterSpacing: '0.5px',
+                                }}>
+                                  LEAD
+                                </span>
+                                {l.commercialCode && (
+                                  <span style={{
+                                    fontSize: '0.66rem',
+                                    padding: '1px 5px',
+                                    borderRadius: '4px',
+                                    backgroundColor: 'rgba(212, 175, 55, 0.15)',
+                                    color: isLight ? '#B45309' : '#D4AF37',
+                                    fontWeight: 700,
+                                  }}>
+                                    {l.commercialCode}
+                                  </span>
+                                )}
+                                <span style={{
+                                  fontSize: '0.68rem',
+                                  padding: '1px 6px',
+                                  borderRadius: '4px',
+                                  backgroundColor: 'rgba(59, 130, 246, 0.15)',
+                                  color: isLight ? '#1D4ED8' : '#60A5FA',
+                                  fontWeight: 600,
+                                }}>
+                                  {getStageRealName(l)}
+                                </span>
+                                {Array.isArray(l.tags) && l.tags.map(tag => (
+                                  <span
+                                    key={tag}
+                                    style={{
+                                      fontSize: '0.64rem',
+                                      padding: '1px 5px',
+                                      borderRadius: '3px',
+                                      backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                                      color: '#34D399',
+                                      fontWeight: 600,
+                                    }}
+                                  >
+                                    #{tag}
+                                  </span>
+                                ))}
+                              </div>
+
+                              <div style={{ fontSize: '0.74rem', color: isLight ? '#64748B' : '#94A3B8', marginTop: '3px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                <span>Funil: {funnel?.name || 'Comercial'}</span>
+                                {venue && <span>• {venue.name}</span>}
+                                {l.phone && <span>• {formatPhone(l.phone)}</span>}
+                                {l.dealValue ? <span>• R$ {l.dealValue.toLocaleString('pt-BR')}</span> : null}
+                              </div>
+                            </div>
+
+                            <ExternalLink size={14} color={isLight ? '#64748B' : '#94A3B8'} style={{ flexShrink: 0 }} />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* 3. SEÇÃO DE CONTRATOS */}
+                {(activeCategory === 'all' || activeCategory === 'contracts') && displayContracts.length > 0 && (
+                  <div>
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      marginBottom: '10px',
+                      color: '#D4AF37',
+                      fontSize: '0.78rem',
+                      fontWeight: 700,
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.5px',
+                    }}>
+                      <FileText size={14} />
+                      Contratos - documento ({displayContracts.length})
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '8px' }}>
+                      {displayContracts.map(ctr => (
+                        <div
+                          key={ctr.id}
+                          onClick={() => {
+                            // Contrato (documento): abre o drawer do contrato na tela de Contratos
+                            onNavigateTab('contracts', undefined, { contractId: ctr.id });
+                            handleClose();
+                          }}
+                          style={{
+                            padding: '12px 14px',
+                            borderRadius: '8px',
+                            backgroundColor: isLight ? '#F8FAFC' : '#162238',
+                            border: `1px solid ${isLight ? '#E2E8F0' : 'rgba(255, 255, 255, 0.08)'}`,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            gap: '12px',
+                            transition: 'all 0.15s ease',
+                          }}
+                          onMouseEnter={e => {
+                            e.currentTarget.style.backgroundColor = isLight ? '#EDF2F7' : 'rgba(212, 175, 55, 0.12)';
+                            e.currentTarget.style.borderColor = '#D4AF37';
+                          }}
+                          onMouseLeave={e => {
+                            e.currentTarget.style.backgroundColor = isLight ? '#F8FAFC' : '#162238';
+                            e.currentTarget.style.borderColor = isLight ? '#E2E8F0' : 'rgba(255, 255, 255, 0.08)';
+                          }}
+                        >
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <strong style={{ color: isLight ? '#B45309' : '#D4AF37', fontSize: '0.86rem', fontFamily: 'monospace' }}>
+                                {ctr.contractCode}
+                              </strong>
+                              <span style={{ color: isLight ? '#0F172A' : '#FFFFFF', fontSize: '0.84rem', fontWeight: 600 }}>
+                                {ctr.clientSnapshot?.name || ctr.contact?.name || 'Cliente'}
+                              </span>
+                              <span style={{
+                                fontSize: '0.68rem',
+                                padding: '1px 6px',
+                                borderRadius: '4px',
+                                backgroundColor: ctr.approvalStatus === 'approved' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(245, 158, 11, 0.15)',
+                                color: ctr.approvalStatus === 'approved' ? (isLight ? '#059669' : '#34D399') : (isLight ? '#D97706' : '#FBBF24'),
+                                fontWeight: 600,
+                              }}>
+                                {ctr.approvalStatus === 'approved' ? 'Aprovado' : 'Aguardando Aprovação'}
+                              </span>
+                            </div>
+
+                            <div style={{ fontSize: '0.74rem', color: isLight ? '#64748B' : '#94A3B8', marginTop: '3px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <span>{ctr.venueName}</span>
+                              {ctr.eventDate && <span>• Festa: {new Date(ctr.eventDate + 'T12:00:00').toLocaleDateString('pt-BR')}</span>}
+                              {(ctr.totalAmount || ctr.contractValue) ? <span>• R$ {(ctr.totalAmount || ctr.contractValue || 0).toLocaleString('pt-BR')}</span> : null}
                             </div>
                           </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
 
-                  {/* 4. ATENDIMENTO PÓS-VENDA (placements: funil, etapa e responsável) */}
-                  {(activeCategory === 'all' || activeCategory === 'contracts') && placementsResults.length > 0 && (
-                    <div>
-                      <div style={{
-                        display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px',
-                        color: '#06B6D4', fontSize: '0.78rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px',
-                      }}>
-                        <Briefcase size={14} />
-                        Atendimento pós-venda ({placementsResults.length})
-                      </div>
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '8px' }}>
-                        {placementsResults.map(p => {
-                          const ctr = contractsResults.find(c => c.id === p.contractId);
-                          const funnel = funnels.find(f => f.id === p.funnelId);
-                          const stageName = funnel?.stages?.find(s => s.id === p.stageId)?.name || p.stageId;
-                          const owner = collaborators?.find(c => c.id === p.assignedTo)?.name;
-                          return (
-                            <div
-                              key={p.id}
-                              onClick={() => {
-                                onNavigateTab('post-sale-crm', p.funnelId, { clientId: ctr?.clientId });
-                                handleClose();
-                              }}
-                              style={{
-                                padding: '12px 14px', borderRadius: '8px', cursor: 'pointer',
-                                backgroundColor: isLight ? '#F8FAFC' : '#162238',
-                                border: `1px solid ${isLight ? '#E2E8F0' : 'rgba(255, 255, 255, 0.08)'}`,
-                                display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px',
-                              }}
-                            >
-                              <div style={{ minWidth: 0 }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                  <strong style={{ color: isLight ? '#0F172A' : '#FFFFFF', fontSize: '0.84rem' }}>
-                                    {ctr?.clientSnapshot?.name || ctr?.contact?.name || 'Cliente'}
-                                  </strong>
-                                  {ctr?.contractCode && (
-                                    <span style={{ fontFamily: 'monospace', fontSize: '0.7rem', color: isLight ? '#B45309' : '#D4AF37' }}>{ctr.contractCode}</span>
-                                  )}
-                                </div>
-                                <div style={{ fontSize: '0.74rem', color: isLight ? '#64748B' : '#94A3B8', marginTop: '3px' }}>
-                                  {p.funnelName} • Etapa: {stageName}
-                                </div>
-                                <div style={{ fontSize: '0.72rem', marginTop: '2px', color: owner ? '#06B6D4' : '#F59E0B', fontWeight: 600 }}>
-                                  Responsável: {owner || 'Sem responsável'}
-                                </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                            {ctr.clientId && ctr.approvalStatus === 'approved' && (
+                              <button
+                                type="button"
+                                title="Abrir este contrato na esteira do funil de pós-venda"
+                                onClick={e => {
+                                  e.stopPropagation();
+                                  const fid = (ctr.targetPosSaleFunnelIds || ctr.targetPostSaleFunnelIds || [])[0];
+                                  onNavigateTab('post-sale-crm', fid, { clientId: ctr.clientId });
+                                  handleClose();
+                                }}
+                                style={{
+                                  padding: '3px 8px', borderRadius: '5px', cursor: 'pointer',
+                                  border: '1px solid #D4AF37', background: 'transparent',
+                                  color: isLight ? '#B45309' : '#D4AF37', fontSize: '0.68rem', fontWeight: 700,
+                                }}
+                              >
+                                Ver na esteira
+                              </button>
+                            )}
+                            <ExternalLink size={14} color="#D4AF37" />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* 4. ATENDIMENTO PÓS-VENDA (placements: funil, etapa e responsável) */}
+                {(activeCategory === 'all' || activeCategory === 'contracts') && placementsResults.length > 0 && (
+                  <div>
+                    <div style={{
+                      display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px',
+                      color: '#06B6D4', fontSize: '0.78rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px',
+                    }}>
+                      <Briefcase size={14} />
+                      Atendimento pós-venda ({placementsResults.length})
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '8px' }}>
+                      {placementsResults.map(p => {
+                        const ctr = contractsResults.find(c => c.id === p.contractId);
+                        const funnel = funnels.find(f => f.id === p.funnelId);
+                        const stageName = funnel?.stages?.find(s => s.id === p.stageId)?.name || p.stageId;
+                        const owner = collaborators?.find(c => c.id === p.assignedTo)?.name;
+                        return (
+                          <div
+                            key={p.id}
+                            onClick={() => {
+                              onNavigateTab('post-sale-crm', p.funnelId, { clientId: ctr?.clientId });
+                              handleClose();
+                            }}
+                            style={{
+                              padding: '12px 14px', borderRadius: '8px', cursor: 'pointer',
+                              backgroundColor: isLight ? '#F8FAFC' : '#162238',
+                              border: `1px solid ${isLight ? '#E2E8F0' : 'rgba(255, 255, 255, 0.08)'}`,
+                              display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px',
+                            }}
+                          >
+                            <div style={{ minWidth: 0 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <strong style={{ color: isLight ? '#0F172A' : '#FFFFFF', fontSize: '0.84rem' }}>
+                                  {ctr?.clientSnapshot?.name || ctr?.contact?.name || 'Cliente'}
+                                </strong>
+                                {ctr?.contractCode && (
+                                  <span style={{ fontFamily: 'monospace', fontSize: '0.7rem', color: isLight ? '#B45309' : '#D4AF37' }}>{ctr.contractCode}</span>
+                                )}
                               </div>
-                              <ChevronRight size={16} color="#06B6D4" style={{ flexShrink: 0 }} />
+                              <div style={{ fontSize: '0.74rem', color: isLight ? '#64748B' : '#94A3B8', marginTop: '3px' }}>
+                                {p.funnelName} • Etapa: {stageName}
+                              </div>
+                              <div style={{ fontSize: '0.72rem', marginTop: '2px', color: owner ? '#06B6D4' : '#F59E0B', fontWeight: 600 }}>
+                                Responsável: {owner || 'Sem responsável'}
+                              </div>
                             </div>
-                          );
-                        })}
-                      </div>
+                            <ChevronRight size={16} color="#06B6D4" style={{ flexShrink: 0 }} />
+                          </div>
+                        );
+                      })}
                     </div>
-                  )}
-                </>
-              )}
-            </div>
-
-            {/* Footer do Command Palette */}
-            <div style={{
-              padding: '8px 20px',
-              borderTop: `1px solid ${isLight ? '#E2E8F0' : 'rgba(255, 255, 255, 0.08)'}`,
-              backgroundColor: isLight ? '#F8FAFC' : '#0B111E',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              fontSize: '0.72rem',
-              color: isLight ? '#64748B' : '#94A3B8',
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                <span>Pressione <strong>Esc</strong> para fechar</span>
-                <span>Filtros instantâneos por <strong>Unidade</strong>, <strong>Colaborador</strong> e <strong>Etiqueta</strong></span>
-              </div>
-              <span style={{ color: '#14A9D7', fontWeight: 600 }}>F5 Command Palette</span>
-            </div>
+                  </div>
+                )}
+              </>
+            )}
           </div>
-        )}
-      </div>
+
+          {/* Footer do Command Palette */}
+          <div style={{
+            padding: '8px 20px',
+            borderTop: `1px solid ${isLight ? '#E2E8F0' : 'rgba(255, 255, 255, 0.08)'}`,
+            backgroundColor: isLight ? '#F8FAFC' : '#0B111E',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            fontSize: '0.72rem',
+            color: isLight ? '#64748B' : '#94A3B8',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+              <span>Pressione <strong>Esc</strong> para fechar</span>
+              <span>Filtros instantâneos por <strong>Unidade</strong>, <strong>Colaborador</strong> e <strong>Etiqueta</strong></span>
+            </div>
+            <span style={{ color: '#14A9D7', fontWeight: 600 }}>F5 Command Palette</span>
+          </div>
+        </div>
+      )}
+    </div>
   );
 };

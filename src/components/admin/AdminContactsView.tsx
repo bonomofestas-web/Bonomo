@@ -495,12 +495,12 @@ export const AdminContactsView: React.FC<AdminContactsViewProps> = ({
   // Numero do dependente nao pode repetir o do titular nem o de outro dependente do mesmo contato
   const dependentPhoneConflict = selectedContact
     ? findPhoneConflict(dependentForm.phone, [
-        { label: `${selectedContact.name || 'Titular'} (titular)`, phone: selectedContact.primaryPhone },
-        ...(contactAssets.dependents || []).map(d => ({
-          label: `${(d as any).dependentContact?.name || 'Dependente'} (${d.kinship || 'dependente'})`,
-          phone: (d as any).dependentContact?.primaryPhone,
-        })),
-      ])
+      { label: `${selectedContact.name || 'Titular'} (titular)`, phone: selectedContact.primaryPhone },
+      ...(contactAssets.dependents || []).map(d => ({
+        label: `${(d as any).dependentContact?.name || 'Dependente'} (${d.kinship || 'dependente'})`,
+        phone: (d as any).dependentContact?.primaryPhone,
+      })),
+    ])
     : undefined;
 
   // Adicionar dependente ao grupo familiar
@@ -1305,151 +1305,22 @@ export const AdminContactsView: React.FC<AdminContactsViewProps> = ({
                 />
               ) : (<>
 
-              {/* Grid: Dados Cadastrais & Grupo Familiar */}
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))',
-                gap: '18px',
-              }}>
-                {/* 1. Informações Cadastrais Completas */}
+                {/* Grid: Dados Cadastrais & Grupo Familiar */}
                 <div style={{
-                  backgroundColor: isLight ? '#FFFFFF' : '#111C2E',
-                  border: `1px solid ${isLight ? '#E2E8F0' : 'rgba(255, 255, 255, 0.08)'}`,
-                  borderRadius: '8px',
-                  padding: '20px',
-                  boxShadow: isLight ? '0 1px 3px rgba(0,0,0,0.03)' : 'none',
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))',
+                  gap: '18px',
                 }}>
-                  <h3 style={{
-                    margin: '0 0 16px 0',
-                    fontSize: '0.92rem',
-                    fontWeight: 700,
-                    color: isLight ? '#0F172A' : '#FFFFFF',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                  }}>
-                    <User size={16} color={isLight ? '#2563EB' : '#3B82F6'} />
-                    Dados Cadastrais & Pessoais
-                  </h3>
-
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', fontSize: '0.82rem' }}>
-                    <div>
-                      <span style={{ color: isLight ? '#64748B' : '#94A3B8', display: 'block', marginBottom: '2px', fontSize: '0.72rem' }}>
-                        Telefone Principal
-                      </span>
-                      <strong style={{ color: isLight ? '#0F172A' : '#FFFFFF' }}>
-                        {formatPhone(selectedContact.primaryPhone) || selectedContact.primaryPhone}
-                      </strong>
-                    </div>
-
-                    <div>
-                      <span style={{ color: isLight ? '#64748B' : '#94A3B8', display: 'block', marginBottom: '2px', fontSize: '0.72rem' }}>
-                        WhatsApp / Secundário
-                      </span>
-                      <strong style={{ color: isLight ? '#0F172A' : '#FFFFFF' }}>
-                        {formatPhone(selectedContact.whatsappPhone || selectedContact.secondaryPhone || '') || 'Mesmo do principal'}
-                      </strong>
-                    </div>
-
-                    <div>
-                      <span style={{ color: isLight ? '#64748B' : '#94A3B8', display: 'block', marginBottom: '2px', fontSize: '0.72rem' }}>
-                        E-mail
-                      </span>
-                      <strong style={{ color: isLight ? '#0F172A' : '#FFFFFF' }}>
-                        {selectedContact.email || 'Não informado'}
-                      </strong>
-                    </div>
-
-                    <div>
-                      <span style={{ color: isLight ? '#64748B' : '#94A3B8', display: 'block', marginBottom: '2px', fontSize: '0.72rem' }}>
-                        CPF
-                      </span>
-                      <strong style={{ color: isLight ? '#0F172A' : '#FFFFFF' }}>
-                        {selectedContact.cpf || 'Não informado'}
-                      </strong>
-                    </div>
-
-                    <div>
-                      <span style={{ color: isLight ? '#64748B' : '#94A3B8', display: 'block', marginBottom: '2px', fontSize: '0.72rem' }}>
-                        RG
-                      </span>
-                      <strong style={{ color: isLight ? '#0F172A' : '#FFFFFF' }}>
-                        {selectedContact.rg || 'Não informado'}
-                      </strong>
-                    </div>
-
-                    <div>
-                      <span style={{ color: isLight ? '#64748B' : '#94A3B8', display: 'block', marginBottom: '2px', fontSize: '0.72rem' }}>
-                        Profissão / Ocupação
-                      </span>
-                      <strong style={{ color: isLight ? '#0F172A' : '#FFFFFF' }}>
-                        {selectedContact.profession || 'Não informado'}
-                      </strong>
-                    </div>
-
-                    <div>
-                      <span style={{ color: isLight ? '#64748B' : '#94A3B8', display: 'block', marginBottom: '2px', fontSize: '0.72rem' }}>
-                        Data de Nascimento
-                      </span>
-                      <strong style={{ color: isLight ? '#0F172A' : '#FFFFFF' }}>
-                        {selectedContact.birthDate ? (
-                          `${new Date(selectedContact.birthDate + 'T12:00:00').toLocaleDateString('pt-BR')} ${calculateAge(selectedContact.birthDate) ? `(${calculateAge(selectedContact.birthDate)})` : ''}`
-                        ) : 'Não informado'}
-                      </strong>
-                    </div>
-
-                    <div>
-                      <span style={{ color: isLight ? '#64748B' : '#94A3B8', display: 'block', marginBottom: '2px', fontSize: '0.72rem' }}>
-                        CEP
-                      </span>
-                      <strong style={{ color: isLight ? '#0F172A' : '#FFFFFF' }}>
-                        {selectedContact.postalCode || 'Não informado'}
-                      </strong>
-                    </div>
-
-                    <div style={{ gridColumn: 'span 2' }}>
-                      <span style={{ color: isLight ? '#64748B' : '#94A3B8', display: 'block', marginBottom: '2px', fontSize: '0.72rem' }}>
-                        Endereço Completo
-                      </span>
-                      <strong style={{ color: isLight ? '#0F172A' : '#FFFFFF', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        <MapPin size={13} color={isLight ? '#2563EB' : '#60A5FA'} style={{ flexShrink: 0 }} />
-                        {selectedContact.street ? (
-                          `${selectedContact.street}, ${selectedContact.streetNumber || selectedContact.number || 'S/N'}${selectedContact.complement ? ` - ${selectedContact.complement}` : ''} • ${selectedContact.neighborhood || ''} • ${selectedContact.city || ''}/${selectedContact.state || ''}`
-                        ) : 'Endereço não cadastrado'}
-                      </strong>
-                    </div>
-
-                    {selectedContact.notes && (
-                      <div style={{ gridColumn: 'span 2' }}>
-                        <span style={{ color: isLight ? '#64748B' : '#94A3B8', display: 'block', marginBottom: '2px', fontSize: '0.72rem' }}>
-                          Observações
-                        </span>
-                        <p style={{ margin: 0, color: isLight ? '#334155' : '#E2E8F0', whiteSpace: 'pre-wrap', fontSize: '0.80rem' }}>
-                          {selectedContact.notes}
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* 2. Grupo Familiar & Dependentes */}
-                <div style={{
-                  backgroundColor: isLight ? '#FFFFFF' : '#111C2E',
-                  border: `1px solid ${isLight ? '#E2E8F0' : 'rgba(255, 255, 255, 0.08)'}`,
-                  borderRadius: '8px',
-                  padding: '20px',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  boxShadow: isLight ? '0 1px 3px rgba(0,0,0,0.03)' : 'none',
-                }}>
+                  {/* 1. Informações Cadastrais Completas */}
                   <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    marginBottom: '16px',
+                    backgroundColor: isLight ? '#FFFFFF' : '#111C2E',
+                    border: `1px solid ${isLight ? '#E2E8F0' : 'rgba(255, 255, 255, 0.08)'}`,
+                    borderRadius: '8px',
+                    padding: '20px',
+                    boxShadow: isLight ? '0 1px 3px rgba(0,0,0,0.03)' : 'none',
                   }}>
                     <h3 style={{
-                      margin: 0,
+                      margin: '0 0 16px 0',
                       fontSize: '0.92rem',
                       fontWeight: 700,
                       color: isLight ? '#0F172A' : '#FFFFFF',
@@ -1457,770 +1328,899 @@ export const AdminContactsView: React.FC<AdminContactsViewProps> = ({
                       alignItems: 'center',
                       gap: '8px',
                     }}>
-                      <Users size={16} color="#10B981" />
-                      Grupo Familiar & Dependentes
+                      <User size={16} color={isLight ? '#2563EB' : '#3B82F6'} />
+                      Dados Cadastrais & Pessoais
                     </h3>
-                    <button
-                      onClick={() => setIsAddDependentModalOpen(true)}
-                      style={{
-                        padding: '4px 10px',
-                        backgroundColor: isLight ? '#ECFDF5' : 'rgba(16, 185, 129, 0.15)',
-                        color: isLight ? '#059669' : '#34D399',
-                        border: `1px solid ${isLight ? '#A7F3D0' : 'rgba(16, 185, 129, 0.35)'}`,
-                        borderRadius: '6px',
-                        fontSize: '0.74rem',
-                        fontWeight: 600,
-                        cursor: 'pointer',
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', fontSize: '0.82rem' }}>
+                      <div>
+                        <span style={{ color: isLight ? '#64748B' : '#94A3B8', display: 'block', marginBottom: '2px', fontSize: '0.72rem' }}>
+                          Telefone Principal
+                        </span>
+                        <strong style={{ color: isLight ? '#0F172A' : '#FFFFFF' }}>
+                          {formatPhone(selectedContact.primaryPhone) || selectedContact.primaryPhone}
+                        </strong>
+                      </div>
+
+                      <div>
+                        <span style={{ color: isLight ? '#64748B' : '#94A3B8', display: 'block', marginBottom: '2px', fontSize: '0.72rem' }}>
+                          WhatsApp / Secundário
+                        </span>
+                        <strong style={{ color: isLight ? '#0F172A' : '#FFFFFF' }}>
+                          {formatPhone(selectedContact.whatsappPhone || selectedContact.secondaryPhone || '') || 'Mesmo do principal'}
+                        </strong>
+                      </div>
+
+                      <div>
+                        <span style={{ color: isLight ? '#64748B' : '#94A3B8', display: 'block', marginBottom: '2px', fontSize: '0.72rem' }}>
+                          E-mail
+                        </span>
+                        <strong style={{ color: isLight ? '#0F172A' : '#FFFFFF' }}>
+                          {selectedContact.email || 'Não informado'}
+                        </strong>
+                      </div>
+
+                      <div>
+                        <span style={{ color: isLight ? '#64748B' : '#94A3B8', display: 'block', marginBottom: '2px', fontSize: '0.72rem' }}>
+                          CPF
+                        </span>
+                        <strong style={{ color: isLight ? '#0F172A' : '#FFFFFF' }}>
+                          {selectedContact.cpf || 'Não informado'}
+                        </strong>
+                      </div>
+
+                      <div>
+                        <span style={{ color: isLight ? '#64748B' : '#94A3B8', display: 'block', marginBottom: '2px', fontSize: '0.72rem' }}>
+                          RG
+                        </span>
+                        <strong style={{ color: isLight ? '#0F172A' : '#FFFFFF' }}>
+                          {selectedContact.rg || 'Não informado'}
+                        </strong>
+                      </div>
+
+                      <div>
+                        <span style={{ color: isLight ? '#64748B' : '#94A3B8', display: 'block', marginBottom: '2px', fontSize: '0.72rem' }}>
+                          Profissão / Ocupação
+                        </span>
+                        <strong style={{ color: isLight ? '#0F172A' : '#FFFFFF' }}>
+                          {selectedContact.profession || 'Não informado'}
+                        </strong>
+                      </div>
+
+                      <div>
+                        <span style={{ color: isLight ? '#64748B' : '#94A3B8', display: 'block', marginBottom: '2px', fontSize: '0.72rem' }}>
+                          Data de Nascimento
+                        </span>
+                        <strong style={{ color: isLight ? '#0F172A' : '#FFFFFF' }}>
+                          {selectedContact.birthDate ? (
+                            `${new Date(selectedContact.birthDate + 'T12:00:00').toLocaleDateString('pt-BR')} ${calculateAge(selectedContact.birthDate) ? `(${calculateAge(selectedContact.birthDate)})` : ''}`
+                          ) : 'Não informado'}
+                        </strong>
+                      </div>
+
+                      <div>
+                        <span style={{ color: isLight ? '#64748B' : '#94A3B8', display: 'block', marginBottom: '2px', fontSize: '0.72rem' }}>
+                          CEP
+                        </span>
+                        <strong style={{ color: isLight ? '#0F172A' : '#FFFFFF' }}>
+                          {selectedContact.postalCode || 'Não informado'}
+                        </strong>
+                      </div>
+
+                      <div style={{ gridColumn: 'span 2' }}>
+                        <span style={{ color: isLight ? '#64748B' : '#94A3B8', display: 'block', marginBottom: '2px', fontSize: '0.72rem' }}>
+                          Endereço Completo
+                        </span>
+                        <strong style={{ color: isLight ? '#0F172A' : '#FFFFFF', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <MapPin size={13} color={isLight ? '#2563EB' : '#60A5FA'} style={{ flexShrink: 0 }} />
+                          {selectedContact.street ? (
+                            `${selectedContact.street}, ${selectedContact.streetNumber || selectedContact.number || 'S/N'}${selectedContact.complement ? ` - ${selectedContact.complement}` : ''} • ${selectedContact.neighborhood || ''} • ${selectedContact.city || ''}/${selectedContact.state || ''}`
+                          ) : 'Endereço não cadastrado'}
+                        </strong>
+                      </div>
+
+                      {selectedContact.notes && (
+                        <div style={{ gridColumn: 'span 2' }}>
+                          <span style={{ color: isLight ? '#64748B' : '#94A3B8', display: 'block', marginBottom: '2px', fontSize: '0.72rem' }}>
+                            Observações
+                          </span>
+                          <p style={{ margin: 0, color: isLight ? '#334155' : '#E2E8F0', whiteSpace: 'pre-wrap', fontSize: '0.80rem' }}>
+                            {selectedContact.notes}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* 2. Grupo Familiar & Dependentes */}
+                  <div style={{
+                    backgroundColor: isLight ? '#FFFFFF' : '#111C2E',
+                    border: `1px solid ${isLight ? '#E2E8F0' : 'rgba(255, 255, 255, 0.08)'}`,
+                    borderRadius: '8px',
+                    padding: '20px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    boxShadow: isLight ? '0 1px 3px rgba(0,0,0,0.03)' : 'none',
+                  }}>
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      marginBottom: '16px',
+                    }}>
+                      <h3 style={{
+                        margin: 0,
+                        fontSize: '0.92rem',
+                        fontWeight: 700,
+                        color: isLight ? '#0F172A' : '#FFFFFF',
                         display: 'flex',
                         alignItems: 'center',
-                        gap: '4px',
-                      }}
-                    >
-                      <Plus size={13} />
-                      Adicionar Familiar
-                    </button>
-                  </div>
-
-                  <div style={{ flex: 1, overflowY: 'auto' }}>
-                    {contactAssets.dependents.length === 0 ? (
-                      <div style={{
-                        padding: '26px 16px',
-                        textAlign: 'center',
-                        color: isLight ? '#64748B' : '#94A3B8',
-                        backgroundColor: isLight ? '#F8FAFC' : 'rgba(255, 255, 255, 0.02)',
-                        borderRadius: '6px',
-                        border: `1px dashed ${isLight ? '#CBD5E1' : 'rgba(255, 255, 255, 0.08)'}`,
+                        gap: '8px',
                       }}>
-                        <Users size={24} style={{ margin: '0 auto 6px auto', opacity: 0.3 }} />
-                        <p style={{ margin: 0, fontWeight: 600, fontSize: '0.82rem', color: isLight ? '#0F172A' : '#FFFFFF' }}>
-                          Nenhum familiar cadastrado
-                        </p>
-                        <p style={{ margin: '4px 0 0 0', fontSize: '0.74rem' }}>
-                          Cadastre aniversariantes, noivos ou debutantes para acompanhar aniversários e agendas.
-                        </p>
-                      </div>
-                    ) : (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                        {contactAssets.dependents.map(dep => {
-                          const depName = cleanDisplayName(dep.name || dep.dependentContact?.name || 'Dependente');
-                          const depRel = dep.relationship || dep.kinship || dep.dependentContact?.relationshipRole || 'Dependente';
-                          const depBirth = dep.birthDate || dep.dependentContact?.birthDate;
+                        <Users size={16} color="#10B981" />
+                        Grupo Familiar & Dependentes
+                      </h3>
+                      <button
+                        onClick={() => setIsAddDependentModalOpen(true)}
+                        style={{
+                          padding: '4px 10px',
+                          backgroundColor: isLight ? '#ECFDF5' : 'rgba(16, 185, 129, 0.15)',
+                          color: isLight ? '#059669' : '#34D399',
+                          border: `1px solid ${isLight ? '#A7F3D0' : 'rgba(16, 185, 129, 0.35)'}`,
+                          borderRadius: '6px',
+                          fontSize: '0.74rem',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                        }}
+                      >
+                        <Plus size={13} />
+                        Adicionar Familiar
+                      </button>
+                    </div>
 
-                          return (
-                            <div
-                              key={dep.id}
-                              style={{
-                                padding: '10px 14px',
-                                borderRadius: '6px',
-                                backgroundColor: isLight ? '#F8FAFC' : 'rgba(255, 255, 255, 0.03)',
-                                border: `1px solid ${isLight ? '#E2E8F0' : 'rgba(255, 255, 255, 0.06)'}`,
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'space-between',
-                              }}
-                            >
-                              <div>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                  <strong style={{ fontSize: '0.84rem', color: isLight ? '#0F172A' : '#FFFFFF' }}>
-                                    {depName}
-                                  </strong>
-                                  <span style={{
-                                    fontSize: '0.68rem',
-                                    padding: '1px 6px',
-                                    borderRadius: '4px',
-                                    backgroundColor: isLight ? '#ECFDF5' : 'rgba(16, 185, 129, 0.15)',
-                                    color: isLight ? '#059669' : '#34D399',
-                                    fontWeight: 600,
-                                  }}>
-                                    {depRel}
-                                  </span>
+                    <div style={{ flex: 1, overflowY: 'auto' }}>
+                      {contactAssets.dependents.length === 0 ? (
+                        <div style={{
+                          padding: '26px 16px',
+                          textAlign: 'center',
+                          color: isLight ? '#64748B' : '#94A3B8',
+                          backgroundColor: isLight ? '#F8FAFC' : 'rgba(255, 255, 255, 0.02)',
+                          borderRadius: '6px',
+                          border: `1px dashed ${isLight ? '#CBD5E1' : 'rgba(255, 255, 255, 0.08)'}`,
+                        }}>
+                          <Users size={24} style={{ margin: '0 auto 6px auto', opacity: 0.3 }} />
+                          <p style={{ margin: 0, fontWeight: 600, fontSize: '0.82rem', color: isLight ? '#0F172A' : '#FFFFFF' }}>
+                            Nenhum familiar cadastrado
+                          </p>
+                          <p style={{ margin: '4px 0 0 0', fontSize: '0.74rem' }}>
+                            Cadastre aniversariantes, noivos ou debutantes para acompanhar aniversários e agendas.
+                          </p>
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          {contactAssets.dependents.map(dep => {
+                            const depName = cleanDisplayName(dep.name || dep.dependentContact?.name || 'Dependente');
+                            const depRel = dep.relationship || dep.kinship || dep.dependentContact?.relationshipRole || 'Dependente';
+                            const depBirth = dep.birthDate || dep.dependentContact?.birthDate;
+
+                            return (
+                              <div
+                                key={dep.id}
+                                style={{
+                                  padding: '10px 14px',
+                                  borderRadius: '6px',
+                                  backgroundColor: isLight ? '#F8FAFC' : 'rgba(255, 255, 255, 0.03)',
+                                  border: `1px solid ${isLight ? '#E2E8F0' : 'rgba(255, 255, 255, 0.06)'}`,
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'space-between',
+                                }}
+                              >
+                                <div>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <strong style={{ fontSize: '0.84rem', color: isLight ? '#0F172A' : '#FFFFFF' }}>
+                                      {depName}
+                                    </strong>
+                                    <span style={{
+                                      fontSize: '0.68rem',
+                                      padding: '1px 6px',
+                                      borderRadius: '4px',
+                                      backgroundColor: isLight ? '#ECFDF5' : 'rgba(16, 185, 129, 0.15)',
+                                      color: isLight ? '#059669' : '#34D399',
+                                      fontWeight: 600,
+                                    }}>
+                                      {depRel}
+                                    </span>
+                                  </div>
+                                  {depBirth && (
+                                    <span style={{ fontSize: '0.74rem', color: isLight ? '#64748B' : '#94A3B8', marginTop: '2px', display: 'block' }}>
+                                      Nascimento: {new Date(depBirth + 'T12:00:00').toLocaleDateString('pt-BR')} {calculateAge(depBirth) ? `• ${calculateAge(depBirth)}` : ''}
+                                    </span>
+                                  )}
                                 </div>
-                                {depBirth && (
-                                  <span style={{ fontSize: '0.74rem', color: isLight ? '#64748B' : '#94A3B8', marginTop: '2px', display: 'block' }}>
-                                    Nascimento: {new Date(depBirth + 'T12:00:00').toLocaleDateString('pt-BR')} {calculateAge(depBirth) ? `• ${calculateAge(depBirth)}` : ''}
-                                  </span>
-                                )}
                               </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              {/* SESSÃO 1: CLIENTES/LEADS OU GESTÃO DE PARCEIRO/COLABORADOR */}
-              {(selectedContact.isSupplier || selectedContact.isCollaborator) ? (
+                {/* SESSÃO 1: CLIENTES/LEADS OU GESTÃO DE PARCEIRO/COLABORADOR */}
+                {(selectedContact.isSupplier || selectedContact.isCollaborator) ? (
+                  <div style={{
+                    backgroundColor: isLight ? '#FFFFFF' : '#111C2E',
+                    border: `1px solid ${isLight ? '#E2E8F0' : 'rgba(255, 255, 255, 0.08)'}`,
+                    borderRadius: '8px',
+                    padding: '20px',
+                    boxShadow: isLight ? '0 1px 3px rgba(0,0,0,0.03)' : 'none',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '16px',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
+                      <div>
+                        <h3 style={{ margin: 0, fontSize: '0.94rem', fontWeight: 700, color: isLight ? '#0F172A' : '#FFFFFF', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <Briefcase size={16} color={selectedContact.isSupplier ? '#D97706' : '#7C3AED'} />
+                          {selectedContact.isSupplier && selectedContact.isCollaborator
+                            ? 'Gestão de Fornecedor & Colaborador'
+                            : selectedContact.isSupplier
+                              ? 'Gestão de Fornecedor & Orçamentos'
+                              : 'Gestão de Colaborador & Contratos'}
+                        </h3>
+                        <p style={{ margin: '4px 0 0', fontSize: '0.74rem', color: isLight ? '#64748B' : '#94A3B8' }}>
+                          Contatos extras não mantêm leads ou clientes ativos em funis comerciais/pós-venda. Gerencie vínculo, tipo de serviço, contratos e orçamentos abaixo.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setDetailTab('fornecedor')}
+                        style={{
+                          padding: '8px 14px',
+                          borderRadius: '8px',
+                          border: 'none',
+                          background: '#2563EB',
+                          color: '#FFFFFF',
+                          fontSize: '0.78rem',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Gerenciar Contratos & Orçamentos
+                      </button>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '12px' }}>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: isLight ? '#64748B' : '#94A3B8', marginBottom: '4px' }}>
+                          Tipo de Serviço / Segmento
+                        </label>
+                        <div style={{ display: 'flex', gap: '6px' }}>
+                          <input
+                            type="text"
+                            className="adm-input"
+                            value={collabServiceType || selectedContact.supplierProfile?.serviceType || selectedContact.supplierProfile?.segment || ''}
+                            onChange={(e) => setCollabServiceType(e.target.value)}
+                            placeholder="Ex: Fotografia, Buffet, Garçom, Decoração..."
+                            style={{ flex: 1, height: '34px', fontSize: '0.78rem' }}
+                          />
+                          <button
+                            type="button"
+                            disabled={savingCollabLink}
+                            onClick={async () => {
+                              const nextService = (collabServiceType || selectedContact.supplierProfile?.serviceType || selectedContact.supplierProfile?.segment || '').trim();
+                              setSavingCollabLink(true);
+                              const nextProfile = { ...(selectedContact.supplierProfile || {}), serviceType: nextService, segment: nextService || selectedContact.supplierProfile?.segment };
+                              const ok = await contactService.setSupplier(selectedContact.id, scopedMasterId, Boolean(selectedContact.isSupplier), nextProfile);
+                              setSavingCollabLink(false);
+                              if (ok) {
+                                applyContactUpdate({ ...selectedContact, supplierProfile: nextProfile });
+                                toast.success('Tipo de serviço salvo.');
+                              } else {
+                                toast.error('Erro ao salvar tipo de serviço.');
+                              }
+                            }}
+                            style={{
+                              padding: '0 12px',
+                              borderRadius: '7px',
+                              border: 'none',
+                              background: '#059669',
+                              color: '#FFFFFF',
+                              fontSize: '0.74rem',
+                              fontWeight: 700,
+                              cursor: 'pointer',
+                            }}
+                          >
+                            Salvar
+                          </button>
+                        </div>
+                      </div>
+
+                      {selectedContact.isCollaborator && (
+                        <div>
+                          <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: isLight ? '#64748B' : '#94A3B8', marginBottom: '4px' }}>
+                            Vínculo com Base de Funcionários
+                          </label>
+                          <Select
+                            className="adm-input"
+                            value={selectedContact.collaboratorId || ''}
+                            onChange={async (e) => {
+                              const cId = e.target.value || null;
+                              const ok = await contactService.setCollaborator(selectedContact.id, scopedMasterId, true, cId);
+                              if (ok) {
+                                applyContactUpdate({ ...selectedContact, isCollaborator: true, collaboratorId: cId });
+                                toast.success(cId ? 'Vínculo com colaborador atualizado.' : 'Vínculo removido.');
+                              } else {
+                                toast.error('Não foi possível vincular colaborador.');
+                              }
+                            }}
+                            style={{ width: '100%', height: '34px', fontSize: '0.78rem' }}
+                          >
+                            <option value="">Selecionar colaborador da equipe...</option>
+                            {collaborators.map(col => (
+                              <option key={col.id} value={col.id}>
+                                {col.name} {col.role ? `(${col.role})` : ''}
+                              </option>
+                            ))}
+                          </Select>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    {/* SESSÃO 1A: CLIENTES NO PÓS-VENDA */}
+                    <div style={{
+                      backgroundColor: isLight ? '#FFFFFF' : '#111C2E',
+                      border: `1px solid ${isLight ? '#E2E8F0' : 'rgba(255, 255, 255, 0.08)'}`,
+                      borderRadius: '8px',
+                      padding: '20px',
+                      boxShadow: isLight ? '0 1px 3px rgba(0,0,0,0.03)' : 'none',
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
+                        <h3 style={{
+                          margin: 0,
+                          fontSize: '0.94rem',
+                          fontWeight: 700,
+                          color: isLight ? '#0F172A' : '#FFFFFF',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                        }}>
+                          <ShieldCheck size={16} color={isLight ? '#059669' : '#10B981'} />
+                          Clientes no Pós-Venda ({postSaleClients.length})
+                        </h3>
+                        <span style={{ fontSize: '0.74rem', color: isLight ? '#64748B' : '#94A3B8' }}>
+                          Clientes em esteira e atendimento de pós-venda
+                        </span>
+                      </div>
+
+                      {postSaleClients.length === 0 ? (
+                        <div style={{
+                          padding: '24px 16px',
+                          textAlign: 'center',
+                          color: isLight ? '#64748B' : '#94A3B8',
+                          backgroundColor: isLight ? '#F8FAFC' : 'rgba(255, 255, 255, 0.02)',
+                          borderRadius: '6px',
+                        }}>
+                          <ShieldCheck size={24} style={{ margin: '0 auto 6px auto', opacity: 0.3 }} />
+                          <p style={{ margin: 0, fontWeight: 600, fontSize: '0.82rem', color: isLight ? '#0F172A' : '#FFFFFF' }}>
+                            Nenhum cliente ativo no pós-venda
+                          </p>
+                          <p style={{ margin: '3px 0 0 0', fontSize: '0.74rem' }}>
+                            Quando este contato contrata uma festa ou é vinculado a um contrato, ele é acompanhado no pós-venda.
+                          </p>
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                          {postSaleClients.map(lead => {
+                            const funnel = funnels.find(f => f.id === lead.funnelId);
+                            const venue = venues.find(v => v.id === lead.venueId);
+
+                            return (
+                              <div
+                                key={lead.id}
+                                style={{
+                                  padding: '14px 16px',
+                                  borderRadius: '8px',
+                                  backgroundColor: isLight ? '#F8FAFC' : 'rgba(255, 255, 255, 0.03)',
+                                  border: `1px solid ${isLight ? '#E2E8F0' : 'rgba(255, 255, 255, 0.08)'}`,
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'space-between',
+                                  flexWrap: 'wrap',
+                                  gap: '12px',
+                                }}
+                              >
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                                  <div style={{
+                                    width: '38px',
+                                    height: '38px',
+                                    borderRadius: '8px',
+                                    backgroundColor: isLight ? '#ECFDF5' : 'rgba(16, 185, 129, 0.15)',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    color: isLight ? '#059669' : '#10B981',
+                                  }}>
+                                    <ShieldCheck size={18} />
+                                  </div>
+
+                                  <div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                      <strong style={{ color: isLight ? '#0F172A' : '#FFFFFF', fontSize: '0.88rem' }}>
+                                        {funnel?.name || 'Pós-Venda'}
+                                      </strong>
+                                      <span style={{
+                                        fontSize: '0.68rem',
+                                        fontWeight: 700,
+                                        padding: '1px 6px',
+                                        borderRadius: '4px',
+                                        backgroundColor: isLight ? '#ECFDF5' : 'rgba(16, 185, 129, 0.2)',
+                                        color: isLight ? '#047857' : '#34D399',
+                                        letterSpacing: '0.5px',
+                                      }}>
+                                        CLIENTE
+                                      </span>
+                                      {lead.code && (
+                                        <span style={{
+                                          fontSize: '0.68rem',
+                                          fontWeight: 700,
+                                          padding: '1px 6px',
+                                          borderRadius: '4px',
+                                          backgroundColor: isLight ? '#FEF3C7' : 'rgba(212, 175, 55, 0.2)',
+                                          color: isLight ? '#B45309' : '#D4AF37',
+                                          letterSpacing: '0.5px',
+                                        }}>
+                                          {lead.code}
+                                        </span>
+                                      )}
+                                      <span style={{
+                                        fontSize: '0.70rem',
+                                        padding: '2px 8px',
+                                        borderRadius: '6px',
+                                        backgroundColor: isLight ? '#ECFDF5' : 'rgba(16, 185, 129, 0.2)',
+                                        color: isLight ? '#047857' : '#34D399',
+                                        fontWeight: 600,
+                                      }}>
+                                        Etapa: {getStageRealName(lead)}
+                                      </span>
+                                    </div>
+
+                                    <div style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '12px',
+                                      marginTop: '4px',
+                                      fontSize: '0.76rem',
+                                      color: isLight ? '#64748B' : '#94A3B8',
+                                      flexWrap: 'wrap',
+                                    }}>
+                                      <VenueChip venueId={lead.venueId} fallbackName={venue?.name} />
+                                      {lead.dealValue ? <span>Valor: <strong style={{ color: '#10B981' }}>R$ {lead.dealValue.toLocaleString('pt-BR')}</strong></span> : null}
+                                      {lead.partyDate && <span>Festa: <strong>{new Date(lead.partyDate + 'T12:00:00').toLocaleDateString('pt-BR')}</strong></span>}
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* Acesso ao Pós-Venda */}
+                                {onOpenLead && (
+                                  <button
+                                    onClick={() => onOpenLead(lead.id, lead.funnelId)}
+                                    style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '5px',
+                                      padding: '7px 12px',
+                                      backgroundColor: isLight ? '#ECFDF5' : 'rgba(16, 185, 129, 0.2)',
+                                      color: isLight ? '#047857' : '#34D399',
+                                      border: `1px solid ${isLight ? '#A7F3D0' : 'rgba(16, 185, 129, 0.35)'}`,
+                                      borderRadius: '6px',
+                                      fontSize: '0.78rem',
+                                      fontWeight: 600,
+                                      cursor: 'pointer',
+                                    }}
+                                  >
+                                    <ExternalLink size={13} />
+                                    Abrir no Pós-Venda
+                                  </button>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* SESSÃO 1B: LEADS COMERCIAIS ATIVOS */}
+                    <div style={{
+                      backgroundColor: isLight ? '#FFFFFF' : '#111C2E',
+                      border: `1px solid ${isLight ? '#E2E8F0' : 'rgba(255, 255, 255, 0.08)'}`,
+                      borderRadius: '8px',
+                      padding: '20px',
+                      boxShadow: isLight ? '0 1px 3px rgba(0,0,0,0.03)' : 'none',
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
+                        <h3 style={{
+                          margin: 0,
+                          fontSize: '0.94rem',
+                          fontWeight: 700,
+                          color: isLight ? '#0F172A' : '#FFFFFF',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                        }}>
+                          <Briefcase size={16} color={isLight ? '#2563EB' : '#3B82F6'} />
+                          Leads Comerciais ({commercialLeads.length})
+                        </h3>
+                        <span style={{ fontSize: '0.74rem', color: isLight ? '#64748B' : '#94A3B8' }}>
+                          Oportunidades em funis comerciais de venda
+                        </span>
+                      </div>
+
+                      {commercialLeads.length === 0 ? (
+                        <div style={{
+                          padding: '24px 16px',
+                          textAlign: 'center',
+                          color: isLight ? '#64748B' : '#94A3B8',
+                          backgroundColor: isLight ? '#F8FAFC' : 'rgba(255, 255, 255, 0.02)',
+                          borderRadius: '6px',
+                        }}>
+                          <Briefcase size={24} style={{ margin: '0 auto 6px auto', opacity: 0.3 }} />
+                          <p style={{ margin: 0, fontWeight: 600, fontSize: '0.82rem', color: isLight ? '#0F172A' : '#FFFFFF' }}>
+                            Nenhum lead comercial ativo
+                          </p>
+                          <p style={{ margin: '3px 0 0 0', fontSize: '0.74rem' }}>
+                            Quando este contato interage com campanhas comerciais ou WhatsApp, o card do lead é posicionado no funil.
+                          </p>
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                          {commercialLeads.map(lead => {
+                            const funnel = funnels.find(f => f.id === lead.funnelId);
+                            const venue = venues.find(v => v.id === lead.venueId);
+
+                            return (
+                              <div
+                                key={lead.id}
+                                style={{
+                                  padding: '14px 16px',
+                                  borderRadius: '8px',
+                                  backgroundColor: isLight ? '#F8FAFC' : 'rgba(255, 255, 255, 0.03)',
+                                  border: `1px solid ${isLight ? '#E2E8F0' : 'rgba(255, 255, 255, 0.08)'}`,
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'space-between',
+                                  flexWrap: 'wrap',
+                                  gap: '12px',
+                                }}
+                              >
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                                  <div style={{
+                                    width: '38px',
+                                    height: '38px',
+                                    borderRadius: '8px',
+                                    backgroundColor: isLight ? '#EFF6FF' : 'rgba(59, 130, 246, 0.15)',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    color: isLight ? '#2563EB' : '#3B82F6',
+                                  }}>
+                                    <Briefcase size={18} />
+                                  </div>
+
+                                  <div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                      <strong style={{ color: isLight ? '#0F172A' : '#FFFFFF', fontSize: '0.88rem' }}>
+                                        {funnel?.name || 'Funil Comercial'}
+                                      </strong>
+                                      <span style={{
+                                        fontSize: '0.68rem',
+                                        fontWeight: 700,
+                                        padding: '1px 6px',
+                                        borderRadius: '4px',
+                                        backgroundColor: isLight ? '#EFF6FF' : 'rgba(59, 130, 246, 0.2)',
+                                        color: isLight ? '#1D4ED8' : '#60A5FA',
+                                        letterSpacing: '0.5px',
+                                      }}>
+                                        LEAD
+                                      </span>
+                                      {lead.commercialCode && (
+                                        <span style={{
+                                          fontSize: '0.68rem',
+                                          fontWeight: 700,
+                                          padding: '1px 6px',
+                                          borderRadius: '4px',
+                                          backgroundColor: isLight ? '#FEF3C7' : 'rgba(212, 175, 55, 0.2)',
+                                          color: isLight ? '#B45309' : '#D4AF37',
+                                          letterSpacing: '0.5px',
+                                        }}>
+                                          {lead.commercialCode}
+                                        </span>
+                                      )}
+                                      <span style={{
+                                        fontSize: '0.70rem',
+                                        padding: '2px 8px',
+                                        borderRadius: '6px',
+                                        backgroundColor: isLight ? '#EFF6FF' : 'rgba(59, 130, 246, 0.2)',
+                                        color: isLight ? '#1D4ED8' : '#60A5FA',
+                                        fontWeight: 600,
+                                      }}>
+                                        Etapa: {getStageRealName(lead)}
+                                      </span>
+                                    </div>
+
+                                    <div style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '12px',
+                                      marginTop: '4px',
+                                      fontSize: '0.76rem',
+                                      color: isLight ? '#64748B' : '#94A3B8',
+                                      flexWrap: 'wrap',
+                                    }}>
+                                      <VenueChip venueId={lead.venueId} fallbackName={venue?.name} />
+                                      {lead.sdrName && <span>SDR: <strong style={{ color: isLight ? '#0F172A' : '#E2E8F0' }}>{lead.sdrName}</strong></span>}
+                                      {lead.closerName && <span>Closer: <strong style={{ color: isLight ? '#0F172A' : '#E2E8F0' }}>{lead.closerName}</strong></span>}
+                                      {lead.dealValue ? <span>Valor: <strong style={{ color: '#10B981' }}>R$ {lead.dealValue.toLocaleString('pt-BR')}</strong></span> : null}
+                                      {lead.createdAt && <span>Entrada: {new Date(lead.createdAt).toLocaleDateString('pt-BR')}</span>}
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* Acesso ao CRM */}
+                                {onOpenLead && (
+                                  <button
+                                    onClick={() => onOpenLead(lead.id, lead.funnelId)}
+                                    style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '5px',
+                                      padding: '7px 12px',
+                                      backgroundColor: isLight ? '#EFF6FF' : 'rgba(59, 130, 246, 0.2)',
+                                      color: isLight ? '#1D4ED8' : '#60A5FA',
+                                      border: `1px solid ${isLight ? '#BFDBFE' : 'rgba(59, 130, 246, 0.35)'}`,
+                                      borderRadius: '6px',
+                                      fontSize: '0.78rem',
+                                      fontWeight: 600,
+                                      cursor: 'pointer',
+                                    }}
+                                  >
+                                    <ExternalLink size={13} />
+                                    Abrir no CRM Comercial
+                                  </button>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
+
+                {/* SESSÃO 2: CONTRATOS DE EVENTOS */}
                 <div style={{
                   backgroundColor: isLight ? '#FFFFFF' : '#111C2E',
                   border: `1px solid ${isLight ? '#E2E8F0' : 'rgba(255, 255, 255, 0.08)'}`,
                   borderRadius: '8px',
                   padding: '20px',
                   boxShadow: isLight ? '0 1px 3px rgba(0,0,0,0.03)' : 'none',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '16px',
                 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
-                    <div>
-                      <h3 style={{ margin: 0, fontSize: '0.94rem', fontWeight: 700, color: isLight ? '#0F172A' : '#FFFFFF', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <Briefcase size={16} color={selectedContact.isSupplier ? '#D97706' : '#7C3AED'} />
-                        {selectedContact.isSupplier && selectedContact.isCollaborator
-                          ? 'Gestão de Fornecedor & Colaborador'
-                          : selectedContact.isSupplier
-                            ? 'Gestão de Fornecedor & Orçamentos'
-                            : 'Gestão de Colaborador & Contratos'}
-                      </h3>
-                      <p style={{ margin: '4px 0 0', fontSize: '0.74rem', color: isLight ? '#64748B' : '#94A3B8' }}>
-                        Contatos extras não mantêm leads ou clientes ativos em funis comerciais/pós-venda. Gerencie vínculo, tipo de serviço, contratos e orçamentos abaixo.
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
+                    <h3 style={{
+                      margin: 0,
+                      fontSize: '0.94rem',
+                      fontWeight: 700,
+                      color: isLight ? '#0F172A' : '#FFFFFF',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                    }}>
+                      <FileText size={16} color="#D4AF37" />
+                      Contratos de Eventos ({contactAssets.contracts.length})
+                    </h3>
+                    <span style={{ fontSize: '0.74rem', color: isLight ? '#64748B' : '#94A3B8' }}>
+                      Contratos formalizados e histórico imutável
+                    </span>
+                  </div>
+
+                  {contactAssets.contracts.length === 0 ? (
+                    <div style={{
+                      padding: '24px 16px',
+                      textAlign: 'center',
+                      color: isLight ? '#64748B' : '#94A3B8',
+                      backgroundColor: isLight ? '#F8FAFC' : 'rgba(255, 255, 255, 0.02)',
+                      borderRadius: '6px',
+                    }}>
+                      <FileText size={24} style={{ margin: '0 auto 6px auto', opacity: 0.3 }} />
+                      <p style={{ margin: 0, fontWeight: 600, fontSize: '0.82rem', color: isLight ? '#0F172A' : '#FFFFFF' }}>
+                        Nenhum contrato formalizado para este contato
+                      </p>
+                      <p style={{ margin: '3px 0 0 0', fontSize: '0.74rem' }}>
+                        Após o fechamento comercial, o contrato aprovado é catalogado nesta sessão com blindagem jurídica unilateral.
                       </p>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => setDetailTab('fornecedor')}
-                      style={{
-                        padding: '8px 14px',
-                        borderRadius: '8px',
-                        border: 'none',
-                        background: '#2563EB',
-                        color: '#FFFFFF',
-                        fontSize: '0.78rem',
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                      }}
-                    >
-                      Gerenciar Contratos & Orçamentos
-                    </button>
-                  </div>
-
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '12px' }}>
-                    <div>
-                      <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: isLight ? '#64748B' : '#94A3B8', marginBottom: '4px' }}>
-                        Tipo de Serviço / Segmento
-                      </label>
-                      <div style={{ display: 'flex', gap: '6px' }}>
-                        <input
-                          type="text"
-                          className="adm-input"
-                          value={collabServiceType || selectedContact.supplierProfile?.serviceType || selectedContact.supplierProfile?.segment || ''}
-                          onChange={(e) => setCollabServiceType(e.target.value)}
-                          placeholder="Ex: Fotografia, Buffet, Garçom, Decoração..."
-                          style={{ flex: 1, height: '34px', fontSize: '0.78rem' }}
-                        />
-                        <button
-                          type="button"
-                          disabled={savingCollabLink}
-                          onClick={async () => {
-                            const nextService = (collabServiceType || selectedContact.supplierProfile?.serviceType || selectedContact.supplierProfile?.segment || '').trim();
-                            setSavingCollabLink(true);
-                            const nextProfile = { ...(selectedContact.supplierProfile || {}), serviceType: nextService, segment: nextService || selectedContact.supplierProfile?.segment };
-                            const ok = await contactService.setSupplier(selectedContact.id, scopedMasterId, Boolean(selectedContact.isSupplier), nextProfile);
-                            setSavingCollabLink(false);
-                            if (ok) {
-                              applyContactUpdate({ ...selectedContact, supplierProfile: nextProfile });
-                              toast.success('Tipo de serviço salvo.');
-                            } else {
-                              toast.error('Erro ao salvar tipo de serviço.');
-                            }
-                          }}
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      {contactAssets.contracts.map(ctr => (
+                        <div
+                          key={ctr.id}
                           style={{
-                            padding: '0 12px',
-                            borderRadius: '7px',
-                            border: 'none',
-                            background: '#059669',
-                            color: '#FFFFFF',
-                            fontSize: '0.74rem',
-                            fontWeight: 700,
-                            cursor: 'pointer',
+                            padding: '14px 16px',
+                            borderRadius: '8px',
+                            backgroundColor: isLight ? '#F8FAFC' : 'rgba(255, 255, 255, 0.03)',
+                            border: `1px solid ${isLight ? '#E2E8F0' : 'rgba(255, 255, 255, 0.08)'}`,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            flexWrap: 'wrap',
+                            gap: '12px',
                           }}
                         >
-                          Salvar
-                        </button>
-                      </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                            <div style={{
+                              width: '38px',
+                              height: '38px',
+                              borderRadius: '8px',
+                              backgroundColor: ctr.approvalStatus === 'approved' ? (isLight ? '#ECFDF5' : 'rgba(16, 185, 129, 0.15)') : (isLight ? '#FEF3C7' : 'rgba(245, 158, 11, 0.15)'),
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              color: ctr.approvalStatus === 'approved' ? '#10B981' : '#F59E0B',
+                            }}>
+                              <FileText size={18} />
+                            </div>
+
+                            <div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                <strong style={{ color: '#D4AF37', fontSize: '0.90rem', fontFamily: 'monospace' }}>
+                                  {ctr.contractCode}
+                                </strong>
+                                <span style={{
+                                  fontSize: '0.70rem',
+                                  padding: '2px 8px',
+                                  borderRadius: '6px',
+                                  backgroundColor: ctr.approvalStatus === 'approved' ? (isLight ? '#ECFDF5' : 'rgba(16, 185, 129, 0.15)') : (isLight ? '#FEF3C7' : 'rgba(245, 158, 11, 0.15)'),
+                                  color: ctr.approvalStatus === 'approved' ? '#059669' : '#D97706',
+                                  fontWeight: 600,
+                                }}>
+                                  {ctr.approvalStatus === 'approved' ? 'Aprovado / Vigente' : 'Aguardando Homologação'}
+                                </span>
+                              </div>
+
+                              <div style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '12px',
+                                marginTop: '4px',
+                                fontSize: '0.76rem',
+                                color: isLight ? '#64748B' : '#94A3B8',
+                                flexWrap: 'wrap',
+                              }}>
+                                <VenueChip venueId={ctr.venueId} fallbackName={ctr.venueName} />
+                                {ctr.eventDate && <span>Festa: <strong style={{ color: isLight ? '#0F172A' : '#E2E8F0' }}>{new Date(ctr.eventDate + 'T12:00:00').toLocaleDateString('pt-BR')}</strong></span>}
+                                {(ctr.totalAmount || ctr.contractValue) ? <span>Valor: <strong style={{ color: '#10B981' }}>R$ {(ctr.totalAmount || ctr.contractValue || 0).toLocaleString('pt-BR')}</strong></span> : null}
+                                {ctr.closerName && <span>Closer: <strong style={{ color: isLight ? '#0F172A' : '#E2E8F0' }}>{ctr.closerName}</strong></span>}
+                                {ctr.approvedByName && <span>Aprovado por: <strong style={{ color: '#059669' }}>{ctr.approvedByName}</strong></span>}
+                              </div>
+                            </div>
+                          </div>
+
+                          <button
+                            onClick={() => setViewingContract(ctr)}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '5px',
+                              padding: '7px 12px',
+                              backgroundColor: isLight ? '#FEF3C7' : 'rgba(212, 175, 55, 0.15)',
+                              color: isLight ? '#B45309' : '#D4AF37',
+                              border: `1px solid ${isLight ? '#FDE68A' : 'rgba(212, 175, 55, 0.35)'}`,
+                              borderRadius: '6px',
+                              fontSize: '0.78rem',
+                              fontWeight: 600,
+                              cursor: 'pointer',
+                            }}
+                          >
+                            <FileText size={13} />
+                            Ver Contrato
+                          </button>
+                        </div>
+                      ))}
                     </div>
-
-                    {selectedContact.isCollaborator && (
-                      <div>
-                        <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: isLight ? '#64748B' : '#94A3B8', marginBottom: '4px' }}>
-                          Vínculo com Base de Funcionários
-                        </label>
-                        <Select
-                          className="adm-input"
-                          value={selectedContact.collaboratorId || ''}
-                          onChange={async (e) => {
-                            const cId = e.target.value || null;
-                            const ok = await contactService.setCollaborator(selectedContact.id, scopedMasterId, true, cId);
-                            if (ok) {
-                              applyContactUpdate({ ...selectedContact, isCollaborator: true, collaboratorId: cId });
-                              toast.success(cId ? 'Vínculo com colaborador atualizado.' : 'Vínculo removido.');
-                            } else {
-                              toast.error('Não foi possível vincular colaborador.');
-                            }
-                          }}
-                          style={{ width: '100%', height: '34px', fontSize: '0.78rem' }}
-                        >
-                          <option value="">Selecionar colaborador da equipe...</option>
-                          {collaborators.map(col => (
-                            <option key={col.id} value={col.id}>
-                              {col.name} {col.role ? `(${col.role})` : ''}
-                            </option>
-                          ))}
-                        </Select>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ) : (
-                <>
-              {/* SESSÃO 1A: CLIENTES NO PÓS-VENDA */}
-              <div style={{
-                backgroundColor: isLight ? '#FFFFFF' : '#111C2E',
-                border: `1px solid ${isLight ? '#E2E8F0' : 'rgba(255, 255, 255, 0.08)'}`,
-                borderRadius: '8px',
-                padding: '20px',
-                boxShadow: isLight ? '0 1px 3px rgba(0,0,0,0.03)' : 'none',
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
-                  <h3 style={{
-                    margin: 0,
-                    fontSize: '0.94rem',
-                    fontWeight: 700,
-                    color: isLight ? '#0F172A' : '#FFFFFF',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                  }}>
-                    <ShieldCheck size={16} color={isLight ? '#059669' : '#10B981'} />
-                    Clientes no Pós-Venda ({postSaleClients.length})
-                  </h3>
-                  <span style={{ fontSize: '0.74rem', color: isLight ? '#64748B' : '#94A3B8' }}>
-                    Clientes em esteira e atendimento de pós-venda
-                  </span>
+                  )}
                 </div>
 
-                {postSaleClients.length === 0 ? (
-                  <div style={{
-                    padding: '24px 16px',
-                    textAlign: 'center',
-                    color: isLight ? '#64748B' : '#94A3B8',
-                    backgroundColor: isLight ? '#F8FAFC' : 'rgba(255, 255, 255, 0.02)',
-                    borderRadius: '6px',
-                  }}>
-                    <ShieldCheck size={24} style={{ margin: '0 auto 6px auto', opacity: 0.3 }} />
-                    <p style={{ margin: 0, fontWeight: 600, fontSize: '0.82rem', color: isLight ? '#0F172A' : '#FFFFFF' }}>
-                      Nenhum cliente ativo no pós-venda
-                    </p>
-                    <p style={{ margin: '3px 0 0 0', fontSize: '0.74rem' }}>
-                      Quando este contato contrata uma festa ou é vinculado a um contrato, ele é acompanhado no pós-venda.
-                    </p>
+                {/* SESSÃO 3: TAREFAS OPERACIONAIS */}
+                <div style={{
+                  backgroundColor: isLight ? '#FFFFFF' : '#111C2E',
+                  border: `1px solid ${isLight ? '#E2E8F0' : 'rgba(255, 255, 255, 0.08)'}`,
+                  borderRadius: '8px',
+                  padding: '20px',
+                  boxShadow: isLight ? '0 1px 3px rgba(0,0,0,0.03)' : 'none',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
+                    <h3 style={{
+                      margin: 0,
+                      fontSize: '0.94rem',
+                      fontWeight: 700,
+                      color: isLight ? '#0F172A' : '#FFFFFF',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                    }}>
+                      <CheckSquare size={16} color="#A855F7" />
+                      Tarefas & Próximas Ações ({contactTasks.length})
+                    </h3>
+                    <span style={{ fontSize: '0.74rem', color: isLight ? '#64748B' : '#94A3B8' }}>
+                      Compromissos e pendências operacionais
+                    </span>
                   </div>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                    {postSaleClients.map(lead => {
-                      const funnel = funnels.find(f => f.id === lead.funnelId);
-                      const venue = venues.find(v => v.id === lead.venueId);
 
-                      return (
+                  {contactTasks.length === 0 ? (
+                    <div style={{
+                      padding: '20px 16px',
+                      textAlign: 'center',
+                      color: isLight ? '#64748B' : '#94A3B8',
+                      backgroundColor: isLight ? '#F8FAFC' : 'rgba(255, 255, 255, 0.02)',
+                      borderRadius: '6px',
+                    }}>
+                      <CheckCircle2 size={22} style={{ margin: '0 auto 4px auto', color: '#10B981', opacity: 0.8 }} />
+                      <p style={{ margin: 0, fontWeight: 600, fontSize: '0.82rem', color: isLight ? '#0F172A' : '#FFFFFF' }}>
+                        Nenhuma tarefa pendente para este contato
+                      </p>
+                      <p style={{ margin: '2px 0 0 0', fontSize: '0.74rem' }}>
+                        Tudo em dia! Tarefas adicionadas aos leads aparecem aqui.
+                      </p>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      {contactTasks.map(t => (
                         <div
-                          key={lead.id}
+                          key={t.id}
                           style={{
-                            padding: '14px 16px',
-                            borderRadius: '8px',
-                            backgroundColor: isLight ? '#F8FAFC' : 'rgba(255, 255, 255, 0.03)',
-                            border: `1px solid ${isLight ? '#E2E8F0' : 'rgba(255, 255, 255, 0.08)'}`,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            flexWrap: 'wrap',
-                            gap: '12px',
-                          }}
-                        >
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                            <div style={{
-                              width: '38px',
-                              height: '38px',
-                              borderRadius: '8px',
-                              backgroundColor: isLight ? '#ECFDF5' : 'rgba(16, 185, 129, 0.15)',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              color: isLight ? '#059669' : '#10B981',
-                            }}>
-                              <ShieldCheck size={18} />
-                            </div>
-
-                            <div>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                                <strong style={{ color: isLight ? '#0F172A' : '#FFFFFF', fontSize: '0.88rem' }}>
-                                  {funnel?.name || 'Pós-Venda'}
-                                </strong>
-                                <span style={{
-                                  fontSize: '0.68rem',
-                                  fontWeight: 700,
-                                  padding: '1px 6px',
-                                  borderRadius: '4px',
-                                  backgroundColor: isLight ? '#ECFDF5' : 'rgba(16, 185, 129, 0.2)',
-                                  color: isLight ? '#047857' : '#34D399',
-                                  letterSpacing: '0.5px',
-                                }}>
-                                  CLIENTE
-                                </span>
-                                {lead.code && (
-                                  <span style={{
-                                    fontSize: '0.68rem',
-                                    fontWeight: 700,
-                                    padding: '1px 6px',
-                                    borderRadius: '4px',
-                                    backgroundColor: isLight ? '#FEF3C7' : 'rgba(212, 175, 55, 0.2)',
-                                    color: isLight ? '#B45309' : '#D4AF37',
-                                    letterSpacing: '0.5px',
-                                  }}>
-                                    {lead.code}
-                                  </span>
-                                )}
-                                <span style={{
-                                  fontSize: '0.70rem',
-                                  padding: '2px 8px',
-                                  borderRadius: '6px',
-                                  backgroundColor: isLight ? '#ECFDF5' : 'rgba(16, 185, 129, 0.2)',
-                                  color: isLight ? '#047857' : '#34D399',
-                                  fontWeight: 600,
-                                }}>
-                                  Etapa: {getStageRealName(lead)}
-                                </span>
-                              </div>
-
-                              <div style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '12px',
-                                marginTop: '4px',
-                                fontSize: '0.76rem',
-                                color: isLight ? '#64748B' : '#94A3B8',
-                                flexWrap: 'wrap',
-                              }}>
-                                <VenueChip venueId={lead.venueId} fallbackName={venue?.name} />
-                                {lead.dealValue ? <span>Valor: <strong style={{ color: '#10B981' }}>R$ {lead.dealValue.toLocaleString('pt-BR')}</strong></span> : null}
-                                {lead.partyDate && <span>Festa: <strong>{new Date(lead.partyDate + 'T12:00:00').toLocaleDateString('pt-BR')}</strong></span>}
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Acesso ao Pós-Venda */}
-                          {onOpenLead && (
-                            <button
-                              onClick={() => onOpenLead(lead.id, lead.funnelId)}
-                              style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '5px',
-                                padding: '7px 12px',
-                                backgroundColor: isLight ? '#ECFDF5' : 'rgba(16, 185, 129, 0.2)',
-                                color: isLight ? '#047857' : '#34D399',
-                                border: `1px solid ${isLight ? '#A7F3D0' : 'rgba(16, 185, 129, 0.35)'}`,
-                                borderRadius: '6px',
-                                fontSize: '0.78rem',
-                                fontWeight: 600,
-                                cursor: 'pointer',
-                              }}
-                            >
-                              <ExternalLink size={13} />
-                              Abrir no Pós-Venda
-                            </button>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-
-              {/* SESSÃO 1B: LEADS COMERCIAIS ATIVOS */}
-              <div style={{
-                backgroundColor: isLight ? '#FFFFFF' : '#111C2E',
-                border: `1px solid ${isLight ? '#E2E8F0' : 'rgba(255, 255, 255, 0.08)'}`,
-                borderRadius: '8px',
-                padding: '20px',
-                boxShadow: isLight ? '0 1px 3px rgba(0,0,0,0.03)' : 'none',
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
-                  <h3 style={{
-                    margin: 0,
-                    fontSize: '0.94rem',
-                    fontWeight: 700,
-                    color: isLight ? '#0F172A' : '#FFFFFF',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                  }}>
-                    <Briefcase size={16} color={isLight ? '#2563EB' : '#3B82F6'} />
-                    Leads Comerciais ({commercialLeads.length})
-                  </h3>
-                  <span style={{ fontSize: '0.74rem', color: isLight ? '#64748B' : '#94A3B8' }}>
-                    Oportunidades em funis comerciais de venda
-                  </span>
-                </div>
-
-                {commercialLeads.length === 0 ? (
-                  <div style={{
-                    padding: '24px 16px',
-                    textAlign: 'center',
-                    color: isLight ? '#64748B' : '#94A3B8',
-                    backgroundColor: isLight ? '#F8FAFC' : 'rgba(255, 255, 255, 0.02)',
-                    borderRadius: '6px',
-                  }}>
-                    <Briefcase size={24} style={{ margin: '0 auto 6px auto', opacity: 0.3 }} />
-                    <p style={{ margin: 0, fontWeight: 600, fontSize: '0.82rem', color: isLight ? '#0F172A' : '#FFFFFF' }}>
-                      Nenhum lead comercial ativo
-                    </p>
-                    <p style={{ margin: '3px 0 0 0', fontSize: '0.74rem' }}>
-                      Quando este contato interage com campanhas comerciais ou WhatsApp, o card do lead é posicionado no funil.
-                    </p>
-                  </div>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                    {commercialLeads.map(lead => {
-                      const funnel = funnels.find(f => f.id === lead.funnelId);
-                      const venue = venues.find(v => v.id === lead.venueId);
-
-                      return (
-                        <div
-                          key={lead.id}
-                          style={{
-                            padding: '14px 16px',
-                            borderRadius: '8px',
-                            backgroundColor: isLight ? '#F8FAFC' : 'rgba(255, 255, 255, 0.03)',
-                            border: `1px solid ${isLight ? '#E2E8F0' : 'rgba(255, 255, 255, 0.08)'}`,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            flexWrap: 'wrap',
-                            gap: '12px',
-                          }}
-                        >
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                            <div style={{
-                              width: '38px',
-                              height: '38px',
-                              borderRadius: '8px',
-                              backgroundColor: isLight ? '#EFF6FF' : 'rgba(59, 130, 246, 0.15)',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              color: isLight ? '#2563EB' : '#3B82F6',
-                            }}>
-                              <Briefcase size={18} />
-                            </div>
-
-                            <div>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                                <strong style={{ color: isLight ? '#0F172A' : '#FFFFFF', fontSize: '0.88rem' }}>
-                                  {funnel?.name || 'Funil Comercial'}
-                                </strong>
-                                <span style={{
-                                  fontSize: '0.68rem',
-                                  fontWeight: 700,
-                                  padding: '1px 6px',
-                                  borderRadius: '4px',
-                                  backgroundColor: isLight ? '#EFF6FF' : 'rgba(59, 130, 246, 0.2)',
-                                  color: isLight ? '#1D4ED8' : '#60A5FA',
-                                  letterSpacing: '0.5px',
-                                }}>
-                                  LEAD
-                                </span>
-                                {lead.commercialCode && (
-                                  <span style={{
-                                    fontSize: '0.68rem',
-                                    fontWeight: 700,
-                                    padding: '1px 6px',
-                                    borderRadius: '4px',
-                                    backgroundColor: isLight ? '#FEF3C7' : 'rgba(212, 175, 55, 0.2)',
-                                    color: isLight ? '#B45309' : '#D4AF37',
-                                    letterSpacing: '0.5px',
-                                  }}>
-                                    {lead.commercialCode}
-                                  </span>
-                                )}
-                                <span style={{
-                                  fontSize: '0.70rem',
-                                  padding: '2px 8px',
-                                  borderRadius: '6px',
-                                  backgroundColor: isLight ? '#EFF6FF' : 'rgba(59, 130, 246, 0.2)',
-                                  color: isLight ? '#1D4ED8' : '#60A5FA',
-                                  fontWeight: 600,
-                                }}>
-                                  Etapa: {getStageRealName(lead)}
-                                </span>
-                              </div>
-
-                              <div style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '12px',
-                                marginTop: '4px',
-                                fontSize: '0.76rem',
-                                color: isLight ? '#64748B' : '#94A3B8',
-                                flexWrap: 'wrap',
-                              }}>
-                                <VenueChip venueId={lead.venueId} fallbackName={venue?.name} />
-                                {lead.sdrName && <span>SDR: <strong style={{ color: isLight ? '#0F172A' : '#E2E8F0' }}>{lead.sdrName}</strong></span>}
-                                {lead.closerName && <span>Closer: <strong style={{ color: isLight ? '#0F172A' : '#E2E8F0' }}>{lead.closerName}</strong></span>}
-                                {lead.dealValue ? <span>Valor: <strong style={{ color: '#10B981' }}>R$ {lead.dealValue.toLocaleString('pt-BR')}</strong></span> : null}
-                                {lead.createdAt && <span>Entrada: {new Date(lead.createdAt).toLocaleDateString('pt-BR')}</span>}
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Acesso ao CRM */}
-                          {onOpenLead && (
-                            <button
-                              onClick={() => onOpenLead(lead.id, lead.funnelId)}
-                              style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '5px',
-                                padding: '7px 12px',
-                                backgroundColor: isLight ? '#EFF6FF' : 'rgba(59, 130, 246, 0.2)',
-                                color: isLight ? '#1D4ED8' : '#60A5FA',
-                                border: `1px solid ${isLight ? '#BFDBFE' : 'rgba(59, 130, 246, 0.35)'}`,
-                                borderRadius: '6px',
-                                fontSize: '0.78rem',
-                                fontWeight: 600,
-                                cursor: 'pointer',
-                              }}
-                            >
-                              <ExternalLink size={13} />
-                              Abrir no CRM Comercial
-                            </button>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-                </>
-              )}
-
-              {/* SESSÃO 2: CONTRATOS DE EVENTOS */}
-              <div style={{
-                backgroundColor: isLight ? '#FFFFFF' : '#111C2E',
-                border: `1px solid ${isLight ? '#E2E8F0' : 'rgba(255, 255, 255, 0.08)'}`,
-                borderRadius: '8px',
-                padding: '20px',
-                boxShadow: isLight ? '0 1px 3px rgba(0,0,0,0.03)' : 'none',
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
-                  <h3 style={{
-                    margin: 0,
-                    fontSize: '0.94rem',
-                    fontWeight: 700,
-                    color: isLight ? '#0F172A' : '#FFFFFF',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                  }}>
-                    <FileText size={16} color="#D4AF37" />
-                    Contratos de Eventos ({contactAssets.contracts.length})
-                  </h3>
-                  <span style={{ fontSize: '0.74rem', color: isLight ? '#64748B' : '#94A3B8' }}>
-                    Contratos formalizados e histórico imutável
-                  </span>
-                </div>
-
-                {contactAssets.contracts.length === 0 ? (
-                  <div style={{
-                    padding: '24px 16px',
-                    textAlign: 'center',
-                    color: isLight ? '#64748B' : '#94A3B8',
-                    backgroundColor: isLight ? '#F8FAFC' : 'rgba(255, 255, 255, 0.02)',
-                    borderRadius: '6px',
-                  }}>
-                    <FileText size={24} style={{ margin: '0 auto 6px auto', opacity: 0.3 }} />
-                    <p style={{ margin: 0, fontWeight: 600, fontSize: '0.82rem', color: isLight ? '#0F172A' : '#FFFFFF' }}>
-                      Nenhum contrato formalizado para este contato
-                    </p>
-                    <p style={{ margin: '3px 0 0 0', fontSize: '0.74rem' }}>
-                      Após o fechamento comercial, o contrato aprovado é catalogado nesta sessão com blindagem jurídica unilateral.
-                    </p>
-                  </div>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                    {contactAssets.contracts.map(ctr => (
-                      <div
-                        key={ctr.id}
-                        style={{
-                          padding: '14px 16px',
-                          borderRadius: '8px',
-                          backgroundColor: isLight ? '#F8FAFC' : 'rgba(255, 255, 255, 0.03)',
-                          border: `1px solid ${isLight ? '#E2E8F0' : 'rgba(255, 255, 255, 0.08)'}`,
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          flexWrap: 'wrap',
-                          gap: '12px',
-                        }}
-                      >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                          <div style={{
-                            width: '38px',
-                            height: '38px',
-                            borderRadius: '8px',
-                            backgroundColor: ctr.approvalStatus === 'approved' ? (isLight ? '#ECFDF5' : 'rgba(16, 185, 129, 0.15)') : (isLight ? '#FEF3C7' : 'rgba(245, 158, 11, 0.15)'),
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            color: ctr.approvalStatus === 'approved' ? '#10B981' : '#F59E0B',
-                          }}>
-                            <FileText size={18} />
-                          </div>
-
-                          <div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                              <strong style={{ color: '#D4AF37', fontSize: '0.90rem', fontFamily: 'monospace' }}>
-                                {ctr.contractCode}
-                              </strong>
-                              <span style={{
-                                fontSize: '0.70rem',
-                                padding: '2px 8px',
-                                borderRadius: '6px',
-                                backgroundColor: ctr.approvalStatus === 'approved' ? (isLight ? '#ECFDF5' : 'rgba(16, 185, 129, 0.15)') : (isLight ? '#FEF3C7' : 'rgba(245, 158, 11, 0.15)'),
-                                color: ctr.approvalStatus === 'approved' ? '#059669' : '#D97706',
-                                fontWeight: 600,
-                              }}>
-                                {ctr.approvalStatus === 'approved' ? 'Aprovado / Vigente' : 'Aguardando Homologação'}
-                              </span>
-                            </div>
-
-                            <div style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '12px',
-                              marginTop: '4px',
-                              fontSize: '0.76rem',
-                              color: isLight ? '#64748B' : '#94A3B8',
-                              flexWrap: 'wrap',
-                            }}>
-                              <VenueChip venueId={ctr.venueId} fallbackName={ctr.venueName} />
-                              {ctr.eventDate && <span>Festa: <strong style={{ color: isLight ? '#0F172A' : '#E2E8F0' }}>{new Date(ctr.eventDate + 'T12:00:00').toLocaleDateString('pt-BR')}</strong></span>}
-                              {(ctr.totalAmount || ctr.contractValue) ? <span>Valor: <strong style={{ color: '#10B981' }}>R$ {(ctr.totalAmount || ctr.contractValue || 0).toLocaleString('pt-BR')}</strong></span> : null}
-                              {ctr.closerName && <span>Closer: <strong style={{ color: isLight ? '#0F172A' : '#E2E8F0' }}>{ctr.closerName}</strong></span>}
-                              {ctr.approvedByName && <span>Aprovado por: <strong style={{ color: '#059669' }}>{ctr.approvedByName}</strong></span>}
-                            </div>
-                          </div>
-                        </div>
-
-                        <button
-                          onClick={() => setViewingContract(ctr)}
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '5px',
-                            padding: '7px 12px',
-                            backgroundColor: isLight ? '#FEF3C7' : 'rgba(212, 175, 55, 0.15)',
-                            color: isLight ? '#B45309' : '#D4AF37',
-                            border: `1px solid ${isLight ? '#FDE68A' : 'rgba(212, 175, 55, 0.35)'}`,
+                            padding: '10px 14px',
                             borderRadius: '6px',
-                            fontSize: '0.78rem',
-                            fontWeight: 600,
-                            cursor: 'pointer',
+                            backgroundColor: isLight ? '#F8FAFC' : 'rgba(255, 255, 255, 0.03)',
+                            border: `1px solid ${isLight ? '#E2E8F0' : 'rgba(255, 255, 255, 0.06)'}`,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            gap: '12px',
                           }}
                         >
-                          <FileText size={13} />
-                          Ver Contrato
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* SESSÃO 3: TAREFAS OPERACIONAIS */}
-              <div style={{
-                backgroundColor: isLight ? '#FFFFFF' : '#111C2E',
-                border: `1px solid ${isLight ? '#E2E8F0' : 'rgba(255, 255, 255, 0.08)'}`,
-                borderRadius: '8px',
-                padding: '20px',
-                boxShadow: isLight ? '0 1px 3px rgba(0,0,0,0.03)' : 'none',
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
-                  <h3 style={{
-                    margin: 0,
-                    fontSize: '0.94rem',
-                    fontWeight: 700,
-                    color: isLight ? '#0F172A' : '#FFFFFF',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                  }}>
-                    <CheckSquare size={16} color="#A855F7" />
-                    Tarefas & Próximas Ações ({contactTasks.length})
-                  </h3>
-                  <span style={{ fontSize: '0.74rem', color: isLight ? '#64748B' : '#94A3B8' }}>
-                    Compromissos e pendências operacionais
-                  </span>
-                </div>
-
-                {contactTasks.length === 0 ? (
-                  <div style={{
-                    padding: '20px 16px',
-                    textAlign: 'center',
-                    color: isLight ? '#64748B' : '#94A3B8',
-                    backgroundColor: isLight ? '#F8FAFC' : 'rgba(255, 255, 255, 0.02)',
-                    borderRadius: '6px',
-                  }}>
-                    <CheckCircle2 size={22} style={{ margin: '0 auto 4px auto', color: '#10B981', opacity: 0.8 }} />
-                    <p style={{ margin: 0, fontWeight: 600, fontSize: '0.82rem', color: isLight ? '#0F172A' : '#FFFFFF' }}>
-                      Nenhuma tarefa pendente para este contato
-                    </p>
-                    <p style={{ margin: '2px 0 0 0', fontSize: '0.74rem' }}>
-                      Tudo em dia! Tarefas adicionadas aos leads aparecem aqui.
-                    </p>
-                  </div>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {contactTasks.map(t => (
-                      <div
-                        key={t.id}
-                        style={{
-                          padding: '10px 14px',
-                          borderRadius: '6px',
-                          backgroundColor: isLight ? '#F8FAFC' : 'rgba(255, 255, 255, 0.03)',
-                          border: `1px solid ${isLight ? '#E2E8F0' : 'rgba(255, 255, 255, 0.06)'}`,
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          gap: '12px',
-                        }}
-                      >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <CheckSquare size={15} color={t.status === 'completed' ? '#10B981' : '#A855F7'} />
-                          <div>
-                            <strong style={{ color: isLight ? '#0F172A' : '#FFFFFF', fontSize: '0.82rem' }}>{t.title}</strong>
-                            <div style={{ fontSize: '0.72rem', color: isLight ? '#64748B' : '#94A3B8', marginTop: '1px', display: 'flex', gap: '8px' }}>
-                              <VenueChip venueId={t.venueId || leads.find(l => l.id === t.leadId)?.venueId} />
-                              {t.dueDate && <span>Vencimento: {t.dueDate}</span>}
-                              {t.assignedToName && <span>Responsável: {t.assignedToName}</span>}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <CheckSquare size={15} color={t.status === 'completed' ? '#10B981' : '#A855F7'} />
+                            <div>
+                              <strong style={{ color: isLight ? '#0F172A' : '#FFFFFF', fontSize: '0.82rem' }}>{t.title}</strong>
+                              <div style={{ fontSize: '0.72rem', color: isLight ? '#64748B' : '#94A3B8', marginTop: '1px', display: 'flex', gap: '8px' }}>
+                                <VenueChip venueId={t.venueId || leads.find(l => l.id === t.leadId)?.venueId} />
+                                {t.dueDate && <span>Vencimento: {t.dueDate}</span>}
+                                {t.assignedToName && <span>Responsável: {t.assignedToName}</span>}
+                              </div>
                             </div>
                           </div>
-                        </div>
 
-                        <span style={{
-                          fontSize: '0.66rem',
-                          fontWeight: 600,
-                          padding: '1px 7px',
-                          borderRadius: '6px',
-                          backgroundColor: t.status === 'completed' ? (isLight ? '#ECFDF5' : 'rgba(16, 185, 129, 0.15)') : (isLight ? '#FEF3C7' : 'rgba(245, 158, 11, 0.15)'),
-                          color: t.status === 'completed' ? '#059669' : '#D97706',
-                        }}>
-                          {t.status === 'completed' ? 'Concluída' : 'Pendente'}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+                          <span style={{
+                            fontSize: '0.66rem',
+                            fontWeight: 600,
+                            padding: '1px 7px',
+                            borderRadius: '6px',
+                            backgroundColor: t.status === 'completed' ? (isLight ? '#ECFDF5' : 'rgba(16, 185, 129, 0.15)') : (isLight ? '#FEF3C7' : 'rgba(245, 158, 11, 0.15)'),
+                            color: t.status === 'completed' ? '#059669' : '#D97706',
+                          }}>
+                            {t.status === 'completed' ? 'Concluída' : 'Pendente'}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </>)}
             </div>
           ) : (
@@ -2914,11 +2914,11 @@ export const AdminContactsView: React.FC<AdminContactsViewProps> = ({
                         outline: 'none',
                       }}
                     />
-                  {dependentPhoneConflict && (
-                    <div style={{ fontSize: '0.70rem', fontWeight: 600, color: '#EF4444', marginTop: '4px' }}>
-                      {duplicatePhoneMessage(dependentPhoneConflict, 'contato')}
-                    </div>
-                  )}
+                    {dependentPhoneConflict && (
+                      <div style={{ fontSize: '0.70rem', fontWeight: 600, color: '#EF4444', marginTop: '4px' }}>
+                        {duplicatePhoneMessage(dependentPhoneConflict, 'contato')}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

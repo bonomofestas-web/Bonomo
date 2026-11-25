@@ -10,6 +10,7 @@ export interface RunnerSurvey {
   thanks: SurveyThanks;
   theme: SurveyTheme;
   questions: SurveyQuestion[];
+  venueName?: string | null;
 }
 
 interface Props {
@@ -268,10 +269,30 @@ export const SurveyRunner: React.FC<Props> = ({ survey, initialAnswers, preview,
   const keyBadge = (on: boolean): React.CSSProperties => ({ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 24, height: 24, borderRadius: 5, border: `1px solid ${color}`, background: on ? color : '#fff', color: on ? '#fff' : color, fontSize: '0.75rem', fontWeight: 800, flexShrink: 0 });
 
   const qIndex = current ? questions.findIndex(q => q.id === current.id) : -1;
+  const currentSection = useMemo(() => {
+    if (qIndex < 0) return null;
+    let title = '';
+    let description = '';
+    let stageNum = 0;
+    for (let i = 0; i <= qIndex; i++) {
+      const st = questions[i]?.options?.sectionTitle?.trim();
+      if (st) {
+        stageNum += 1;
+        title = st;
+        description = questions[i]?.options?.sectionDescription?.trim() || '';
+      }
+    }
+    if (!title) return null;
+    return { stageNum, title, description };
+  }, [questions, qIndex]);
+
   const welcomeLayout = survey.welcome.layout || 'centered';
   const hasWelcomeMedia = Boolean(survey.welcome.coverVideoUrl || survey.welcome.coverImageUrl);
   const isSplitWelcome = screen.kind === 'welcome' && hasWelcomeMedia && (welcomeLayout === 'split_left' || welcomeLayout === 'split_right');
   const isHeroWelcome = screen.kind === 'welcome' && hasWelcomeMedia && welcomeLayout === 'hero_bg';
+  const thanksLayout = survey.thanks.layout || 'centered';
+  const hasThanksMedia = Boolean(survey.thanks.videoUrl || survey.thanks.imageUrl);
+  const isSplitThanks = screen.kind === 'thanks' && hasThanksMedia && (thanksLayout === 'split_left' || thanksLayout === 'split_right');
 
   return (
     <div style={{ position: 'relative', minHeight: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: bgColor, color: textColor, fontFamily: fontFam, overflow: 'auto', padding: '56px 0' }}>
@@ -297,7 +318,31 @@ export const SurveyRunner: React.FC<Props> = ({ survey, initialAnswers, preview,
       <div style={{ position: 'fixed', top: 0, left: 0, right: 0, height: 5, background: `${color}22`, zIndex: 10 }}>
         <div style={{ height: '100%', width: `${progress}%`, background: color, transition: 'width .35s ease' }} />
       </div>
-      {survey.theme?.logoUrl && <img src={survey.theme.logoUrl} alt="" style={{ position: 'absolute', top: 18, left: 22, height: 36, maxWidth: 180, objectFit: 'contain', zIndex: 5 }} />}
+      {(survey.theme?.logoUrl || survey.venueName) && (
+        <div style={{
+          position: 'absolute',
+          top: 16,
+          left: 22,
+          zIndex: 5,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10,
+          padding: '6px 12px',
+          borderRadius: 999,
+          background: isHeroWelcome ? 'rgba(15,23,42,0.55)' : `${bgColor}dd`,
+          backdropFilter: 'blur(8px)',
+          border: `1px solid ${isHeroWelcome ? 'rgba(255,255,255,0.2)' : `${textColor}18`}`,
+        }}>
+          {survey.theme?.logoUrl && (
+            <img src={survey.theme.logoUrl} alt="" style={{ height: 28, maxWidth: 120, objectFit: 'contain', borderRadius: 4 }} />
+          )}
+          {survey.venueName && (
+            <span style={{ fontSize: '0.78rem', fontWeight: 700, color: isHeroWelcome ? '#FFFFFF' : textColor }}>
+              {survey.venueName}
+            </span>
+          )}
+        </div>
+      )}
 
       {screen.kind === 'welcome' && (
         <div key="welcome" style={{ ...box, maxWidth: isSplitWelcome ? 980 : 680, color: isHeroWelcome ? '#FFFFFF' : textColor }}>
@@ -343,6 +388,32 @@ export const SurveyRunner: React.FC<Props> = ({ survey, initialAnswers, preview,
 
       {current && (
         <div key={current.id} style={box}>
+          {currentSection && (
+            <div style={{ marginBottom: 14, display: 'flex', flexDirection: 'column', gap: 3 }}>
+              <div style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                alignSelf: 'flex-start',
+                padding: '4px 11px',
+                borderRadius: 999,
+                background: `${color}18`,
+                border: `1px solid ${color}40`,
+                color,
+                fontSize: '0.72rem',
+                fontWeight: 800,
+                letterSpacing: '0.3px',
+                textTransform: 'uppercase',
+              }}>
+                <span>Etapa {currentSection.stageNum}</span>
+                <span>•</span>
+                <span>{currentSection.title}</span>
+              </div>
+              {currentSection.description && (
+                <div style={{ fontSize: '0.8rem', color: mutedColor }}>{currentSection.description}</div>
+              )}
+            </div>
+          )}
           {current.options?.mediaUrl && (
             <div style={{ marginBottom: 18 }}>
               {renderMediaBlock(
@@ -371,16 +442,50 @@ export const SurveyRunner: React.FC<Props> = ({ survey, initialAnswers, preview,
       )}
 
       {screen.kind === 'thanks' && (
-        <div key="thanks" style={box}>
-          {(survey.thanks.videoUrl || survey.thanks.imageUrl) && (
-            <div style={{ marginBottom: 20 }}>
-              {renderMediaBlock(survey.thanks.imageUrl, survey.thanks.videoUrl, 16, 280)}
+        <div key="thanks" style={{ ...box, maxWidth: isSplitThanks ? 920 : 680 }}>
+          <div style={{
+            display: isSplitThanks ? 'grid' : 'flex',
+            gridTemplateColumns: isSplitThanks ? 'repeat(auto-fit, minmax(260px, 1fr))' : undefined,
+            flexDirection: 'column',
+            gap: isSplitThanks ? 32 : 16,
+            alignItems: isSplitThanks ? 'center' : 'flex-start',
+          }}>
+            {hasThanksMedia && thanksLayout === 'split_left' && (
+              <div>{renderMediaBlock(survey.thanks.imageUrl, survey.thanks.videoUrl, 16, 360)}</div>
+            )}
+            {hasThanksMedia && thanksLayout === 'centered' && (
+              <div style={{ width: '100%' }}>{renderMediaBlock(survey.thanks.imageUrl, survey.thanks.videoUrl, 16, 280)}</div>
+            )}
+            <div>
+              {survey.thanks.showBadge !== false && (
+                <div style={{
+                  width: 48,
+                  height: 48,
+                  borderRadius: '50%',
+                  background: `${color}1c`,
+                  border: `1.5px solid ${color}55`,
+                  color,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  marginBottom: 14,
+                }}>
+                  <Check size={24} />
+                </div>
+              )}
+              <h1 style={{ fontSize: '2.1rem', margin: '0 0 12px', color: textColor }}>{survey.thanks.title || 'Obrigado!'}</h1>
+              <p style={{ fontSize: '1.12rem', color: mutedColor, whiteSpace: 'pre-line', lineHeight: 1.5, margin: 0 }}>{survey.thanks.text || 'Sua resposta foi enviada.'}</p>
+              {survey.thanks.linkUrl && (
+                <a href={survey.thanks.linkUrl} target="_blank" rel="noreferrer" style={{ ...okBtn, textDecoration: 'none', marginTop: 22 }}>
+                  {survey.thanks.linkLabel || 'Saiba mais'}
+                </a>
+              )}
+              {preview && <p style={{ marginTop: 20, fontSize: '0.78rem', color: mutedColor }}>Preview: nada foi salvo.</p>}
             </div>
-          )}
-          <h1 style={{ fontSize: '2.1rem', margin: '0 0 12px', color: textColor }}>{survey.thanks.title || 'Obrigado!'}</h1>
-          <p style={{ fontSize: '1.15rem', color: mutedColor, whiteSpace: 'pre-line' }}>{survey.thanks.text || 'Sua resposta foi enviada.'}</p>
-          {survey.thanks.linkUrl && <a href={survey.thanks.linkUrl} target="_blank" rel="noreferrer" style={{ ...okBtn, textDecoration: 'none', marginTop: 12 }}>{survey.thanks.linkLabel || 'Saiba mais'}</a>}
-          {preview && <p style={{ marginTop: 20, fontSize: '0.78rem', color: mutedColor }}>Preview: nada foi salvo.</p>}
+            {hasThanksMedia && thanksLayout === 'split_right' && (
+              <div>{renderMediaBlock(survey.thanks.imageUrl, survey.thanks.videoUrl, 16, 360)}</div>
+            )}
+          </div>
         </div>
       )}
 
