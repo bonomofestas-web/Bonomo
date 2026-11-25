@@ -1139,8 +1139,8 @@ export const leadService = {
           console.log(`[leadService.addActivity] Mensagem com messageId ${targetMsgId} já existente no lead ${finalLeadId}. Idempotente.`);
           return true;
         }
-      } else {
-        // Se a mensagem veio SEM messageId:
+      } else if (!meta.fromApp && !meta.sentByApp && !meta.isOptimistic) {
+        // Se a mensagem veio de webhook externo SEM messageId:
         // Compara o texto estritamente com a ÚLTIMA mensagem gravada deste lead para descartar disparos duplos de webhooks
         if (storedText && storedText.trim().length > 0) {
           const { data: lastMsg } = await supabase
@@ -2148,12 +2148,16 @@ export function mergeAndSortActivities(acts1: LeadActivity[] = [], acts2: LeadAc
         return existingMsgId === actMsgId;
       }
 
-      // Reconciliação quando uma das mensagens é local/otimista (ainda sem messageId do WhatsApp)
-      // e a outra é o eco retornado pela API/Webhook para a mesma mensagem enviada
-      const isExistingOpt = Boolean(existing.id?.startsWith('opt_') || (existing.metadata as any)?.isOptimistic || !existingMsgId);
-      const isActOpt = Boolean(act.id?.startsWith('opt_') || (act.metadata as any)?.isOptimistic || !actMsgId);
+      // Reconciliação EXCLUSIVA entre uma mensagem otimista local (opt_ / isOptimistic)
+      // e o eco real retornado pela API/Webhook (que possui messageId e não é otimista).
+      // NUNCA mescla duas mensagens otimistas entre si nem descarta reenvio intencional de texto igual.
+      const isExistingOpt = Boolean(existing.id?.startsWith('opt_') || (existing.metadata as any)?.isOptimistic);
+      const isActOpt = Boolean(act.id?.startsWith('opt_') || (act.metadata as any)?.isOptimistic);
+      const isOptToServerPair =
+        (isExistingOpt && !isActOpt && Boolean(actMsgId)) ||
+        (isActOpt && !isExistingOpt && Boolean(existingMsgId));
 
-      if ((isExistingOpt || isActOpt) && existing.type === act.type) {
+      if (isOptToServerPair && existing.type === act.type) {
         const text1 = (existing.text || existing.title || '').trim().toLowerCase();
         const text2 = (act.text || act.title || '').trim().toLowerCase();
         const actBothAudio = (existing.mediaType === 'audio' || text1.includes('🎵')) &&

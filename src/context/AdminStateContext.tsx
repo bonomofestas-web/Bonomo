@@ -1538,7 +1538,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
               if (l.sourceId && sourceFunnelMap.has(l.sourceId)) {
                 const targetFId = sourceFunnelMap.get(l.sourceId)!;
                 const isTargetPostSale = Boolean(sourceIsPostSaleMap.get(l.sourceId));
-                if (funnelId !== targetFId || (!isTargetPostSale && (isClient || group === 'Pós-Venda'))) {
+                const hasValidCurrentFunnel = Boolean(funnelId && syncedFunnels.some(f => f.id === funnelId));
+                if (!hasValidCurrentFunnel || (!isTargetPostSale && (isClient || group === 'Pós-Venda'))) {
                   funnelId = targetFId;
                   const updates: Partial<Lead> = { funnelId: targetFId };
                   if (!isTargetPostSale) {
