@@ -2661,6 +2661,9 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       avatarUrl: optUser?.avatarUrl !== undefined ? optUser.avatarUrl : foundCollab.avatarUrl,
       phone: foundCollab.phone,
       venueIds: (foundCollab.venueIds && foundCollab.venueIds.length > 0) ? foundCollab.venueIds : (foundCollab.venueId === 'all' ? [] : [foundCollab.venueId]),
+      sectors: foundCollab.sectors,
+      jobRoles: (foundCollab as any).jobRoles,
+      department: foundCollab.department,
       isFirstAccess: isFirst,
       lastLoginAt: nowIso,
       masterId: foundCollab.masterId,
@@ -2801,10 +2804,27 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     return fresh ? { ...viewingAsCollaborator, ...fresh } : viewingAsCollaborator;
   }, [viewingAsCollaborator, collaborators]);
 
-  // Usuário efetivo: prioriza o colaborador simulado no modo "Olhar com Olhos", senão o usuário autenticado
+  // Usuário efetivo: prioriza o colaborador simulado no modo "Olhar com Olhos", senão o usuário autenticado enriquecido com seus dados reais da base
   const effectiveUser = useMemo(() => {
-    return effectiveViewingAsCollaborator || currentUser;
-  }, [effectiveViewingAsCollaborator, currentUser]);
+    if (effectiveViewingAsCollaborator) return effectiveViewingAsCollaborator;
+    if (!currentUser) return null;
+    const fresh = collaborators.find(c =>
+      c.id === currentUser.id ||
+      (currentUser.email && c.email?.toLowerCase() === currentUser.email.toLowerCase())
+    );
+    if (!fresh) return currentUser;
+    const mergedVenueIds = (fresh.venueIds && fresh.venueIds.length > 0)
+      ? fresh.venueIds
+      : (fresh.venueId && fresh.venueId !== 'all' ? [fresh.venueId] : (currentUser.venueIds || []));
+    return {
+      ...currentUser,
+      role: fresh.role || currentUser.role,
+      venueIds: mergedVenueIds,
+      sectors: fresh.sectors,
+      jobRoles: (fresh as any).jobRoles,
+      department: fresh.department,
+    };
+  }, [effectiveViewingAsCollaborator, currentUser, collaborators]);
 
   // Proteção / Autocorreção: se houver resquício de impersonação antiga no localStorage, limpa e restaura
   const [impersonatingMaster, setImpersonatingMaster] = useState<AdminUser | null>(() => {

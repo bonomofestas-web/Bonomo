@@ -14,8 +14,9 @@ import {
   History, RefreshCw, MoreVertical, CheckCheck, DollarSign, TrendingUp, Folder,
   ExternalLink, ShieldCheck, Sparkles, ShoppingBag, Video, Download, Loader2, Camera,
   Target, Lock, RotateCcw, XCircle, Flame, ArrowUpDown, ArrowUp, ArrowDown, BadgeCheck, UserCheck, Smartphone, QrCode,
-  Reply, ArrowRightLeft, Link2, Forward, Filter
+  Reply, ArrowRightLeft, Link2, Forward, Filter, BookmarkPlus
 } from 'lucide-react';
+import { stickerService, type WhatsappSticker } from '../../services/stickerService';
 import { IcpTargetUserIcon } from './IcpTargetUserIcon';
 import { isFinanceSource } from '../../utils/financeSource';
 import { getUserTaskSectors } from '../../utils/taskSector';
@@ -1001,6 +1002,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     collaborators,
     currentUser,
     viewingAsCollaborator,
+    scopedMasterId,
     theme,
     activeVenueId,
     updateLeadData,
@@ -1419,19 +1421,59 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   const audioChunksRef = useRef<Blob[]>([]);
   const audioStreamRef = useRef<MediaStream | null>(null);
 
-  // Popups: Anexos, Emojis e Figurinhas (Stickers)
+  // Popups: Anexos, Emojis e Figurinhas (Stickers por Unidade)
   const [isAttachmentMenuOpen, setIsAttachmentMenuOpen] = useState(false);
   const [isEmojiPickerOpen, setIsEmojiPickerOpen] = useState(false);
   const [activeEmojiTab, setActiveEmojiTab] = useState<'emojis' | 'stickers'>('emojis');
-  const [customStickers, setCustomStickers] = useState<string[]>(() => {
-    try {
-      const saved = localStorage.getItem('f5_custom_stickers');
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  });
+  const [unitStickers, setUnitStickers] = useState<WhatsappSticker[]>([]);
+  const [activeStickerMenuId, setActiveStickerMenuId] = useState<string | null>(null);
+  const [savingStickerId, setSavingStickerId] = useState<string | null>(null);
   const attachmentMenuRef = useRef<HTMLDivElement>(null);
+
+  const allowedStickerVenueIds = useMemo<string[] | null>(() => {
+    const eff = effectiveUser || currentUser;
+    if (!eff || isManagerOrMaster || eff.role === 'master') return null;
+    const ids = Array.isArray(eff.venueIds) && eff.venueIds.length > 0
+      ? eff.venueIds
+      : ((eff as any).venueId && (eff as any).venueId !== 'all' ? [(eff as any).venueId] : []);
+    return ids;
+  }, [effectiveUser, currentUser, isManagerOrMaster]);
+
+  useEffect(() => {
+    if (!scopedMasterId) return;
+    let cancelled = false;
+    stickerService.listByVenues(scopedMasterId, allowedStickerVenueIds).then(list => {
+      if (!cancelled) setUnitStickers(list);
+    });
+    return () => { cancelled = true; };
+  }, [scopedMasterId, allowedStickerVenueIds]);
+
+  const handleSaveStickerToUnit = async (mediaUrl: string, actId: string) => {
+    const targetVenueId = selectedLead?.venueId && selectedLead.venueId !== 'all'
+      ? selectedLead.venueId
+      : (activeVenueId && activeVenueId !== 'all' ? activeVenueId : venues[0]?.id);
+    if (!scopedMasterId || !targetVenueId) {
+      toast.error('Não foi possível identificar a unidade deste atendimento.');
+      return;
+    }
+    setSavingStickerId(actId);
+    try {
+      const saved = await stickerService.saveForVenue({
+        masterId: scopedMasterId,
+        venueId: targetVenueId,
+        mediaUrl,
+        createdByName: currentUser?.name,
+      });
+      setUnitStickers(prev => [saved, ...prev.filter(st => st.id !== saved.id)]);
+      setActiveStickerMenuId(null);
+      const vName = venues.find(v => v.id === targetVenueId)?.name || 'unidade';
+      toast.success(`Figurinha salva na base da ${vName}!`);
+    } catch (err: any) {
+      toast.error(err?.message || 'Não foi possível salvar a figurinha.');
+    } finally {
+      setSavingStickerId(null);
+    }
+  };
 
   // Anexo pendente no chat (ex: comprovante de agendamento compartilhado)
   const [pendingAttachment, setPendingAttachment] = useState<{
@@ -5164,25 +5206,30 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     }
   };
 
-  const handleUploadCustomSticker = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleUploadCustomSticker = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = () => {
-      const base64 = reader.result as string;
-      if (base64) {
-        setCustomStickers(prev => {
-          const updated = [base64, ...prev.filter(s => s !== base64)].slice(0, 30);
-          try {
-            localStorage.setItem('f5_custom_stickers', JSON.stringify(updated));
-          } catch { }
-          return updated;
-        });
-      }
-    };
-    reader.readAsDataURL(file);
     e.target.value = '';
+    if (!file) return;
+    const targetVenueId = selectedLead?.venueId && selectedLead.venueId !== 'all'
+      ? selectedLead.venueId
+      : (activeVenueId && activeVenueId !== 'all' ? activeVenueId : venues[0]?.id);
+    if (!scopedMasterId || !targetVenueId) {
+      toast.error('Selecione uma unidade para salvar a figurinha.');
+      return;
+    }
+    try {
+      const saved = await stickerService.saveForVenue({
+        masterId: scopedMasterId,
+        venueId: targetVenueId,
+        file,
+        createdByName: currentUser?.name,
+      });
+      setUnitStickers(prev => [saved, ...prev.filter(st => st.id !== saved.id)]);
+      const vName = venues.find(v => v.id === targetVenueId)?.name || 'unidade';
+      toast.success(`Figurinha adicionada à ${vName}!`);
+    } catch (err: any) {
+      toast.error(err?.message || 'Erro ao enviar figurinha.');
+    }
   };
 
   // Real Audio Recording Handlers (MediaRecorder)
@@ -9222,15 +9269,46 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
 
                               {/* Conteúdo: Sticker Solto vs Contato Solto vs Balão Clássico */}
                               {isSticker && effectiveMediaUrl ? (
-                                <div
-                                  style={{ display: 'flex', flexDirection: 'column', gap: '4px', cursor: 'pointer' }}
-                                  onClick={() => setLightboxMedia({ url: effectiveMediaUrl!, type: 'image', title: 'Figurinha' })}
-                                >
-                                  <img
-                                    src={effectiveMediaUrl}
-                                    alt="Figurinha"
-                                    style={{ maxWidth: '140px', maxHeight: '140px', objectFit: 'contain', background: 'transparent' }}
-                                  />
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', position: 'relative' }}>
+                                  <div
+                                    style={{ cursor: 'pointer', display: 'inline-block' }}
+                                    onClick={() => setActiveStickerMenuId(prev => prev === act.id ? null : act.id)}
+                                    title="Clique para salvar figurinha na unidade"
+                                  >
+                                    <img
+                                      src={effectiveMediaUrl}
+                                      alt="Figurinha"
+                                      style={{ width: '92px', height: '92px', objectFit: 'contain', background: 'transparent', display: 'block' }}
+                                    />
+                                  </div>
+                                  {activeStickerMenuId === act.id && (() => {
+                                    const alreadySaved = unitStickers.some(st => st.mediaUrl === effectiveMediaUrl && (!selectedLead?.venueId || st.venueId === selectedLead.venueId));
+                                    return (
+                                      <button
+                                        type="button"
+                                        disabled={savingStickerId === act.id || alreadySaved}
+                                        onClick={() => { if (!alreadySaved) void handleSaveStickerToUnit(effectiveMediaUrl!, act.id); }}
+                                        style={{
+                                          display: 'inline-flex',
+                                          alignItems: 'center',
+                                          gap: '5px',
+                                          padding: '5px 10px',
+                                          borderRadius: '8px',
+                                          border: '1px solid var(--adm-border)',
+                                          background: alreadySaved ? 'rgba(16, 185, 129, 0.14)' : 'var(--adm-bg-card)',
+                                          color: alreadySaved ? '#10B981' : 'var(--adm-text-title)',
+                                          fontSize: '0.72rem',
+                                          fontWeight: 700,
+                                          cursor: alreadySaved ? 'default' : 'pointer',
+                                          boxShadow: '0 6px 16px rgba(0,0,0,0.18)',
+                                          alignSelf: 'flex-start',
+                                        }}
+                                      >
+                                        {savingStickerId === act.id ? <Loader2 size={12} className="animate-spin" /> : alreadySaved ? <Check size={12} /> : <BookmarkPlus size={12} />}
+                                        <span>{alreadySaved ? 'Salva na unidade' : 'Salvar figurinha na unidade'}</span>
+                                      </button>
+                                    );
+                                  })()}
                                   <span style={{ fontSize: '0.62rem', color: isDarkMode ? '#8696a0' : '#667781' }}>{formattedTime}</span>
                                 </div>
                               ) : isContactMsg ? (
@@ -9810,15 +9888,45 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
 
                             {/* Conteúdo: Sticker Solto vs Contato Solto vs Balão Clássico */}
                             {isSticker && act.mediaUrl ? (
-                              <div
-                                style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px', cursor: 'pointer' }}
-                                onClick={() => setLightboxMedia({ url: act.mediaUrl!, type: 'image', title: 'Figurinha' })}
-                              >
-                                <img
-                                  src={act.mediaUrl}
-                                  alt="Figurinha"
-                                  style={{ maxWidth: '140px', maxHeight: '140px', objectFit: 'contain', background: 'transparent' }}
-                                />
+                              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
+                                <div
+                                  style={{ cursor: 'pointer', display: 'inline-block' }}
+                                  onClick={() => setActiveStickerMenuId(prev => prev === act.id ? null : act.id)}
+                                  title="Clique para salvar figurinha na unidade"
+                                >
+                                  <img
+                                    src={act.mediaUrl}
+                                    alt="Figurinha"
+                                    style={{ width: '92px', height: '92px', objectFit: 'contain', background: 'transparent', display: 'block' }}
+                                  />
+                                </div>
+                                {activeStickerMenuId === act.id && (() => {
+                                  const alreadySaved = unitStickers.some(st => st.mediaUrl === act.mediaUrl && (!selectedLead?.venueId || st.venueId === selectedLead.venueId));
+                                  return (
+                                    <button
+                                      type="button"
+                                      disabled={savingStickerId === act.id || alreadySaved}
+                                      onClick={() => { if (!alreadySaved) void handleSaveStickerToUnit(act.mediaUrl!, act.id); }}
+                                      style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '5px',
+                                        padding: '5px 10px',
+                                        borderRadius: '8px',
+                                        border: '1px solid var(--adm-border)',
+                                        background: alreadySaved ? 'rgba(16, 185, 129, 0.14)' : 'var(--adm-bg-card)',
+                                        color: alreadySaved ? '#10B981' : 'var(--adm-text-title)',
+                                        fontSize: '0.72rem',
+                                        fontWeight: 700,
+                                        cursor: alreadySaved ? 'default' : 'pointer',
+                                        boxShadow: '0 6px 16px rgba(0,0,0,0.18)',
+                                      }}
+                                    >
+                                      {savingStickerId === act.id ? <Loader2 size={12} className="animate-spin" /> : alreadySaved ? <Check size={12} /> : <BookmarkPlus size={12} />}
+                                      <span>{alreadySaved ? 'Salva na unidade' : 'Salvar figurinha na unidade'}</span>
+                                    </button>
+                                  );
+                                })()}
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                                   <span style={{ fontSize: '0.62rem', color: isDarkMode ? '#8696a0' : '#667781' }}>{formattedTime}</span>
                                   <CheckCircle2 size={11} color="#53bdeb" />
@@ -14592,51 +14700,74 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                 onChange={handleUploadCustomSticker}
                               />
 
-                              {customStickers.length === 0 ? (
+                              {unitStickers.length === 0 ? (
                                 <div style={{ textAlign: 'center', padding: '28px 12px', color: isDarkMode ? '#8696a0' : '#64748b' }}>
                                   <div style={{ fontSize: '0.80rem', fontWeight: 700, marginBottom: '4px', color: isDarkMode ? '#e2e8f0' : '#1e293b' }}>
-                                    Nenhuma figurinha personalizada ainda
+                                    Nenhuma figurinha salva nesta unidade
                                   </div>
                                   <div style={{ fontSize: '0.72rem', lineHeight: 1.4 }}>
-                                    Clique em <strong>"+ Nova Figurinha"</strong> para fazer upload de figurinhas oficiais do seu negócio (.png, .webp, .gif).
+                                    Clique em qualquer figurinha recebida no chat para salvá-la ou clique em <strong>"+ Nova Figurinha"</strong>.
                                   </div>
                                 </div>
                               ) : (
                                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
-                                  {customStickers.map((c, i) => (
-                                    <button
-                                      key={i}
-                                      type="button"
-                                      onClick={() => handleSendSticker(c)}
-                                      title={`Enviar figurinha personalizada ${i + 1}`}
-                                      style={{
-                                        padding: '6px',
-                                        borderRadius: '10px',
-                                        background: isDarkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)',
-                                        border: isDarkMode ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(0,0,0,0.08)',
-                                        cursor: 'pointer',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        transition: 'transform 0.15s ease, background 0.15s ease',
-                                        aspectRatio: '1',
-                                      }}
-                                      onMouseEnter={(e) => {
-                                        e.currentTarget.style.transform = 'scale(1.06)';
-                                        e.currentTarget.style.background = isDarkMode ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)';
-                                      }}
-                                      onMouseLeave={(e) => {
-                                        e.currentTarget.style.transform = 'scale(1)';
-                                        e.currentTarget.style.background = isDarkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)';
-                                      }}
-                                    >
-                                      <img
-                                        src={c}
-                                        alt={`Figurinha ${i + 1}`}
-                                        style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-                                      />
-                                    </button>
-                                  ))}
+                                  {unitStickers.map((st, i) => {
+                                    const venueLabel = venues.find(v => v.id === st.venueId)?.name;
+                                    return (
+                                      <button
+                                        key={st.id}
+                                        type="button"
+                                        onClick={() => handleSendSticker(st.mediaUrl)}
+                                        title={venueLabel ? `Enviar figurinha (${venueLabel})` : `Enviar figurinha ${i + 1}`}
+                                        style={{
+                                          position: 'relative',
+                                          padding: '6px',
+                                          borderRadius: '10px',
+                                          background: isDarkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)',
+                                          border: isDarkMode ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(0,0,0,0.08)',
+                                          cursor: 'pointer',
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          justifyContent: 'center',
+                                          transition: 'transform 0.15s ease, background 0.15s ease',
+                                          aspectRatio: '1',
+                                        }}
+                                        onMouseEnter={(e) => {
+                                          e.currentTarget.style.transform = 'scale(1.06)';
+                                          e.currentTarget.style.background = isDarkMode ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)';
+                                        }}
+                                        onMouseLeave={(e) => {
+                                          e.currentTarget.style.transform = 'scale(1)';
+                                          e.currentTarget.style.background = isDarkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)';
+                                        }}
+                                      >
+                                        <img
+                                          src={st.mediaUrl}
+                                          alt={`Figurinha ${i + 1}`}
+                                          style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                                        />
+                                        {venueLabel && (
+                                          <span style={{
+                                            position: 'absolute',
+                                            bottom: '3px',
+                                            left: '3px',
+                                            right: '3px',
+                                            fontSize: '0.56rem',
+                                            fontWeight: 700,
+                                            color: isDarkMode ? '#cbd5e1' : '#334155',
+                                            background: isDarkMode ? 'rgba(15,23,42,0.78)' : 'rgba(255,255,255,0.86)',
+                                            borderRadius: '4px',
+                                            padding: '1px 3px',
+                                            whiteSpace: 'nowrap',
+                                            overflow: 'hidden',
+                                            textOverflow: 'ellipsis',
+                                          }}>
+                                            {venueLabel}
+                                          </span>
+                                        )}
+                                      </button>
+                                    );
+                                  })}
                                 </div>
                               )}
                             </div>

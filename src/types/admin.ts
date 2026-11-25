@@ -126,6 +126,8 @@ export interface AdminUser {
   masterId?: string; // ID da conta Master proprietária (caso subordinado)
   sectors?: ('diretoria' | 'comercial' | 'pos_venda' | 'gerencia' | 'financeiro' | 'marketing' | 'marketing_tecnologia' | string)[];
   primarySector?: 'diretoria' | 'comercial' | 'pos_venda' | 'gerencia' | 'financeiro' | 'marketing' | 'marketing_tecnologia' | string;
+  jobRoles?: string[];
+  department?: string;
   permissions?: string[];
   pinnedFunnelIds?: string[];
   customJobTitle?: string; // Título / Cargo executivo personalizado

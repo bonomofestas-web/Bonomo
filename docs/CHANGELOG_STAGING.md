@@ -676,3 +676,11 @@ Grande reestruturação de governança, experiência do usuário, banco de dados
   - **Carga de Dados de Contratos, Clientes e Contatos para Produção:**
     * Gerado script de dados `supabase/migrations/DADOS_CONTRATOS_CLIENTES_R2_PRODUCAO.sql` contendo 257 contatos, 218 clientes, 218 contratos com preços, faturamento e URLs permanentes no Cloudflare R2, 218 colocações em funis de pós-venda e 218 registros de revisão financeira.
 
+- **Visibilidade de Leads para Colaboradores Logados e Figurinhas do WhatsApp por Unidade** (`improved` / `whatsapp`):
+  - **Paridade Real entre Login Direto de Colaborador e Modo "Ver com os olhos de" (`AdminStateContext.tsx`):**
+    * Incluídos `sectors`, `jobRoles` e `department` na construção do `AdminUser` em `login()` e no enriquecimento dinâmico de `effectiveUser` a partir do cadastro atualizado em `collaborators`, garantindo que colaboradores logados diretamente enxerguem os mesmos leads e funis visíveis no modo espectador.
+  - **Figurinhas Compactas e Base Compartilhada por Unidade (`supabase/migrations/20261125120000_whatsapp_stickers.sql`, `src/services/stickerService.ts`, `AdminWhatsAppWorkspaceView.tsx`):**
+    * Tamanho de exibição das figurinhas reduzido para `92px × 92px` com fundo transparente.
+    * Removido o lightbox ao clicar em figurinhas recebidas ou enviadas; o clique agora exibe a ação **Salvar figurinha na unidade**, persistindo a mídia no Cloudflare R2 e na tabela `public.whatsapp_stickers` (escopada por `master_id` e `venue_id`).
+    * Todos os usuários com acesso àquela unidade (ou múltiplas unidades) passam a visualizar e enviar as figurinhas salvas diretamente na aba **Figurinhas** do chat.
+
