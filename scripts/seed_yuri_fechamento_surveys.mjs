@@ -14,7 +14,7 @@ const parseEnv = (path) => {
   );
 };
 
-const env = { ...parseEnv('.env'), ...parseEnv('.env.local') };
+const env = parseEnv('.env');
 const url = env.VITE_SUPABASE_URL || env.SUPABASE_URL;
 const key = env.SUPABASE_SERVICE_ROLE_KEY;
 
