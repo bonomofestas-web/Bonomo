@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { BarChart3, Copy, Link2, Loader2, Pencil, Plus, ClipboardList } from 'lucide-react';
+import { BarChart3, Copy, ExternalLink, Link2, Loader2, Pencil, Plus, ClipboardList } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAdminState } from '../../context/AdminStateContext';
 import { surveyPublicUrl, surveyService, type SurveyListItem } from '../../services/surveyService';
@@ -57,7 +57,7 @@ export const AdminSurveysView: React.FC = () => {
       <div style={{ marginBottom: 18 }}>
         <h1 style={{ margin: 0, fontSize: '1.3rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>Pesquisa</h1>
         <p style={{ margin: '4px 0 0', fontSize: '0.82rem', color: 'var(--adm-text-muted)', maxWidth: 680, lineHeight: 1.45 }}>
-          Monte pesquisas passo a passo (uma pergunta por tela), envie o link para os leads e acompanhe as respostas em gráficos e na ficha de cada pessoa.
+          Crie pesquisas interativas (uma pergunta por tela) com capa personalizada, imagens e vídeos no R2, compartilhe o link público direto e acompanhe gráficos de pizza, barra e evolução das respostas.
         </p>
       </div>
 
@@ -95,7 +95,12 @@ export const AdminSurveysView: React.FC = () => {
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 'auto' }}>
                   <button type="button" onClick={() => setMode({ kind: 'results', id: s.id })} style={btn}><BarChart3 size={13} /> Resultados</button>
                   <button type="button" onClick={() => setMode({ kind: 'edit', id: s.id })} style={btn}><Pencil size={13} /> Editar</button>
-                  {s.status === 'published' && <button type="button" onClick={() => { void navigator.clipboard?.writeText(surveyPublicUrl(s.slug)); toast.success('Link copiado.'); }} style={btn}><Link2 size={13} /> <Copy size={11} /> Link</button>}
+                  {s.status === 'published' && (
+                    <>
+                      <button type="button" onClick={() => { void navigator.clipboard?.writeText(surveyPublicUrl(s.slug)); toast.success('Link público copiado.'); }} style={btn}><Link2 size={13} /> <Copy size={11} /> Copiar link</button>
+                      <a href={surveyPublicUrl(s.slug)} target="_blank" rel="noreferrer" style={{ ...btn, textDecoration: 'none' }}><ExternalLink size={13} /> Abrir</a>
+                    </>
+                  )}
                 </div>
               </div>
             );

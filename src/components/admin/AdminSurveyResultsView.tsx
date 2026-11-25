@@ -1,10 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, ChevronLeft, ChevronRight, Download, ExternalLink, Loader2, Pencil, Search } from 'lucide-react';
-import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { ArrowLeft, BarChart2, ChevronLeft, ChevronRight, Download, ExternalLink, Loader2, Pencil, PieChart as PieIcon, Search, TrendingUp } from 'lucide-react';
+import { Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { useAdminState } from '../../context/AdminStateContext';
 import { surveyService } from '../../services/surveyService';
 import { answerLabel, isAnswered } from '../../utils/surveyLogic';
-import { summarizeSurvey, surveyToCsv, type QuestionSummary } from '../../utils/surveyStats';
+import { buildResponseTimeline, summarizeSurvey, surveyToCsv, type QuestionSummary } from '../../utils/surveyStats';
 import { Switch, DateRangeField } from '../ui';
 import { SURVEY_TYPE_LABELS, type Survey, type SurveyQuestion, type SurveyResponse } from '../../types/survey';
 
@@ -33,6 +33,8 @@ export const AdminSurveyResultsView: React.FC<Props> = ({ surveyId, masterId, on
   const [range, setRange] = useState({ start: '', end: '' });
   const [search, setSearch] = useState('');
   const [fichaId, setFichaId] = useState<string | null>(null);
+  const [timelineGranularity, setTimelineGranularity] = useState<'day' | 'month'>('day');
+  const [chartModeByQ, setChartModeByQ] = useState<Record<string, 'pie' | 'bar'>>({});
 
   useEffect(() => {
     let cancelled = false;
@@ -46,8 +48,25 @@ export const AdminSurveyResultsView: React.FC<Props> = ({ surveyId, masterId, on
   }, [surveyId, masterId]);
 
   const leadById = useMemo(() => new Map(leads.map(l => [l.id, l])), [leads]);
-  const nameOf = (r: SurveyResponse) => (r.leadId ? leadById.get(r.leadId)?.name : undefined) || `Anônimo ${r.id.slice(0, 6)}`;
-  const phoneOf = (r: SurveyResponse) => (r.leadId ? leadById.get(r.leadId)?.phone : undefined) || '';
+  const identityQIds = useMemo(() => {
+    const nameQ = questions.find(q => (q.type === 'short_text' || q.type === 'email') && /nome|email|e-mail|cliente|anfitri/i.test(q.title));
+    const fallbackText = questions.find(q => q.type === 'short_text' || q.type === 'email');
+    const phoneQ = questions.find(q => q.type === 'phone');
+    return { nameId: nameQ?.id || fallbackText?.id, phoneId: phoneQ?.id };
+  }, [questions]);
+  const nameOf = (r: SurveyResponse) => {
+    const fromLead = r.leadId ? leadById.get(r.leadId)?.name : undefined;
+    if (fromLead) return fromLead;
+    const fromAnswer = identityQIds.nameId ? r.answers[identityQIds.nameId] : undefined;
+    if (typeof fromAnswer === 'string' && fromAnswer.trim()) return fromAnswer.trim();
+    return `Participante #${r.id.slice(0, 6)}`;
+  };
+  const phoneOf = (r: SurveyResponse) => {
+    const fromLead = r.leadId ? leadById.get(r.leadId)?.phone : undefined;
+    if (fromLead) return fromLead;
+    const fromAnswer = identityQIds.phoneId ? r.answers[identityQIds.phoneId] : undefined;
+    return typeof fromAnswer === 'string' ? fromAnswer.trim() : '';
+  };
 
   const answered = useMemo(() => responses.filter(r => r.status !== 'sent'), [responses]);
   const filtered = useMemo(() => answered.filter(r => {
@@ -58,6 +77,7 @@ export const AdminSurveyResultsView: React.FC<Props> = ({ surveyId, masterId, on
     return true;
   }), [answered, onlyCompleted, range]);
   const summaries = useMemo(() => summarizeSurvey(questions, filtered), [questions, filtered]);
+  const timeline = useMemo(() => buildResponseTimeline(filtered, timelineGranularity), [filtered, timelineGranularity]);
 
   const sent = responses.filter(r => r.status === 'sent').length;
   const started = answered.filter(r => r.status === 'started').length;
@@ -82,20 +102,45 @@ export const AdminSurveyResultsView: React.FC<Props> = ({ surveyId, masterId, on
 
   const renderSummary = (q: SurveyQuestion, s: QuestionSummary, i: number) => {
     const empty = s.n === 0;
+    const defaultChoiceMode: 'pie' | 'bar' = q.type === 'multi_choice' ? 'bar' : 'pie';
+    const choiceMode = chartModeByQ[q.id] || defaultChoiceMode;
+
     return (
       <div key={q.id} style={card}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'baseline' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center' }}>
           <h4 style={{ margin: 0, fontSize: '0.92rem', color: 'var(--adm-text-title)' }}>{i + 1}. {q.title}</h4>
-          <span style={{ fontSize: '0.7rem', color: 'var(--adm-text-muted)', whiteSpace: 'nowrap' }}>{SURVEY_TYPE_LABELS[q.type]}</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            {!empty && s.kind === 'choice' && (
+              <div style={{ display: 'inline-flex', borderRadius: 6, border: '1px solid var(--adm-border)', overflow: 'hidden' }}>
+                <button
+                  type="button"
+                  title="Gráfico de Pizza"
+                  onClick={() => setChartModeByQ(p => ({ ...p, [q.id]: 'pie' }))}
+                  style={{ padding: '3px 7px', border: 'none', cursor: 'pointer', background: choiceMode === 'pie' ? '#0284C7' : 'transparent', color: choiceMode === 'pie' ? '#fff' : 'var(--adm-text-muted)', display: 'inline-flex', alignItems: 'center' }}
+                >
+                  <PieIcon size={12} />
+                </button>
+                <button
+                  type="button"
+                  title="Gráfico de Barras"
+                  onClick={() => setChartModeByQ(p => ({ ...p, [q.id]: 'bar' }))}
+                  style={{ padding: '3px 7px', border: 'none', cursor: 'pointer', background: choiceMode === 'bar' ? '#0284C7' : 'transparent', color: choiceMode === 'bar' ? '#fff' : 'var(--adm-text-muted)', display: 'inline-flex', alignItems: 'center' }}
+                >
+                  <BarChart2 size={12} />
+                </button>
+              </div>
+            )}
+            <span style={{ fontSize: '0.7rem', color: 'var(--adm-text-muted)', whiteSpace: 'nowrap' }}>{SURVEY_TYPE_LABELS[q.type]}</span>
+          </div>
         </div>
         <div style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)', margin: '2px 0 10px' }}>{s.n} {s.n === 1 ? 'resposta' : 'respostas'}{s.seen > s.n ? ` · ${s.seen} chegaram a ver` : ''}</div>
         {empty && <div style={{ fontSize: '0.8rem', color: 'var(--adm-text-muted)' }}>Ainda sem respostas.</div>}
-        {!empty && s.kind === 'choice' && (
+        {!empty && s.kind === 'choice' && choiceMode === 'pie' && (
           <div style={{ display: 'grid', gridTemplateColumns: 'minmax(180px, 240px) 1fr', gap: 16, alignItems: 'center' }}>
             <div style={{ height: 210 }}>
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
-                  <Pie data={s.slices.filter(x => x.count > 0)} dataKey="count" nameKey="label" innerRadius={42} outerRadius={90} paddingAngle={2} stroke="none">
+                  <Pie data={s.slices.filter(x => x.count > 0)} dataKey="count" nameKey="label" innerRadius={42} outerRadius={88} paddingAngle={2} stroke="none">
                     {s.slices.filter(x => x.count > 0).map(x => <Cell key={x.key} fill={PALETTE[s.slices.indexOf(x) % PALETTE.length]} />)}
                   </Pie>
                   <Tooltip formatter={(v: any, _n: any, p: any) => [`${v} (${p?.payload?.pct}%)`, p?.payload?.label]} />
@@ -113,6 +158,37 @@ export const AdminSurveyResultsView: React.FC<Props> = ({ surveyId, masterId, on
               ))}
               {q.type === 'multi_choice' && <div style={{ fontSize: '0.7rem', color: 'var(--adm-text-muted)' }}>Cada pessoa pode marcar mais de uma opção: os percentuais são sobre quem respondeu.</div>}
             </div>
+          </div>
+        )}
+        {!empty && s.kind === 'choice' && choiceMode === 'bar' && (
+          <div>
+            <div style={{ height: Math.max(180, s.slices.length * 38) }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={s.slices} layout="vertical" margin={{ left: 8, right: 20 }}>
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                  <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11 }} />
+                  <YAxis type="category" dataKey="label" width={140} tick={{ fontSize: 11 }} />
+                  <Tooltip formatter={(v: any, _n: any, p: any) => [`${v} (${p?.payload?.pct}%)`, 'Respostas']} />
+                  <Bar dataKey="count" radius={[0, 6, 6, 0]}>
+                    {s.slices.map((x, k) => <Cell key={x.key} fill={PALETTE[k % PALETTE.length]} />)}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+            {q.type === 'multi_choice' && <div style={{ fontSize: '0.7rem', color: 'var(--adm-text-muted)', marginTop: 6 }}>Cada pessoa pode marcar mais de uma opção: os percentuais são sobre quem respondeu.</div>}
+          </div>
+        )}
+        {!empty && s.kind === 'date' && (
+          <div style={{ height: 210 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={s.slices}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+                <YAxis allowDecimals={false} tick={{ fontSize: 11 }} width={28} />
+                <Tooltip formatter={(v: any, _n: any, p: any) => [`${v} (${p?.payload?.pct}%)`, 'Respostas']} />
+                <Bar dataKey="count" fill="#8B5CF6" radius={[5, 5, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
           </div>
         )}
         {!empty && s.kind === 'scale' && (
@@ -133,7 +209,25 @@ export const AdminSurveyResultsView: React.FC<Props> = ({ surveyId, masterId, on
             </div>
           </div>
         )}
-        {!empty && s.kind === 'number' && s.numberStats && <div style={{ fontSize: '0.86rem', color: 'var(--adm-text-title)' }}>Média <strong>{s.numberStats.average}</strong> · mínimo <strong>{s.numberStats.min}</strong> · máximo <strong>{s.numberStats.max}</strong></div>}
+        {!empty && s.kind === 'number' && s.numberStats && (
+          <div>
+            <div style={{ fontSize: '0.86rem', color: 'var(--adm-text-title)', marginBottom: 10 }}>
+              Média <strong>{s.numberStats.average}</strong> · mínimo <strong>{s.numberStats.min}</strong> · máximo <strong>{s.numberStats.max}</strong> · soma <strong>{s.numberStats.sum}</strong>
+            </div>
+            {s.slices.length > 0 && (
+              <div style={{ height: 180 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={s.slices}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                    <XAxis dataKey="label" tick={{ fontSize: 11 }} /><YAxis allowDecimals={false} tick={{ fontSize: 11 }} width={28} />
+                    <Tooltip formatter={(v: any, _n: any, p: any) => [`${v} (${p?.payload?.pct}%)`, 'Respostas']} />
+                    <Bar dataKey="count" fill="#10B981" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </div>
+        )}
         {!empty && (s.kind === 'text' || (s.kind === 'choice' && s.texts.length > 0)) && (
           <TextList items={s.texts} title={s.kind === 'choice' ? 'Respostas em "Outro"' : undefined} nameOf={id => { const r = responses.find(x => x.id === id); return r ? nameOf(r) : ''; }} />
         )}
@@ -175,8 +269,45 @@ export const AdminSurveyResultsView: React.FC<Props> = ({ surveyId, masterId, on
         {filtered.length === 0 && <div style={{ ...card, textAlign: 'center', color: 'var(--adm-text-muted)', fontSize: '0.88rem' }}>{answered.length === 0 ? 'Ainda não há respostas.' : 'Nenhuma resposta nesse filtro. Desligue "Só concluídas" ou mude o período.'}</div>}
 
         {filtered.length > 0 && tab === 'resumo' && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))', gap: 16 }}>
-            {questions.map((q, i) => (q.type === 'statement' ? null : renderSummary(q, summaries[i], i)))}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {timeline.length > 0 && (
+              <div style={card}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 10, flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <TrendingUp size={16} color="#0284C7" />
+                    <h4 style={{ margin: 0, fontSize: '0.92rem', color: 'var(--adm-text-title)' }}>Evolução das Respostas</h4>
+                  </div>
+                  <div style={{ display: 'inline-flex', borderRadius: 6, border: '1px solid var(--adm-border)', overflow: 'hidden' }}>
+                    {([['day', 'Por dia'], ['month', 'Por mês']] as const).map(([g, l]) => (
+                      <button
+                        key={g}
+                        type="button"
+                        onClick={() => setTimelineGranularity(g)}
+                        style={{ padding: '4px 10px', border: 'none', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 700, background: timelineGranularity === g ? '#0284C7' : 'transparent', color: timelineGranularity === g ? '#fff' : 'var(--adm-text-muted)' }}
+                      >
+                        {l}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div style={{ height: 220 }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={timeline}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                      <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+                      <YAxis allowDecimals={false} tick={{ fontSize: 11 }} width={32} />
+                      <Tooltip />
+                      <Legend wrapperStyle={{ fontSize: '0.75rem' }} />
+                      <Line type="monotone" dataKey="count" name="No período" stroke="#0284C7" strokeWidth={2.5} dot={{ r: 4 }} activeDot={{ r: 6 }} />
+                      <Line type="monotone" dataKey="cumulative" name="Acumulado" stroke="#10B981" strokeWidth={2} strokeDasharray="4 4" dot={false} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            )}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))', gap: 16 }}>
+              {questions.map((q, i) => (q.type === 'statement' ? null : renderSummary(q, summaries[i], i)))}
+            </div>
           </div>
         )}
 

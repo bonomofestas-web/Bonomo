@@ -2507,9 +2507,22 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     }
   }, [selectedLeadId, selectedLead?.activities, prefetchLeadConversations]);
 
-  // Contrato Mestre de Pós-Venda associado ao lead selecionado (ex: Carla Nogueira vinculada ao contrato do Antônio / Vitória)
+  const selectedLeadFunnel = useMemo(() => {
+    if (!selectedLead?.funnelId) return null;
+    return funnels.find(f => f.id === selectedLead.funnelId || f.name.toLowerCase().trim() === selectedLead.funnelId?.toLowerCase().trim()) || null;
+  }, [selectedLead?.funnelId, funnels]);
+
+  const isSelectedLeadInCommercialFunnel = Boolean(
+    selectedLeadFunnel &&
+    !selectedLeadFunnel.isPostSale &&
+    selectedLeadFunnel.category !== 'Pós-Venda' &&
+    selectedLeadFunnel.category !== 'pos_venda'
+  );
+
+  // Contrato Mestre de Pós-Venda associado ao lead selecionado (estritamente quando NÃO está em funil comercial)
   const targetContractClient = useMemo(() => {
     if (!selectedLead) return null;
+    if (isSelectedLeadInCommercialFunnel) return selectedLead;
     if ((selectedLead as any).contractNumber || (selectedLead as any).contractTitle) {
       return selectedLead;
     }
@@ -2522,8 +2535,9 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       const lDigits = selectedLead.phone.replace(/\D/g, '').slice(-8);
       if (lDigits.length >= 8) {
         const found = clients.find(cl => {
-          // BLINDAGEM DE FUNIL: Nunca associar cliente/contrato de outro funil!
+          // BLINDAGEM DE FUNIL E UNIDADE: Nunca associar cliente/contrato de outro funil ou de outra unidade!
           if (selectedLead.funnelId && cl.funnelId && cl.funnelId !== selectedLead.funnelId) return false;
+          if (selectedLead.venueId && cl.venueId && cl.venueId !== selectedLead.venueId) return false;
           if (cl.payerPhone && cl.payerPhone.replace(/\D/g, '').slice(-8) === lDigits) return true;
           if (Array.isArray(cl.contacts) && cl.contacts.some(ct => ct.phone && ct.phone.replace(/\D/g, '').slice(-8) === lDigits)) return true;
           return false;
@@ -2532,10 +2546,19 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       }
     }
     return selectedLead;
-  }, [selectedLead, clients]);
+  }, [selectedLead, clients, isSelectedLeadInCommercialFunnel]);
+
+  const isSelectedLeadPostSale = Boolean(
+    selectedLead && !isSelectedLeadInCommercialFunnel && (
+      isPostSaleFunnel ||
+      selectedLead.isClient ||
+      selectedLead.group === 'Pós-Venda' ||
+      (targetContractClient && (targetContractClient as any).contractNumber)
+    )
+  );
 
   const isPostSaleNoContract = useMemo(() => {
-    if (!selectedLead) return false;
+    if (!selectedLead || isSelectedLeadInCommercialFunnel) return false;
     const isPost = Boolean(isPostSaleFunnel || isPostSale || selectedLead.isClient || selectedLead.group === 'Pós-Venda');
     if (!isPost) return false;
     const hasCt = Boolean(
@@ -2545,18 +2568,18 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       clients.some(c => (c.id === selectedLead.id || (c as any).leadId === selectedLead.id) && Boolean((c as any).hasContract || (c as any).contractId))
     );
     return !hasCt;
-  }, [selectedLead, isPostSaleFunnel, isPostSale, clients, targetContractClient]);
-  usePresenceContext(selectedLead ? { type: (selectedLead as any).isClient ? 'client' : 'lead', id: selectedLead.id, label: selectedLead.debutanteName } : null);
+  }, [selectedLead, isSelectedLeadInCommercialFunnel, isPostSaleFunnel, isPostSale, clients, targetContractClient]);
+  usePresenceContext(selectedLead ? { type: isSelectedLeadPostSale ? 'client' : 'lead', id: selectedLead.id, label: selectedLead.debutanteName } : null);
 
   useEffect(() => {
     // Modo foco (lista recolhida) so quando embutido no Kanban; no menu Mensagens a lista fica sempre aberta
-    if (isOpenedFromCrmOrKanban && (isPostSaleWorkspace || (selectedLead && (selectedLead as any).isClient)) && selectedLeadId) {
+    if (isOpenedFromCrmOrKanban && (isPostSaleWorkspace || isSelectedLeadPostSale) && selectedLeadId) {
       setIsConversationsCollapsed(true);
     }
-  }, [selectedLeadId, isPostSaleWorkspace, selectedLead, isOpenedFromCrmOrKanban]);
+  }, [selectedLeadId, isPostSaleWorkspace, isSelectedLeadPostSale, isOpenedFromCrmOrKanban]);
 
   // ── ABAS SETORIAIS DE WHATSAPP (COMERCIAL E PÓS-VENDA) ─────────────────────────────
-  const isPostSaleChat = Boolean(isPostSaleFunnel || selectedLead?.isClient);
+  const isPostSaleChat = Boolean(isSelectedLeadPostSale);
 
   // Funil ativo que contém as configurações de canais setoriais (tanto comercial quanto pós-venda)
   const activeChannelsFunnel = useMemo(() => {
@@ -7736,7 +7759,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
           overflowY: 'auto',
           animation: 'fadeIn 0.15s ease-out',
         }}>
-          {isPostSaleFunnel || selectedLead.isClient || (targetContractClient && (targetContractClient as any).contractNumber) ? (
+          {isSelectedLeadPostSale ? (
             <AdminClientDrawerInspector
               lead={(targetContractClient || selectedLead) as any}
               onStageChange={(newStage: ClientStage) => {
@@ -7794,8 +7817,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                   <button
                     type="button"
                     onClick={() => setIsInspectorOpen(true)}
-                    aria-label={isPostSaleFunnel || selectedLead.isClient ? 'Abrir ficha do contrato' : 'Abrir ficha do lead'}
-                    title={isPostSaleFunnel || selectedLead.isClient ? 'Abrir ficha do contrato' : 'Abrir ficha do lead'}
+                    aria-label={isSelectedLeadPostSale ? 'Abrir ficha do contrato' : 'Abrir ficha do lead'}
+                    title={isSelectedLeadPostSale ? 'Abrir ficha do contrato' : 'Abrir ficha do lead'}
                     style={{
                       display: 'flex',
                       alignItems: 'center',
@@ -7991,7 +8014,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                           </span>
                         ) : (
                           <>
-                            <PhoneCall size={11} /> {formatPhone(activeRecipient?.phone || selectedRecipientPhone || selectedLead.phone || (selectedLead as any).payerPhone) || 'Sem telefone'} • {isPostSaleFunnel || selectedLead.isClient ? `Gestor de Sucesso: ${selectedLead.assignedTo || selectedLead.sdrName || 'Não atribuído'}` : (selectedLead.sdrName ? `SDR: ${selectedLead.sdrName}` : 'Sem SDR')}
+                            <PhoneCall size={11} /> {formatPhone(activeRecipient?.phone || selectedRecipientPhone || selectedLead.phone || (selectedLead as any).payerPhone) || 'Sem telefone'} • {isSelectedLeadPostSale ? `Gestor de Sucesso: ${selectedLead.assignedTo || selectedLead.sdrName || 'Não atribuído'}` : (selectedLead.sdrName ? `SDR: ${selectedLead.sdrName}` : 'Sem SDR')}
                           </>
                         )}
                       </>

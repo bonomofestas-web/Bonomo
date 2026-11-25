@@ -26,11 +26,49 @@ const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 const KEYFRAMES = `@keyframes f5SurveyIn{from{opacity:0;transform:translateY(28px)}to{opacity:1;transform:translateY(0)}}
 @keyframes f5SurveyBack{from{opacity:0;transform:translateY(-28px)}to{opacity:1;transform:translateY(0)}}`;
 
+const toEmbedUrl = (url?: string): string | null => {
+  if (!url) return null;
+  const yt = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]{6,})/);
+  if (yt) return `https://www.youtube.com/embed/${yt[1]}?rel=0`;
+  const vm = url.match(/vimeo\.com\/(?:video\/)?(\d+)/);
+  if (vm) return `https://player.vimeo.com/video/${vm[1]}`;
+  return null;
+};
+
+const renderMediaBlock = (imageUrl?: string, videoUrl?: string, radius = 14, maxHeight = 320): React.ReactNode => {
+  if (videoUrl) {
+    const embed = toEmbedUrl(videoUrl);
+    if (embed) {
+      return (
+        <div style={{ width: '100%', aspectRatio: '16 / 9', maxHeight, borderRadius: radius, overflow: 'hidden', background: '#000', boxShadow: '0 12px 30px rgba(0,0,0,0.16)' }}>
+          <iframe src={embed} title="Vídeo" allow="autoplay; encrypted-media; picture-in-picture" allowFullScreen style={{ width: '100%', height: '100%', border: 'none' }} />
+        </div>
+      );
+    }
+    return (
+      <video src={videoUrl} controls playsInline style={{ width: '100%', maxHeight, borderRadius: radius, objectFit: 'cover', background: '#000', boxShadow: '0 12px 30px rgba(0,0,0,0.16)', display: 'block' }} />
+    );
+  }
+  if (imageUrl) {
+    return (
+      <img src={imageUrl} alt="" style={{ width: '100%', maxHeight, borderRadius: radius, objectFit: 'cover', boxShadow: '0 12px 30px rgba(0,0,0,0.14)', display: 'block' }} />
+    );
+  }
+  return null;
+};
+
 type Screen = { kind: 'welcome' } | { kind: 'question'; id: string } | { kind: 'thanks' };
 
-/** Pesquisa uma pergunta por vez, no estilo Typeform: tela de boas-vindas, perguntas animadas, atalhos de teclado e agradecimento. */
+/** Pesquisa uma pergunta por vez, no estilo Typeform: capa personalizada, mídia R2, perguntas animadas e atalhos. */
 export const SurveyRunner: React.FC<Props> = ({ survey, initialAnswers, preview, onSave, onSubmit }) => {
   const color = survey.theme?.color || '#0284C7';
+  const bgColor = survey.theme?.backgroundColor || '#F8FAFC';
+  const textColor = survey.theme?.textColor || '#0F172A';
+  const mutedColor = `${textColor}99`;
+  const fontFam = survey.theme?.fontFamily ? `'${survey.theme.fontFamily}', system-ui, sans-serif` : "'Inter', system-ui, sans-serif";
+  const btnRadius = survey.theme?.buttonRadius === 'pill' ? 999 : survey.theme?.buttonRadius === 'square' ? 3 : 10;
+  const bgImg = survey.theme?.backgroundImageUrl;
+  const bgOverlay = survey.theme?.backgroundOverlay ?? 0.55;
   const questions = survey.questions;
   const [screen, setScreen] = useState<Screen>({ kind: 'welcome' });
   const [answers, setAnswers] = useState<Record<string, SurveyAnswerValue>>(initialAnswers || {});
@@ -139,9 +177,9 @@ export const SurveyRunner: React.FC<Props> = ({ survey, initialAnswers, preview,
   };
 
   const anim = `${dir === 'back' ? 'f5SurveyBack' : 'f5SurveyIn'} .38s ease-out`;
-  const box: React.CSSProperties = { width: '100%', maxWidth: 640, padding: '0 24px', boxSizing: 'border-box', animation: anim };
-  const inputBase: React.CSSProperties = { width: '100%', boxSizing: 'border-box', border: 'none', borderBottom: `2px solid ${color}55`, background: 'transparent', outline: 'none', fontSize: '1.4rem', padding: '8px 0', color: '#0F172A', fontFamily: 'inherit' };
-  const okBtn: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 8, padding: '10px 22px', borderRadius: 8, border: 'none', background: color, color: '#fff', fontSize: '1rem', fontWeight: 700, cursor: 'pointer' };
+  const box: React.CSSProperties = { position: 'relative', zIndex: 2, width: '100%', maxWidth: 680, padding: '0 24px', boxSizing: 'border-box', animation: anim };
+  const inputBase: React.CSSProperties = { width: '100%', boxSizing: 'border-box', border: 'none', borderBottom: `2px solid ${color}55`, background: 'transparent', outline: 'none', fontSize: '1.4rem', padding: '8px 0', color: textColor, fontFamily: 'inherit' };
+  const okBtn: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 8, padding: '11px 24px', borderRadius: btnRadius, border: 'none', background: color, color: '#fff', fontSize: '1rem', fontWeight: 700, cursor: 'pointer', boxShadow: `0 6px 18px ${color}33` };
 
   const renderInput = (q: SurveyQuestion) => {
     const opts = q.options || {};
@@ -224,62 +262,131 @@ export const SurveyRunner: React.FC<Props> = ({ survey, initialAnswers, preview,
   };
 
   const choiceStyle = (on: boolean): React.CSSProperties => ({
-    display: 'flex', alignItems: 'center', gap: 12, width: '100%', maxWidth: 520, boxSizing: 'border-box', textAlign: 'left', padding: '11px 14px', borderRadius: 8,
-    border: `1.5px solid ${on ? color : `${color}66`}`, background: on ? `${color}1f` : `${color}0d`, color: '#0F172A', fontSize: '1.05rem', fontFamily: 'inherit', cursor: 'pointer',
+    display: 'flex', alignItems: 'center', gap: 12, width: '100%', maxWidth: 520, boxSizing: 'border-box', textAlign: 'left', padding: '11px 14px', borderRadius: Math.min(btnRadius, 12),
+    border: `1.5px solid ${on ? color : `${color}66`}`, background: on ? `${color}22` : `${color}0f`, color: textColor, fontSize: '1.05rem', fontFamily: 'inherit', cursor: 'pointer',
   });
   const keyBadge = (on: boolean): React.CSSProperties => ({ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 24, height: 24, borderRadius: 5, border: `1px solid ${color}`, background: on ? color : '#fff', color: on ? '#fff' : color, fontSize: '0.75rem', fontWeight: 800, flexShrink: 0 });
 
   const qIndex = current ? questions.findIndex(q => q.id === current.id) : -1;
+  const welcomeLayout = survey.welcome.layout || 'centered';
+  const hasWelcomeMedia = Boolean(survey.welcome.coverVideoUrl || survey.welcome.coverImageUrl);
+  const isSplitWelcome = screen.kind === 'welcome' && hasWelcomeMedia && (welcomeLayout === 'split_left' || welcomeLayout === 'split_right');
+  const isHeroWelcome = screen.kind === 'welcome' && hasWelcomeMedia && welcomeLayout === 'hero_bg';
 
   return (
-    <div style={{ position: 'relative', minHeight: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#F8FAFC', color: '#0F172A', fontFamily: "'Inter', system-ui, sans-serif", overflow: 'hidden' }}>
+    <div style={{ position: 'relative', minHeight: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: bgColor, color: textColor, fontFamily: fontFam, overflow: 'auto', padding: '56px 0' }}>
       <style>{KEYFRAMES}</style>
-      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 5, background: `${color}22` }}>
+
+      {/* Fundo global personalizado ou Hero de Capa */}
+      {isHeroWelcome ? (
+        <>
+          {survey.welcome.coverVideoUrl && !toEmbedUrl(survey.welcome.coverVideoUrl) ? (
+            <video src={survey.welcome.coverVideoUrl} autoPlay muted loop playsInline style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', zIndex: 0 }} />
+          ) : survey.welcome.coverImageUrl ? (
+            <div style={{ position: 'absolute', inset: 0, backgroundImage: `url(${survey.welcome.coverImageUrl})`, backgroundSize: 'cover', backgroundPosition: 'center', zIndex: 0 }} />
+          ) : null}
+          <div style={{ position: 'absolute', inset: 0, background: 'rgba(15, 23, 42, 0.58)', zIndex: 1 }} />
+        </>
+      ) : bgImg ? (
+        <>
+          <div style={{ position: 'absolute', inset: 0, backgroundImage: `url(${bgImg})`, backgroundSize: 'cover', backgroundPosition: 'center', zIndex: 0 }} />
+          <div style={{ position: 'absolute', inset: 0, background: bgColor, opacity: 1 - (1 - bgOverlay) * 0.6, zIndex: 1 }} />
+        </>
+      ) : null}
+
+      <div style={{ position: 'fixed', top: 0, left: 0, right: 0, height: 5, background: `${color}22`, zIndex: 10 }}>
         <div style={{ height: '100%', width: `${progress}%`, background: color, transition: 'width .35s ease' }} />
       </div>
-      {survey.theme?.logoUrl && <img src={survey.theme.logoUrl} alt="" style={{ position: 'absolute', top: 18, left: 22, height: 34, maxWidth: 160, objectFit: 'contain' }} />}
+      {survey.theme?.logoUrl && <img src={survey.theme.logoUrl} alt="" style={{ position: 'absolute', top: 18, left: 22, height: 36, maxWidth: 180, objectFit: 'contain', zIndex: 5 }} />}
 
       {screen.kind === 'welcome' && (
-        <div key="welcome" style={box}>
-          <h1 style={{ fontSize: '2.1rem', margin: '0 0 12px', lineHeight: 1.2, color: '#0F172A' }}>{survey.welcome.title || survey.title}</h1>
-          {(survey.welcome.text || survey.description) && <p style={{ fontSize: '1.15rem', color: '#475569', margin: '0 0 24px', whiteSpace: 'pre-line' }}>{survey.welcome.text || survey.description}</p>}
-          <button type="button" data-nav="next" onClick={start} style={okBtn}>{survey.welcome.buttonLabel || 'Começar'}</button>
-          <span style={{ marginLeft: 12, fontSize: '0.78rem', color: '#64748B' }}>ou aperte Enter</span>
-          {survey.welcome.privacyNote && <p style={{ marginTop: 28, fontSize: '0.75rem', color: '#64748B', maxWidth: 480 }}>{survey.welcome.privacyNote}</p>}
+        <div key="welcome" style={{ ...box, maxWidth: isSplitWelcome ? 980 : 680, color: isHeroWelcome ? '#FFFFFF' : textColor }}>
+          <div style={{
+            display: isSplitWelcome ? 'grid' : 'flex',
+            gridTemplateColumns: isSplitWelcome ? 'repeat(auto-fit, minmax(280px, 1fr))' : undefined,
+            flexDirection: 'column',
+            gap: isSplitWelcome ? 32 : 20,
+            alignItems: isSplitWelcome ? 'center' : (welcomeLayout === 'centered' && !hasWelcomeMedia ? 'flex-start' : 'stretch'),
+          }}>
+            {hasWelcomeMedia && welcomeLayout === 'split_left' && (
+              <div>{renderMediaBlock(survey.welcome.coverImageUrl, survey.welcome.coverVideoUrl, 16, 380)}</div>
+            )}
+            {hasWelcomeMedia && welcomeLayout === 'centered' && (
+              <div>{renderMediaBlock(survey.welcome.coverImageUrl, survey.welcome.coverVideoUrl, 16, 300)}</div>
+            )}
+            {isHeroWelcome && survey.welcome.coverVideoUrl && toEmbedUrl(survey.welcome.coverVideoUrl) && (
+              <div>{renderMediaBlock(undefined, survey.welcome.coverVideoUrl, 16, 300)}</div>
+            )}
+            <div>
+              <h1 style={{ fontSize: '2.2rem', margin: '0 0 12px', lineHeight: 1.18, color: isHeroWelcome ? '#FFFFFF' : textColor }}>{survey.welcome.title || survey.title}</h1>
+              {(survey.welcome.text || survey.description) && (
+                <p style={{ fontSize: '1.12rem', color: isHeroWelcome ? 'rgba(255,255,255,0.88)' : mutedColor, margin: '0 0 24px', whiteSpace: 'pre-line', lineHeight: 1.5 }}>
+                  {survey.welcome.text || survey.description}
+                </p>
+              )}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                <button type="button" data-nav="next" onClick={start} style={okBtn}>{survey.welcome.buttonLabel || 'Começar'}</button>
+                <span style={{ fontSize: '0.78rem', color: isHeroWelcome ? 'rgba(255,255,255,0.75)' : mutedColor }}>ou aperte Enter</span>
+              </div>
+              {survey.welcome.privacyNote && (
+                <p style={{ marginTop: 24, fontSize: '0.75rem', color: isHeroWelcome ? 'rgba(255,255,255,0.72)' : mutedColor, maxWidth: 480 }}>
+                  {survey.welcome.privacyNote}
+                </p>
+              )}
+            </div>
+            {hasWelcomeMedia && welcomeLayout === 'split_right' && (
+              <div>{renderMediaBlock(survey.welcome.coverImageUrl, survey.welcome.coverVideoUrl, 16, 380)}</div>
+            )}
+          </div>
         </div>
       )}
 
       {current && (
         <div key={current.id} style={box}>
+          {current.options?.mediaUrl && (
+            <div style={{ marginBottom: 18 }}>
+              {renderMediaBlock(
+                current.options.mediaType === 'video' ? undefined : current.options.mediaUrl,
+                current.options.mediaType === 'video' ? current.options.mediaUrl : undefined,
+                14,
+                260
+              )}
+            </div>
+          )}
           <div style={{ display: 'flex', gap: 10, alignItems: 'baseline', marginBottom: 6 }}>
             {current.type !== 'statement' && <span style={{ color, fontWeight: 800, fontSize: '1rem', display: 'inline-flex', alignItems: 'center', gap: 4 }}>{qIndex + 1}<ArrowRight size={14} /></span>}
-            <h2 style={{ fontSize: '1.55rem', margin: 0, lineHeight: 1.25, fontWeight: 600, color: '#0F172A' }}>{current.title}{current.required && <span style={{ color: '#DC2626' }}> *</span>}</h2>
+            <h2 style={{ fontSize: '1.55rem', margin: 0, lineHeight: 1.25, fontWeight: 600, color: textColor }}>{current.title}{current.required && <span style={{ color: '#DC2626' }}> *</span>}</h2>
           </div>
-          {current.description && <p style={{ margin: '0 0 18px 0', color: '#64748B', fontSize: '1rem', whiteSpace: 'pre-line' }}>{current.description}</p>}
+          {current.description && <p style={{ margin: '0 0 18px 0', color: mutedColor, fontSize: '1rem', whiteSpace: 'pre-line' }}>{current.description}</p>}
           <div style={{ marginTop: 22 }}>{renderInput(current)}</div>
           {error && <div style={{ marginTop: 14, color: '#DC2626', fontSize: '0.9rem', fontWeight: 600 }}>{error}</div>}
           <div style={{ marginTop: 26, display: 'flex', alignItems: 'center', gap: 12 }}>
             <button type="button" data-nav="next" disabled={busy} onClick={() => void goNext()} style={okBtn}>
               {busy ? <Loader2 size={16} className="animate-spin" /> : null}{current.type === 'statement' ? 'Continuar' : 'OK'}{!busy && <Check size={16} />}
             </button>
-            <span style={{ fontSize: '0.78rem', color: '#64748B' }}>aperte Enter</span>
-            {!current.required && current.type !== 'statement' && !isAnswered(current, value) && <button type="button" onClick={() => void goNext()} style={{ background: 'none', border: 'none', color: '#64748B', cursor: 'pointer', fontSize: '0.85rem', textDecoration: 'underline' }}>Pular</button>}
+            <span style={{ fontSize: '0.78rem', color: mutedColor }}>aperte Enter</span>
+            {!current.required && current.type !== 'statement' && !isAnswered(current, value) && <button type="button" onClick={() => void goNext()} style={{ background: 'none', border: 'none', color: mutedColor, cursor: 'pointer', fontSize: '0.85rem', textDecoration: 'underline' }}>Pular</button>}
           </div>
         </div>
       )}
 
       {screen.kind === 'thanks' && (
         <div key="thanks" style={box}>
-          <h1 style={{ fontSize: '2.1rem', margin: '0 0 12px', color: '#0F172A' }}>{survey.thanks.title || 'Obrigado!'}</h1>
-          <p style={{ fontSize: '1.15rem', color: '#475569', whiteSpace: 'pre-line' }}>{survey.thanks.text || 'Sua resposta foi enviada.'}</p>
+          {(survey.thanks.videoUrl || survey.thanks.imageUrl) && (
+            <div style={{ marginBottom: 20 }}>
+              {renderMediaBlock(survey.thanks.imageUrl, survey.thanks.videoUrl, 16, 280)}
+            </div>
+          )}
+          <h1 style={{ fontSize: '2.1rem', margin: '0 0 12px', color: textColor }}>{survey.thanks.title || 'Obrigado!'}</h1>
+          <p style={{ fontSize: '1.15rem', color: mutedColor, whiteSpace: 'pre-line' }}>{survey.thanks.text || 'Sua resposta foi enviada.'}</p>
           {survey.thanks.linkUrl && <a href={survey.thanks.linkUrl} target="_blank" rel="noreferrer" style={{ ...okBtn, textDecoration: 'none', marginTop: 12 }}>{survey.thanks.linkLabel || 'Saiba mais'}</a>}
-          {preview && <p style={{ marginTop: 20, fontSize: '0.78rem', color: '#64748B' }}>Preview: nada foi salvo.</p>}
+          {preview && <p style={{ marginTop: 20, fontSize: '0.78rem', color: mutedColor }}>Preview: nada foi salvo.</p>}
         </div>
       )}
 
       {screen.kind !== 'thanks' && (
-        <div style={{ position: 'absolute', bottom: 18, right: 22, display: 'flex', gap: 8 }}>
-          <button type="button" aria-label="Voltar" title="Voltar" onClick={goBack} disabled={screen.kind === 'welcome' || busy} style={{ width: 36, height: 36, borderRadius: 8, border: 'none', background: color, color: '#fff', cursor: 'pointer', opacity: screen.kind === 'welcome' ? 0.35 : 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><ArrowLeft size={17} /></button>
+        <div style={{ position: 'absolute', bottom: 18, right: 22, display: 'flex', gap: 8, zIndex: 5 }}>
+          <button type="button" aria-label="Voltar" title="Voltar" onClick={goBack} disabled={screen.kind === 'welcome' || busy} style={{ width: 36, height: 36, borderRadius: btnRadius, border: 'none', background: color, color: '#fff', cursor: 'pointer', opacity: screen.kind === 'welcome' ? 0.35 : 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><ArrowLeft size={17} /></button>
         </div>
       )}
     </div>

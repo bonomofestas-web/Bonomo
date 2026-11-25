@@ -20,6 +20,9 @@ export interface SurveyQuestionOptions {
   minLabel?: string;
   maxLabel?: string;
   placeholder?: string;
+  /** Midia anexada na pergunta (URL no R2 ou link de video) */
+  mediaUrl?: string;
+  mediaType?: 'image' | 'video';
 }
 
 /** Operadores da logica condicional (a regra olha a resposta da propria pergunta) */
@@ -47,9 +50,39 @@ export interface SurveyQuestion {
   logic: SurveyLogicRule[];
 }
 
-export interface SurveyWelcome { title?: string; text?: string; buttonLabel?: string; privacyNote?: string }
-export interface SurveyThanks { title?: string; text?: string; linkLabel?: string; linkUrl?: string }
-export interface SurveyTheme { color?: string; logoUrl?: string }
+export type SurveyCoverLayout = 'centered' | 'split_left' | 'split_right' | 'hero_bg';
+export type SurveyFontFamily = 'Inter' | 'Poppins' | 'DM Sans' | 'Playfair Display';
+export type SurveyButtonRadius = 'rounded' | 'pill' | 'square';
+
+export interface SurveyWelcome {
+  title?: string;
+  text?: string;
+  buttonLabel?: string;
+  privacyNote?: string;
+  coverImageUrl?: string;
+  coverVideoUrl?: string;
+  layout?: SurveyCoverLayout;
+}
+
+export interface SurveyThanks {
+  title?: string;
+  text?: string;
+  linkLabel?: string;
+  linkUrl?: string;
+  imageUrl?: string;
+  videoUrl?: string;
+}
+
+export interface SurveyTheme {
+  color?: string;
+  backgroundColor?: string;
+  textColor?: string;
+  logoUrl?: string;
+  backgroundImageUrl?: string;
+  backgroundOverlay?: number;
+  fontFamily?: SurveyFontFamily;
+  buttonRadius?: SurveyButtonRadius;
+}
 
 export interface Survey {
   id: string;
@@ -106,6 +139,6 @@ export const SURVEY_TYPE_LABELS: Record<SurveyQuestionType, string> = {
 };
 
 /** Tipos que viram grafico no resumo */
-export const CHART_TYPES: SurveyQuestionType[] = ['single_choice', 'multi_choice', 'dropdown', 'yes_no', 'scale', 'rating'];
+export const CHART_TYPES: SurveyQuestionType[] = ['single_choice', 'multi_choice', 'dropdown', 'yes_no', 'scale', 'rating', 'date', 'number'];
 /** Tipos em que a logica condicional faz sentido */
 export const LOGIC_TYPES: SurveyQuestionType[] = ['single_choice', 'dropdown', 'yes_no', 'scale', 'rating', 'number'];

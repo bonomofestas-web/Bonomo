@@ -1,12 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, BarChart3, ChevronDown, ChevronUp, Copy, Eye, FileText, Link2, Loader2, Plus, Save, Settings, Trash2, X } from 'lucide-react';
+import { ArrowLeft, BarChart3, ChevronDown, ChevronUp, Copy, ExternalLink, Eye, FileText, Layout, Link2, Loader2, Palette, Plus, Save, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAdminState } from '../../context/AdminStateContext';
 import { surveyPublicUrl, surveyService } from '../../services/surveyService';
 import { generateUuid } from '../../utils/uuid';
 import { Select, Switch } from '../ui';
 import { SurveyRunner } from '../public/SurveyRunner';
-import { LOGIC_TYPES, SURVEY_TYPE_LABELS, type Survey, type SurveyLogicOp, type SurveyLogicRule, type SurveyQuestion, type SurveyQuestionType } from '../../types/survey';
+import { SurveyMediaUpload } from './surveys/SurveyMediaUpload';
+import { LOGIC_TYPES, SURVEY_TYPE_LABELS, type Survey, type SurveyButtonRadius, type SurveyCoverLayout, type SurveyFontFamily, type SurveyLogicOp, type SurveyLogicRule, type SurveyQuestion, type SurveyQuestionType } from '../../types/survey';
 
 interface Props {
   surveyId: string;
@@ -39,7 +40,7 @@ export const AdminSurveyBuilderView: React.FC<Props> = ({ surveyId, masterId, on
   const [survey, setSurvey] = useState<Survey | null>(null);
   const [questions, setQuestions] = useState<SurveyQuestion[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [tab, setTab] = useState<'perguntas' | 'ajustes'>('perguntas');
+  const [tab, setTab] = useState<'capa' | 'perguntas' | 'ajustes'>('perguntas');
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -201,6 +202,16 @@ export const AdminSurveyBuilderView: React.FC<Props> = ({ surveyId, masterId, on
           <label style={label}>Descrição (opcional)</label>
           <textarea value={q.description || ''} onChange={e => updateQuestion(q.id, { description: e.target.value })} rows={2} style={{ ...input, resize: 'vertical' }} />
         </div>
+        <SurveyMediaUpload
+          label="Imagem ou vídeo da pergunta (opcional)"
+          value={opts.mediaUrl || ''}
+          kind="any"
+          folder="surveys/questions"
+          onChange={url => {
+            const isVid = /\.(mp4|webm|mov|m4v|ogg)(\?|#|$)/i.test(url) || url.includes('youtube.com') || url.includes('youtu.be') || url.includes('vimeo.com');
+            setOpts({ mediaUrl: url || undefined, mediaType: url ? (isVid ? 'video' : 'image') : undefined });
+          }}
+        />
         {q.type !== 'statement' && <Switch checked={q.required} onChange={e => updateQuestion(q.id, { required: e.target.checked })} label="Resposta obrigatória" />}
 
         {hasChoices && (
@@ -263,17 +274,18 @@ export const AdminSurveyBuilderView: React.FC<Props> = ({ surveyId, masterId, on
         </div>
       </div>
       {published && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 20px', fontSize: '0.78rem', background: 'rgba(5,150,105,0.08)', borderBottom: '1px solid var(--adm-border)' }}>
-          <Link2 size={14} color="#059669" /> <span style={{ color: 'var(--adm-text-muted)' }}>Link público:</span> <strong style={{ color: 'var(--adm-text-title)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{link}</strong>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 20px', fontSize: '0.78rem', background: 'rgba(5,150,105,0.08)', borderBottom: '1px solid var(--adm-border)', flexWrap: 'wrap' }}>
+          <Link2 size={14} color="#059669" /> <span style={{ color: 'var(--adm-text-muted)' }}>Link público direto:</span> <strong style={{ color: 'var(--adm-text-title)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{link}</strong>
           <button type="button" onClick={() => { void navigator.clipboard?.writeText(link); toast.success('Link copiado.'); }} style={{ ...ghostBtn, padding: '3px 9px' }}><Copy size={12} /> Copiar</button>
+          <a href={link} target="_blank" rel="noreferrer" style={{ ...ghostBtn, padding: '3px 9px', textDecoration: 'none' }}><ExternalLink size={12} /> Abrir</a>
         </div>
       )}
 
-      <div style={{ flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: '300px 1fr', }}>
+      <div style={{ flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: '310px 1fr' }}>
         <aside style={{ borderRight: '1px solid var(--adm-border)', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
           <div style={{ display: 'flex', borderBottom: '1px solid var(--adm-border)' }}>
-            {([['perguntas', 'Perguntas', FileText], ['ajustes', 'Ajustes', Settings]] as const).map(([k, l, Icon]) => (
-              <button key={k} type="button" onClick={() => setTab(k)} style={{ flex: 1, padding: '10px 0', border: 'none', background: 'transparent', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 800, color: tab === k ? '#0284C7' : 'var(--adm-text-muted)', borderBottom: tab === k ? '2px solid #0284C7' : '2px solid transparent', display: 'inline-flex', justifyContent: 'center', alignItems: 'center', gap: 6 }}><Icon size={14} />{l}</button>
+            {([['capa', 'Capa', Layout], ['perguntas', 'Perguntas', FileText], ['ajustes', 'Visual & Fim', Palette]] as const).map(([k, l, Icon]) => (
+              <button key={k} type="button" onClick={() => setTab(k)} style={{ flex: 1, padding: '10px 4px', border: 'none', background: 'transparent', cursor: 'pointer', fontSize: '0.74rem', fontWeight: 800, color: tab === k ? '#0284C7' : 'var(--adm-text-muted)', borderBottom: tab === k ? '2px solid #0284C7' : '2px solid transparent', display: 'inline-flex', justifyContent: 'center', alignItems: 'center', gap: 5 }}><Icon size={13} />{l}</button>
             ))}
           </div>
           <div style={{ flex: 1, overflowY: 'auto', padding: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -291,7 +303,8 @@ export const AdminSurveyBuilderView: React.FC<Props> = ({ surveyId, masterId, on
               </div>
             ))}
             {tab === 'perguntas' && questions.length === 0 && <div style={{ fontSize: '0.78rem', color: 'var(--adm-text-muted)', padding: 8 }}>Nenhuma pergunta ainda. Adicione a primeira abaixo.</div>}
-            {tab === 'ajustes' && <div style={{ fontSize: '0.76rem', color: 'var(--adm-text-muted)', padding: 4 }}>Ajuste as telas de boas-vindas e de agradecimento, a cor e a unidade no painel ao lado.</div>}
+            {tab === 'capa' && <div style={{ fontSize: '0.78rem', color: 'var(--adm-text-muted)', padding: 6, lineHeight: 1.5 }}>Personalize a capa principal no painel ao lado: título, descrição, imagem, vídeo (armazenados no R2) e o layout de abertura.</div>}
+            {tab === 'ajustes' && <div style={{ fontSize: '0.78rem', color: 'var(--adm-text-muted)', padding: 6, lineHeight: 1.5 }}>Configure a identidade visual (logo no R2, cores, fundo, fonte), a unidade e a tela final de agradecimento.</div>}
           </div>
           {tab === 'perguntas' && (
             <div style={{ padding: 10, borderTop: '1px solid var(--adm-border)', position: 'relative' }}>
@@ -306,7 +319,65 @@ export const AdminSurveyBuilderView: React.FC<Props> = ({ surveyId, masterId, on
         </aside>
 
         <main style={{ overflowY: 'auto', padding: 24 }}>
-          {tab === 'perguntas' ? (sel ? (
+          {tab === 'capa' ? (
+            <div style={{ maxWidth: 680, display: 'flex', flexDirection: 'column', gap: 18 }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1rem', color: 'var(--adm-text-title)' }}>Capa Principal (Boas-vindas)</h3>
+                <p style={{ margin: '4px 0 0', fontSize: '0.78rem', color: 'var(--adm-text-muted)' }}>Primeira tela exibida quando a pessoa abre o link público da pesquisa.</p>
+              </div>
+              <div>
+                <label style={label}>Layout da Capa</label>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 8 }}>
+                  {([
+                    ['centered', 'Centralizado'],
+                    ['split_left', 'Mídia à Esquerda'],
+                    ['split_right', 'Mídia à Direita'],
+                    ['hero_bg', 'Fundo Completo'],
+                  ] as Array<[SurveyCoverLayout, string]>).map(([val, lbl]) => {
+                    const active = (survey.welcome.layout || 'centered') === val;
+                    return (
+                      <button
+                        key={val}
+                        type="button"
+                        onClick={() => setWelcome({ layout: val })}
+                        style={{
+                          padding: '9px 10px', borderRadius: 8, cursor: 'pointer', fontSize: '0.78rem', fontWeight: 700,
+                          border: `1.5px solid ${active ? '#0284C7' : 'var(--adm-border)'}`,
+                          background: active ? 'rgba(2,132,199,0.10)' : 'transparent',
+                          color: active ? '#0284C7' : 'var(--adm-text-title)',
+                        }}
+                      >
+                        {lbl}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <div><label style={label}>Título da Capa</label><input value={survey.welcome.title || ''} onChange={e => setWelcome({ title: e.target.value })} placeholder={survey.title} style={{ ...input, fontSize: '1rem', fontWeight: 700 }} /></div>
+              <div><label style={label}>Descrição / Chamada</label><textarea rows={3} value={survey.welcome.text || ''} onChange={e => setWelcome({ text: e.target.value })} placeholder="Conte rapidamente sobre a pesquisa e quanto tempo leva..." style={{ ...input, resize: 'vertical' }} /></div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                <SurveyMediaUpload
+                  label="Imagem de Capa (R2)"
+                  value={survey.welcome.coverImageUrl || ''}
+                  kind="image"
+                  folder="surveys/covers"
+                  onChange={url => setWelcome({ coverImageUrl: url || undefined })}
+                />
+                <SurveyMediaUpload
+                  label="Vídeo de Capa (R2 ou YouTube/Vimeo)"
+                  value={survey.welcome.coverVideoUrl || ''}
+                  kind="video"
+                  folder="surveys/videos"
+                  hint="Se preencher vídeo e imagem, o vídeo será exibido como destaque na capa."
+                  onChange={url => setWelcome({ coverVideoUrl: url || undefined })}
+                />
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: 14 }}>
+                <div><label style={label}>Texto do botão</label><input value={survey.welcome.buttonLabel || ''} onChange={e => setWelcome({ buttonLabel: e.target.value })} placeholder="Começar" style={input} /></div>
+                <div><label style={label}>Aviso de privacidade (opcional)</label><input value={survey.welcome.privacyNote || ''} onChange={e => setWelcome({ privacyNote: e.target.value })} placeholder="Ex.: Suas respostas são confidenciais." style={input} /></div>
+              </div>
+            </div>
+          ) : tab === 'perguntas' ? (sel ? (
             <div style={{ maxWidth: 720 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
                 <span style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--adm-text-muted)' }}>PERGUNTA {selectedIndex + 1} DE {questions.length}</span>
@@ -318,29 +389,83 @@ export const AdminSurveyBuilderView: React.FC<Props> = ({ surveyId, masterId, on
               {renderEditor(sel, selectedIndex)}
             </div>
           ) : <div style={{ color: 'var(--adm-text-muted)', fontSize: '0.88rem' }}>Escolha uma pergunta na lista ou adicione uma nova.</div>) : (
-            <div style={{ maxWidth: 640, display: 'flex', flexDirection: 'column', gap: 18 }}>
-              <h3 style={{ margin: 0, fontSize: '0.95rem', color: 'var(--adm-text-title)' }}>Tela de boas-vindas</h3>
-              <div><label style={label}>Título</label><input value={survey.welcome.title || ''} onChange={e => setWelcome({ title: e.target.value })} style={input} /></div>
-              <div><label style={label}>Texto</label><textarea rows={3} value={survey.welcome.text || ''} onChange={e => setWelcome({ text: e.target.value })} style={{ ...input, resize: 'vertical' }} /></div>
-              <div><label style={label}>Texto do botão</label><input value={survey.welcome.buttonLabel || ''} onChange={e => setWelcome({ buttonLabel: e.target.value })} style={{ ...input, maxWidth: 240 }} /></div>
-              <div><label style={label}>Aviso de privacidade (opcional)</label><textarea rows={2} value={survey.welcome.privacyNote || ''} onChange={e => setWelcome({ privacyNote: e.target.value })} placeholder="Ex.: Suas respostas serão usadas apenas para melhorar o nosso atendimento." style={{ ...input, resize: 'vertical' }} /></div>
-              <h3 style={{ margin: '6px 0 0', fontSize: '0.95rem', color: 'var(--adm-text-title)' }}>Tela de agradecimento</h3>
+            <div style={{ maxWidth: 680, display: 'flex', flexDirection: 'column', gap: 20 }}>
+              <h3 style={{ margin: 0, fontSize: '1rem', color: 'var(--adm-text-title)' }}>Identidade Visual & Fundo</h3>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                <SurveyMediaUpload
+                  label="Logo da Marca (R2)"
+                  value={survey.theme.logoUrl || ''}
+                  kind="image"
+                  folder="surveys/logos"
+                  onChange={url => patchSurvey({ theme: { ...survey.theme, logoUrl: url || undefined } })}
+                />
+                <SurveyMediaUpload
+                  label="Imagem de Fundo (R2)"
+                  value={survey.theme.backgroundImageUrl || ''}
+                  kind="image"
+                  folder="surveys/backgrounds"
+                  onChange={url => patchSurvey({ theme: { ...survey.theme, backgroundImageUrl: url || undefined } })}
+                />
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 12 }}>
+                <div><label style={label}>Cor de Destaque</label><input type="color" value={survey.theme.color || '#0284C7'} onChange={e => patchSurvey({ theme: { ...survey.theme, color: e.target.value } })} style={{ width: '100%', height: 36, border: '1px solid var(--adm-border)', borderRadius: 8, background: 'transparent', padding: 2, cursor: 'pointer' }} /></div>
+                <div><label style={label}>Cor de Fundo</label><input type="color" value={survey.theme.backgroundColor || '#F8FAFC'} onChange={e => patchSurvey({ theme: { ...survey.theme, backgroundColor: e.target.value } })} style={{ width: '100%', height: 36, border: '1px solid var(--adm-border)', borderRadius: 8, background: 'transparent', padding: 2, cursor: 'pointer' }} /></div>
+                <div><label style={label}>Cor do Texto</label><input type="color" value={survey.theme.textColor || '#0F172A'} onChange={e => patchSurvey({ theme: { ...survey.theme, textColor: e.target.value } })} style={{ width: '100%', height: 36, border: '1px solid var(--adm-border)', borderRadius: 8, background: 'transparent', padding: 2, cursor: 'pointer' }} /></div>
+                <div>
+                  <label style={label}>Tipografia</label>
+                  <Select value={survey.theme.fontFamily || 'Inter'} onChange={e => patchSurvey({ theme: { ...survey.theme, fontFamily: e.target.value as SurveyFontFamily } })} style={input}>
+                    <option value="Inter">Inter (Moderna)</option>
+                    <option value="Poppins">Poppins (Geométrica)</option>
+                    <option value="DM Sans">DM Sans (Clean)</option>
+                    <option value="Playfair Display">Playfair (Clássica)</option>
+                  </Select>
+                </div>
+                <div>
+                  <label style={label}>Botões</label>
+                  <Select value={survey.theme.buttonRadius || 'rounded'} onChange={e => patchSurvey({ theme: { ...survey.theme, buttonRadius: e.target.value as SurveyButtonRadius } })} style={input}>
+                    <option value="rounded">Arredondados</option>
+                    <option value="pill">Pílula</option>
+                    <option value="square">Retos</option>
+                  </Select>
+                </div>
+              </div>
+              {survey.theme.backgroundImageUrl && (
+                <div style={{ maxWidth: 320 }}>
+                  <label style={label}>Escurecimento / Contraste do Fundo ({Math.round((survey.theme.backgroundOverlay ?? 0.55) * 100)}%)</label>
+                  <input type="range" min={0} max={0.85} step={0.05} value={survey.theme.backgroundOverlay ?? 0.55} onChange={e => patchSurvey({ theme: { ...survey.theme, backgroundOverlay: Number(e.target.value) } })} style={{ width: '100%' }} />
+                </div>
+              )}
+              <div style={{ maxWidth: 280 }}>
+                <label style={label}>Unidade vinculada (opcional)</label>
+                <Select value={survey.venueId || ''} onChange={e => patchSurvey({ venueId: e.target.value || null })} style={input}>
+                  <option value="">Todas as unidades</option>
+                  {venues.filter(v => v.id && v.id !== 'all').map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
+                </Select>
+              </div>
+
+              <hr style={{ border: 'none', borderTop: '1px solid var(--adm-border)', margin: '4px 0' }} />
+              <h3 style={{ margin: 0, fontSize: '1rem', color: 'var(--adm-text-title)' }}>Tela de Agradecimento</h3>
               <div><label style={label}>Título</label><input value={survey.thanks.title || ''} onChange={e => setThanks({ title: e.target.value })} style={input} /></div>
               <div><label style={label}>Texto</label><textarea rows={3} value={survey.thanks.text || ''} onChange={e => setThanks({ text: e.target.value })} style={{ ...input, resize: 'vertical' }} /></div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                <SurveyMediaUpload
+                  label="Imagem de Agradecimento (R2)"
+                  value={survey.thanks.imageUrl || ''}
+                  kind="image"
+                  folder="surveys/thanks"
+                  onChange={url => setThanks({ imageUrl: url || undefined })}
+                />
+                <SurveyMediaUpload
+                  label="Vídeo de Agradecimento (R2)"
+                  value={survey.thanks.videoUrl || ''}
+                  kind="video"
+                  folder="surveys/videos"
+                  onChange={url => setThanks({ videoUrl: url || undefined })}
+                />
+              </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <div><label style={label}>Botão com link (opcional)</label><input value={survey.thanks.linkLabel || ''} onChange={e => setThanks({ linkLabel: e.target.value })} placeholder="Ex.: Ver nosso Instagram" style={input} /></div>
                 <div><label style={label}>Endereço do link</label><input value={survey.thanks.linkUrl || ''} onChange={e => setThanks({ linkUrl: e.target.value })} placeholder="https://..." style={input} /></div>
-              </div>
-              <h3 style={{ margin: '6px 0 0', fontSize: '0.95rem', color: 'var(--adm-text-title)' }}>Aparência e unidade</h3>
-              <div style={{ display: 'flex', gap: 16, alignItems: 'flex-end', flexWrap: 'wrap' }}>
-                <div><label style={label}>Cor</label><input type="color" value={survey.theme.color || '#0284C7'} onChange={e => patchSurvey({ theme: { ...survey.theme, color: e.target.value } })} style={{ width: 56, height: 36, border: '1px solid var(--adm-border)', borderRadius: 8, background: 'transparent', padding: 2, cursor: 'pointer' }} /></div>
-                <div style={{ minWidth: 240 }}>
-                  <label style={label}>Unidade (opcional)</label>
-                  <Select value={survey.venueId || ''} onChange={e => patchSurvey({ venueId: e.target.value || null })} style={input}>
-                    <option value="">Todas as unidades</option>
-                    {venues.filter(v => v.id && v.id !== 'all').map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
-                  </Select>
-                </div>
               </div>
             </div>
           )}

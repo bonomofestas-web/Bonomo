@@ -10,14 +10,41 @@ export interface QuestionSummary {
   n: number;
   /** Quantas pessoas chegaram a ver a pergunta (a logica pode pular) */
   seen: number;
-  kind: 'choice' | 'scale' | 'text' | 'number' | 'none';
+  kind: 'choice' | 'scale' | 'date' | 'text' | 'number' | 'none';
   slices: SurveySlice[];
   average?: number;
   /** Escala 0 a 10: NPS = % promotores (9-10) - % detratores (0-6) */
   nps?: { score: number; promoters: number; passives: number; detractors: number };
-  numberStats?: { min: number; max: number; average: number };
+  numberStats?: { min: number; max: number; average: number; sum: number };
   texts: Array<{ responseId: string; text: string }>;
 }
+
+export interface TimelinePoint {
+  key: string;
+  label: string;
+  count: number;
+  cumulative: number;
+}
+
+/** Agrupa respostas ao longo do tempo para grafico de linha (diario ou mensal). */
+export const buildResponseTimeline = (responses: SurveyResponse[], granularity: 'day' | 'month' = 'day'): TimelinePoint[] => {
+  const counts = new Map<string, number>();
+  for (const r of responses) {
+    const raw = (r.completedAt || r.startedAt || r.createdAt || '').slice(0, granularity === 'month' ? 7 : 10);
+    if (!raw) continue;
+    counts.set(raw, (counts.get(raw) || 0) + 1);
+  }
+  const sortedKeys = Array.from(counts.keys()).sort();
+  let acc = 0;
+  return sortedKeys.map(k => {
+    const count = counts.get(k) || 0;
+    acc += count;
+    const label = granularity === 'month'
+      ? `${k.slice(5, 7)}/${k.slice(0, 4)}`
+      : `${k.slice(8, 10)}/${k.slice(5, 7)}`;
+    return { key: k, label, count, cumulative: acc };
+  });
+};
 
 const round1 = (x: number) => Math.round(x * 10) / 10;
 
@@ -71,7 +98,31 @@ export const summarizeSurvey = (questions: SurveyQuestion[], responses: SurveyRe
     } else if (q.type === 'number') {
       const values = given.map(r => Number(r.answers[q.id])).filter(Number.isFinite);
       base.kind = 'number';
-      if (values.length) base.numberStats = { min: Math.min(...values), max: Math.max(...values), average: round1(values.reduce((a, b) => a + b, 0) / values.length) };
+      if (values.length) {
+        const sum = values.reduce((a, b) => a + b, 0);
+        base.numberStats = { min: Math.min(...values), max: Math.max(...values), average: round1(sum / values.length), sum: round1(sum) };
+        const freq = new Map<number, number>();
+        values.forEach(v => freq.set(v, (freq.get(v) || 0) + 1));
+        base.slices = Array.from(freq.keys()).sort((a, b) => a - b).slice(0, 20).map(v => {
+          const count = freq.get(v) || 0;
+          return { key: String(v), label: String(v), count, pct: pct(count) };
+        });
+      }
+    } else if (q.type === 'date') {
+      const rawDates = given.map(r => String(r.answers[q.id] || '').slice(0, 10)).filter(Boolean);
+      const distinctDays = new Set(rawDates).size;
+      const byMonth = distinctDays > 14;
+      const counts = new Map<string, number>();
+      rawDates.forEach(d => {
+        const key = byMonth ? d.slice(0, 7) : d;
+        counts.set(key, (counts.get(key) || 0) + 1);
+      });
+      base.kind = 'date';
+      base.slices = Array.from(counts.keys()).sort().map(k => {
+        const count = counts.get(k) || 0;
+        const label = byMonth ? `${k.slice(5, 7)}/${k.slice(0, 4)}` : `${k.slice(8, 10)}/${k.slice(5, 7)}/${k.slice(0, 4)}`;
+        return { key: k, label, count, pct: pct(count) };
+      });
     } else if (q.type !== 'statement') {
       base.kind = 'text';
       base.texts = given.map(r => ({ responseId: r.id, text: answerLabel(q, r.answers[q.id]) }));

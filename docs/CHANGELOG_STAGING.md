@@ -42,6 +42,24 @@ Grande reestruturação de governança, experiência do usuário, banco de dados
 
 ### Recursos e Melhorias em Staging
 
+- **Isolamento Estrito de Ficha Comercial vs Pós-Venda na Caixa de Entrada (`AdminWhatsAppWorkspaceView`):**
+  * **Prevenção de Abertura Indevida como Pós-Venda para Números em Múltiplos Funis:**
+    - Corrigido o comportamento onde um lead pertencente a um funil comercial (ex.: `VI HELLIS`) que compartilhava o mesmo telefone de um contrato/cliente em outro funil ou unidade (ex.: `RLZ POS` / `RLZ ADM`) abria a gaveta de **Pós-Venda** (`AdminClientDrawerInspector`) ao ser clicado na Caixa de Entrada.
+    - `targetContractClient` agora respeita estritamente `funnelId` e `venueId`, e `isSelectedLeadPostSale` garante que qualquer lead em funil comercial sempre abra a ficha comercial (`AdminLeadInspector`), mantendo total independência entre funis e casas.
+
+
+- **Sistema de Pesquisas Interativas (Estilo Typebot / Google Forms) com Mídia no R2 e Link Público Direto:**
+  * **Personalização Completa de Capa, Tema e Mídia no Cloudflare R2:**
+    - Criado o componente `SurveyMediaUpload` (`src/components/admin/surveys/SurveyMediaUpload.tsx`) com upload direto para o **Cloudflare R2** (zero Base64 no banco) e suporte a links externos (YouTube/Vimeo).
+    - **Capa Principal:** Suporte a título, descrição, texto do botão, aviso de privacidade, **Imagem de Capa (R2)**, **Vídeo de Capa (R2/YouTube/Vimeo)** e 4 layouts de abertura (Centralizado, Mídia à Esquerda, Mídia à Direita, Fundo Completo).
+    - **Identidade Visual & Perguntas:** Personalização de logo (R2), imagem de fundo com controle de contraste/overlay, cor de destaque, cor de fundo, cor de texto, tipografia, formato dos botões, além de imagem/vídeo em perguntas individuais e na tela de agradecimento.
+  * **Análise Estilo Google Formulários (`AdminSurveyResultsView` & `surveyStats.ts`):**
+    - Novo gráfico de linha (**Evolução das Respostas**) com alternância por dia ou por mês e curva acumulada.
+    - Gráficos de Pizza (com alternância para Barras) em perguntas de escolha única, lista suspensa e sim/não; Barras Horizontais em múltipla seleção; Barras cronológicas em perguntas de **Data**; e distribuição em Barras + média/mín/máx/soma para **Números**, além de NPS na escala 0–10.
+  * **Fluxo Simplificado com Link Público Direto & Tratamento de Sessão:**
+    - Removida a seção de vínculo de pesquisa por lead no `AdminLeadInspector` para manter o fluxo simples e direto pelo link público (`/p/:slug`).
+    - Adicionada validação de `master_id`/UUID e mensagens claras de erro de sessão/permissão no `surveyService.ts`.
+
 - **Ciclo de Vida do Cliente: Suporte Completo a Clientes que Voltam a Ser Leads (Novas Oportunidades):**
   * **Criação de Nova Oportunidade Comercial para Clientes Existentes:**
     - Clientes com contrato prévio na rede que entram em contato via WhatsApp comercial agora abrem legitimamente uma nova oportunidade comercial (lead fresco) na esteira de vendas, sem serem sequestrados para o Pós-Venda ou amarrados ao contrato anterior.
