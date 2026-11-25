@@ -4,7 +4,7 @@ import {
   Users, User, Plus, Phone, Mail, Briefcase,
   CheckCircle2, FileText, ExternalLink,
   Edit3, X, Clock, ShieldCheck, CheckSquare,
-  MessageSquare, Building2, Trash2, ArrowUpDown, CalendarRange, MapPin
+  MessageSquare, Building2, Trash2, ArrowUpDown, CalendarRange, MapPin, Search, MoreVertical
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { contactService, ContactDuplicateError } from '../../services/contactService';
@@ -15,7 +15,7 @@ import type { Contact, ContactDependent, ContactListFilter, Lead, Contract, Admi
 import { supplierService } from '../../services/supplierService';
 import { VenueChip } from './contacts/VenueChip';
 import { DateRangeField } from '../ui';
-import { useScreenSearch, screenQueryTerm } from '../../utils/screenSearch';
+import { useScreenSearch } from '../../utils/screenSearch';
 import { SupplierPanel } from './contacts/SupplierPanel';
 import { ConvertContactModal } from './contacts/ConvertContactModal';
 import { canAccessFinance, canViewContractDocument } from '../../utils/accessPermissions';
@@ -46,6 +46,7 @@ export const AdminContactsView: React.FC<AdminContactsViewProps> = ({
     venues,
     funnels,
     leads,
+    collaborators,
     activeVenueId,
     tasks,
     theme,
@@ -73,8 +74,11 @@ export const AdminContactsView: React.FC<AdminContactsViewProps> = ({
   const [isEditContactModalOpen, setIsEditContactModalOpen] = useState(false);
   const [isAddDependentModalOpen, setIsAddDependentModalOpen] = useState(false);
   const [viewingContract, setViewingContract] = useState<Contract | null>(null);
-  // Aba do detalhe: visao geral ou ficha de fornecedor
+  // Aba do detalhe: visao geral ou ficha de fornecedor/colaborador
   const [detailTab, setDetailTab] = useState<'geral' | 'fornecedor'>('geral');
+  const [isHeaderMenuOpen, setIsHeaderMenuOpen] = useState(false);
+  const [collabServiceType, setCollabServiceType] = useState('');
+  const [savingCollabLink, setSavingCollabLink] = useState(false);
 
   // Formulário Rápido de Novo Contato
   const [quickForm, setQuickForm] = useState({
@@ -141,9 +145,7 @@ export const AdminContactsView: React.FC<AdminContactsViewProps> = ({
       setDetailTab('fornecedor');
     } else {
       applyContactUpdate({ ...c, isCollaborator: true });
-      // Segue para o cadastro da equipe com os dados do contato
-      try { localStorage.setItem('f5_prefill_collaborator', JSON.stringify({ name: c.name, phone: c.primaryPhone, email: c.email || '', contactId: c.id })); } catch { /* ignore */ }
-      window.dispatchEvent(new CustomEvent('admin_switch_tab', { detail: { tab: 'collaborators' } }));
+      setDetailTab('geral');
     }
   };
 
@@ -156,9 +158,9 @@ export const AdminContactsView: React.FC<AdminContactsViewProps> = ({
   const [searchLoading, setSearchLoading] = useState(false);
   // Total REAL de contatos no banco (não o tamanho da página carregada)
   const [totalContacts, setTotalContacts] = useState(0);
-  // A busca vem da barra do topo e filtra a lista ao vivo
+  // Busca local dedicada da tela de Contatos (independente do Ctrl+K universal)
   const screenSearch = useScreenSearch();
-  const activeSearchTerm = screenQueryTerm(screenSearch);
+  const activeSearchTerm = localSearch.trim();
   // Filtros da lista: Contrato ativo e Fornecedor (consulta no banco, igual a busca)
   const [listFilter, setListFilter] = useState<ContactListFilter>('all');
   const [venueFilter, setVenueFilter] = useState<string>('all');
@@ -713,20 +715,82 @@ export const AdminContactsView: React.FC<AdminContactsViewProps> = ({
             const hasActive = Boolean(createdRange.start) || venueFilter !== 'all' || sortKey !== 'recent' || listFilter !== 'all';
             return (
               <div style={{ padding: '14px', borderBottom: `1px solid ${line}`, display: 'flex', flexDirection: 'column', gap: 10, backgroundColor: isLight ? '#FFFFFF' : '#0E1726' }}>
-                {/* Segmentos */}
+                {/* Busca local dedicada de Contatos */}
+                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                  <Search size={14} color={muted} style={{ position: 'absolute', left: 10, pointerEvents: 'none' }} />
+                  <input
+                    type="text"
+                    value={localSearch}
+                    onChange={e => setLocalSearch(e.target.value)}
+                    placeholder="Buscar contato por nome, telefone ou CPF..."
+                    style={{
+                      width: '100%',
+                      height: 34,
+                      fontSize: '0.76rem',
+                      borderRadius: 9,
+                      background: isLight ? '#F8FAFC' : 'rgba(255,255,255,0.04)',
+                      border: `1px solid ${line}`,
+                      paddingLeft: 30,
+                      paddingRight: localSearch ? 28 : 10,
+                      color: isLight ? '#0F172A' : '#FFFFFF',
+                      outline: 'none',
+                    }}
+                  />
+                  {localSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setLocalSearch('')}
+                      title="Limpar busca"
+                      style={{ position: 'absolute', right: 8, background: 'none', border: 'none', cursor: 'pointer', color: muted, display: 'flex', padding: 2 }}
+                    >
+                      <X size={13} />
+                    </button>
+                  )}
+                </div>
+
+                {/* Segmentos: Todos | Contrato ativo | Extras */}
                 <div style={{ display: 'flex', padding: 3, gap: 2, borderRadius: 10, background: isLight ? '#F1F5F9' : 'rgba(255,255,255,0.05)' }}>
-                  {([['all', 'Todos'], ['active_contract', 'Contrato ativo'], ['supplier', 'Fornecedor']] as Array<[ContactListFilter, string]>).map(([k, label]) => (
-                    <button key={k} type="button" onClick={() => setListFilter(k)}
+                  {([
+                    { k: 'all', label: 'Todos', active: listFilter === 'all' },
+                    { k: 'active_contract', label: 'Contrato ativo', active: listFilter === 'active_contract' },
+                    { k: 'extras', label: 'Extras', active: listFilter === 'extras' || listFilter === 'supplier' || listFilter === 'collaborator' },
+                  ] as const).map(item => (
+                    <button key={item.k} type="button" onClick={() => setListFilter(item.k)}
                       style={{
                         flex: 1, padding: '6px 4px', borderRadius: 8, border: 'none', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 700, whiteSpace: 'nowrap',
-                        background: listFilter === k ? (isLight ? '#FFFFFF' : '#1E3A5F') : 'transparent',
-                        boxShadow: listFilter === k && isLight ? '0 1px 3px rgba(15,23,42,0.12)' : 'none',
-                        color: listFilter === k ? '#2563EB' : muted,
+                        background: item.active ? (isLight ? '#FFFFFF' : '#1E3A5F') : 'transparent',
+                        boxShadow: item.active && isLight ? '0 1px 3px rgba(15,23,42,0.12)' : 'none',
+                        color: item.active ? '#2563EB' : muted,
                       }}>
-                      {label}
+                      {item.label}
                     </button>
                   ))}
                 </div>
+
+                {(listFilter === 'extras' || listFilter === 'supplier' || listFilter === 'collaborator') && (
+                  <div style={{ display: 'flex', gap: 4 }}>
+                    {([['extras', 'Todos Extras'], ['supplier', 'Fornecedores'], ['collaborator', 'Colaboradores']] as Array<[ContactListFilter, string]>).map(([k, label]) => (
+                      <button
+                        key={k}
+                        type="button"
+                        onClick={() => setListFilter(k)}
+                        style={{
+                          flex: 1,
+                          padding: '4px 6px',
+                          borderRadius: 6,
+                          border: `1px solid ${listFilter === k ? 'rgba(245, 158, 11, 0.5)' : line}`,
+                          background: listFilter === k ? 'rgba(245, 158, 11, 0.14)' : 'transparent',
+                          color: listFilter === k ? '#D97706' : muted,
+                          fontSize: '0.68rem',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                )}
 
                 {withIcon(<Building2 size={14} />, (
                   <Select className="adm-input" value={venueFilter} onChange={e => setVenueFilter(e.target.value)} title="Unidade dos ativos do contato" style={field}>
@@ -1067,32 +1131,17 @@ export const AdminContactsView: React.FC<AdminContactsViewProps> = ({
                   </div>
                 </div>
 
-                {/* Botões de Ação Únicos */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                  <button
-                    onClick={() => toggleSupplier(selectedContact)}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: '5px', padding: '7px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600,
-                      backgroundColor: selectedContact.isSupplier ? 'rgba(245,158,11,0.18)' : 'transparent',
-                      color: selectedContact.isSupplier ? '#B45309' : (isLight ? '#475569' : '#CBD5E1'),
-                      border: `1px solid ${selectedContact.isSupplier ? 'rgba(245,158,11,0.5)' : (isLight ? '#CBD5E1' : 'rgba(255,255,255,0.15)')}`,
-                    }}
-                    title={selectedContact.isSupplier ? 'Este contato é fornecedor. Clique para desmarcar.' : 'Marcar este contato como fornecedor'}
-                  >
-                    <Briefcase size={13} />
-                    {selectedContact.isSupplier ? 'Fornecedor' : 'Marcar como fornecedor'}
-                  </button>
-                  {!selectedContact.isCollaborator ? (
-                    <button
-                      onClick={() => setConvertTarget({ contact: selectedContact, target: 'collaborator' })}
-                      style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '7px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600, backgroundColor: 'transparent', color: isLight ? '#475569' : '#CBD5E1', border: `1px solid ${isLight ? '#CBD5E1' : 'rgba(255,255,255,0.15)'}` }}
-                      title="Transformar este contato em colaborador da equipe"
-                    >
-                      <Users size={13} />
-                      Transformar em colaborador
-                    </button>
-                  ) : (
-                    <span style={{ fontSize: '0.74rem', fontWeight: 800, padding: '6px 10px', borderRadius: 999, background: 'rgba(139,92,246,0.16)', color: '#7C3AED' }}>Colaborador</span>
+                {/* Botões de Ação Únicos + Menu 3 Pontinhos */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', position: 'relative' }}>
+                  {selectedContact.isSupplier && (
+                    <span style={{ fontSize: '0.72rem', fontWeight: 800, padding: '5px 10px', borderRadius: 999, background: 'rgba(245,158,11,0.16)', color: '#B45309' }}>
+                      Fornecedor
+                    </span>
+                  )}
+                  {selectedContact.isCollaborator && (
+                    <span style={{ fontSize: '0.72rem', fontWeight: 800, padding: '5px 10px', borderRadius: 999, background: 'rgba(139,92,246,0.16)', color: '#7C3AED' }}>
+                      Colaborador
+                    </span>
                   )}
                   {onNavigateTab && (
                     <button
@@ -1116,55 +1165,128 @@ export const AdminContactsView: React.FC<AdminContactsViewProps> = ({
                     </button>
                   )}
 
-                  <button
-                    onClick={() => handleStartEdit(selectedContact)}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '5px',
-                      padding: '7px 12px',
-                      backgroundColor: isLight ? '#F8FAFC' : '#162238',
-                      color: isLight ? '#0F172A' : '#FFFFFF',
-                      border: `1px solid ${isLight ? '#CBD5E1' : 'rgba(255, 255, 255, 0.14)'}`,
-                      borderRadius: '6px',
-                      fontSize: '0.78rem',
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    <Edit3 size={13} />
-                    Editar Dados
-                  </button>
-
-                  {/* Botão Excluir Contato (Apenas Master e Gerente) */}
-                  {canDeleteContact && (
+                  <div style={{ position: 'relative' }}>
                     <button
-                      onClick={handleDeleteContact}
+                      type="button"
+                      onClick={() => setIsHeaderMenuOpen(v => !v)}
+                      title="Mais ações do contato"
                       style={{
+                        width: '32px',
+                        height: '32px',
+                        borderRadius: '8px',
+                        border: `1px solid ${isLight ? '#CBD5E1' : 'rgba(255, 255, 255, 0.14)'}`,
+                        backgroundColor: isLight ? '#F8FAFC' : '#162238',
+                        color: isLight ? '#0F172A' : '#FFFFFF',
                         display: 'flex',
                         alignItems: 'center',
-                        gap: '5px',
-                        padding: '7px 10px',
-                        backgroundColor: isLight ? '#FEF2F2' : 'rgba(239, 68, 68, 0.12)',
-                        color: isLight ? '#DC2626' : '#EF4444',
-                        border: `1px solid ${isLight ? '#FECACA' : 'rgba(239, 68, 68, 0.25)'}`,
-                        borderRadius: '6px',
-                        fontSize: '0.78rem',
-                        fontWeight: 600,
+                        justifyContent: 'center',
                         cursor: 'pointer',
                       }}
-                      title="Excluir este contato do sistema"
                     >
-                      <Trash2 size={13} />
-                      Excluir
+                      <MoreVertical size={15} />
                     </button>
-                  )}
+
+                    {isHeaderMenuOpen && (
+                      <div
+                        style={{
+                          position: 'absolute',
+                          top: 'calc(100% + 6px)',
+                          right: 0,
+                          width: '220px',
+                          backgroundColor: isLight ? '#FFFFFF' : '#111C2E',
+                          border: `1px solid ${isLight ? '#E2E8F0' : 'rgba(255, 255, 255, 0.14)'}`,
+                          borderRadius: '10px',
+                          boxShadow: '0 12px 32px rgba(0,0,0,0.28)',
+                          padding: '6px',
+                          zIndex: 999,
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '3px',
+                        }}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => { setIsHeaderMenuOpen(false); void toggleSupplier(selectedContact); }}
+                          style={{
+                            display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '8px 10px', borderRadius: '7px', border: 'none', textAlign: 'left', cursor: 'pointer',
+                            background: 'transparent', color: isLight ? '#0F172A' : '#E2E8F0', fontSize: '0.78rem', fontWeight: 600,
+                          }}
+                        >
+                          <Briefcase size={14} color="#D97706" />
+                          <span>{selectedContact.isSupplier ? 'Desmarcar Fornecedor' : 'Marcar como Fornecedor'}</span>
+                        </button>
+
+                        {!selectedContact.isCollaborator ? (
+                          <button
+                            type="button"
+                            onClick={() => { setIsHeaderMenuOpen(false); setConvertTarget({ contact: selectedContact, target: 'collaborator' }); }}
+                            style={{
+                              display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '8px 10px', borderRadius: '7px', border: 'none', textAlign: 'left', cursor: 'pointer',
+                              background: 'transparent', color: isLight ? '#0F172A' : '#E2E8F0', fontSize: '0.78rem', fontWeight: 600,
+                            }}
+                          >
+                            <Users size={14} color="#7C3AED" />
+                            <span>Transformar em Colaborador</span>
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              setIsHeaderMenuOpen(false);
+                              if (!window.confirm('Desmarcar este contato como colaborador?')) return;
+                              const ok = await contactService.setCollaborator(selectedContact.id, scopedMasterId, false, null);
+                              if (ok) {
+                                applyContactUpdate({ ...selectedContact, isCollaborator: false, collaboratorId: null });
+                                toast.success('Contato não é mais colaborador.');
+                              }
+                            }}
+                            style={{
+                              display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '8px 10px', borderRadius: '7px', border: 'none', textAlign: 'left', cursor: 'pointer',
+                              background: 'transparent', color: isLight ? '#0F172A' : '#E2E8F0', fontSize: '0.78rem', fontWeight: 600,
+                            }}
+                          >
+                            <Users size={14} color="#7C3AED" />
+                            <span>Desmarcar Colaborador</span>
+                          </button>
+                        )}
+
+                        <button
+                          type="button"
+                          onClick={() => { setIsHeaderMenuOpen(false); handleStartEdit(selectedContact); }}
+                          style={{
+                            display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '8px 10px', borderRadius: '7px', border: 'none', textAlign: 'left', cursor: 'pointer',
+                            background: 'transparent', color: isLight ? '#0F172A' : '#E2E8F0', fontSize: '0.78rem', fontWeight: 600,
+                          }}
+                        >
+                          <Edit3 size={14} color="#2563EB" />
+                          <span>Editar Dados</span>
+                        </button>
+
+                        {canDeleteContact && (
+                          <button
+                            type="button"
+                            onClick={() => { setIsHeaderMenuOpen(false); void handleDeleteContact(); }}
+                            style={{
+                              display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '8px 10px', borderRadius: '7px', border: 'none', textAlign: 'left', cursor: 'pointer',
+                              background: 'transparent', color: '#EF4444', fontSize: '0.78rem', fontWeight: 600,
+                            }}
+                          >
+                            <Trash2 size={14} color="#EF4444" />
+                            <span>Excluir Contato</span>
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
 
-              {selectedContact.isSupplier && (
+              {(selectedContact.isSupplier || selectedContact.isCollaborator) && (
                 <div style={{ display: 'flex', gap: '6px' }}>
-                  {([['geral', 'Visão geral'], ['fornecedor', 'Fornecedor']] as const).map(([k, label]) => (
+                  {([
+                    ['geral', 'Visão geral'],
+                    ['fornecedor', selectedContact.isSupplier ? 'Fornecedor & Orçamentos' : 'Contratos & Orçamentos'],
+                  ] as const).map(([k, label]) => (
                     <button key={k} type="button" onClick={() => setDetailTab(k)}
                       style={{ padding: '7px 16px', borderRadius: '8px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700, border: 'none', background: detailTab === k ? 'rgba(37,99,235,0.14)' : 'transparent', color: detailTab === k ? '#2563EB' : (isLight ? '#64748B' : '#94A3B8') }}>
                       {label}
@@ -1173,7 +1295,7 @@ export const AdminContactsView: React.FC<AdminContactsViewProps> = ({
                 </div>
               )}
 
-              {selectedContact.isSupplier && detailTab === 'fornecedor' ? (
+              {(selectedContact.isSupplier || selectedContact.isCollaborator) && detailTab === 'fornecedor' ? (
                 <SupplierPanel
                   contact={selectedContact}
                   masterId={scopedMasterId}
@@ -1428,6 +1550,129 @@ export const AdminContactsView: React.FC<AdminContactsViewProps> = ({
                 </div>
               </div>
 
+              {/* SESSÃO 1: CLIENTES/LEADS OU GESTÃO DE PARCEIRO/COLABORADOR */}
+              {(selectedContact.isSupplier || selectedContact.isCollaborator) ? (
+                <div style={{
+                  backgroundColor: isLight ? '#FFFFFF' : '#111C2E',
+                  border: `1px solid ${isLight ? '#E2E8F0' : 'rgba(255, 255, 255, 0.08)'}`,
+                  borderRadius: '8px',
+                  padding: '20px',
+                  boxShadow: isLight ? '0 1px 3px rgba(0,0,0,0.03)' : 'none',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '16px',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
+                    <div>
+                      <h3 style={{ margin: 0, fontSize: '0.94rem', fontWeight: 700, color: isLight ? '#0F172A' : '#FFFFFF', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <Briefcase size={16} color={selectedContact.isSupplier ? '#D97706' : '#7C3AED'} />
+                        {selectedContact.isSupplier && selectedContact.isCollaborator
+                          ? 'Gestão de Fornecedor & Colaborador'
+                          : selectedContact.isSupplier
+                            ? 'Gestão de Fornecedor & Orçamentos'
+                            : 'Gestão de Colaborador & Contratos'}
+                      </h3>
+                      <p style={{ margin: '4px 0 0', fontSize: '0.74rem', color: isLight ? '#64748B' : '#94A3B8' }}>
+                        Contatos extras não mantêm leads ou clientes ativos em funis comerciais/pós-venda. Gerencie vínculo, tipo de serviço, contratos e orçamentos abaixo.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setDetailTab('fornecedor')}
+                      style={{
+                        padding: '8px 14px',
+                        borderRadius: '8px',
+                        border: 'none',
+                        background: '#2563EB',
+                        color: '#FFFFFF',
+                        fontSize: '0.78rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Gerenciar Contratos & Orçamentos
+                    </button>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '12px' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: isLight ? '#64748B' : '#94A3B8', marginBottom: '4px' }}>
+                        Tipo de Serviço / Segmento
+                      </label>
+                      <div style={{ display: 'flex', gap: '6px' }}>
+                        <input
+                          type="text"
+                          className="adm-input"
+                          value={collabServiceType || selectedContact.supplierProfile?.serviceType || selectedContact.supplierProfile?.segment || ''}
+                          onChange={(e) => setCollabServiceType(e.target.value)}
+                          placeholder="Ex: Fotografia, Buffet, Garçom, Decoração..."
+                          style={{ flex: 1, height: '34px', fontSize: '0.78rem' }}
+                        />
+                        <button
+                          type="button"
+                          disabled={savingCollabLink}
+                          onClick={async () => {
+                            const nextService = (collabServiceType || selectedContact.supplierProfile?.serviceType || selectedContact.supplierProfile?.segment || '').trim();
+                            setSavingCollabLink(true);
+                            const nextProfile = { ...(selectedContact.supplierProfile || {}), serviceType: nextService, segment: nextService || selectedContact.supplierProfile?.segment };
+                            const ok = await contactService.setSupplier(selectedContact.id, scopedMasterId, Boolean(selectedContact.isSupplier), nextProfile);
+                            setSavingCollabLink(false);
+                            if (ok) {
+                              applyContactUpdate({ ...selectedContact, supplierProfile: nextProfile });
+                              toast.success('Tipo de serviço salvo.');
+                            } else {
+                              toast.error('Erro ao salvar tipo de serviço.');
+                            }
+                          }}
+                          style={{
+                            padding: '0 12px',
+                            borderRadius: '7px',
+                            border: 'none',
+                            background: '#059669',
+                            color: '#FFFFFF',
+                            fontSize: '0.74rem',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Salvar
+                        </button>
+                      </div>
+                    </div>
+
+                    {selectedContact.isCollaborator && (
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: isLight ? '#64748B' : '#94A3B8', marginBottom: '4px' }}>
+                          Vínculo com Base de Funcionários
+                        </label>
+                        <Select
+                          className="adm-input"
+                          value={selectedContact.collaboratorId || ''}
+                          onChange={async (e) => {
+                            const cId = e.target.value || null;
+                            const ok = await contactService.setCollaborator(selectedContact.id, scopedMasterId, true, cId);
+                            if (ok) {
+                              applyContactUpdate({ ...selectedContact, isCollaborator: true, collaboratorId: cId });
+                              toast.success(cId ? 'Vínculo com colaborador atualizado.' : 'Vínculo removido.');
+                            } else {
+                              toast.error('Não foi possível vincular colaborador.');
+                            }
+                          }}
+                          style={{ width: '100%', height: '34px', fontSize: '0.78rem' }}
+                        >
+                          <option value="">Selecionar colaborador da equipe...</option>
+                          {collaborators.map(col => (
+                            <option key={col.id} value={col.id}>
+                              {col.name} {col.role ? `(${col.role})` : ''}
+                            </option>
+                          ))}
+                        </Select>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <>
               {/* SESSÃO 1A: CLIENTES NO PÓS-VENDA */}
               <div style={{
                 backgroundColor: isLight ? '#FFFFFF' : '#111C2E',
@@ -1755,6 +2000,8 @@ export const AdminContactsView: React.FC<AdminContactsViewProps> = ({
                   </div>
                 )}
               </div>
+                </>
+              )}
 
               {/* SESSÃO 2: CONTRATOS DE EVENTOS */}
               <div style={{

@@ -28,22 +28,27 @@ const friendlySurveyError = async (err: any, fallback: string, expectedMasterId?
   const msg = String(err?.message || '');
   if (err?.code === '42501' || msg.toLowerCase().includes('row-level security') || msg.toLowerCase().includes('permission denied')) {
     try {
-      const [{ data: authData }, { data: dbMaster }] = await Promise.all([
+      const [authRes, rpcRes] = await Promise.all([
         supabase.auth.getUser(),
         supabase.rpc('f5_current_master_id'),
       ]);
-      const authEmail = authData?.user?.email || 'nenhum (anônimo)';
-      if (!authData?.user) {
+      const authUser = authRes?.data?.user;
+      const authEmail = authUser?.email || 'nenhum (anônimo)';
+      const dbMaster = rpcRes?.data as string | null;
+      const rpcErr = rpcRes?.error?.message;
+      if (!authUser) {
         return 'Sessão de autenticação expirada ou ausente. Saia e entre novamente no sistema para criar pesquisas.';
       }
       if (expectedMasterId && dbMaster && dbMaster !== expectedMasterId) {
-        return `Sessão autenticada (${authEmail}) pertence a outra conta master. Saia e entre novamente com seu e-mail atual.`;
+        return `Sessão autenticada (${authEmail}) pertence a outra conta master (${dbMaster} != ${expectedMasterId}). Saia e entre novamente com seu e-mail atual.`;
       }
       if (!dbMaster) {
-        return `E-mail autenticado (${authEmail}) não vinculado a um colaborador ativo no banco. Saia e entre novamente.`;
+        return `E-mail autenticado (${authEmail}) sem master_id ativo no banco${rpcErr ? ` (${rpcErr})` : ''}. Saia e entre novamente.`;
       }
-    } catch { /* ignore */ }
-    return 'Sessão sem permissão no banco. Saia e entre novamente no sistema para renovar sua sessão.';
+      return `Permissão negada pelo banco para ${authEmail} (master ${dbMaster}). Detalhe: ${msg || err?.code}`;
+    } catch (diagErr: any) {
+      return `Sessão sem permissão no banco (${diagErr?.message || msg || 'erro de diagnóstico'}). Saia e entre novamente.`;
+    }
   }
   return msg || fallback;
 };

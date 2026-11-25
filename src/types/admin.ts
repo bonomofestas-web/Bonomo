@@ -1428,6 +1428,7 @@ export interface SupplierProfile {
   pixKey?: string;
   address?: string;
   notes?: string;
+  serviceType?: string;
 }
 
 export type SupplierQuoteStatus = 'pendente' | 'aprovado' | 'reprovado';
@@ -1450,7 +1451,7 @@ export interface SupplierQuote {
   createdAt: string;
 }
 
-export type ContactListFilter = 'all' | 'active_contract' | 'supplier';
+export type ContactListFilter = 'all' | 'active_contract' | 'extras' | 'supplier' | 'collaborator';
 
 export interface Contact {
   /** Marcado como fornecedor (vale para quem veio do comercial ou do pos-venda) */
@@ -1458,6 +1459,7 @@ export interface Contact {
   supplierProfile?: SupplierProfile;
   /** Transformado em colaborador */
   isCollaborator?: boolean;
+  collaboratorId?: string | null;
   id: string;
   masterId: string;
   code: string;                          // Código Base36 ex: 'CONT-4H8W2N9Q'

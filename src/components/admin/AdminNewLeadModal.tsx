@@ -1,12 +1,14 @@
 import { Select } from '../ui';
 import React, { useState, useEffect, useMemo } from 'react';
 import {
-  X, UserPlus, Phone, User, DollarSign, Building2,
-  MessageSquare, Sparkles, ArrowRight, Loader2, Zap, Sliders, GitBranch, AlertTriangle
+  X, UserPlus, Phone, User, Building2,
+  Sparkles, ArrowRight, Loader2, GitBranch, AlertTriangle, CheckCircle2
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
-import type { LeadSource, CrmStage } from '../../types/admin';
+import type { CrmStage } from '../../types/admin';
 import { maskPhoneInput, sanitizeBrazilianPhone } from '../../utils/phoneFormatter';
+import { useUnitContactLookup } from '../../hooks/useUnitContactLookup';
+import { ContactSuggestionsDropdown } from './contacts/ContactSuggestionsDropdown';
 
 interface AdminNewLeadModalProps {
   isOpen: boolean;
@@ -42,14 +44,9 @@ export const AdminNewLeadModal: React.FC<AdminNewLeadModalProps> = ({
     return (allFunnels && allFunnels.length > 0) ? allFunnels : funnels;
   }, [allFunnels, funnels]);
 
-  const [mode, setMode] = useState<'quick' | 'full'>('quick');
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [venueId, setVenueId] = useState<string>('');
-  const [source, setSource] = useState<LeadSource>('cadastro_interno');
-  const [sourceId, setSourceId] = useState<string>('');
-  const [estimatedBudget, setEstimatedBudget] = useState<string>('');
-  const [notes, setNotes] = useState('');
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -115,14 +112,6 @@ export const AdminNewLeadModal: React.FC<AdminNewLeadModalProps> = ({
   useEffect(() => {
     if (!isOpen) return;
 
-    setMode(initialMode || 'quick');
-    setErrorMsg(null);
-    setIsSubmitting(false);
-    setName('');
-    setPhone('');
-    setEstimatedBudget('');
-    setNotes('');
-
     // Determinar a casa de festas padrão: se o funil alvo estiver vinculado a uma casa específica, prioriza ela
     let initialVenue = '';
     if (targetFunnel?.venueId && targetFunnel.venueId !== 'all') {
@@ -137,46 +126,17 @@ export const AdminNewLeadModal: React.FC<AdminNewLeadModalProps> = ({
       initialVenue = allowedVenuesForFunnel[0]?.id || venues[0]?.id || '';
     }
     setVenueId(initialVenue);
-
-    setSource('cadastro_interno');
-    setSourceId('');
   }, [isOpen, defaultVenueId, activeVenueId, venues, targetFunnel, initialMode, allowedVenuesForFunnel]);
 
-  // Lista de origens filtradas pela casa ou gerais, OBRIGATORIAMENTE excluindo canais automáticos/sistema
-  const availableSources = useMemo(() => {
-    return sources.filter(s => {
-      if (s.status !== 'active') return false;
-      if (s.venueId && s.venueId !== 'all' && s.venueId !== venueId) return false;
-      const lowerName = s.name.toLowerCase();
-      // Bloquear canais internos de indicação direta no seletor
-      if (lowerName.includes('espaço f5') || lowerName.includes('f5 system') || lowerName.includes('indicação app')) {
-        return false;
-      }
-      return true;
-    });
-  }, [sources, venueId]);
-
-  // Formatação de moeda amigável
-  const handleBudgetChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const rawDigits = e.target.value.replace(/\D/g, '');
-    if (!rawDigits) {
-      setEstimatedBudget('');
-      return;
-    }
-    const num = parseInt(rawDigits, 10) / 100;
-    setEstimatedBudget(num.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
-  };
-
-  // Verificação em Tempo Real de Contato Existente (Áudio 2)
+  // Verificação em Tempo Real de Lead Existente na MESMA unidade
   const matchedExistingLead = useMemo(() => {
     const cleanDigits = sanitizeBrazilianPhone(phone);
     if (cleanDigits.length < 8) return null;
 
     return (leads || []).find(l => {
-      // Ignora leads deletados (podem ser recriados normalmente conforme Áudio 2)
       if ((l as any).isDeleted) return false;
-      // Não considera clientes pós-venda como duplicados de lead comercial
       if (l.isClient) return false;
+      if (venueId && l.venueId && l.venueId !== venueId) return false;
 
       const lp = sanitizeBrazilianPhone(l.phone || '');
       if (!lp) return false;
@@ -185,7 +145,22 @@ export const AdminNewLeadModal: React.FC<AdminNewLeadModalProps> = ({
         (cleanDigits.length >= 8 && lp.endsWith(cleanDigits.slice(-8))) ||
         (lp.length >= 8 && cleanDigits.endsWith(lp.slice(-8)));
     }) || null;
-  }, [phone, leads]);
+  }, [phone, leads, venueId]);
+
+  const scopedMasterId = currentUser?.masterId || currentUser?.id;
+  const {
+    suggestions: contactSuggestions,
+    selectedContact: selectedLookupContact,
+    setSelectedContact: setSelectedLookupContact,
+    sameUnitPhoneMatch,
+  } = useUnitContactLookup({
+    masterId: scopedMasterId,
+    venueId,
+    nameQuery: name,
+    phoneValue: phone,
+    enabled: isOpen,
+  });
+  const [showSuggestions, setShowSuggestions] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -232,23 +207,14 @@ export const AdminNewLeadModal: React.FC<AdminNewLeadModalProps> = ({
         }
       }
 
-      // Origem legível
-      const selectedSourceObj = sources.find(s => s.id === sourceId);
-      const parsedBudget = (mode === 'full' && estimatedBudget)
-        ? parseFloat(estimatedBudget.replace(/\./g, '').replace(',', '.'))
-        : undefined;
-
       const newId = await createLead({
         name: cleanName,
         phone: cleanPhoneDigits,
         venueId: finalVenueId,
         funnelId: finalFunnelId,
         stage: initialStage as CrmStage,
-        source: mode === 'full' ? (source || 'cadastro_interno') : 'cadastro_interno',
-        sourceId: mode === 'full' ? (sourceId || undefined) : undefined,
-        sourceName: mode === 'full' ? (selectedSourceObj?.name || (source === 'cadastro_interno' ? 'Cadastro Manual' : undefined)) : 'Cadastro Rápido',
-        estimatedBudget: isNaN(parsedBudget as number) ? undefined : parsedBudget,
-        notes: mode === 'full' ? (notes.trim() || undefined) : undefined,
+        source: 'cadastro_interno',
+        sourceName: 'Cadastro Rápido',
         createdBy: currentUser?.id,
         createdByName: currentUser?.name || 'Cadastro Manual',
         createdByAvatar: currentUser?.avatarUrl,
@@ -320,18 +286,18 @@ export const AdminNewLeadModal: React.FC<AdminNewLeadModalProps> = ({
                 width: '36px',
                 height: '36px',
                 borderRadius: '10px',
-                background: mode === 'quick' ? 'rgba(16, 185, 129, 0.12)' : 'rgba(20, 169, 215, 0.12)',
-                color: mode === 'quick' ? '#10B981' : 'var(--adm-accent, #14A9D7)',
+                background: 'rgba(16, 185, 129, 0.12)',
+                color: '#10B981',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
               }}
             >
-              {mode === 'quick' ? <Zap size={18} /> : <UserPlus size={18} />}
+              <UserPlus size={18} />
             </div>
             <div>
               <h2 style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--adm-text-title, #0F172A)', margin: 0 }}>
-                {mode === 'quick' ? 'Cadastro Rápido de Lead' : 'Cadastro Personalizado de Lead'}
+                Adicionar Lead
               </h2>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '3px' }}>
                 <span
@@ -378,67 +344,7 @@ export const AdminNewLeadModal: React.FC<AdminNewLeadModalProps> = ({
           </button>
         </div>
 
-        {/* ── SELETOR DE MODO: RÁPIDO VS PERSONALIZADO ── */}
-        <div style={{ padding: '12px 20px 0 20px', background: 'var(--adm-bg-card, #FFFFFF)' }}>
-          <div style={{
-            display: 'flex',
-            background: 'var(--adm-bg-input, #F1F5F9)',
-            padding: '3px',
-            borderRadius: '8px',
-            gap: '4px',
-          }}>
-            <button
-              type="button"
-              onClick={() => setMode('quick')}
-              style={{
-                flex: 1,
-                padding: '7px 10px',
-                borderRadius: '6px',
-                border: 'none',
-                background: mode === 'quick' ? 'var(--adm-bg-card, #FFFFFF)' : 'transparent',
-                color: mode === 'quick' ? '#10B981' : 'var(--adm-text-muted, #64748B)',
-                boxShadow: mode === 'quick' ? '0 1px 4px rgba(0,0,0,0.08)' : 'none',
-                fontSize: '0.75rem',
-                fontWeight: 800,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '6px',
-                transition: 'all 0.15s ease',
-              }}
-            >
-              <Zap size={14} />
-              <span>Cadastro Rápido</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setMode('full')}
-              style={{
-                flex: 1,
-                padding: '7px 10px',
-                borderRadius: '6px',
-                border: 'none',
-                background: mode === 'full' ? 'var(--adm-bg-card, #FFFFFF)' : 'transparent',
-                color: mode === 'full' ? 'var(--adm-accent, #14A9D7)' : 'var(--adm-text-muted, #64748B)',
-                boxShadow: mode === 'full' ? '0 1px 4px rgba(0,0,0,0.08)' : 'none',
-                fontSize: '0.75rem',
-                fontWeight: 800,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '6px',
-                transition: 'all 0.15s ease',
-              }}
-            >
-              <Sliders size={14} />
-              <span>Cadastro Personalizado</span>
-            </button>
-          </div>
-        </div>
-
-        {/* ── FORM BODY ── */}
+        {/* ── FORM BODY (SIMPLIFICADO) ── */}
         <form onSubmit={handleSubmit} style={{ padding: '16px 20px 20px 20px', display: 'flex', flexDirection: 'column', gap: '14px', background: 'var(--adm-bg-card, #FFFFFF)' }}>
           {errorMsg && (
             <div
@@ -457,39 +363,6 @@ export const AdminNewLeadModal: React.FC<AdminNewLeadModalProps> = ({
             </div>
           )}
 
-          {/* Nome Completo */}
-          <div>
-            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: 'var(--adm-text-title, #0F172A)', marginBottom: '5px' }}>
-              Nome do Lead <span style={{ color: '#EF4444' }}>*</span>
-            </label>
-            <div style={{ position: 'relative' }}>
-              <div style={{ position: 'absolute', left: '11px', top: '50%', transform: 'translateY(-50%)', color: 'var(--adm-text-muted, #64748B)' }}>
-                <User size={15} />
-              </div>
-              <input
-                type="text"
-                autoFocus
-                required
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="ex: Mariana Souza"
-                style={{
-                  width: '100%',
-                  height: '38px',
-                  paddingLeft: '34px',
-                  paddingRight: '12px',
-                  backgroundColor: 'var(--adm-bg-input, #F8FAFC)',
-                  border: '1px solid var(--adm-border, #CBD5E1)',
-                  borderRadius: '8px',
-                  color: 'var(--adm-text-title, #0F172A)',
-                  fontSize: '0.82rem',
-                  outline: 'none',
-                  boxSizing: 'border-box',
-                }}
-              />
-            </div>
-          </div>
-
           {/* Casa de Festas Vinculada */}
           <div>
             <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: 'var(--adm-text-title, #0F172A)', marginBottom: '5px' }}>
@@ -502,7 +375,7 @@ export const AdminNewLeadModal: React.FC<AdminNewLeadModalProps> = ({
               <Select
                 value={venueId}
                 disabled={isVenueFixedByFunnel}
-                onChange={(e) => setVenueId(e.target.value)}
+                onChange={(e) => { setVenueId(e.target.value); setSelectedLookupContact(null); }}
                 style={{
                   width: '100%',
                   height: '38px',
@@ -524,14 +397,55 @@ export const AdminNewLeadModal: React.FC<AdminNewLeadModalProps> = ({
                 ))}
               </Select>
             </div>
-            {isVenueFixedByFunnel ? (
-              <span style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted, #64748B)', marginTop: '4px', display: 'block' }}>
-                Unidade exclusiva vinculada a este funil.
-              </span>
-            ) : (
-              <span style={{ fontSize: '0.68rem', color: 'var(--adm-accent, #0284C7)', marginTop: '4px', display: 'block', fontWeight: 600 }}>
-                Funil multi-unidade: selecione a unidade desejada para este lead.
-              </span>
+          </div>
+
+          {/* Nome Completo com Autocomplete da Unidade */}
+          <div style={{ position: 'relative' }}>
+            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: 'var(--adm-text-title, #0F172A)', marginBottom: '5px' }}>
+              Nome do Lead <span style={{ color: '#EF4444' }}>*</span>
+            </label>
+            <div style={{ position: 'relative' }}>
+              <div style={{ position: 'absolute', left: '11px', top: '50%', transform: 'translateY(-50%)', color: 'var(--adm-text-muted, #64748B)' }}>
+                <User size={15} />
+              </div>
+              <input
+                type="text"
+                autoFocus
+                required
+                value={name}
+                onFocus={() => setShowSuggestions(true)}
+                onBlur={() => setTimeout(() => setShowSuggestions(false), 180)}
+                onChange={(e) => {
+                  setName(e.target.value);
+                  setSelectedLookupContact(null);
+                  setShowSuggestions(true);
+                }}
+                placeholder="Digite o nome para buscar ou cadastrar..."
+                style={{
+                  width: '100%',
+                  height: '38px',
+                  paddingLeft: '34px',
+                  paddingRight: '12px',
+                  backgroundColor: 'var(--adm-bg-input, #F8FAFC)',
+                  border: '1px solid var(--adm-border, #CBD5E1)',
+                  borderRadius: '8px',
+                  color: 'var(--adm-text-title, #0F172A)',
+                  fontSize: '0.82rem',
+                  outline: 'none',
+                  boxSizing: 'border-box',
+                }}
+              />
+            </div>
+            {showSuggestions && (
+              <ContactSuggestionsDropdown
+                suggestions={contactSuggestions}
+                onSelect={(c) => {
+                  setSelectedLookupContact(c);
+                  setName(c.name);
+                  setPhone(maskPhoneInput(c.whatsappPhone || c.primaryPhone || ''));
+                  setShowSuggestions(false);
+                }}
+              />
             )}
           </div>
 
@@ -645,118 +559,28 @@ export const AdminNewLeadModal: React.FC<AdminNewLeadModalProps> = ({
                 </div>
               </div>
             )}
+            {/* Aviso de Contato Já Existente nesta Unidade (será vinculado) */}
+            {!matchedExistingLead && (selectedLookupContact || sameUnitPhoneMatch) && (
+              <div style={{
+                marginTop: '8px',
+                padding: '10px 12px',
+                borderRadius: '8px',
+                background: 'rgba(16, 185, 129, 0.08)',
+                border: '1px solid rgba(16, 185, 129, 0.3)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                color: '#059669',
+                fontSize: '0.75rem',
+                fontWeight: 700,
+              }}>
+                <CheckCircle2 size={15} style={{ flexShrink: 0 }} />
+                <span>
+                  Contato já salvo nesta unidade ({(selectedLookupContact || sameUnitPhoneMatch)?.name}). Este lead será vinculado a ele automaticamente.
+                </span>
+              </div>
+            )}
           </div>
-
-          {/* CAMPOS ADICIONAIS DO CADASTRO PERSONALIZADO */}
-          {mode === 'full' && (
-            <>
-              {/* Origem */}
-              <div>
-                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: 'var(--adm-text-title, #0F172A)', marginBottom: '5px' }}>
-                  Canal de Origem
-                </label>
-                <div style={{ position: 'relative' }}>
-                  <div style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--adm-text-muted, #64748B)' }}>
-                    <MessageSquare size={14} />
-                  </div>
-                  <Select
-                    value={sourceId ? `custom_${sourceId}` : source}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      if (val.startsWith('custom_')) {
-                        setSourceId(val.replace('custom_', ''));
-                        setSource('outro');
-                      } else {
-                        setSourceId('');
-                        setSource(val as LeadSource);
-                      }
-                    }}
-                    style={{
-                      width: '100%',
-                      height: '38px',
-                      paddingLeft: '30px',
-                      paddingRight: '10px',
-                      backgroundColor: 'var(--adm-bg-input, #F8FAFC)',
-                      border: '1px solid var(--adm-border, #CBD5E1)',
-                      borderRadius: '8px',
-                      color: 'var(--adm-text-title, #0F172A)',
-                      fontSize: '0.8rem',
-                      outline: 'none',
-                      cursor: 'pointer',
-                      boxSizing: 'border-box',
-                    }}
-                  >
-                    <option value="cadastro_interno">Cadastro Manual</option>
-                    <option value="whatsapp">WhatsApp Comercial</option>
-                    <option value="instagram">Instagram</option>
-                    <option value="indicacao">Indicação</option>
-                    <option value="trafego_pago">Tráfego Pago (Ads)</option>
-                    <option value="google">Google</option>
-                    <option value="site">Site Oficial</option>
-                    {availableSources.map(s => (
-                      <option key={s.id} value={`custom_${s.id}`}>{s.name}</option>
-                    ))}
-                  </Select>
-                </div>
-              </div>
-
-              {/* Valor Estimado / Orçamento Inicial */}
-              <div>
-                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: 'var(--adm-text-title, #0F172A)', marginBottom: '5px' }}>
-                  Valor Estimado / Orçamento Inicial <span style={{ fontSize: '0.7rem', color: 'var(--adm-text-muted, #64748B)', fontWeight: 500 }}>(opcional)</span>
-                </label>
-                <div style={{ position: 'relative' }}>
-                  <div style={{ position: 'absolute', left: '11px', top: '50%', transform: 'translateY(-50%)', color: 'var(--adm-text-muted, #64748B)' }}>
-                    <DollarSign size={15} />
-                  </div>
-                  <input
-                    type="text"
-                    value={estimatedBudget ? `R$ ${estimatedBudget}` : ''}
-                    onChange={handleBudgetChange}
-                    placeholder="R$ 0,00"
-                    style={{
-                      width: '100%',
-                      height: '38px',
-                      paddingLeft: '34px',
-                      paddingRight: '12px',
-                      backgroundColor: 'var(--adm-bg-input, #F8FAFC)',
-                      border: '1px solid var(--adm-border, #CBD5E1)',
-                      borderRadius: '8px',
-                      color: 'var(--adm-text-title, #0F172A)',
-                      fontSize: '0.82rem',
-                      outline: 'none',
-                      boxSizing: 'border-box',
-                    }}
-                  />
-                </div>
-              </div>
-
-              {/* Anotação Rápida */}
-              <div>
-                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: 'var(--adm-text-title, #0F172A)', marginBottom: '5px' }}>
-                  Anotação Rápida <span style={{ fontSize: '0.7rem', color: 'var(--adm-text-muted, #64748B)', fontWeight: 500 }}>(opcional)</span>
-                </label>
-                <textarea
-                  rows={2}
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  placeholder="Algum recado inicial do cliente (ex: procura data para nov/2026)..."
-                  style={{
-                    width: '100%',
-                    padding: '8px 12px',
-                    backgroundColor: 'var(--adm-bg-input, #F8FAFC)',
-                    border: '1px solid var(--adm-border, #CBD5E1)',
-                    borderRadius: '8px',
-                    color: 'var(--adm-text-title, #0F172A)',
-                    fontSize: '0.8rem',
-                    outline: 'none',
-                    resize: 'none',
-                    boxSizing: 'border-box',
-                  }}
-                />
-              </div>
-            </>
-          )}
 
           {/* Informativo de Automação */}
           <div
@@ -810,7 +634,7 @@ export const AdminNewLeadModal: React.FC<AdminNewLeadModalProps> = ({
               type="submit"
               disabled={isSubmitting}
               style={{
-                background: mode === 'quick' ? '#10B981' : 'var(--adm-accent, #14A9D7)',
+                background: '#10B981',
                 color: '#fff',
                 border: 'none',
                 borderRadius: '8px',
@@ -821,7 +645,7 @@ export const AdminNewLeadModal: React.FC<AdminNewLeadModalProps> = ({
                 display: 'flex',
                 alignItems: 'center',
                 gap: '7px',
-                boxShadow: mode === 'quick' ? '0 2px 8px rgba(16, 185, 129, 0.35)' : '0 2px 8px rgba(20, 169, 215, 0.35)',
+                boxShadow: '0 2px 8px rgba(16, 185, 129, 0.35)',
                 transition: 'all 0.15s ease',
               }}
             >
@@ -832,8 +656,7 @@ export const AdminNewLeadModal: React.FC<AdminNewLeadModalProps> = ({
                 </>
               ) : (
                 <>
-                  {mode === 'quick' && <Zap size={14} />}
-                  <span>{mode === 'quick' ? 'Criar Lead Rápido' : 'Criar Lead Completo'}</span>
+                  <span>Criar Lead</span>
                   <ArrowRight size={15} />
                 </>
               )}

@@ -1268,6 +1268,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
 
   // Quick Filter Tabs State: 'open' | 'my' | 'all'
   const [quickFilter, setQuickFilter] = useState<'open' | 'my' | 'all'>(() => {
+    if (isEmbeddedInFunnel && leadOwnershipFilter) return leadOwnershipFilter === 'mine' ? 'my' : leadOwnershipFilter;
     try {
       const saved = localStorage.getItem(`f5_wa_quick_${currentUser?.id || 'default'}`);
       if (saved === 'open' || saved === 'my' || saved === 'all') return saved;
@@ -1275,28 +1276,58 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     return 'open';
   });
 
-  // Aba Fornecedores: so quem atua no pos-venda ou no financeiro (e a gerencia)
-  const [suppliersTab, setSuppliersTab] = useState(false);
-  const canSeeSuppliersTab = getUserTaskSectors(currentUser).some(sec => sec === 'pos_venda' || sec === 'financeiro');
+  const isExtrasSelection = selectedFunnelId === 'all_extras' || selectedFunnelId === 'extras_suppliers' || selectedFunnelId === 'extras_collaborators';
+  // Permissões estritas de setor (Comercial vs Pós-Venda)
+  const userSectorsList = getUserTaskSectors(effectiveUser || currentUser);
+  const effectiveRoleLower = String((effectiveUser || currentUser)?.role || '').toLowerCase();
+  const canAccessPostSale = Boolean(
+    isManagerOrMaster ||
+    effectiveRoleLower === 'pos_venda' ||
+    userSectorsList.includes('pos_venda')
+  );
+  const canAccessCommercial = Boolean(
+    isManagerOrMaster ||
+    effectiveRoleLower === 'comercial' ||
+    effectiveRoleLower === 'crm' ||
+    userSectorsList.includes('comercial') ||
+    (!canAccessPostSale)
+  );
+
+  // Acordeões do seletor de funis no Modo Mensagens (sempre iniciam fechados)
+  const [expandedFunnelGroup, setExpandedFunnelGroup] = useState<'commercial' | 'post_sale' | 'extras' | null>(null);
+
+  // Contatos Extras (Fornecedores e Colaboradores) para "Mensagens Extras" e exibição na Caixa de Entrada dos funis
   const [supplierPhoneKeys, setSupplierPhoneKeys] = useState<Set<string>>(new Set());
+  const [collaboratorPhoneKeys, setCollaboratorPhoneKeys] = useState<Set<string>>(new Set());
   const phoneKey = (p?: string | null) => String(p || '').replace(/\D/g, '').slice(-8);
   useEffect(() => {
     const mid = currentUser?.masterId || currentUser?.id;
-    if (!canSeeSuppliersTab || !mid) return;
+    if (!mid) return;
     let alive = true;
-    void contactService.getSuppliers(mid).then(list => {
-      if (!alive) return;
-      const keys = new Set<string>();
-      list.forEach(c => [c.primaryPhone, c.whatsappPhone, c.secondaryPhone].forEach(ph => { const k = phoneKey(ph); if (k.length === 8) keys.add(k); }));
-      setSupplierPhoneKeys(keys);
-    });
-    const refresh = () => { void contactService.getSuppliers(mid).then(list => { if (!alive) return; const keys = new Set<string>(); list.forEach(c => [c.primaryPhone, c.whatsappPhone, c.secondaryPhone].forEach(ph => { const k = phoneKey(ph); if (k.length === 8) keys.add(k); })); setSupplierPhoneKeys(keys); }); };
-    window.addEventListener('f5:suppliers-changed', refresh);
-    return () => { alive = false; window.removeEventListener('f5:suppliers-changed', refresh); };
-  }, [canSeeSuppliersTab, currentUser?.masterId, currentUser?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+    const loadExtras = () => {
+      void contactService.getExtraContacts(mid).then(list => {
+        if (!alive) return;
+        const supKeys = new Set<string>();
+        const colKeys = new Set<string>();
+        list.forEach(c => {
+          [c.primaryPhone, c.whatsappPhone, c.secondaryPhone].forEach(ph => {
+            const k = phoneKey(ph);
+            if (k.length === 8) {
+              if (c.isSupplier) supKeys.add(k);
+              if (c.isCollaborator) colKeys.add(k);
+            }
+          });
+        });
+        setSupplierPhoneKeys(supKeys);
+        setCollaboratorPhoneKeys(colKeys);
+      });
+    };
+    loadExtras();
+    window.addEventListener('f5:suppliers-changed', loadExtras);
+    return () => { alive = false; window.removeEventListener('f5:suppliers-changed', loadExtras); };
+  }, [currentUser?.masterId, currentUser?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleUpdateQuickFilter = (val: 'open' | 'my' | 'all') => {
-    setSuppliersTab(false);
     setQuickFilter(val);
     try {
       localStorage.setItem(`f5_wa_quick_${currentUser?.id || 'default'}`, val);
@@ -2184,8 +2215,22 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
         // Se casou com o termo de busca, prossegue para validar estritamente o funil, unidade e escopo selecionados!
       }
 
-      // 1. Funnel Matching (Filtro Estrito por Funil)
-      if (selectedFunnelId === 'all' || selectedFunnelId === 'all_commercial') {
+      // Helper para identificar Fornecedor / Colaborador
+      const leadPhones = [lead.phone, ...((lead.contacts || []).map(ct => ct.phone))];
+      const isSupplierMsg = lead.group === 'Fornecedor' || leadPhones.some(ph => supplierPhoneKeys.has(phoneKey(ph)));
+      const isCollaboratorMsg = lead.group === 'Colaborador' || leadPhones.some(ph => collaboratorPhoneKeys.has(phoneKey(ph)));
+      const isExtraMsg = isSupplierMsg || isCollaboratorMsg;
+
+      // 1. Funnel Matching (Filtro Estrito por Funil & Setor)
+      if (selectedFunnelId === 'all_extras') {
+        if (!isExtraMsg) return false;
+      } else if (selectedFunnelId === 'extras_suppliers') {
+        if (!isSupplierMsg) return false;
+      } else if (selectedFunnelId === 'extras_collaborators') {
+        if (!isCollaboratorMsg) return false;
+      } else if (selectedFunnelId === 'all' || selectedFunnelId === 'all_commercial') {
+        if (!canAccessCommercial) return false;
+        if (isExtraMsg) return false;
         const lFunnel = lead.funnelId ? funnels.find(f => f.id === lead.funnelId) : null;
         const isFunnelPostSale = Boolean(lFunnel && (lFunnel.isPostSale || lFunnel.category === 'Pós-Venda' || lFunnel.category === 'pos_venda'));
         const isLeadPostSale = isFunnelPostSale || (!lFunnel && (lead.isClient || lead.group === 'Pós-Venda'));
@@ -2193,6 +2238,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
           return false;
         }
       } else if (selectedFunnelId === 'all_post_sale') {
+        if (!canAccessPostSale) return false;
+        if (isExtraMsg) return false;
         const lFunnel = lead.funnelId ? funnels.find(f => f.id === lead.funnelId) : null;
         const isFunnelPostSale = Boolean(lFunnel && (lFunnel.isPostSale || lFunnel.category === 'Pós-Venda' || lFunnel.category === 'pos_venda'));
         const isLeadPostSale = isFunnelPostSale || (!lFunnel && (lead.isClient || lead.group === 'Pós-Venda'));
@@ -2200,6 +2247,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
           return false;
         }
       } else if (currentFunnel) {
+        // Dentro de um funil específico (inclusive Caixa de Entrada): Fornecedores e Colaboradores que mandaram mensagem para a origem deste funil aparecem aqui!
         const leadFunnelMatches =
           lead.funnelId === currentFunnel.id ||
           lead.funnelId?.toLowerCase().trim() === currentFunnel.name.toLowerCase().trim() ||
@@ -2209,6 +2257,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
           return false;
         }
       } else if (selectedFunnelId === 'post_sale_default') {
+        if (!canAccessPostSale) return false;
         const isDefault = lead.funnelId === 'post_sale_default' || !lead.funnelId || lead.isClient || lead.group === 'Pós-Venda';
         if (!isDefault) {
           return false;
@@ -2235,12 +2284,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       }
 
       // 2. Ownership / Quick Filter Tabs
-      const effectiveOwnership = suppliersTab ? 'supplier' : ((isEmbeddedInFunnel && leadOwnershipFilter) ? leadOwnershipFilter : quickFilter);
-      if (effectiveOwnership === 'supplier') {
-        // Conversas de contatos marcados como fornecedor (nao importa quem atendeu)
-        const phones = [lead.phone, ...((lead.contacts || []).map(ct => ct.phone))];
-        if (!phones.some(ph => supplierPhoneKeys.has(phoneKey(ph)))) return false;
-      } else if (effectiveOwnership === 'open') {
+      const effectiveOwnership = quickFilter;
+      if (effectiveOwnership === 'open') {
         // Estritamente leads SEM RESPONSÁVEL comercial atribuído
         const hasAssignee = Boolean(
           lead.assignedTo || 
@@ -2267,7 +2312,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
             }
           }
         }
-      } else if (effectiveOwnership === 'my' || effectiveOwnership === 'mine') {
+      } else if (effectiveOwnership === 'my') {
         const targetUserId = effectiveUser?.id || currentUser?.id;
         const targetUserName = (effectiveUser?.name || currentUser?.name || '').trim().toLowerCase();
         const collabMatchesTarget = (storedId?: string, storedName?: string) => {
@@ -2411,7 +2456,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       }
       return new Date(b.createdAt || '').getTime() - new Date(a.createdAt || '').getTime();
     });
-  }, [canSeeAllConversations, sourceLeads, activeFunnel, selectedFunnelId, postSaleFunnels, funnels, activeVenueId, isPostSaleFunnel, quickFilter, leadOwnershipFilter, sortBy, localSortBy, filterVenueId, filterStage, filterCollaboratorId, filterTemperature, searchTerm, searchQuery, currentUser, effectiveUser, viewingAsCollaborator, selectedLeadId, initialLeadId, isEmbeddedInFunnel, collabIds, suppliersTab, supplierPhoneKeys]);
+  }, [canSeeAllConversations, canAccessCommercial, canAccessPostSale, sourceLeads, activeFunnel, selectedFunnelId, postSaleFunnels, funnels, activeVenueId, isPostSaleFunnel, quickFilter, sortBy, localSortBy, filterVenueId, filterStage, filterCollaboratorId, filterTemperature, searchTerm, searchQuery, currentUser, effectiveUser, viewingAsCollaborator, selectedLeadId, initialLeadId, isEmbeddedInFunnel, collabIds, supplierPhoneKeys, collaboratorPhoneKeys]);
 
   // ── Janela da caixa de entrada (como o WhatsApp Web): 40 conversas e +10 a cada rolagem ──────────────
   // As 20 ultimas mensagens de cada conversa visivel (e das proximas 10) sao pre-carregadas em lote para abrir sem "carregando".
@@ -2419,7 +2464,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   const INBOX_STEP = 10;
   const [visibleCount, setVisibleCount] = useState(INBOX_INITIAL);
   const inboxSentinelRef = useRef<HTMLDivElement>(null);
-  const inboxFilterSignature = `${suppliersTab ? 'forn' : ''}${quickFilter}|${filterVenueId}|${filterCollaboratorId}|${filterTemperature}|${filterStage}|${searchTerm}|${searchQuery}|${localSortBy}|${selectedFunnelId}|${leadOwnershipFilter}`;
+  const inboxFilterSignature = `${quickFilter}|${filterVenueId}|${filterCollaboratorId}|${filterTemperature}|${filterStage}|${searchTerm}|${searchQuery}|${localSortBy}|${selectedFunnelId}`;
   useEffect(() => { setVisibleCount(INBOX_INITIAL); }, [inboxFilterSignature]);
   // Conversa selecionada fora da janela: amplia a janela para ela aparecer
   useEffect(() => {
@@ -6289,303 +6334,401 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
           </div>
 
           {!isEmbeddedInFunnel && (
-            <>
-              {/* Funnel Selector Pill / Dropdown for Standalone WhatsApp */}
-              <div ref={funnelSelectRef} style={{ position: 'relative', width: '100%' }}>
-                <button
-                  type="button"
-                  onClick={() => setIsFunnelSelectOpen(!isFunnelSelectOpen)}
-                  style={{
-                    width: '100%',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: '6px 10px',
-                    borderRadius: '8px',
-                    background: isPostSaleFunnel ? 'rgba(6, 182, 212, 0.12)' : 'var(--adm-bg-card)',
-                    border: `1px solid ${isPostSaleFunnel ? 'rgba(6, 182, 212, 0.4)' : 'var(--adm-border)'}`,
-                    color: isPostSaleFunnel ? '#06B6D4' : 'var(--adm-text-title)',
-                    fontSize: '0.75rem',
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    transition: 'all 0.15s ease',
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                      {isPostSaleFunnel ? (
-                        <Users size={14} color="#06B6D4" />
-                      ) : selectedFunnelId === 'all' ? (
-                        <Target size={14} color="var(--adm-accent)" />
-                      ) : (
-                        renderFunnelOrStageIcon(
-                          activeFunnel?.icon || 'layers',
-                          14,
-                          (activeFunnel as any)?.color || activeFunnel?.badgeColor || 'var(--adm-accent)'
-                        )
-                      )}
-                    </div>
-                    <span>
-                      {selectedFunnelId === 'all' || selectedFunnelId === 'all_commercial'
-                        ? 'Todos os Funis Comerciais'
-                        : selectedFunnelId === 'all_post_sale'
-                          ? 'Todos os Funis de Pós-Venda'
-                          : (activeFunnel?.name || (isPostSaleFunnel ? 'Pós-Venda' : 'Funil Comercial'))}
-                    </span>
+            <div ref={funnelSelectRef} style={{ position: 'relative', width: '100%' }}>
+              <button
+                type="button"
+                onClick={() => setIsFunnelSelectOpen(!isFunnelSelectOpen)}
+                style={{
+                  width: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '6px 10px',
+                  borderRadius: '8px',
+                  background: isExtrasSelection
+                    ? 'rgba(245, 158, 11, 0.12)'
+                    : isPostSaleFunnel
+                      ? 'rgba(6, 182, 212, 0.12)'
+                      : 'var(--adm-bg-card)',
+                  border: `1px solid ${
+                    isExtrasSelection
+                      ? 'rgba(245, 158, 11, 0.4)'
+                      : isPostSaleFunnel
+                        ? 'rgba(6, 182, 212, 0.4)'
+                        : 'var(--adm-border)'
+                  }`,
+                  color: isExtrasSelection
+                    ? '#F59E0B'
+                    : isPostSaleFunnel
+                      ? '#06B6D4'
+                      : 'var(--adm-text-title)',
+                  fontSize: '0.75rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    {isExtrasSelection ? (
+                      <Users size={14} color="#F59E0B" />
+                    ) : isPostSaleFunnel ? (
+                      <Users size={14} color="#06B6D4" />
+                    ) : selectedFunnelId === 'all' || selectedFunnelId === 'all_commercial' ? (
+                      <Target size={14} color="var(--adm-accent)" />
+                    ) : (
+                      renderFunnelOrStageIcon(
+                        activeFunnel?.icon || 'layers',
+                        14,
+                        (activeFunnel as any)?.color || activeFunnel?.badgeColor || 'var(--adm-accent)'
+                      )
+                    )}
                   </div>
-                  <ChevronRight size={13} style={{ transform: isFunnelSelectOpen ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s ease' }} />
-                </button>
+                  <span>
+                    {selectedFunnelId === 'all_extras'
+                      ? 'Mensagens Extras (Todas)'
+                      : selectedFunnelId === 'extras_suppliers'
+                        ? 'Extras: Fornecedores'
+                        : selectedFunnelId === 'extras_collaborators'
+                          ? 'Extras: Colaboradores'
+                          : selectedFunnelId === 'all' || selectedFunnelId === 'all_commercial'
+                            ? 'Todos os Funis Comerciais'
+                            : selectedFunnelId === 'all_post_sale'
+                              ? 'Todos os Funis de Pós-Venda'
+                              : (activeFunnel?.name || (isPostSaleFunnel ? 'Pós-Venda' : 'Funil Comercial'))}
+                  </span>
+                </div>
+                <ChevronRight size={13} style={{ transform: isFunnelSelectOpen ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s ease' }} />
+              </button>
 
-                {isFunnelSelectOpen && (
-                  <div style={{
-                    position: 'absolute',
-                    top: 'calc(100% + 4px)',
-                    left: 0,
-                    right: 0,
-                    background: 'var(--adm-bg-card)',
-                    border: '1px solid var(--adm-border)',
-                    borderRadius: '10px',
-                    boxShadow: '0 10px 30px rgba(0,0,0,0.3)',
-                    padding: '5px',
-                    zIndex: 9999,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '2px',
-                    maxHeight: '340px',
-                    overflowY: 'auto',
-                  }}>
-                    {/* ── BLOCO 1: FUNIL COMERCIAL ── */}
-                    <div style={{
-                      fontSize: '0.58rem',
-                      fontWeight: 800,
-                      textTransform: 'uppercase',
-                      color: 'var(--adm-text-muted)',
-                      letterSpacing: '0.6px',
-                      padding: '4px 8px 2px',
-                    }}>
-                      Funil Comercial
-                    </div>
+              {isFunnelSelectOpen && (
+                <div style={{
+                  position: 'absolute',
+                  top: 'calc(100% + 4px)',
+                  left: 0,
+                  right: 0,
+                  background: 'var(--adm-bg-card)',
+                  border: '1px solid var(--adm-border)',
+                  borderRadius: '10px',
+                  boxShadow: '0 10px 30px rgba(0,0,0,0.3)',
+                  padding: '6px',
+                  zIndex: 9999,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '4px',
+                  maxHeight: '360px',
+                  overflowY: 'auto',
+                }}>
+                  {/* ── ACCORDION 1: FUNIS COMERCIAIS ── */}
+                  {canAccessCommercial && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                      <button
+                        type="button"
+                        onClick={() => setExpandedFunnelGroup(prev => prev === 'commercial' ? null : 'commercial')}
+                        style={{
+                          width: '100%',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          padding: '7px 10px',
+                          borderRadius: '7px',
+                          background: expandedFunnelGroup === 'commercial' ? 'var(--adm-bg-hover)' : 'transparent',
+                          border: 'none',
+                          color: 'var(--adm-text-title)',
+                          fontSize: '0.72rem',
+                          fontWeight: 800,
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.5px',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <Target size={13} color="var(--adm-accent)" />
+                          <span>Funis Comerciais</span>
+                        </div>
+                        <ChevronRight size={13} style={{ transform: expandedFunnelGroup === 'commercial' ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s ease' }} />
+                      </button>
 
-                    {/* Todos os Funis Comerciais */}
-                    <button
-                      type="button"
-                      onClick={() => handleSelectFunnel('all')}
-                      style={{
-                        padding: '6px 10px',
-                        borderRadius: '6px',
-                        background: (selectedFunnelId === 'all' || selectedFunnelId === 'all_commercial') ? 'var(--adm-accent-bg)' : 'transparent',
-                        border: 'none',
-                        color: (selectedFunnelId === 'all' || selectedFunnelId === 'all_commercial') ? 'var(--adm-accent)' : 'var(--adm-text-title)',
-                        fontSize: '0.74rem',
-                        fontWeight: (selectedFunnelId === 'all' || selectedFunnelId === 'all_commercial') ? 800 : 600,
-                        textAlign: 'left',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                      }}
-                      onMouseEnter={(e) => {
-                        if (selectedFunnelId !== 'all' && selectedFunnelId !== 'all_commercial') e.currentTarget.style.background = 'var(--adm-bg-hover)';
-                      }}
-                      onMouseLeave={(e) => {
-                        if (selectedFunnelId !== 'all' && selectedFunnelId !== 'all_commercial') e.currentTarget.style.background = 'transparent';
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <Target size={14} color="var(--adm-accent)" />
-                        <span>Todos os Funis Comerciais</span>
-                      </div>
-                      {(selectedFunnelId === 'all' || selectedFunnelId === 'all_commercial') && <Check size={12} />}
-                    </button>
-
-                    {/* Funis Comerciais Individuais */}
-                    {commercialFunnels.map(f => {
-                      const isSelected = selectedFunnelId === f.id;
-                      const funnelColor = (f as any).color || f.badgeColor || f.stages?.[0]?.color || 'var(--adm-accent)';
-                      return (
-                        <button
-                          key={f.id}
-                          type="button"
-                          onClick={() => handleSelectFunnel(f.id)}
-                          style={{
-                            padding: '5px 10px',
-                            borderRadius: '6px',
-                            background: isSelected ? `${funnelColor}18` : 'transparent',
-                            border: isSelected ? `1px solid ${funnelColor}40` : '1px solid transparent',
-                            color: isSelected ? funnelColor : 'var(--adm-text-title)',
-                            fontSize: '0.74rem',
-                            fontWeight: isSelected ? 800 : 500,
-                            textAlign: 'left',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            transition: 'all 0.12s ease',
-                          }}
-                          onMouseEnter={(e) => {
-                            if (!isSelected) e.currentTarget.style.background = 'var(--adm-bg-hover)';
-                          }}
-                          onMouseLeave={(e) => {
-                            if (!isSelected) e.currentTarget.style.background = 'transparent';
-                          }}
-                        >
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
-                            <div style={{
-                              width: '20px',
-                              height: '20px',
-                              borderRadius: '6px',
-                              background: `${funnelColor}22`,
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              flexShrink: 0,
-                            }}>
-                              {renderFunnelOrStageIcon(f.icon || 'layers', 12, funnelColor)}
-                            </div>
-                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                              {f.name}
-                            </span>
-                          </div>
-                          {isSelected && <Check size={12} color={funnelColor} />}
-                        </button>
-                      );
-                    })}
-
-                    {/* ── LINHA DIVISÓRIA ── */}
-                    <div style={{
-                      height: '1px',
-                      background: 'var(--adm-border)',
-                      margin: '5px 2px',
-                    }} />
-
-                    {/* ── BLOCO 2: PÓS-VENDA ── */}
-                    <div style={{
-                      fontSize: '0.58rem',
-                      fontWeight: 800,
-                      textTransform: 'uppercase',
-                      color: '#06B6D4',
-                      letterSpacing: '0.6px',
-                      padding: '4px 8px 2px',
-                    }}>
-                      Pós-Venda
-                    </div>
-
-                    {/* Todos os Funis de Pós-Venda */}
-                    <button
-                      type="button"
-                      onClick={() => handleSelectFunnel('all_post_sale')}
-                      style={{
-                        padding: '6px 10px',
-                        borderRadius: '6px',
-                        background: selectedFunnelId === 'all_post_sale' ? 'rgba(6, 182, 212, 0.15)' : 'transparent',
-                        border: selectedFunnelId === 'all_post_sale' ? '1px solid rgba(6, 182, 212, 0.35)' : '1px solid transparent',
-                        color: selectedFunnelId === 'all_post_sale' ? '#06B6D4' : 'var(--adm-text-title)',
-                        fontSize: '0.74rem',
-                        fontWeight: selectedFunnelId === 'all_post_sale' ? 800 : 600,
-                        textAlign: 'left',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                      }}
-                      onMouseEnter={(e) => {
-                        if (selectedFunnelId !== 'all_post_sale') e.currentTarget.style.background = 'var(--adm-bg-hover)';
-                      }}
-                      onMouseLeave={(e) => {
-                        if (selectedFunnelId !== 'all_post_sale') e.currentTarget.style.background = 'transparent';
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <Users size={14} color="#06B6D4" />
-                        <span>Todos os Funis de Pós-Venda</span>
-                      </div>
-                      {selectedFunnelId === 'all_post_sale' && <Check size={12} color="#06B6D4" />}
-                    </button>
-
-                    {/* Funis de Pós-Venda Individuais */}
-                    {postSaleFunnels.length > 0 ? (
-                      postSaleFunnels.map(f => {
-                        const isSelected = selectedFunnelId === f.id;
-                        const funnelColor = (f as any).color || f.badgeColor || '#06B6D4';
-                        return (
+                      {expandedFunnelGroup === 'commercial' && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', paddingLeft: '8px' }}>
                           <button
-                            key={f.id}
                             type="button"
-                            onClick={() => handleSelectFunnel(f.id)}
+                            onClick={() => handleSelectFunnel('all')}
                             style={{
-                              padding: '5px 10px',
+                              padding: '6px 10px',
                               borderRadius: '6px',
-                              background: isSelected ? `${funnelColor}18` : 'transparent',
-                              border: isSelected ? `1px solid ${funnelColor}40` : '1px solid transparent',
-                              color: isSelected ? funnelColor : 'var(--adm-text-title)',
+                              background: (selectedFunnelId === 'all' || selectedFunnelId === 'all_commercial') ? 'var(--adm-accent-bg)' : 'transparent',
+                              border: 'none',
+                              color: (selectedFunnelId === 'all' || selectedFunnelId === 'all_commercial') ? 'var(--adm-accent)' : 'var(--adm-text-title)',
                               fontSize: '0.74rem',
-                              fontWeight: isSelected ? 800 : 500,
+                              fontWeight: (selectedFunnelId === 'all' || selectedFunnelId === 'all_commercial') ? 800 : 600,
                               textAlign: 'left',
                               cursor: 'pointer',
                               display: 'flex',
                               alignItems: 'center',
                               justifyContent: 'space-between',
-                              transition: 'all 0.12s ease',
-                            }}
-                            onMouseEnter={(e) => {
-                              if (!isSelected) e.currentTarget.style.background = 'var(--adm-bg-hover)';
-                            }}
-                            onMouseLeave={(e) => {
-                              if (!isSelected) e.currentTarget.style.background = 'transparent';
                             }}
                           >
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
-                              <div style={{
-                                width: '20px',
-                                height: '20px',
-                                borderRadius: '6px',
-                                background: `${funnelColor}22`,
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                flexShrink: 0,
-                              }}>
-                                {renderFunnelOrStageIcon(f.icon || 'shield-check', 12, funnelColor)}
-                              </div>
-                              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                {f.name}
-                              </span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <Target size={13} color="var(--adm-accent)" />
+                              <span>Todos os Funis Comerciais</span>
                             </div>
-                            {isSelected && <Check size={12} color={funnelColor} />}
+                            {(selectedFunnelId === 'all' || selectedFunnelId === 'all_commercial') && <Check size={12} />}
                           </button>
-                        );
-                      })
-                    ) : (
+
+                          {commercialFunnels.map(f => {
+                            const isSelected = selectedFunnelId === f.id;
+                            const funnelColor = (f as any).color || f.badgeColor || f.stages?.[0]?.color || 'var(--adm-accent)';
+                            return (
+                              <button
+                                key={f.id}
+                                type="button"
+                                onClick={() => handleSelectFunnel(f.id)}
+                                style={{
+                                  padding: '5px 10px',
+                                  borderRadius: '6px',
+                                  background: isSelected ? `${funnelColor}18` : 'transparent',
+                                  border: isSelected ? `1px solid ${funnelColor}40` : '1px solid transparent',
+                                  color: isSelected ? funnelColor : 'var(--adm-text-title)',
+                                  fontSize: '0.74rem',
+                                  fontWeight: isSelected ? 800 : 500,
+                                  textAlign: 'left',
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'space-between',
+                                }}
+                              >
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                                  <div style={{
+                                    width: '20px',
+                                    height: '20px',
+                                    borderRadius: '6px',
+                                    background: `${funnelColor}22`,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    flexShrink: 0,
+                                  }}>
+                                    {renderFunnelOrStageIcon(f.icon || 'layers', 12, funnelColor)}
+                                  </div>
+                                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    {f.name}
+                                  </span>
+                                </div>
+                                {isSelected && <Check size={12} color={funnelColor} />}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* ── ACCORDION 2: PÓS-VENDA ── */}
+                  {canAccessPostSale && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', borderTop: canAccessCommercial ? '1px solid var(--adm-border)' : 'none', paddingTop: canAccessCommercial ? '4px' : 0 }}>
                       <button
                         type="button"
-                        onClick={() => handleSelectFunnel('post_sale_default')}
+                        onClick={() => setExpandedFunnelGroup(prev => prev === 'post_sale' ? null : 'post_sale')}
                         style={{
-                          padding: '5px 10px',
-                          borderRadius: '6px',
-                          background: selectedFunnelId === 'post_sale_default' ? 'rgba(6, 182, 212, 0.15)' : 'transparent',
-                          border: selectedFunnelId === 'post_sale_default' ? '1px solid rgba(6, 182, 212, 0.35)' : '1px solid transparent',
-                          color: selectedFunnelId === 'post_sale_default' ? '#06B6D4' : 'var(--adm-text-title)',
-                          fontSize: '0.74rem',
-                          fontWeight: selectedFunnelId === 'post_sale_default' ? 800 : 500,
-                          textAlign: 'left',
-                          cursor: 'pointer',
+                          width: '100%',
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'space-between',
+                          padding: '7px 10px',
+                          borderRadius: '7px',
+                          background: expandedFunnelGroup === 'post_sale' ? 'rgba(6, 182, 212, 0.08)' : 'transparent',
+                          border: 'none',
+                          color: '#06B6D4',
+                          fontSize: '0.72rem',
+                          fontWeight: 800,
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.5px',
+                          cursor: 'pointer',
                         }}
                       >
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <Users size={12} color="#06B6D4" />
-                          <span>Sucesso do Cliente</span>
+                          <Users size={13} color="#06B6D4" />
+                          <span>Pós-Venda</span>
                         </div>
-                        {selectedFunnelId === 'post_sale_default' && <Check size={12} color="#06B6D4" />}
+                        <ChevronRight size={13} style={{ transform: expandedFunnelGroup === 'post_sale' ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s ease' }} />
                       </button>
+
+                      {expandedFunnelGroup === 'post_sale' && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', paddingLeft: '8px' }}>
+                          <button
+                            type="button"
+                            onClick={() => handleSelectFunnel('all_post_sale')}
+                            style={{
+                              padding: '6px 10px',
+                              borderRadius: '6px',
+                              background: selectedFunnelId === 'all_post_sale' ? 'rgba(6, 182, 212, 0.15)' : 'transparent',
+                              border: selectedFunnelId === 'all_post_sale' ? '1px solid rgba(6, 182, 212, 0.35)' : '1px solid transparent',
+                              color: selectedFunnelId === 'all_post_sale' ? '#06B6D4' : 'var(--adm-text-title)',
+                              fontSize: '0.74rem',
+                              fontWeight: selectedFunnelId === 'all_post_sale' ? 800 : 600,
+                              textAlign: 'left',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                            }}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <Users size={13} color="#06B6D4" />
+                              <span>Todos os Funis de Pós-Venda</span>
+                            </div>
+                            {selectedFunnelId === 'all_post_sale' && <Check size={12} color="#06B6D4" />}
+                          </button>
+
+                          {postSaleFunnels.length > 0 ? (
+                            postSaleFunnels.map(f => {
+                              const isSelected = selectedFunnelId === f.id;
+                              const funnelColor = (f as any).color || f.badgeColor || '#06B6D4';
+                              return (
+                                <button
+                                  key={f.id}
+                                  type="button"
+                                  onClick={() => handleSelectFunnel(f.id)}
+                                  style={{
+                                    padding: '5px 10px',
+                                    borderRadius: '6px',
+                                    background: isSelected ? `${funnelColor}18` : 'transparent',
+                                    border: isSelected ? `1px solid ${funnelColor}40` : '1px solid transparent',
+                                    color: isSelected ? funnelColor : 'var(--adm-text-title)',
+                                    fontSize: '0.74rem',
+                                    fontWeight: isSelected ? 800 : 500,
+                                    textAlign: 'left',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                  }}
+                                >
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                                    <div style={{
+                                      width: '20px',
+                                      height: '20px',
+                                      borderRadius: '6px',
+                                      background: `${funnelColor}22`,
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      flexShrink: 0,
+                                    }}>
+                                      {renderFunnelOrStageIcon(f.icon || 'shield-check', 12, funnelColor)}
+                                    </div>
+                                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                      {f.name}
+                                    </span>
+                                  </div>
+                                  {isSelected && <Check size={12} color={funnelColor} />}
+                                </button>
+                              );
+                            })
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => handleSelectFunnel('post_sale_default')}
+                              style={{
+                                padding: '5px 10px',
+                                borderRadius: '6px',
+                                background: selectedFunnelId === 'post_sale_default' ? 'rgba(6, 182, 212, 0.15)' : 'transparent',
+                                border: selectedFunnelId === 'post_sale_default' ? '1px solid rgba(6, 182, 212, 0.35)' : '1px solid transparent',
+                                color: selectedFunnelId === 'post_sale_default' ? '#06B6D4' : 'var(--adm-text-title)',
+                                fontSize: '0.74rem',
+                                fontWeight: selectedFunnelId === 'post_sale_default' ? 800 : 500,
+                                textAlign: 'left',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                              }}
+                            >
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <Users size={12} color="#06B6D4" />
+                                <span>Sucesso do Cliente</span>
+                              </div>
+                              {selectedFunnelId === 'post_sale_default' && <Check size={12} color="#06B6D4" />}
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* ── ACCORDION 3: MENSAGENS EXTRAS ── */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', borderTop: '1px solid var(--adm-border)', paddingTop: '4px' }}>
+                    <button
+                      type="button"
+                      onClick={() => setExpandedFunnelGroup(prev => prev === 'extras' ? null : 'extras')}
+                      style={{
+                        width: '100%',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '7px 10px',
+                        borderRadius: '7px',
+                        background: expandedFunnelGroup === 'extras' ? 'rgba(245, 158, 11, 0.08)' : 'transparent',
+                        border: 'none',
+                        color: '#F59E0B',
+                        fontSize: '0.72rem',
+                        fontWeight: 800,
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.5px',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <Users size={13} color="#F59E0B" />
+                        <span>Mensagens Extras</span>
+                      </div>
+                      <ChevronRight size={13} style={{ transform: expandedFunnelGroup === 'extras' ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s ease' }} />
+                    </button>
+
+                    {expandedFunnelGroup === 'extras' && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', paddingLeft: '8px' }}>
+                        {[
+                          { id: 'all_extras', label: 'Todas as Extras' },
+                          { id: 'extras_suppliers', label: 'Fornecedores' },
+                          { id: 'extras_collaborators', label: 'Colaboradores' },
+                        ].map(item => {
+                          const isSelected = selectedFunnelId === item.id;
+                          return (
+                            <button
+                              key={item.id}
+                              type="button"
+                              onClick={() => handleSelectFunnel(item.id)}
+                              style={{
+                                padding: '6px 10px',
+                                borderRadius: '6px',
+                                background: isSelected ? 'rgba(245, 158, 11, 0.14)' : 'transparent',
+                                border: isSelected ? '1px solid rgba(245, 158, 11, 0.35)' : '1px solid transparent',
+                                color: isSelected ? '#F59E0B' : 'var(--adm-text-title)',
+                                fontSize: '0.74rem',
+                                fontWeight: isSelected ? 800 : 500,
+                                textAlign: 'left',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                              }}
+                            >
+                              <span>{item.label}</span>
+                              {isSelected && <Check size={12} color="#F59E0B" />}
+                            </button>
+                          );
+                        })}
+                      </div>
                     )}
                   </div>
-                )}
-              </div>
+                </div>
+              )}
+            </div>
+          )}
 
-              {/* Quick Filter Tabs: Em Aberto | Meus Leads / Meus Clientes | Todos */}
+              {/* Quick Filter Tabs: Em aberto | Meus | Todos */}
               <div style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -6600,7 +6743,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                   onClick={() => handleUpdateQuickFilter('open')}
                   style={{
                     flex: 1,
-                    padding: '6px 4px',
+                    padding: '5px 4px',
                     borderRadius: '7px',
                     background: quickFilter === 'open' ? (isPostSaleFunnel ? 'rgba(6, 182, 212, 0.15)' : 'var(--adm-accent-bg)') : 'transparent',
                     border: quickFilter === 'open' ? `1px solid ${isPostSaleFunnel ? '#06B6D4' : 'var(--adm-accent)'}` : '1px solid transparent',
@@ -6611,14 +6754,14 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                     transition: 'all 0.15s ease',
                   }}
                 >
-                  Em Aberto
+                  Em aberto
                 </button>
                 <button
                   type="button"
                   onClick={() => handleUpdateQuickFilter('my')}
                   style={{
                     flex: 1,
-                    padding: '6px 4px',
+                    padding: '5px 4px',
                     borderRadius: '7px',
                     background: quickFilter === 'my' ? (isPostSaleFunnel ? 'rgba(6, 182, 212, 0.15)' : 'var(--adm-accent-bg)') : 'transparent',
                     border: quickFilter === 'my' ? `1px solid ${isPostSaleFunnel ? '#06B6D4' : 'var(--adm-accent)'}` : '1px solid transparent',
@@ -6629,7 +6772,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                     transition: 'all 0.15s ease',
                   }}
                 >
-                  {isPostSaleFunnel ? 'Meus Clientes' : 'Meus Leads'}
+                  Meus
                 </button>
                 {canSeeAllConversations && (
                 <button
@@ -6637,7 +6780,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                   onClick={() => handleUpdateQuickFilter('all')}
                   style={{
                     flex: 1,
-                    padding: '6px 4px',
+                    padding: '5px 4px',
                     borderRadius: '7px',
                     background: quickFilter === 'all' ? (isPostSaleFunnel ? 'rgba(6, 182, 212, 0.15)' : 'var(--adm-accent-bg)') : 'transparent',
                     border: quickFilter === 'all' ? `1px solid ${isPostSaleFunnel ? '#06B6D4' : 'var(--adm-accent)'}` : '1px solid transparent',
@@ -6651,96 +6794,77 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                   Todos
                 </button>
                 )}
-                {canSeeSuppliersTab && (
-                <button
-                  type="button"
-                  onClick={() => setSuppliersTab(true)}
-                  style={{
-                    flex: 1,
-                    padding: '6px 4px',
-                    borderRadius: '7px',
-                    background: suppliersTab ? 'rgba(245, 158, 11, 0.16)' : 'transparent',
-                    border: suppliersTab ? '1px solid #F59E0B' : '1px solid transparent',
-                    color: suppliersTab ? '#B45309' : 'var(--adm-text-muted)',
-                    fontSize: '0.72rem',
-                    fontWeight: suppliersTab ? 800 : 600,
-                    cursor: 'pointer',
-                    transition: 'all 0.15s ease',
-                  }}
-                >
-                  Fornecedores
-                </button>
-                )}
               </div>
 
-              {/* Busca + Ordenar (icone) + Filtros (engrenagem) */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', position: 'relative' }}>
-                <div style={{ position: 'relative', flex: 1 }}>
-                  <Search size={15} color="var(--adm-text-muted)" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)' }} />
-                  <input
-                    type="text"
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    placeholder={isPostSaleFunnel ? "Buscar por cliente ou telefone..." : "Buscar por lead ou telefone..."}
-                    className="adm-input"
+              {/* Busca compacta com Ordenar e Filtros integrados */}
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                position: 'relative',
+                background: 'var(--adm-bg-input)',
+                border: '1px solid var(--adm-border)',
+                borderRadius: '10px',
+                height: '36px',
+                padding: '0 4px 0 10px',
+                gap: '4px',
+              }}>
+                <Search size={14} color="var(--adm-text-muted)" style={{ flexShrink: 0 }} />
+                <input
+                  type="text"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  placeholder={isEmbeddedInFunnel ? 'Buscar neste funil...' : 'Buscar conversa ou telefone...'}
+                  style={{
+                    flex: 1,
+                    minWidth: 0,
+                    height: '100%',
+                    border: 'none',
+                    background: 'transparent',
+                    fontSize: '0.76rem',
+                    color: 'var(--adm-text-title)',
+                    outline: 'none',
+                  }}
+                />
+                {searchTerm && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchTerm('')}
+                    title="Limpar pesquisa"
                     style={{
-                      width: '100%',
-                      paddingLeft: '32px',
-                      paddingRight: searchTerm ? '32px' : '10px',
-                      height: '38px',
-                      borderRadius: '10px',
-                      fontSize: '0.78rem',
-                      background: 'var(--adm-bg-input)',
+                      background: 'var(--adm-bg-elevated)',
                       border: '1px solid var(--adm-border)',
-                      color: 'var(--adm-text-title)',
-                      outline: 'none',
+                      borderRadius: '50%',
+                      width: '18px',
+                      height: '18px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: 'var(--adm-text-muted)',
+                      cursor: 'pointer',
+                      padding: 0,
+                      flexShrink: 0,
                     }}
-                  />
-                  {searchTerm && (
-                    <button
-                      type="button"
-                      onClick={() => setSearchTerm('')}
-                      title="Limpar pesquisa e ver todas as conversas"
-                      style={{
-                        position: 'absolute',
-                        right: '8px',
-                        top: '50%',
-                        transform: 'translateY(-50%)',
-                        background: 'var(--adm-bg-elevated)',
-                        border: '1px solid var(--adm-border)',
-                        borderRadius: '50%',
-                        width: '20px',
-                        height: '20px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        color: 'var(--adm-text-muted)',
-                        cursor: 'pointer',
-                        padding: 0,
-                        transition: 'all 0.15s ease',
-                      }}
-                    >
-                      <X size={12} />
-                    </button>
-                  )}
-                </div>
+                  >
+                    <X size={11} />
+                  </button>
+                )}
 
-                {/* Ordenar: so o icone; abre menu com icones */}
-                <div ref={sortDropdownRef} style={{ position: 'relative' }}>
+                {/* Ordenar: integrado dentro da barra */}
+                <div ref={sortDropdownRef} style={{ position: 'relative', flexShrink: 0 }}>
                   <button
                     type="button"
                     onClick={() => setIsSortDropdownOpen(v => !v)}
                     title="Ordenar conversas"
                     aria-label="Ordenar conversas"
                     style={{
-                      width: '38px', height: '38px', borderRadius: '10px',
-                      border: isSortDropdownOpen ? '1px solid var(--adm-accent)' : '1px solid var(--adm-border)',
-                      background: isSortDropdownOpen ? 'var(--adm-accent-bg)' : 'var(--adm-bg-card)',
-                      color: isSortDropdownOpen ? 'var(--adm-accent)' : '#9E988D',
+                      width: '28px', height: '28px', borderRadius: '7px',
+                      border: isSortDropdownOpen ? '1px solid var(--adm-accent)' : '1px solid transparent',
+                      background: isSortDropdownOpen ? 'var(--adm-accent-bg)' : 'transparent',
+                      color: isSortDropdownOpen ? 'var(--adm-accent)' : 'var(--adm-text-muted)',
                       display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'all 0.15s ease',
                     }}
                   >
-                    <ArrowUpDown size={17} />
+                    <ArrowUpDown size={14} />
                   </button>
                   {isSortDropdownOpen && (
                     <div style={{
@@ -6780,18 +6904,18 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                 </div>
 
                 {/* Filtros (engrenagem) */}
-                <div ref={filterDropdownRef} style={{ position: 'relative' }}>
+                <div ref={filterDropdownRef} style={{ position: 'relative', flexShrink: 0 }}>
                   <button
                     type="button"
                     onClick={() => setIsFilterDropdownOpen(!isFilterDropdownOpen)}
                     title={isFilterActive ? 'Filtros ativos' : 'Filtrar conversas'}
                     style={{
-                      width: '38px',
-                      height: '38px',
-                      borderRadius: '10px',
-                      border: isFilterActive ? '1px solid var(--adm-accent)' : isEmbeddedInFunnel ? '1px solid var(--adm-border)' : '1px solid rgba(255,255,255,0.14)',
-                      background: isFilterActive ? 'var(--adm-accent-bg)' : isEmbeddedInFunnel ? 'var(--adm-bg-card)' : 'rgba(255,255,255,0.08)',
-                      color: isFilterActive ? 'var(--adm-accent)' : isEmbeddedInFunnel ? '#9E988D' : '#E2E8F0',
+                      width: '28px',
+                      height: '28px',
+                      borderRadius: '7px',
+                      border: isFilterActive ? '1px solid var(--adm-accent)' : '1px solid transparent',
+                      background: isFilterActive ? 'var(--adm-accent-bg)' : 'transparent',
+                      color: isFilterActive ? 'var(--adm-accent)' : 'var(--adm-text-muted)',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
@@ -6799,7 +6923,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                       transition: 'all 0.15s ease',
                     }}
                   >
-                    <SlidersHorizontal size={17} />
+                    <SlidersHorizontal size={14} />
                   </button>
 
                   {/* Filter Popover Dropdown Redesenhado (Audio 1) */}
@@ -6852,8 +6976,6 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                   )}
                 </div>
               </div>
-            </>
-          )}
         </div>
 
         {messagingPaused && (
@@ -7556,8 +7678,45 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                           );
                         })()}
 
-                        {/* 2º Badge: Unidade (com Ícone de Prédio e Mesma Altura Uniforme) */}
-                        {venue && (
+                        {/* 2º Badge: Se Fornecedor/Colaborador -> Tag de Tipo + Origem; senão -> Unidade */}
+                        {(() => {
+                          const lPhones = [lead.phone, ...((lead.contacts || []).map(ct => ct.phone))];
+                          const isSup = lead.group === 'Fornecedor' || lPhones.some(ph => supplierPhoneKeys.has(phoneKey(ph)));
+                          const isCol = lead.group === 'Colaborador' || lPhones.some(ph => collaboratorPhoneKeys.has(phoneKey(ph)));
+                          if (isSup || isCol) {
+                            const originSrc = (lead.sourceId ? (sources || []).find(x => x.id === lead.sourceId) : null);
+                            const originLabel = originSrc ? getSourceCleanLabel(originSrc).cleanName : (lead.sourceName || 'WhatsApp');
+                            return (
+                              <>
+                                <span
+                                  style={{
+                                    height: '20px', boxSizing: 'border-box', fontSize: '0.60rem', fontWeight: 800,
+                                    padding: '0 6px', borderRadius: '4px',
+                                    background: isCol ? 'rgba(139, 92, 246, 0.14)' : 'rgba(245, 158, 11, 0.14)',
+                                    color: isCol ? '#7C3AED' : '#D97706',
+                                    border: `1px solid ${isCol ? 'rgba(139, 92, 246, 0.35)' : 'rgba(245, 158, 11, 0.35)'}`,
+                                    display: 'inline-flex', alignItems: 'center', gap: '3px', whiteSpace: 'nowrap', flexShrink: 0,
+                                  }}
+                                >
+                                  {isCol ? 'Colaborador' : 'Fornecedor'}
+                                </span>
+                                <span
+                                  title={`Origem: ${originLabel}`}
+                                  style={{
+                                    height: '20px', boxSizing: 'border-box', fontSize: '0.60rem', fontWeight: 700,
+                                    padding: '0 6px', borderRadius: '4px',
+                                    background: 'rgba(16, 185, 129, 0.10)', color: '#059669',
+                                    border: '1px solid rgba(16, 185, 129, 0.28)',
+                                    display: 'inline-flex', alignItems: 'center', gap: '3px', whiteSpace: 'nowrap', flexShrink: 0,
+                                  }}
+                                >
+                                  <span style={{ maxWidth: '100px', overflow: 'hidden', textOverflow: 'ellipsis' }}>{originLabel}</span>
+                                </span>
+                              </>
+                            );
+                          }
+                          if (!venue) return null;
+                          return (
                           <span 
                             title={`Unidade: ${venue.name}`}
                             style={{
@@ -7580,7 +7739,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                             <Building2 size={10} color="#3B82F6" style={{ flexShrink: 0 }} />
                             <span style={{ maxWidth: '110px', overflow: 'hidden', textOverflow: 'ellipsis' }}>{venue.name}</span>
                           </span>
-                        )}
+                          );
+                        })()}
 
                         {/* Stage Badge opcional se aplicável (não exibe 'new_lead' ou 'entry') */}
                         {(() => {

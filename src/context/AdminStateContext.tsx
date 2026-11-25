@@ -68,6 +68,7 @@ import { venueEventService, STORAGE_KEY_VENUE_EVENTS } from '../services/venueEv
 import { catalogService } from '../services/catalogService';
 import { collaboratorService, featureFlagService } from '../services/collaboratorService';
 import { journeyTemplateService } from '../services/journeyTemplateService';
+import { contactService } from '../services/contactService';
 import { quickMessageService } from '../services/quickMessageService';
 import { mqlService } from '../services/mqlService';
 import { supportService } from '../services/supportService';
@@ -2608,7 +2609,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       throw new Error('E-mail ou senha incorreta.');
     }
 
-    // Se a senha confere, sincroniza sessão no Supabase Auth em segundo plano
+    // Se a senha confere, sincroniza sessão no Supabase Auth
     if (isSupabaseConfigured) {
       try {
         const { error: authSignErr } = await supabase.auth.signInWithPassword({
@@ -2616,10 +2617,30 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           password: cleanPass,
         });
         if (authSignErr) {
-          // Evita manter sessão antiga de outro usuário/master no localStorage
-          const { data: curAuth } = await supabase.auth.getUser().catch(() => ({ data: { user: null } }));
-          if (curAuth?.user?.email && curAuth.user.email.toLowerCase() !== cleanEmail) {
-            await supabase.auth.signOut().catch(() => {});
+          // Auto-reparo seguro: a senha já foi validada contra `collaborators`; sincroniza `auth.users` e tenta novamente
+          let synced = false;
+          if (cleanPass.length >= 6) {
+            try {
+              const syncResp = await fetch('/api/activate-collaborator', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email: cleanEmail, collabId: foundCollab.id, password: cleanPass }),
+              });
+              if (syncResp.ok) {
+                const { error: retryErr } = await supabase.auth.signInWithPassword({
+                  email: cleanEmail,
+                  password: cleanPass,
+                });
+                synced = !retryErr;
+              }
+            } catch { /* ignore */ }
+          }
+          if (!synced) {
+            // Evita manter sessão antiga de outro usuário/master no localStorage
+            const { data: curAuth } = await supabase.auth.getUser().catch(() => ({ data: { user: null } }));
+            if (curAuth?.user?.email && curAuth.user.email.toLowerCase() !== cleanEmail) {
+              await supabase.auth.signOut().catch(() => {});
+            }
           }
         }
       } catch (authErr) {
@@ -5280,6 +5301,23 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
   }, []);
 
+  useEffect(() => {
+    const onPurged = (e: Event) => {
+      const ids: string[] = (e as CustomEvent)?.detail?.deletedLeadIds || [];
+      if (!Array.isArray(ids) || ids.length === 0) return;
+      const idSet = new Set(ids);
+      setLeads(prev => {
+        const next = prev.filter(l => !idSet.has(l.id));
+        leadsRef.current = next;
+        safeLocalStorageSet(STORAGE_KEY_LEADS, JSON.stringify(next));
+        return next;
+      });
+      setTasks(prev => prev.filter(t => !t.leadId || !idSet.has(t.leadId)));
+    };
+    window.addEventListener('f5:extra-assets-purged', onPurged);
+    return () => window.removeEventListener('f5:extra-assets-purged', onPurged);
+  }, []);
+
   // ── Leads Desindexados & Realocação de Funil ────────────────────────────────
   const unindexedLeadsCount = useMemo(() => {
     const validFunnelIds = new Set(scopedFunnels.map(f => f.id));
@@ -5317,6 +5355,22 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       destFunnel.name?.toLowerCase().includes('pos-venda') ||
       destFunnel.name?.toLowerCase().includes('sucesso do cliente')
     );
+
+    // Bloqueio Estrito Setorial: usuário estritamente comercial não pode enviar lead diretamente para o Pós-Venda
+    if (isDestPostSale) {
+      const actor = viewingAsCollaborator || currentUser;
+      const role = String(actor?.role || '').toLowerCase();
+      const sectors: string[] = Array.isArray((actor as any)?.sectors) ? (actor as any).sectors : [];
+      const canSendToPostSale = Boolean(
+        role === 'master' || role === 'diretor' || role === 'diretoria' || role === 'admin' || role === 'gerencia' ||
+        role === 'pos_venda' || (actor as any)?.isDev ||
+        sectors.includes('gerencia') || sectors.includes('diretoria') || sectors.includes('pos_venda')
+      );
+      if (!canSendToPostSale) {
+        console.warn('[reassignLeadFunnel] Bloqueado: usuário comercial não pode mover lead diretamente para Pós-Venda.');
+        return false;
+      }
+    }
 
     const cleanTags = isDestPostSale
       ? (targetLead.tags || [])
@@ -7402,13 +7456,26 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       resolvedStageId = isTargetPostSale ? 'onboarding' : (isEntryActive ? 'new_lead' : 'in_negotiation');
     }
 
+    // Verifica se o telefone pertence a um Fornecedor ou Colaborador cadastrado:
+    // Se sim, NUNCA classifica como Lead comercial nem dispara roleta/métricas do dashboard.
+    let matchedExtraContact: { id: string; isSupplier?: boolean; isCollaborator?: boolean; name?: string } | null = null;
+    if (isSupabaseConfigured && resolvedMasterId && cleanPhoneDigits && cleanPhoneDigits.length >= 8) {
+      try {
+        const phoneMap = await contactService.findByPhones(resolvedMasterId, [cleanPhoneDigits]);
+        const foundExtra = Array.from(phoneMap.values()).find((c: any) => Boolean(c.isSupplier || c.isCollaborator)) as any;
+        if (foundExtra) {
+          matchedExtraContact = { id: foundExtra.id, isSupplier: foundExtra.isSupplier, isCollaborator: foundExtra.isCollaborator, name: foundExtra.name };
+        }
+      } catch { /* ignore */ }
+    }
+
     // Herança e Auto-Vínculo de Contrato via Contato / Telefone
     let inheritedContractId: string | undefined = undefined;
-    let inheritedContactId: string | undefined = undefined;
+    let inheritedContactId: string | undefined = matchedExtraContact?.id;
     let inheritedRole: any = isTargetPostSale ? 'cliente' : undefined;
-    let inheritedIsClient = isTargetPostSale;
+    let inheritedIsClient = isTargetPostSale && !matchedExtraContact;
 
-    if (cleanPhoneDigits && cleanPhoneDigits.length >= 8) {
+    if (!matchedExtraContact && cleanPhoneDigits && cleanPhoneDigits.length >= 8) {
       try {
         const found = await contractService.findContractByPhoneOrContact({
           phone: cleanPhoneDigits,
@@ -7429,10 +7496,14 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       }
     }
 
+    const extraRoleLabel = matchedExtraContact
+      ? (matchedExtraContact.isCollaborator ? 'Colaborador' : 'Fornecedor')
+      : null;
+
     const newLead: Lead = {
       id: newLeadId,
       masterId: resolvedMasterId,
-      code: (isTargetPostSale || inheritedIsClient) ? `CLI-${leadCode.replace('LEAD-', '')}` : leadCode,
+      code: extraRoleLabel ? `${matchedExtraContact?.isCollaborator ? 'COL' : 'FORN'}-${leadCode.replace('LEAD-', '')}` : ((isTargetPostSale || inheritedIsClient) ? `CLI-${leadCode.replace('LEAD-', '')}` : leadCode),
       debutanteId: '',
       debutanteName: '',
       debutanteSlug: '',
@@ -7445,21 +7516,21 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       source: 'whatsapp',
       sourceName: waSource?.name || 'WhatsApp API',
       subSource: matchedSubSource,
-      name: cleanName,
+      name: matchedExtraContact?.name || cleanName,
       phone: data.phone,
       avatarUrl: data.avatarUrl,
       age: 15,
-      group: (isTargetPostSale || inheritedIsClient) ? 'Pós-Venda' : 'WhatsApp',
-      tags: (isTargetPostSale || inheritedIsClient) ? ['Cliente'] : [],
+      group: extraRoleLabel || ((isTargetPostSale || inheritedIsClient) ? 'Pós-Venda' : 'WhatsApp'),
+      tags: extraRoleLabel ? [extraRoleLabel] : ((isTargetPostSale || inheritedIsClient) ? ['Cliente'] : []),
       notes: effectiveMsgText ? (data.fromMe ? `Conversa iniciada via WhatsApp: "${effectiveMsgText}"` : `Primeira mensagem via WhatsApp: "${effectiveMsgText}"`) : undefined,
-      sdrId: effectiveAutoSdr ? effectiveAutoSdr.id : undefined,
-      sdrName: effectiveAutoSdr ? effectiveAutoSdr.name : undefined,
-      assignedTo: effectiveAutoSdr ? effectiveAutoSdr.name : undefined,
+      sdrId: extraRoleLabel ? undefined : (effectiveAutoSdr ? effectiveAutoSdr.id : undefined),
+      sdrName: extraRoleLabel ? undefined : (effectiveAutoSdr ? effectiveAutoSdr.name : undefined),
+      assignedTo: extraRoleLabel ? undefined : (effectiveAutoSdr ? effectiveAutoSdr.name : undefined),
       stage: (data.initialStage || resolvedStageId) as CrmStage,
-      isClient: inheritedIsClient ? true : undefined,
+      isClient: extraRoleLabel ? false : (inheritedIsClient ? true : undefined),
       isValidated: false,
       pointsGranted: 0,
-      participants: initialParticipants,
+      participants: extraRoleLabel ? [] : initialParticipants,
       tasks: [],
       activities,
       temperature: undefined,

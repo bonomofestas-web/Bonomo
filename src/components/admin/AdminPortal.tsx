@@ -1501,7 +1501,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                   title={activeFunnel ? `Criar Contrato no ${activeFunnel.name}` : 'Criar Contrato no Pós-Venda'}
                 >
                   <Plus size={15} />
-                  <span>Criar Contrato</span>
+                  <span>Adicionar Cliente</span>
                   {activeFunnel && (
                     <span style={{ fontSize: '0.70rem', opacity: 0.85, fontWeight: 600 }}>
                       • {activeFunnel.name}

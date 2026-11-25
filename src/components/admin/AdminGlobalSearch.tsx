@@ -169,18 +169,11 @@ export const AdminGlobalSearch: React.FC<AdminGlobalSearchProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen]);
 
-  // Texto efetivo: tag confirmada + o que esta sendo digitado
-  const effectiveQuery = [committed, searchQuery.trim()].filter(Boolean).join(' ');
-
-  // Filtro AO VIVO da tela aberta (Contatos, Contratos, listas, Kanban, Mensagens), com a configuracao da tag
+  // Ctrl+K é estritamente universal: não injeta filtro local em funis/WhatsApp/Contatos.
+  // Cada módulo (Mensagens, Caixa de Entrada do Funil e Contatos) possui sua própria busca local restritiva.
   useEffect(() => {
-    const t = setTimeout(() => {
-      setScreenSearch({ query: effectiveQuery, venueId: selectedVenueFilter, collaboratorId: selectedCollaboratorFilter, tag: selectedTagFilter });
-      if (activeTab === 'whatsapp') window.dispatchEvent(new CustomEvent('f5_whatsapp_filter_query', { detail: { query: effectiveQuery } }));
-      else window.dispatchEvent(new CustomEvent('f5_crm_filter_query', { detail: { query: effectiveQuery } }));
-    }, 120);
-    return () => clearTimeout(t);
-  }, [effectiveQuery, selectedVenueFilter, selectedCollaboratorFilter, selectedTagFilter, activeTab]);
+    setScreenSearch({ query: '', venueId: 'all', collaboratorId: 'all', tag: 'all' });
+  }, []);
 
   // Fechar o painel nao apaga o filtro: ele continua valendo na tela
   const handleClose = () => {
@@ -441,7 +434,7 @@ export const AdminGlobalSearch: React.FC<AdminGlobalSearchProps> = ({
             if (e.key === 'Enter') {
               e.preventDefault();
               // Confirma: o texto vira uma tag com engrenagem e segue filtrando a tela
-              if (searchQuery.trim()) { setCommitted(effectiveQuery); setSearchQuery(''); }
+              if (searchQuery.trim()) { setCommitted(searchQuery.trim()); setSearchQuery(''); }
               setIsOpen(false);
             } else if (e.key === 'Backspace' && !searchQuery && committed) {
               setCommitted('');

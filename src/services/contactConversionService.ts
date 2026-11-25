@@ -1,5 +1,4 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import { generateUuid } from '../utils/uuid';
 
 export type ConversionTarget = 'supplier' | 'collaborator';
 
@@ -68,39 +67,31 @@ export const contactConversionService = {
     return { contracts, leads, clients };
   },
 
-  /** Executa a transicao (so se nao houver contrato). Devolve quantos ativos foram perdidos. */
-  async convert(params: { masterId: string; contactId: string; contactPhone?: string | null; whatsappPhone?: string | null; target: ConversionTarget; by: { id?: string; name?: string } }): Promise<{ success: boolean; message?: string; lostLeads?: number; lostClients?: number }> {
+  /** Executa a transicao (so se nao houver contrato). Apaga os ativos sem contrato e tarefas vinculadas. */
+  async convert(params: { masterId: string; contactId: string; contactPhone?: string | null; whatsappPhone?: string | null; target: ConversionTarget; by: { id?: string; name?: string } }): Promise<{ success: boolean; message?: string; lostLeads?: number; lostClients?: number; deletedLeadIds?: string[] }> {
     if (!isSupabaseConfigured) return { success: false, message: 'Sem conexão com o banco.' };
     const impact = await this.getImpact(params.masterId, { id: params.contactId, primaryPhone: params.contactPhone, whatsappPhone: params.whatsappPhone });
     if (impact.contracts.length > 0) return { success: false, message: 'Este contato tem contrato registrado e não pode ser transformado.' };
 
-    const label = params.target === 'supplier' ? 'fornecedor' : 'colaborador';
     const now = new Date().toISOString();
+    const deletedLeadIds = impact.leads.map(l => l.id);
+    const deletedClientIds = impact.clients.map(c => c.id);
 
-    // Leads: etapa de perda do proprio funil (ou 'lost')
-    for (const l of impact.leads) {
-      const { data: lead } = await supabase.from('leads').select('funnel_id').eq('id', l.id).maybeSingle();
-      let lossStage = 'lost';
-      if (lead?.funnel_id) {
-        const { data: f } = await supabase.from('commercial_funnels').select('stages').eq('id', lead.funnel_id).maybeSingle();
-        const found = Array.isArray(f?.stages) ? f!.stages.find((s: any) => s.isLoss) : undefined;
-        if (found?.id) lossStage = found.id;
-      }
-      await supabase.from('leads').update({ stage: lossStage, updated_at: now }).eq('id', l.id).eq('master_id', params.masterId);
-      await supabase.from('lead_activities').insert({
-        id: generateUuid(), lead_id: l.id, type: 'note', title: 'Lead encerrado como perdido', timestamp: now,
-        text: `O contato foi transformado em ${label}; o ativo comercial foi encerrado como perdido.`, author_name: params.by.name || 'Sistema',
-      });
+    // Apaga tarefas vinculadas e leads comerciais em andamento (sem jogar para perdido/cancelado)
+    if (deletedLeadIds.length > 0) {
+      await supabase.from('admin_tasks').delete().eq('master_id', params.masterId).in('lead_id', deletedLeadIds);
+      await supabase.from('leads').delete().eq('master_id', params.masterId).in('id', deletedLeadIds);
     }
-    // Clientes de pos-venda sem contrato
-    for (const c of impact.clients) {
-      await supabase.from('clients').update({ stage: 'lost', updated_at: now }).eq('id', c.id).eq('master_id', params.masterId);
+    // Apaga clientes de pos-venda sem contrato
+    if (deletedClientIds.length > 0) {
+      await supabase.from('admin_tasks').delete().eq('master_id', params.masterId).in('lead_id', deletedClientIds);
+      await supabase.from('clients').delete().eq('master_id', params.masterId).in('id', deletedClientIds);
     }
 
     const patch: Record<string, any> = { updated_at: now };
     if (params.target === 'supplier') patch.is_supplier = true; else patch.is_collaborator = true;
     const { error } = await supabase.from('contacts').update(patch).eq('id', params.contactId).eq('master_id', params.masterId);
     if (error) return { success: false, message: error.message };
-    return { success: true, lostLeads: impact.leads.length, lostClients: impact.clients.length };
+    return { success: true, lostLeads: deletedLeadIds.length, lostClients: deletedClientIds.length, deletedLeadIds };
   },
 };

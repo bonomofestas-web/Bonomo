@@ -102,6 +102,8 @@ export const contactService = {
       if (createdFrom) query = query.gte('created_at', `${createdFrom}T00:00:00`);
       if (createdTo) query = query.lte('created_at', `${createdTo}T23:59:59`);
       if (filter === 'supplier') query = query.eq('is_supplier', true);
+      if (filter === 'collaborator') query = query.eq('is_collaborator', true);
+      if (filter === 'extras') query = query.or('is_supplier.eq.true,is_collaborator.eq.true');
       if (filter === 'active_contract') query = query.in('contracts.approval_status', ['approved']);
 
       // Busca no banco (nome, e-mail, código, telefones e CPF com ou sem máscara)
@@ -156,11 +158,35 @@ export const contactService = {
     return true;
   },
 
-  /** Contatos marcados como fornecedor (para a aba Fornecedores das Mensagens). */
+  /** Contatos marcados como fornecedor ou colaborador (para Mensagens Extras e Caixa de Entrada). */
+  async getExtraContacts(masterId: string): Promise<Contact[]> {
+    if (!isSupabaseConfigured || !masterId) return [];
+    const { data } = await supabase
+      .from('contacts')
+      .select('*')
+      .eq('master_id', masterId)
+      .or('is_supplier.eq.true,is_collaborator.eq.true')
+      .is('deleted_at', null)
+      .limit(1500);
+    return (data || []).map(mapRowToContact);
+  },
+
+  /** Alias mantido por compatibilidade: retorna fornecedores do Master. */
   async getSuppliers(masterId: string): Promise<Contact[]> {
     if (!isSupabaseConfigured || !masterId) return [];
     const { data } = await supabase.from('contacts').select('*').eq('master_id', masterId).eq('is_supplier', true).is('deleted_at', null).limit(1000);
     return (data || []).map(mapRowToContact);
+  },
+
+  /** Vincula ou atualiza o status de colaborador de um contato na base. */
+  async setCollaborator(contactId: string, masterId: string, isCollaborator: boolean, collaboratorId?: string | null, profile?: SupplierProfile): Promise<boolean> {
+    if (!isSupabaseConfigured || !contactId || !masterId) return false;
+    const patch: Record<string, any> = { is_collaborator: isCollaborator, updated_at: new Date().toISOString() };
+    if (collaboratorId !== undefined) patch.collaborator_id = collaboratorId;
+    if (profile) patch.supplier_profile = profile;
+    const { error } = await supabase.from('contacts').update(patch).eq('id', contactId).eq('master_id', masterId);
+    if (error) { console.warn('[contactService.setCollaborator]', error.message); return false; }
+    return true;
   },
 
   /**
@@ -186,6 +212,8 @@ export const contactService = {
       if (createdFrom) query = query.gte('created_at', `${createdFrom}T00:00:00`);
       if (createdTo) query = query.lte('created_at', `${createdTo}T23:59:59`);
       if (filter === 'supplier') query = query.eq('is_supplier', true);
+      if (filter === 'collaborator') query = query.eq('is_collaborator', true);
+      if (filter === 'extras') query = query.or('is_supplier.eq.true,is_collaborator.eq.true');
       if (filter === 'active_contract') query = query.in('contracts.approval_status', ['approved']);
 
       const searchFilter = buildContactSearchFilter(search);
@@ -882,8 +910,78 @@ export const contactService = {
   },
 
   /**
+   * Helper compartilhado: verifica se existem contratos ativos e apaga definitivamente
+   * os ativos comerciais (leads), tarefas vinculadas (admin_tasks) e clientes sem contrato.
+   * Fornecedor e Colaborador NÃO podem manter ativos comerciais (nem em cancelado).
+   */
+  async _purgeAssetsForExtraRole(params: {
+    contactId: string;
+    masterId: string;
+    leadId?: string;
+    clientId?: string;
+  }): Promise<{ ok: boolean; message?: string; deletedLeadIds: string[] }> {
+    const { data: ctContracts } = await supabase
+      .from('contracts')
+      .select('id')
+      .eq('master_id', params.masterId)
+      .eq('contact_id', params.contactId)
+      .limit(1);
+
+    if (ctContracts && ctContracts.length > 0) {
+      return {
+        ok: false,
+        message: 'Este contato possui contratos ativos vinculados e não pode perder o vínculo de cliente.',
+        deletedLeadIds: [],
+      };
+    }
+
+    if (params.clientId && isUuid(params.clientId)) {
+      const { data: clContracts } = await supabase
+        .from('contracts')
+        .select('id')
+        .eq('master_id', params.masterId)
+        .eq('client_id', params.clientId)
+        .limit(1);
+
+      if (clContracts && clContracts.length > 0) {
+        return {
+          ok: false,
+          message: 'Este cliente possui contratos ativos vinculados.',
+          deletedLeadIds: [],
+        };
+      }
+    }
+
+    // Localiza todos os leads vinculados ao contato (por leadId explícito ou contact_id)
+    const leadIdSet = new Set<string>();
+    if (params.leadId && isUuid(params.leadId)) leadIdSet.add(params.leadId);
+    const { data: linkedLeads } = await supabase
+      .from('leads')
+      .select('id')
+      .eq('master_id', params.masterId)
+      .eq('contact_id', params.contactId);
+    (linkedLeads || []).forEach((r: any) => { if (r.id) leadIdSet.add(r.id); });
+
+    const deletedLeadIds = Array.from(leadIdSet);
+    if (deletedLeadIds.length > 0) {
+      // Apaga todas as tarefas vinculadas aos ativos antes de apagar os leads
+      await supabase.from('admin_tasks').delete().eq('master_id', params.masterId).in('lead_id', deletedLeadIds);
+      await supabase.from('leads').delete().eq('master_id', params.masterId).in('id', deletedLeadIds);
+    }
+
+    // Apaga cliente sem contrato correspondente
+    if (params.clientId && isUuid(params.clientId)) {
+      await supabase.from('clients').delete().eq('id', params.clientId).eq('master_id', params.masterId);
+    } else {
+      await supabase.from('clients').delete().eq('migrated_to_contact_id', params.contactId).eq('master_id', params.masterId);
+    }
+
+    return { ok: true, deletedLeadIds };
+  },
+
+  /**
    * Converte um contato (lead ou cliente sem contratos conectados) em Fornecedor.
-   * Remove automaticamente os registros de lead e cliente associados.
+   * Apaga definitivamente os ativos (leads/clientes sem contrato) e suas tarefas vinculadas.
    */
   async convertToSupplier(params: {
     contactId: string;
@@ -891,54 +989,26 @@ export const contactService = {
     leadId?: string;
     clientId?: string;
     category?: string;
+    serviceType?: string;
     notes?: string;
-  }): Promise<{ success: boolean; message?: string }> {
+  }): Promise<{ success: boolean; message?: string; deletedLeadIds?: string[] }> {
     if (!isSupabaseConfigured || !params.masterId || !params.contactId) {
       return { success: false, message: 'Parâmetros inválidos.' };
     }
 
     try {
-      // 1. Checa se o contato possui contratos conectados (requisito mandatório)
-      const { data: ctContracts } = await supabase
-        .from('contracts')
-        .select('id')
-        .eq('master_id', params.masterId)
-        .eq('contact_id', params.contactId)
-        .limit(1);
+      const purge = await this._purgeAssetsForExtraRole(params);
+      if (!purge.ok) return { success: false, message: purge.message };
 
-      if (ctContracts && ctContracts.length > 0) {
-        return {
-          success: false,
-          message: 'Este contato possui contratos ativos vinculados e não pode ser transformado em fornecedor.',
-        };
-      }
-
-      // Se passou clientId, também verifica se o client possui contratos
-      if (params.clientId && isUuid(params.clientId)) {
-        const { data: clContracts } = await supabase
-          .from('contracts')
-          .select('id')
-          .eq('master_id', params.masterId)
-          .eq('client_id', params.clientId)
-          .limit(1);
-
-        if (clContracts && clContracts.length > 0) {
-          return {
-            success: false,
-            message: 'Este cliente possui contratos ativos vinculados e não pode ser transformado em fornecedor.',
-          };
-        }
-      }
-
-      // 2. Atualiza o contato para Fornecedor
       const { error: ctErr } = await supabase
         .from('contacts')
         .update({
           is_supplier: true,
           supplier_profile: {
-            category: params.category || 'Geral',
+            category: params.category || params.serviceType || 'Geral',
+            serviceType: params.serviceType || params.category || 'Geral',
             converted_at: new Date().toISOString(),
-            notes: params.notes || 'Convertido a partir de lead/cliente sem contratos',
+            notes: params.notes || 'Convertido para Fornecedor',
           },
           updated_at: new Date().toISOString(),
         })
@@ -950,24 +1020,59 @@ export const contactService = {
         return { success: false, message: 'Erro ao atualizar contato para fornecedor.' };
       }
 
-      // 3. Exclui o lead correspondente (se houver)
-      if (params.leadId && isUuid(params.leadId)) {
-        await supabase.from('leads').delete().eq('id', params.leadId).eq('master_id', params.masterId);
-      } else {
-        await supabase.from('leads').delete().eq('contact_id', params.contactId).eq('master_id', params.masterId);
-      }
-
-      // 4. Exclui o cliente de pós-venda correspondente (se houver)
-      if (params.clientId && isUuid(params.clientId)) {
-        await supabase.from('clients').delete().eq('id', params.clientId).eq('master_id', params.masterId);
-      } else {
-        await supabase.from('clients').delete().eq('migrated_to_contact_id', params.contactId).eq('master_id', params.masterId);
-      }
-
-      return { success: true };
+      return { success: true, deletedLeadIds: purge.deletedLeadIds };
     } catch (err: any) {
       console.error('Exceção ao converter contato em fornecedor:', err);
       return { success: false, message: err?.message || 'Falha ao converter em fornecedor.' };
+    }
+  },
+
+  /**
+   * Converte um contato em Colaborador (e opcionalmente vincula a um funcionário da base).
+   * Apaga definitivamente os ativos (leads/clientes sem contrato) e suas tarefas vinculadas.
+   */
+  async convertToCollaborator(params: {
+    contactId: string;
+    masterId: string;
+    leadId?: string;
+    clientId?: string;
+    collaboratorId?: string | null;
+    serviceType?: string;
+    notes?: string;
+  }): Promise<{ success: boolean; message?: string; deletedLeadIds?: string[] }> {
+    if (!isSupabaseConfigured || !params.masterId || !params.contactId) {
+      return { success: false, message: 'Parâmetros inválidos.' };
+    }
+
+    try {
+      const purge = await this._purgeAssetsForExtraRole(params);
+      if (!purge.ok) return { success: false, message: purge.message };
+
+      const { error: ctErr } = await supabase
+        .from('contacts')
+        .update({
+          is_collaborator: true,
+          collaborator_id: params.collaboratorId || null,
+          supplier_profile: {
+            category: params.serviceType || 'Equipe / Colaborador',
+            serviceType: params.serviceType || 'Equipe / Colaborador',
+            converted_at: new Date().toISOString(),
+            notes: params.notes || 'Convertido para Colaborador',
+          },
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', params.contactId)
+        .eq('master_id', params.masterId);
+
+      if (ctErr) {
+        console.error('Erro ao marcar contato como colaborador:', ctErr);
+        return { success: false, message: 'Erro ao atualizar contato para colaborador.' };
+      }
+
+      return { success: true, deletedLeadIds: purge.deletedLeadIds };
+    } catch (err: any) {
+      console.error('Exceção ao converter contato em colaborador:', err);
+      return { success: false, message: err?.message || 'Falha ao converter em colaborador.' };
     }
   },
 };
@@ -1002,6 +1107,7 @@ function mapRowToContact(row: any): Contact {
     deletedAt: row.deleted_at,
     isSupplier: Boolean(row.is_supplier),
     isCollaborator: Boolean(row.is_collaborator),
+    collaboratorId: row.collaborator_id || null,
     supplierProfile: row.supplier_profile || {},
   };
 }

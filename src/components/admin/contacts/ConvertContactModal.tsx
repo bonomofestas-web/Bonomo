@@ -38,7 +38,10 @@ export const ConvertContactModal: React.FC<Props> = ({ masterId, contact, target
     const res = await contactConversionService.convert({ masterId, contactId: contact.id, contactPhone: contact.primaryPhone, whatsappPhone: contact.whatsappPhone, target, by });
     setBusy(false);
     if (!res.success) { toast.error(res.message || 'Não foi possível transformar o contato.'); return; }
-    toast.success(`Contato transformado em ${label}.${res.lostLeads || res.lostClients ? ` ${(res.lostLeads || 0) + (res.lostClients || 0)} ativo(s) marcado(s) como perdido(s).` : ''}`);
+    if (res.deletedLeadIds && res.deletedLeadIds.length > 0) {
+      window.dispatchEvent(new CustomEvent('f5:extra-assets-purged', { detail: { leadIds: res.deletedLeadIds } }));
+    }
+    toast.success(`Contato transformado em ${label}.${res.lostLeads || res.lostClients ? ` ${(res.lostLeads || 0) + (res.lostClients || 0)} ativo(s) e tarefas vinculadas removidos.` : ''}`);
     onDone(target);
   };
 
@@ -73,14 +76,14 @@ export const ConvertContactModal: React.FC<Props> = ({ masterId, contact, target
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 800, color: '#B45309', fontSize: '0.84rem' }}><AlertTriangle size={16} /> Atenção</div>
               <div style={{ fontSize: '0.78rem', color: 'var(--adm-text-title)', lineHeight: 1.45 }}>
                 {target === 'supplier'
-                  ? 'O contato passa a ser fornecedor (ficha, orçamentos e aba Fornecedores nas Mensagens).'
-                  : 'O contato será cadastrado como colaborador: você segue para o cadastro da equipe com os dados dele.'}{' '}
-                Os ativos em andamento abaixo serão <strong>marcados como perdidos</strong>.
+                  ? 'O contato passa a ser fornecedor (ficha, orçamentos e Mensagens Extras).'
+                  : 'O contato será vinculado como colaborador (ficha, contratos/orçamentos e Mensagens Extras).'}{' '}
+                Os ativos em andamento e tarefas vinculadas abaixo serão <strong>apagados permanentemente</strong> (fornecedor e colaborador não mantêm leads/clientes ativos).
               </div>
             </div>
 
             {lossCount === 0 ? (
-              <div style={{ fontSize: '0.78rem', color: 'var(--adm-text-muted)' }}>Nenhum lead ou cliente em andamento será perdido.</div>
+              <div style={{ fontSize: '0.78rem', color: 'var(--adm-text-muted)' }}>Nenhum lead ou cliente em andamento será apagado.</div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {impact.leads.map(l => (
@@ -91,7 +94,7 @@ export const ConvertContactModal: React.FC<Props> = ({ masterId, contact, target
                 ))}
                 <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 6, fontSize: '0.78rem', fontWeight: 700, color: 'var(--adm-text-title)', cursor: 'pointer' }}>
                   <input type="checkbox" checked={ack} onChange={e => setAck(e.target.checked)} style={{ marginTop: 2 }} />
-                  Entendo que {lossCount} {lossCount === 1 ? 'ativo será perdido' : 'ativos serão perdidos'} e que isso não é desfeito automaticamente.
+                  Entendo que {lossCount} {lossCount === 1 ? 'ativo e suas tarefas serão apagados' : 'ativos e suas tarefas serão apagados'} permanentemente.
                 </label>
               </div>
             )}

@@ -4,11 +4,13 @@ import { formatMonthYear } from '../ui';
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { 
   X, Check, Building2, Calendar, User, Phone, DollarSign, Clock, 
-  Users, Sparkles, ChevronDown, ChevronLeft, ChevronRight, FileText, 
-  Heart, Cake, Briefcase, GraduationCap, Zap, Sliders, Shield
+  Users, ChevronDown, ChevronLeft, ChevronRight, FileText, 
+  Heart, Cake, Shield, CheckCircle2
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { maskPhoneInput } from '../../utils/phoneFormatter';
+import { useUnitContactLookup } from '../../hooks/useUnitContactLookup';
+import { ContactSuggestionsDropdown } from './contacts/ContactSuggestionsDropdown';
 
 interface AdminNewClientModalProps {
   isOpen: boolean;
@@ -16,17 +18,6 @@ interface AdminNewClientModalProps {
   onClientCreated?: (clientId: string) => void;
   defaultFunnelId?: string;
 }
-
-const EVENT_TYPE_OPTIONS = [
-  { key: '', label: 'Não Definido / A Definir', icon: Sparkles },
-  { key: '15 Anos', label: '15 Anos / Debutante', icon: Sparkles },
-  { key: 'Infantil', label: 'Festa Infantil', icon: Cake },
-  { key: 'Aniversário Adulto', label: 'Aniversário Adulto', icon: Cake },
-  { key: 'Casamento', label: 'Casamento', icon: Heart },
-  { key: 'Formatura', label: 'Formatura', icon: GraduationCap },
-  { key: 'Corporativo', label: 'Corporativo', icon: Briefcase },
-  { key: 'Outro', label: 'Outro Formato', icon: Sparkles },
-];
 
 const RELATIONSHIP_OPTIONS = [
   { key: 'mother', label: 'Mãe' },
@@ -43,7 +34,7 @@ export const AdminNewClientModal: React.FC<AdminNewClientModalProps> = ({
   onClientCreated,
   defaultFunnelId,
 }) => {
-  const { venues, funnels, activeVenueId, addClient } = useAdminState();
+  const { venues, funnels, activeVenueId, currentUser, addClient } = useAdminState();
 
   // Unidades do FUNIL (vinculo manual do funil): 1 unidade = fixa e travada; so escolhe se o funil tiver mais de uma.
   const funnelVenues = (() => {
@@ -65,15 +56,27 @@ export const AdminNewClientModal: React.FC<AdminNewClientModalProps> = ({
     return selectableVenues[0]?.id || venues[0]?.id || '';
   };
 
-  // Modo: Rápido (padrão) vs Completo
-  const [mode, setMode] = useState<'quick' | 'full'>('quick');
-
   // Campos Fundamentais (Iniciam 100% em branco, zero mock)
-  const [eventType, setEventType] = useState('');
+  const eventType: string = '';
   const [venueId, setVenueId] = useState(getEffectiveVenueId);
   const [payerName, setPayerName] = useState('');
   const [payerPhone, setPayerPhone] = useState('');
   const [payerRelationship, setPayerRelationship] = useState('mother');
+  const [showSuggestions, setShowSuggestions] = useState(false);
+
+  const scopedMasterId = currentUser?.masterId || currentUser?.id;
+  const {
+    suggestions: contactSuggestions,
+    selectedContact: selectedLookupContact,
+    setSelectedContact: setSelectedLookupContact,
+    sameUnitPhoneMatch,
+  } = useUnitContactLookup({
+    masterId: scopedMasterId,
+    venueId,
+    nameQuery: payerName,
+    phoneValue: payerPhone,
+    enabled: isOpen,
+  });
 
   // Campos do Cadastro Completo / Condicionais
   const [birthdayPersonName, setBirthdayPersonName] = useState('');
@@ -91,7 +94,7 @@ export const AdminNewClientModal: React.FC<AdminNewClientModalProps> = ({
   const [notes, setNotes] = useState('');
 
   // Dropdowns States
-  const [isEventTypeDropdownOpen, setIsEventTypeDropdownOpen] = useState(false);
+  const [, setIsEventTypeDropdownOpen] = useState(false);
   const [isVenueDropdownOpen, setIsVenueDropdownOpen] = useState(false);
   const [isRelDropdownOpen, setIsRelDropdownOpen] = useState(false);
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
@@ -181,7 +184,6 @@ export const AdminNewClientModal: React.FC<AdminNewClientModalProps> = ({
   }, [calendarMonth]);
 
   const selectedVenue = venues.find(v => v.id === venueId);
-  const selectedEventTypeObj = EVENT_TYPE_OPTIONS.find(o => o.key === eventType) || EVENT_TYPE_OPTIONS[0];
   const selectedRelObj = RELATIONSHIP_OPTIONS.find(o => o.key === payerRelationship) || RELATIONSHIP_OPTIONS[0];
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -195,35 +197,25 @@ export const AdminNewClientModal: React.FC<AdminNewClientModalProps> = ({
       return;
     }
 
-    // Determina o nome do aniversariante/homenageado
-    let effectiveHostName = birthdayPersonName.trim();
-    if (mode === 'quick' && !effectiveHostName) {
-      effectiveHostName = effectivePayerName;
-    } else if (mode === 'full') {
-      if (isSelfDecisor) {
-        effectiveHostName = effectivePayerName;
-      } else if (!effectiveHostName) {
-        effectiveHostName = effectivePayerName;
-      }
-    }
+    const effectiveHostName = birthdayPersonName.trim() || effectivePayerName;
 
     const newClientId = addClient({
       venueId,
-      eventType: eventType || undefined,
+      eventType: undefined,
       payerName: effectivePayerName,
       payerPhone: effectivePhone,
       payerRelationship: isSelfDecisor ? 'self' : (payerRelationship as any),
       payerCpf: payerCpf.trim() || undefined,
       payerEmail: payerEmail.trim() || undefined,
       birthdayPersonName: effectiveHostName,
-      birthdayPersonAge: birthdayPersonAge ? Number(birthdayPersonAge) : (eventType === '15 Anos' ? 15 : undefined),
+      birthdayPersonAge: birthdayPersonAge ? Number(birthdayPersonAge) : undefined,
       eventDate: eventDate.trim() || undefined,
       eventTime: eventTime.trim() || undefined,
       guestCount: guestCount ? Number(guestCount) : undefined,
       packageSold: packageSold.trim() || undefined,
       dealValue: getNumericDealValue(),
       paymentTerms: paymentTerms.trim() || undefined,
-      notes: notes.trim() || (secondSpouseName.trim() ? `2º Cônjuge: ${secondSpouseName.trim()}` : undefined),
+      notes: notes.trim() || undefined,
       funnelId: defaultFunnelId,
       stage: 'onboarding',
     });
@@ -279,7 +271,7 @@ export const AdminNewClientModal: React.FC<AdminNewClientModalProps> = ({
         backgroundColor: 'var(--adm-bg-card, #FFFFFF)',
         borderRadius: '16px',
         width: '100%',
-        maxWidth: mode === 'quick' ? '520px' : '680px',
+        maxWidth: '520px',
         maxHeight: '92vh',
         overflowY: 'auto',
         boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.35)',
@@ -288,7 +280,7 @@ export const AdminNewClientModal: React.FC<AdminNewClientModalProps> = ({
         color: 'var(--adm-text-body, #111827)',
         transition: 'max-width 0.2s ease',
       }}>
-        {/* Header com Tabs de Alternância Rápido vs Completo */}
+        {/* Header */}
         <div style={{
           padding: '18px 22px',
           borderBottom: '1px solid var(--adm-border, #E2E8F0)',
@@ -300,10 +292,10 @@ export const AdminNewClientModal: React.FC<AdminNewClientModalProps> = ({
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div>
               <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: 'var(--adm-text-title, #0F172A)' }}>
-                Novo Contrato • Pós-Venda
+                Adicionar Cliente • Pós-Venda
               </h3>
               <span style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted, #64748B)' }}>
-                {mode === 'quick' ? 'Cadastro ágil: preencha apenas os dados essenciais para iniciar o atendimento.' : 'Cadastro detalhado: especifique dados contratuais, homenageado e cronograma.'}
+                Informe a casa, o nome e o WhatsApp para criar ou vincular o cliente.
               </span>
             </div>
             <button
@@ -324,158 +316,10 @@ export const AdminNewClientModal: React.FC<AdminNewClientModalProps> = ({
               <X size={18} />
             </button>
           </div>
-
-          {/* Switch Tabs */}
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            background: 'var(--adm-bg-input, #E2E8F0)',
-            padding: '3px',
-            borderRadius: '8px',
-            gap: '4px',
-          }}>
-            <button
-              type="button"
-              onClick={() => setMode('quick')}
-              style={{
-                flex: 1,
-                padding: '6px 12px',
-                borderRadius: '6px',
-                border: 'none',
-                background: mode === 'quick' ? 'var(--adm-bg-card, #FFFFFF)' : 'transparent',
-                color: mode === 'quick' ? 'var(--adm-accent, #0284C7)' : 'var(--adm-text-muted, #64748B)',
-                fontWeight: mode === 'quick' ? 800 : 600,
-                fontSize: '0.74rem',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '6px',
-                boxShadow: mode === 'quick' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
-                transition: 'all 0.15s ease',
-              }}
-            >
-              <Zap size={13} />
-              <span>Cadastro Rápido (Essencial)</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setMode('full')}
-              style={{
-                flex: 1,
-                padding: '6px 12px',
-                borderRadius: '6px',
-                border: 'none',
-                background: mode === 'full' ? 'var(--adm-bg-card, #FFFFFF)' : 'transparent',
-                color: mode === 'full' ? 'var(--adm-accent, #0284C7)' : 'var(--adm-text-muted, #64748B)',
-                fontWeight: mode === 'full' ? 800 : 600,
-                fontSize: '0.74rem',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '6px',
-                boxShadow: mode === 'full' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
-                transition: 'all 0.15s ease',
-              }}
-            >
-              <Sliders size={13} />
-              <span>Formulário Completo</span>
-            </button>
-          </div>
         </div>
 
-        {/* Form Body */}
+        {/* Form Body (Simplificado: Casa + Nome com busca + WhatsApp) */}
         <form onSubmit={handleSubmit} style={{ padding: '22px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-
-          {/* ── CAMPO 1: TIPO DE EVENTO (Dropdown Elegante do Sistema - Presente em Ambos) ── */}
-          <div style={{ position: 'relative' }} ref={eventTypeRef}>
-            <label style={fieldLabelStyle}>
-              <Sparkles size={13} color="#8B5CF6" />
-              <span>Tipo de Evento</span>
-              <span style={{ fontSize: '0.66rem', fontWeight: 500, color: 'var(--adm-text-muted)' }}>(Opcional)</span>
-            </label>
-
-            <button
-              type="button"
-              onClick={() => setIsEventTypeDropdownOpen(!isEventTypeDropdownOpen)}
-              style={{
-                ...fieldInputStyle,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                cursor: 'pointer',
-                background: isEventTypeDropdownOpen ? 'var(--adm-bg-card)' : fieldInputStyle.backgroundColor,
-                borderColor: isEventTypeDropdownOpen ? 'var(--adm-accent)' : 'var(--adm-border)',
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span style={{ color: selectedEventTypeObj.key ? 'var(--adm-text-title)' : 'var(--adm-text-muted)' }}>
-                  {selectedEventTypeObj.label}
-                </span>
-              </div>
-              <ChevronDown size={14} color="var(--adm-text-muted)" style={{ transform: isEventTypeDropdownOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
-            </button>
-
-            {isEventTypeDropdownOpen && (
-              <div style={{
-                position: 'absolute',
-                top: 'calc(100% + 4px)',
-                left: 0,
-                right: 0,
-                zIndex: 100,
-                background: 'var(--adm-bg-card, #FFFFFF)',
-                border: '1px solid var(--adm-border, #CBD5E1)',
-                borderRadius: '8px',
-                boxShadow: '0 10px 25px -5px rgba(0,0,0,0.25)',
-                padding: '4px',
-                maxHeight: '220px',
-                overflowY: 'auto',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '2px',
-              }}>
-                {EVENT_TYPE_OPTIONS.map(opt => {
-                  const isSel = eventType === opt.key;
-                  const IconCmp = opt.icon;
-                  return (
-                    <button
-                      key={opt.key}
-                      type="button"
-                      onClick={() => {
-                        setEventType(opt.key);
-                        setIsEventTypeDropdownOpen(false);
-                      }}
-                      style={{
-                        padding: '8px 10px',
-                        borderRadius: '6px',
-                        border: 'none',
-                        background: isSel ? 'var(--adm-accent-bg, rgba(2, 132, 199, 0.12))' : 'transparent',
-                        color: isSel ? 'var(--adm-accent, #0284C7)' : 'var(--adm-text-title, #0F172A)',
-                        fontWeight: isSel ? 700 : 500,
-                        fontSize: '0.78rem',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        textAlign: 'left',
-                        width: '100%',
-                      }}
-                      onMouseEnter={(e) => { if (!isSel) e.currentTarget.style.background = 'var(--adm-bg-hover, rgba(0,0,0,0.04))'; }}
-                      onMouseLeave={(e) => { if (!isSel) e.currentTarget.style.background = 'transparent'; }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <IconCmp size={13} />
-                        <span>{opt.label}</span>
-                      </div>
-                      {isSel && <Check size={14} />}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
 
           {/* ── CAMPO 2: UNIDADE / CASA DE FESTAS (Dropdown Elegante do Sistema) ── */}
           <div style={{ position: 'relative' }} ref={venueRef}>
@@ -565,22 +409,40 @@ export const AdminNewClientModal: React.FC<AdminNewClientModalProps> = ({
             )}
           </div>
 
-          {/* ── MODO RÁPIDO: Apenas Nome do Responsável e WhatsApp ── */}
-          {mode === 'quick' ? (
+          {/* ── MODO SIMPLIFICADO: Apenas Nome (com busca na unidade) e WhatsApp ── */}
+          {true ? (
             <>
-              <div>
+              <div style={{ position: 'relative' }}>
                 <label style={fieldLabelStyle}>
                   <User size={13} color="#10B981" />
                   <span>Nome do Responsável / Contratante *</span>
                 </label>
                 <input
                   type="text"
-                  placeholder="Ex: Carlos Alberto ou Patrick"
+                  autoFocus
+                  placeholder="Digite o nome para buscar ou cadastrar..."
                   value={payerName}
-                  onChange={(e) => setPayerName(e.target.value)}
+                  onFocus={() => setShowSuggestions(true)}
+                  onBlur={() => setTimeout(() => setShowSuggestions(false), 180)}
+                  onChange={(e) => {
+                    setPayerName(e.target.value);
+                    setSelectedLookupContact(null);
+                    setShowSuggestions(true);
+                  }}
                   required
                   style={fieldInputStyle}
                 />
+                {showSuggestions && (
+                  <ContactSuggestionsDropdown
+                    suggestions={contactSuggestions}
+                    onSelect={(c) => {
+                      setSelectedLookupContact(c);
+                      setPayerName(c.name);
+                      setPayerPhone(maskPhoneInput(c.whatsappPhone || c.primaryPhone || ''));
+                      setShowSuggestions(false);
+                    }}
+                  />
+                )}
               </div>
 
               <div>
@@ -596,6 +458,37 @@ export const AdminNewClientModal: React.FC<AdminNewClientModalProps> = ({
                   required
                   style={fieldInputStyle}
                 />
+                {(selectedLookupContact || sameUnitPhoneMatch) && (
+                  <div style={{
+                    marginTop: '8px',
+                    padding: '10px 12px',
+                    borderRadius: '8px',
+                    background: 'rgba(16, 185, 129, 0.08)',
+                    border: '1px solid rgba(16, 185, 129, 0.3)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    color: '#059669',
+                    fontSize: '0.75rem',
+                    fontWeight: 700,
+                  }}>
+                    <CheckCircle2 size={15} style={{ flexShrink: 0 }} />
+                    <span>
+                      Contato já salvo nesta unidade ({(selectedLookupContact || sameUnitPhoneMatch)?.name}). Este cliente será vinculado a ele automaticamente.
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              <div style={{
+                padding: '8px 12px',
+                borderRadius: '8px',
+                background: 'rgba(6, 182, 212, 0.06)',
+                border: '1px dashed rgba(6, 182, 212, 0.35)',
+                fontSize: '0.72rem',
+                color: 'var(--adm-text-muted)',
+              }}>
+                Após criar, a ficha do cliente abrirá automaticamente para você informar o tipo de evento e demais detalhes.
               </div>
             </>
           ) : (
@@ -1099,7 +992,7 @@ export const AdminNewClientModal: React.FC<AdminNewClientModalProps> = ({
               }}
             >
               <Check size={16} />
-              <span>{mode === 'quick' ? 'Cadastrar Cliente Rápido' : 'Concluir Cadastro Completo'}</span>
+              <span>Adicionar Cliente</span>
             </button>
           </div>
         </form>

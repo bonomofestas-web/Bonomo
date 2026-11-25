@@ -33,6 +33,13 @@ Grande reestruturação de governança, experiência do usuário, banco de dados
 9. **Dashboard Executivo & Adaptação Modo Claro:** Painel consolidado com métricas comerciais, metas e compatibilidade integral com temas claro e escuro.
 10. **Command Palette Unificado & Busca Universal:** Sistema global de atalhos (`Ctrl + K`) com filtros por Etiqueta, Colaborador e Unidade, corrigindo duplicações de digitação.
 11. **Arsenal de Modernização de UI e Performance:** Integração de `sonner`, `cmdk`, `@tanstack/react-table`, `@formkit/auto-animate`, `motion` e `echarts` com `<Toaster>` global e tipografia padronizada em `Inter, sans-serif`.
+12. **Isolamento de Setores, Busca Universal `Ctrl+K`, Mensagens Extras & Cadastro Simplificado:**
+    - `Ctrl+K` estritamente universal em `AdminGlobalSearch.tsx`, com barras de busca locais independentes no Modo Mensagens, Caixa de Entrada do Funil e Contatos.
+    - Modo Mensagens & Caixa de Entrada do Funil com abas `Em aberto | Meus | Todos`, busca compacta com Ordenar e Filtros integrados, e seletor de funil em 3 accordions fechados por padrão (`Funis Comerciais`, `Pós-Venda`, `Mensagens Extras`).
+    - Isolamento estrito entre Comercial e Pós-Venda (bloqueio de visualização de funis de Pós-Venda e transferência direta para usuários exclusivamente comerciais).
+    - Fornecedores e Colaboradores exibidos na Caixa de Entrada e em Mensagens Extras com badge própria e tag de Origem (nunca no Kanban comercial), além de exclusão permanente de leads/clientes sem contrato e tarefas ao converter contato em Fornecedor ou Colaborador.
+    - Gestão dedicada em Contatos (`Todos | Contrato ativo | Extras`, menu de 3 pontos no cabeçalho, Tipo de Serviço, Contratos/Orçamentos e vínculo com Base de Funcionários).
+    - Botão `+ Adicionar Cliente` e modais simplificados de Novo Lead e Novo Cliente com busca/detecção de duplicidade estritamente isolada por unidade (`venueId`).
 12. **Higienização de Vocabulário Técnico:** Remoção de menções de infraestrutura técnica nas interfaces de contratos e uploads para linguagem comercial executiva.
 13. **Isolamento Absoluto de Master ID (Regra Suprema):** Filtro nativo de `master_id` nas queries e mutations do Supabase (`leadService`, `clientService`, `contractService`, etc.) e no `AdminStateContext`.
 14. **Auditoria de Integridade e Eliminação Integral de Mocks:** Erradicação de dados simulados em `AdminVisitsTastingsView.tsx`, extirpação de fallbacks financeiros fictícios (R$ 48k/12k/36k) e badges estáticos em `AdminClientDrawerInspector.tsx`, sob auditoria de Marshall Eriksen, assegurando alimentação 100% dinâmica via Supabase.

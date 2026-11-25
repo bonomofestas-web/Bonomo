@@ -4,7 +4,7 @@ import { canCollaboratorSeeStage } from '../../utils/funnelResponsibility';
 import { HeaderActions, headerPrimaryButtonStyle } from './HeaderActions';
 import { toast } from 'sonner';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { 
+import {
   Kanban, List, LayoutGrid, Search, Building2,
   Calendar, DollarSign,
   ChevronDown, Plus, Layers,
@@ -22,9 +22,9 @@ import {
 import { AdminNewLeadModal } from './AdminNewLeadModal';
 import { AdminFunnelSettingsView } from './AdminFunnelSettingsView';
 import { AdminDuplicateLeadModal } from './AdminDuplicateLeadModal';
-import { 
-  AdminMoveFunnelModal, 
-  AdminQuickTaskModal, 
+import {
+  AdminMoveFunnelModal,
+  AdminQuickTaskModal,
   AdminBulkMoveStageModal,
   AdminBulkAssignModal,
   AdminBulkMoveFunnelModal
@@ -204,7 +204,7 @@ const AdminFilterDropdown: React.FC<AdminFilterDropdownProps> = ({
 
 // Robust lead to column matcher: guarantees no leads disappear or fall into unauthorized stages
 const getLeadMatchedColumnId = (
-  lead: Lead, 
+  lead: Lead,
   cols: Array<{ id: string; title: string; isWon?: boolean; isLoss?: boolean }>
 ): string => {
   if (!cols || cols.length === 0) return '';
@@ -334,8 +334,8 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
   isPostSaleView = false,
   onOpenLeadInWhatsApp,
 }) => {
-  const { 
-    leads, 
+  const {
+    leads,
     venues,
     collaborators,
     currentUser,
@@ -609,7 +609,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
         const p = new URLSearchParams(window.location.search);
         const urlFunnel = p.get('funnel_id');
         if (urlFunnel) return urlFunnel;
-      } catch {}
+      } catch { }
     }
     if (initialLeadId) return 'indicacao';
     return null;
@@ -618,9 +618,9 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
   const setSelectedFunnelId = (id: string | null) => {
     setSelectedFunnelIdState(id);
     if (id) {
-      try { localStorage.setItem('f5_crm_active_funnel_id', id); } catch {}
+      try { localStorage.setItem('f5_crm_active_funnel_id', id); } catch { }
     } else {
-      try { localStorage.removeItem('f5_crm_active_funnel_id'); } catch {}
+      try { localStorage.removeItem('f5_crm_active_funnel_id'); } catch { }
     }
     if (onSelectFunnel) {
       onSelectFunnel(id);
@@ -638,7 +638,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
         if (p.get('funnel_settings') === 'true') return true;
       }
       return localStorage.getItem('f5_crm_funnel_settings_open') === 'true';
-    } catch {}
+    } catch { }
     return false;
   });
 
@@ -650,7 +650,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
         if (urlId && p.get('funnel_settings') === 'true') return urlId;
       }
       return localStorage.getItem('f5_crm_como_funnel_id') || undefined;
-    } catch {}
+    } catch { }
     return undefined;
   });
 
@@ -667,7 +667,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
         if (targetId) url.searchParams.set('settings_funnel_id', targetId);
         window.history.replaceState({}, '', url.toString());
       }
-    } catch {}
+    } catch { }
   };
 
   const closeComoFunnelSettings = () => {
@@ -682,7 +682,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
         url.searchParams.delete('settings_funnel_id');
         window.history.replaceState({}, '', url.toString());
       }
-    } catch {}
+    } catch { }
   };
 
   // View mode inside funnel com persistência para recarregamento de página (F5)
@@ -695,7 +695,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
         if (urlLead) return urlLead;
       }
       return localStorage.getItem('f5_crm_active_lead_id');
-    } catch {}
+    } catch { }
     return null;
   });
 
@@ -710,7 +710,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
       }
       const savedMode = localStorage.getItem('f5_crm_view_mode');
       if (savedMode === 'kanban' || savedMode === 'list' || savedMode === 'workspace') return savedMode;
-    } catch {}
+    } catch { }
     return 'kanban';
   });
   const [search, setSearch] = useState('');
@@ -875,7 +875,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
 
   const toggleLeadSelection = (leadId: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
-    setSelectedLeadIds(prev => 
+    setSelectedLeadIds(prev =>
       prev.includes(leadId) ? prev.filter(id => id !== leadId) : [...prev, leadId]
     );
   };
@@ -1034,10 +1034,10 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
   const funnelsList = useMemo(() => {
     let baseFunnels = funnels;
     if (isPostSaleView) {
-      baseFunnels = funnels.filter(f => 
-        f.isPostSale || 
-        f.category === 'Pós-Venda' || 
-        f.name?.toLowerCase().includes('pós-venda') || 
+      baseFunnels = funnels.filter(f =>
+        f.isPostSale ||
+        f.category === 'Pós-Venda' ||
+        f.name?.toLowerCase().includes('pós-venda') ||
         f.name?.toLowerCase().includes('pos venda') ||
         f.name?.toLowerCase().includes('cliente')
       );
@@ -1088,8 +1088,13 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
       // Calculate dynamic metrics per funnel strictly for this funnel (filtered by activeVenueId if set)
       const isFunnelPostSale = Boolean(funnel.isPostSale || funnel.category === 'Pós-Venda' || funnel.category === 'pos_venda' || funnel.id === 'post_sale_default');
       const funnelLeads = leads.filter(l => {
-        const matchesFunnel = l.funnelId 
-          ? (l.funnelId === funnel.id || l.funnelId.toLowerCase().trim() === funnel.name.toLowerCase().trim()) 
+        const isExtraContact = Boolean(
+          l.group === 'Fornecedor' || l.group === 'Colaborador' ||
+          (Array.isArray(l.tags) && l.tags.some(t => { const low = t.toLowerCase(); return low === 'fornecedor' || low === 'colaborador'; }))
+        );
+        if (isExtraContact) return false;
+        const matchesFunnel = l.funnelId
+          ? (l.funnelId === funnel.id || l.funnelId.toLowerCase().trim() === funnel.name.toLowerCase().trim())
           : funnel.isPrimary;
         if (!matchesFunnel) return false;
         if (activeVenueId && activeVenueId !== 'all' && l.venueId !== activeVenueId) return false;
@@ -1109,9 +1114,9 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
 
       const referralConversion = funnelLeads.length > 0
         ? Math.round((funnelLeads.filter(l => {
-            const s = l.stage as string;
-            return s === 'contract_signed' || s === 'deal_closed' || s === 'contrato_fechado';
-          }).length / funnelLeads.length) * 100)
+          const s = l.stage as string;
+          return s === 'contract_signed' || s === 'deal_closed' || s === 'contrato_fechado';
+        }).length / funnelLeads.length) * 100)
         : 0;
 
       const venue = venues.find(v => v.id === funnel.venueId);
@@ -1204,8 +1209,8 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
     if (isReadOnlyForPosVenda) return true;
     if (currentUser?.role === 'sdr' || currentUser?.role === 'closer') {
       const isAssigned = (l.sdrId && l.sdrId === currentUser.id) ||
-                         (l.closerId && l.closerId === currentUser.id) ||
-                         (l.assignedTo && l.assignedTo === currentUser.name);
+        (l.closerId && l.closerId === currentUser.id) ||
+        (l.assignedTo && l.assignedTo === currentUser.name);
       return !isAssigned;
     }
     return false;
@@ -1272,10 +1277,17 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
   // Filter and Sort leads strictly isolated for the selected Funnel
   const filteredLeads = useMemo(() => {
     const matching = leads.filter(l => {
-      // 0. REGRA SUPREMA E INEGIOCIÁVEL: ISOLAMENTO TOTAL ENTRE LEADS COMERCIAIS E CLIENTES (PÓS-VENDA)
+      // 0. Fornecedores e Colaboradores NUNCA aparecem no Kanban (somente na Caixa de Entrada / Mensagens)
+      const isExtraContact = Boolean(
+        l.group === 'Fornecedor' || l.group === 'Colaborador' ||
+        (Array.isArray(l.tags) && l.tags.some(t => { const low = t.toLowerCase(); return low === 'fornecedor' || low === 'colaborador'; }))
+      );
+      if (isExtraContact) return false;
+
+      // 0b. REGRA SUPREMA E INEGIOCIÁVEL: ISOLAMENTO TOTAL ENTRE LEADS COMERCIAIS E CLIENTES (PÓS-VENDA)
       const isClientRecord = Boolean(
-        l.isClient === true || 
-        l.group === 'Pós-Venda' || 
+        l.isClient === true ||
+        l.group === 'Pós-Venda' ||
         (Array.isArray(l.tags) && l.tags.some(t => t.toLowerCase() === 'cliente'))
       );
 
@@ -1327,7 +1339,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
           const s = stored.trim().toLowerCase();
           return s === targetUserName || targetUserName.includes(s) || s.includes(targetUserName) || (s.length >= 3 && targetUserName.split(' ')[0] === s.split(' ')[0]);
         };
-        const isMine = 
+        const isMine =
           Boolean(targetUserId && (l.sdrId === targetUserId || l.closerId === targetUserId)) ||
           Boolean(targetUserName && (matchesTargetName(l.sdrName) || matchesTargetName(l.closerName) || matchesTargetName(l.assignedTo))) ||
           Boolean(targetUserId && (l.participants || []).some(p => p.collaboratorId === targetUserId));
@@ -1349,8 +1361,8 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
           const s = stored.trim().toLowerCase();
           return s === targetCollabName || targetCollabName.includes(s) || s.includes(targetCollabName) || (s.length >= 3 && targetCollabName.split(' ')[0] === s.split(' ')[0]);
         };
-        const matchesCollab = l.sdrId === filterState.collaboratorId || 
-          l.closerId === filterState.collaboratorId || 
+        const matchesCollab = l.sdrId === filterState.collaboratorId ||
+          l.closerId === filterState.collaboratorId ||
           (l.participants || []).some(p => p.collaboratorId === filterState.collaboratorId) ||
           matchesCollabName(l.sdrName) ||
           matchesCollabName(l.closerName) ||
@@ -1528,8 +1540,8 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
     const isCurrentlyWon = lead.stage === 'contract_signed' || (lead.stage as string) === 'deal_closed' || (lead.stage as string) === 'contrato_fechado';
     const isTargetWon = Boolean(
       targetStageConfig?.isWon === true ||
-      (targetStage as string) === 'contract_signed' || 
-      (targetStage as string) === 'deal_closed' || 
+      (targetStage as string) === 'contract_signed' ||
+      (targetStage as string) === 'deal_closed' ||
       (targetStage as string) === 'contrato_fechado' ||
       (targetStage as string) === 'ganho'
     );
@@ -1593,7 +1605,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
       const scheduleTrigger = targetStageConfig?.triggers?.find(t => t.type === 'open_schedule');
       if (scheduleTrigger || targetStageConfig?.isMeetingStage) {
         const scheduleType: CommercialCommitmentType = scheduleTrigger?.scheduleType === 'tasting' ? 'tasting' : 'visit';
-        
+
         const leadVenueConfig = venueAgendaConfigs.find(c => c.venueId === lead.venueId);
         const availabilityCheck = agendaAvailabilityService.hasUpcomingAvailableSlots(
           leadVenueConfig,
@@ -1625,9 +1637,9 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
   };
 
   const handleConfirmSale = (
-    leadId: string, 
-    dealValue: number, 
-    packageSold: string, 
+    leadId: string,
+    dealValue: number,
+    packageSold: string,
     closerNotes?: string,
     extraOptions?: {
       contractTitle?: string;
@@ -1685,7 +1697,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
         url.searchParams.set('lead_id', lead.id);
         window.history.replaceState({}, '', url.toString());
       }
-    } catch {}
+    } catch { }
   };
 
   // Handlers para Drag-to-Scroll horizontal do Kanban (arraste livre sem scrollbar aparente)
@@ -1740,12 +1752,12 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
   }, [funnelsList, funnelSearch]);
 
   const funnelsByVenueGroup = useMemo(() => {
-    const groups: { 
-      venueName: string; 
-      venueId: string; 
-      logoUrl?: string; 
+    const groups: {
+      venueName: string;
+      venueId: string;
+      logoUrl?: string;
       isMultiVenue?: boolean;
-      funnels: typeof displayedFunnels 
+      funnels: typeof displayedFunnels
     }[] = [];
 
     // 1. Identificar Funis Multi-Unidades (Rede Geral / Compartilhados com 2 ou mais casas)
@@ -2003,23 +2015,23 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                         padding: '2px',
                         boxSizing: 'border-box',
                       }}>
-                        <img 
-                          src={group.logoUrl} 
-                          alt={group.venueName} 
-                          style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} 
+                        <img
+                          src={group.logoUrl}
+                          alt={group.venueName}
+                          style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
                         />
                       </div>
                     ) : (
-                      <div style={{ 
-                        width: '32px', 
-                        height: '32px', 
-                        borderRadius: '8px', 
-                        background: group.isMultiVenue ? 'rgba(212, 175, 55, 0.12)' : 'rgba(20, 169, 215, 0.12)', 
-                        border: `1px solid ${group.isMultiVenue ? 'rgba(212, 175, 55, 0.3)' : 'rgba(20, 169, 215, 0.3)'}`, 
-                        display: 'flex', 
-                        alignItems: 'center', 
-                        justifyContent: 'center', 
-                        color: group.isMultiVenue ? '#D4AF37' : 'var(--adm-accent)' 
+                      <div style={{
+                        width: '32px',
+                        height: '32px',
+                        borderRadius: '8px',
+                        background: group.isMultiVenue ? 'rgba(212, 175, 55, 0.12)' : 'rgba(20, 169, 215, 0.12)',
+                        border: `1px solid ${group.isMultiVenue ? 'rgba(212, 175, 55, 0.3)' : 'rgba(20, 169, 215, 0.3)'}`,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: group.isMultiVenue ? '#D4AF37' : 'var(--adm-accent)'
                       }}>
                         {group.isMultiVenue ? <Layers size={16} /> : <Building2 size={16} />}
                       </div>
@@ -2256,8 +2268,8 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                     gap: '12px',
                     cursor: 'pointer',
                     border: funnel.isPrimary ? '1.5px solid var(--adm-accent)' : '1px solid var(--adm-border)',
-                    background: funnel.isPrimary 
-                      ? 'linear-gradient(135deg, var(--adm-bg-card) 0%, rgba(212, 175, 55, 0.04) 100%)' 
+                    background: funnel.isPrimary
+                      ? 'linear-gradient(135deg, var(--adm-bg-card) 0%, rgba(212, 175, 55, 0.04) 100%)'
                       : 'var(--adm-bg-card)',
                     transition: 'border-color 0.15s ease, background-color 0.15s ease',
                     position: 'relative',
@@ -3098,7 +3110,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
       </div>
 
       {viewMode === 'workspace' ? (
-        <AdminWhatsAppWorkspaceView 
+        <AdminWhatsAppWorkspaceView
           initialLeadId={activeLeadIdForWorkspace || undefined}
           activeFunnelId={currentFunnel?.id || selectedFunnelId || undefined}
           isEmbeddedInFunnel={true}
@@ -3117,7 +3129,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                 url.searchParams.delete('lead_id');
                 window.history.replaceState({}, '', url.toString());
               }
-            } catch {}
+            } catch { }
           }}
           isMultiSelectActive={isMultiSelectMode}
           onToggleMultiSelect={setIsMultiSelectMode}
@@ -3323,7 +3335,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                     }}
                   >
                     {/* Column Header - Fixo Sticky no topo sincronizado */}
-                    <div 
+                    <div
                       onClick={() => toggleColumnCollapse(col.id)}
                       title={`Clique para minimizar a etapa "${col.title.toUpperCase()}"`}
                       style={{
@@ -3360,7 +3372,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                 }
                               }}
                               onClick={(e) => toggleColumnSelectAll(columnLeads, e)}
-                              onChange={() => {}}
+                              onChange={() => { }}
                               title={columnLeads.length > 0 && columnLeads.every(l => selectedLeadIds.includes(l.id)) ? "Desmarcar todos desta etapa" : "Selecionar todos desta etapa"}
                               style={{
                                 cursor: 'pointer',
@@ -3486,7 +3498,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                     </div>
 
                     {/* Cards Container - Com scroll individual ultrafino de 4px */}
-                    <div 
+                    <div
                       ref={animateList}
                       className="kanban-column-scrollbar"
                       style={{
@@ -3544,11 +3556,11 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                 }
                               }}
                               style={{
-                                background: isSelectedInMulti 
-                                  ? 'rgba(99, 102, 241, 0.05)' 
+                                background: isSelectedInMulti
+                                  ? 'rgba(99, 102, 241, 0.05)'
                                   : (hasSlaAlert ? sla.cardBg : 'var(--adm-bg-card, #ffffff)'),
-                                border: isSelectedInMulti 
-                                  ? '1.5px solid var(--adm-accent, #6366F1)' 
+                                border: isSelectedInMulti
+                                  ? '1.5px solid var(--adm-accent, #6366F1)'
                                   : (hasSlaAlert ? `1.5px solid ${sla.cardBorder}` : '1px solid var(--adm-border, #E2E8F0)'),
                                 borderRadius: '12px',
                                 padding: '12px 14px',
@@ -3558,8 +3570,8 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                 gap: '9px',
                                 transition: 'transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease',
                                 position: 'relative',
-                                boxShadow: isSelectedInMulti 
-                                  ? '0 2px 8px rgba(99, 102, 241, 0.15)' 
+                                boxShadow: isSelectedInMulti
+                                  ? '0 2px 8px rgba(99, 102, 241, 0.15)'
                                   : (hasSlaAlert ? `0 0 0 1px ${sla.cardBorder}33, 0 2px 6px rgba(0,0,0,0.04)` : '0 1px 3px rgba(0,0,0,0.04)'),
                                 zIndex: (activeLeadMenuId === lead.id || addTagLead?.id === lead.id || activeValueLeadId === lead.id) ? 100 : 1,
                               }}
@@ -3583,7 +3595,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                 {/* Esquerda: Checkbox/3 Pontinhos + Avatar + Nome + Telefone */}
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, flex: 1 }}>
                                   {isMultiSelectMode ? (
-                                    <div 
+                                    <div
                                       onClick={(e) => toggleLeadSelection(lead.id, e)}
                                       style={{
                                         width: '15px',
@@ -3792,39 +3804,39 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                           {(currentUser?.role === 'master' || currentUser?.role === 'admin' || currentUser?.isDev) && (
                                             lead.stage !== 'contract_signed' && (lead.stage as string) !== 'deal_closed' && lead.stage !== 'lost'
                                           ) && (
-                                            <>
-                                              <div style={{ height: '1px', background: 'var(--adm-border, #E2E8F0)', margin: '2px 0' }} />
-                                              <button
-                                                type="button"
-                                                onClick={() => {
-                                                  setActiveLeadMenuId(null);
-                                                  if (confirm(`Deseja realmente excluir o lead "${lead.name}"?`)) {
-                                                    deleteLead(lead.id);
-                                                  }
-                                                }}
-                                                style={{
-                                                  display: 'flex',
-                                                  alignItems: 'center',
-                                                  gap: '6px',
-                                                  padding: '6px 8px',
-                                                  borderRadius: '5px',
-                                                  border: 'none',
-                                                  background: 'transparent',
-                                                  color: '#EF4444',
-                                                  fontSize: '0.72rem',
-                                                  fontWeight: 600,
-                                                  cursor: 'pointer',
-                                                  textAlign: 'left',
-                                                  width: '100%',
-                                                }}
-                                                onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(239, 68, 68, 0.08)'}
-                                                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                                              >
-                                                <Trash2 size={12} color="#EF4444" />
-                                                <span>Excluir Lead</span>
-                                              </button>
-                                            </>
-                                          )}
+                                              <>
+                                                <div style={{ height: '1px', background: 'var(--adm-border, #E2E8F0)', margin: '2px 0' }} />
+                                                <button
+                                                  type="button"
+                                                  onClick={() => {
+                                                    setActiveLeadMenuId(null);
+                                                    if (confirm(`Deseja realmente excluir o lead "${lead.name}"?`)) {
+                                                      deleteLead(lead.id);
+                                                    }
+                                                  }}
+                                                  style={{
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '6px',
+                                                    padding: '6px 8px',
+                                                    borderRadius: '5px',
+                                                    border: 'none',
+                                                    background: 'transparent',
+                                                    color: '#EF4444',
+                                                    fontSize: '0.72rem',
+                                                    fontWeight: 600,
+                                                    cursor: 'pointer',
+                                                    textAlign: 'left',
+                                                    width: '100%',
+                                                  }}
+                                                  onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(239, 68, 68, 0.08)'}
+                                                  onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                                                >
+                                                  <Trash2 size={12} color="#EF4444" />
+                                                  <span>Excluir Lead</span>
+                                                </button>
+                                              </>
+                                            )}
                                         </div>
                                       )}
                                     </div>
@@ -3840,7 +3852,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                   {/* Nome do Lead e Telefone abaixo */}
                                   <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1, gap: '0px' }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '4px', minWidth: 0 }}>
-                                      <span 
+                                      <span
                                         title={lead.name}
                                         style={{
                                           fontSize: '0.82rem',
@@ -3884,8 +3896,8 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                   const potentialValue = (lead.dealValue && lead.dealValue > 0)
                                     ? lead.dealValue
                                     : (downPayment > 0 || installments > 0)
-                                    ? (downPayment + (installments * installmentVal))
-                                    : (lead.estimatedBudget && lead.estimatedBudget > 0 ? lead.estimatedBudget : null);
+                                      ? (downPayment + (installments * installmentVal))
+                                      : (lead.estimatedBudget && lead.estimatedBudget > 0 ? lead.estimatedBudget : null);
 
                                   if (!potentialValue && downPayment === 0 && installments === 0) return null;
 
@@ -3894,7 +3906,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                   const remainingBalance = (potentialValue || 0) - downPayment;
 
                                   return (
-                                    <div 
+                                    <div
                                       data-value-trigger
                                       style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0, cursor: 'pointer' }}
                                       onMouseEnter={() => setActiveValueLeadId(lead.id)}
@@ -4772,8 +4784,8 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                         <div
                                           title={
                                             overdue > 0 ? `${overdue} tarefa(s) atrasada(s)` :
-                                            pending.length > 0 ? `${pending.length} tarefa(s) pendente(s)` :
-                                            isAllDone ? 'Todas as tarefas concluídas' : 'Sem tarefas'
+                                              pending.length > 0 ? `${pending.length} tarefa(s) pendente(s)` :
+                                                isAllDone ? 'Todas as tarefas concluídas' : 'Sem tarefas'
                                           }
                                           onClick={(e) => {
                                             e.stopPropagation();
@@ -5107,7 +5119,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                     const sla = getLeadWaitTimeSla(pendingWaitMs, systemSlaConfig);
 
                     return (
-                      <tr 
+                      <tr
                         key={lead.id}
                         onClick={() => {
                           if (isMultiSelectMode) {
@@ -5534,7 +5546,8 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
 
           <div style={{ height: '18px', width: '1px', background: 'var(--adm-border, #334155)' }} />
 
-          {/* Ação 0: Mover para Cliente (Pós-Venda) */}
+          {/* Ação 0: Mover para Cliente (Pós-Venda) — restrito a quem tem acesso Pós-Venda */}
+          {(currentUser?.role === 'master' || currentUser?.role === 'admin' || (currentUser as any)?.accessPostSale || (currentUser as any)?.access_post_sale) && (
           <button
             type="button"
             disabled={selectedLeadIds.length === 0}
@@ -5564,6 +5577,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
             <ArrowRightLeft size={13} color="#06B6D4" />
             <span>Mover para Cliente</span>
           </button>
+          )}
 
           {/* Ação 0: Mudar Funil */}
           <button
